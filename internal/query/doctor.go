@@ -166,15 +166,26 @@ func (e *Engine) checkScip(ctx context.Context) DoctorCheck {
 
 	// Check index info
 	info := e.scipAdapter.GetIndexInfo()
-	if info == nil {
+	if info == nil || len(info.Repositories) == 0 {
 		check.Status = "warn"
 		check.Message = "SCIP index info unavailable"
 		return check
 	}
 
-	if info.Freshness != nil && info.Freshness.IsStale() {
+	staleWarnings := make([]string, 0)
+	for _, repo := range info.Repositories {
+		if repo.Freshness != nil && repo.Freshness.IsStale() {
+			warn := repo.Freshness.Warning
+			if repo.Name != "" {
+				warn = fmt.Sprintf("%s (%s)", warn, repo.Name)
+			}
+			staleWarnings = append(staleWarnings, warn)
+		}
+	}
+
+	if len(staleWarnings) > 0 {
 		check.Status = "warn"
-		check.Message = fmt.Sprintf("SCIP index is stale: %s", info.Freshness.Warning)
+		check.Message = fmt.Sprintf("SCIP index stale: %s", strings.Join(staleWarnings, "; "))
 		check.SuggestedFixes = []FixAction{
 			{
 				Type:        "run-command",
@@ -186,8 +197,16 @@ func (e *Engine) checkScip(ctx context.Context) DoctorCheck {
 		return check
 	}
 
+	if !info.Available {
+		check.Status = "warn"
+		check.Message = "SCIP indexes configured but none loaded"
+		check.SuggestedFixes = e.getSCIPInstallSuggestions()
+		return check
+	}
+
+	repoCount := len(info.Repositories)
 	check.Status = "pass"
-	check.Message = fmt.Sprintf("SCIP index available (%d symbols)", info.SymbolCount)
+	check.Message = fmt.Sprintf("SCIP indexes available (%d symbols across %d repo(s))", info.SymbolCount, repoCount)
 	return check
 }
 

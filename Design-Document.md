@@ -44,6 +44,14 @@ LLMs struggle with large codebases because:
 3. **Existing tools don't compose** — LSP, Glean, Git speak different protocols
 4. **No semantic compression exists** — Nothing translates "code facts" into "codebase understanding"
 
+🧩 **Cross-repo & multi-language support**
+
+Developers working across monorepos want:
+- Cross-repo symbol indexing
+- Unified API across languages
+
+Both are relatively missing in most MCP implementations.
+
 ### The Solution
 
 ```

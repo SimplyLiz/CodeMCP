@@ -36,6 +36,25 @@ type BackendsConfig struct {
 type ScipConfig struct {
 	Enabled   bool   `json:"enabled" mapstructure:"enabled"`
 	IndexPath string `json:"indexPath" mapstructure:"indexPath"`
+
+	// Indexes allows configuring multiple SCIP indexes for monorepos or
+	// cross-repo lookups. If provided, IndexPath is used as a default
+	// fallback for repositories without an explicit entry.
+	Indexes []ScipIndexConfig `json:"indexes" mapstructure:"indexes"`
+}
+
+// ScipIndexConfig defines a single SCIP index location and its repo metadata.
+type ScipIndexConfig struct {
+	// Name is a human-readable repository identifier. If empty, the repo
+	// directory name will be used.
+	Name string `json:"name" mapstructure:"name"`
+
+	// RepoRoot is the root of the repository the index belongs to. If
+	// empty, the global RepoRoot is used.
+	RepoRoot string `json:"repoRoot" mapstructure:"repoRoot"`
+
+	// IndexPath is the path to the SCIP index relative to RepoRoot.
+	IndexPath string `json:"indexPath" mapstructure:"indexPath"`
 }
 
 // LspConfig contains LSP backend configuration

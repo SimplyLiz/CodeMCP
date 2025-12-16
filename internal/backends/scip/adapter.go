@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,20 +17,27 @@ import (
 	"ckb/internal/repostate"
 )
 
+// repoIndex wraps a loaded SCIP index with repo metadata for cross-repo lookups.
+type repoIndex struct {
+	name      string
+	repoRoot  string
+	indexPath string
+	index     *SCIPIndex
+	freshness *IndexFreshness
+}
+
 // SCIPAdapter implements the Backend and SymbolBackend interfaces for SCIP
+// and now supports multiple repository indexes.
 type SCIPAdapter struct {
-	indexPath    string
-	index        *SCIPIndex
 	logger       *logging.Logger
 	queryTimeout time.Duration
-	repoRoot     string
 	cfg          *config.Config
 
-	// Mutex for thread-safe access to index
+	// Mutex for thread-safe access to indexes
 	mu sync.RWMutex
 
-	// freshness tracks index freshness
-	freshness *IndexFreshness
+	indexes     map[string]*repoIndex
+	defaultRepo string
 }
 
 // NewSCIPAdapter creates a new SCIP adapter
@@ -42,28 +52,26 @@ func NewSCIPAdapter(cfg *config.Config, logger *logging.Logger) (*SCIPAdapter, e
 		)
 	}
 
-	indexPath := GetIndexPath(cfg.RepoRoot, cfg.Backends.Scip.IndexPath)
-
 	// Get default query timeout from config
 	queryTimeout := time.Duration(cfg.QueryPolicy.TimeoutMs["scip"]) * time.Millisecond
 	if queryTimeout == 0 {
 		queryTimeout = 5 * time.Second
 	}
 
+	indexes := buildRepoIndexes(cfg)
 	adapter := &SCIPAdapter{
-		indexPath:    indexPath,
 		logger:       logger,
 		queryTimeout: queryTimeout,
-		repoRoot:     cfg.RepoRoot,
 		cfg:          cfg,
+		indexes:      indexes,
+		defaultRepo:  selectDefaultRepo(indexes),
 	}
 
-	// Try to load the index immediately
+	// Try to load the indexes immediately
 	if err := adapter.LoadIndex(); err != nil {
 		// Log warning but don't fail - adapter can still report unavailable
-		logger.Warn("Failed to load SCIP index", map[string]interface{}{
+		logger.Warn("Failed to load SCIP indexes", map[string]interface{}{
 			"error": err.Error(),
-			"path":  indexPath,
 		})
 	}
 
@@ -80,17 +88,17 @@ func (s *SCIPAdapter) IsAvailable() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Check if index is loaded
-	if s.index == nil {
-		return false
+	for _, repo := range s.indexes {
+		if repo.index == nil {
+			continue
+		}
+		if _, err := os.Stat(repo.indexPath); os.IsNotExist(err) {
+			continue
+		}
+		return true
 	}
 
-	// Check if index file still exists
-	if _, err := os.Stat(s.indexPath); os.IsNotExist(err) {
-		return false
-	}
-
-	return true
+	return false
 }
 
 // Capabilities returns the capabilities supported by SCIP
@@ -114,34 +122,49 @@ func (s *SCIPAdapter) LoadIndex() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.logger.Info("Loading SCIP index", map[string]interface{}{
-		"path": s.indexPath,
-	})
+	var lastErr error
 
-	index, err := LoadSCIPIndex(s.indexPath)
-	if err != nil {
-		return err
-	}
+	for _, repo := range s.indexes {
+		s.logger.Info("Loading SCIP index", map[string]interface{}{
+			"path": repo.indexPath,
+			"repo": repo.name,
+		})
 
-	s.index = index
-
-	s.logger.Info("SCIP index loaded successfully", map[string]interface{}{
-		"documents": len(index.Documents),
-		"symbols":   len(index.Symbols),
-		"commit":    index.IndexedCommit,
-	})
-
-	// Compute freshness
-	if repoState, err := repostate.ComputeRepoState(s.repoRoot); err == nil {
-		s.freshness = ComputeIndexFreshness(index.IndexedCommit, repoState, s.repoRoot)
-		if s.freshness.IsStale() {
-			s.logger.Warn("SCIP index is stale", map[string]interface{}{
-				"warning": s.freshness.Warning,
+		index, err := LoadSCIPIndex(repo.indexPath)
+		if err != nil {
+			lastErr = err
+			s.logger.Warn("Failed to load SCIP index", map[string]interface{}{
+				"path":  repo.indexPath,
+				"repo":  repo.name,
+				"error": err.Error(),
 			})
+			repo.index = nil
+			repo.freshness = nil
+			continue
+		}
+
+		repo.index = index
+
+		s.logger.Info("SCIP index loaded successfully", map[string]interface{}{
+			"documents": len(index.Documents),
+			"symbols":   len(index.Symbols),
+			"commit":    index.IndexedCommit,
+			"repo":      repo.name,
+		})
+
+		// Compute freshness per repo
+		if repoState, err := repostate.ComputeRepoState(repo.repoRoot); err == nil {
+			repo.freshness = ComputeIndexFreshness(index.IndexedCommit, repoState, repo.repoRoot)
+			if repo.freshness.IsStale() {
+				s.logger.Warn("SCIP index is stale", map[string]interface{}{
+					"warning": repo.freshness.Warning,
+					"repo":    repo.name,
+				})
+			}
 		}
 	}
 
-	return nil
+	return lastErr
 }
 
 // GetSymbol retrieves detailed information about a specific symbol
@@ -149,7 +172,9 @@ func (s *SCIPAdapter) GetSymbol(ctx context.Context, id string) (*backends.Symbo
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	if s.index == nil {
+	repoName, symbolID := splitSymbolID(id, s.defaultRepo)
+	repo, ok := s.indexes[repoName]
+	if !ok || repo.index == nil {
 		return nil, errors.NewCkbError(
 			errors.IndexMissing,
 			"SCIP index not loaded",
@@ -164,7 +189,7 @@ func (s *SCIPAdapter) GetSymbol(ctx context.Context, id string) (*backends.Symbo
 	defer cancel()
 
 	// Get symbol from index
-	scipSym, err := s.index.GetSymbolByID(id)
+	scipSym, err := repo.index.GetSymbolByID(symbolID)
 	if err != nil {
 		return nil, errors.NewCkbError(
 			errors.SymbolNotFound,
@@ -176,7 +201,7 @@ func (s *SCIPAdapter) GetSymbol(ctx context.Context, id string) (*backends.Symbo
 	}
 
 	// Convert to SymbolResult
-	result := s.convertToSymbolResult(scipSym)
+	result := s.convertToSymbolResult(repoName, scipSym)
 
 	return result, nil
 }
@@ -186,7 +211,7 @@ func (s *SCIPAdapter) SearchSymbols(ctx context.Context, query string, opts back
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	if s.index == nil {
+	if len(s.indexes) == 0 {
 		return nil, errors.NewCkbError(
 			errors.IndexMissing,
 			"SCIP index not loaded",
@@ -200,39 +225,59 @@ func (s *SCIPAdapter) SearchSymbols(ctx context.Context, query string, opts back
 	ctx, cancel := context.WithTimeout(ctx, s.queryTimeout)
 	defer cancel()
 
-	// Convert options
-	scipOpts := SearchOptions{
-		MaxResults:   opts.MaxResults,
-		IncludeTests: opts.IncludeTests,
-		Scope:        opts.Scope,
-		Kind:         convertKindsToSCIP(opts.Kind),
-	}
+	var symbols []backends.SymbolResult
+	totalMatches := 0
 
-	// Search symbols
-	scipSymbols, err := s.index.SearchSymbols(query, scipOpts)
-	if err != nil {
-		return nil, errors.NewCkbError(
-			errors.InternalError,
-			"Failed to search symbols",
-			err,
-			nil,
-			nil,
-		)
-	}
+	for _, repo := range s.indexes {
+		if repo.index == nil {
+			continue
+		}
 
-	// Convert results
-	symbols := make([]backends.SymbolResult, len(scipSymbols))
-	for i, scipSym := range scipSymbols {
-		symbols[i] = *s.convertToSymbolResult(scipSym)
+		scopedPaths, allowed := filterScopeForRepo(opts.Scope, repo.name)
+		if !allowed {
+			continue
+		}
+
+		scipOpts := SearchOptions{
+			MaxResults:   opts.MaxResults,
+			IncludeTests: opts.IncludeTests,
+			Scope:        scopedPaths,
+			Kind:         convertKindsToSCIP(opts.Kind),
+		}
+
+		scipSymbols, err := repo.index.SearchSymbols(query, scipOpts)
+		if err != nil {
+			return nil, errors.NewCkbError(
+				errors.InternalError,
+				fmt.Sprintf("Failed to search symbols for repo %s", repo.name),
+				err,
+				nil,
+				nil,
+			)
+		}
+
+		for _, scipSym := range scipSymbols {
+			symbols = append(symbols, *s.convertToSymbolResult(repo.name, scipSym))
+			if opts.MaxResults > 0 && len(symbols) >= opts.MaxResults {
+				completeness := s.computeAggregateCompleteness()
+				return &backends.SearchResult{
+					Symbols:      symbols,
+					Completeness: completeness,
+					TotalMatches: len(symbols),
+				}, nil
+			}
+		}
+
+		totalMatches += len(scipSymbols)
 	}
 
 	// Compute completeness
-	completeness := s.computeCompleteness()
+	completeness := s.computeAggregateCompleteness()
 
 	return &backends.SearchResult{
 		Symbols:      symbols,
 		Completeness: completeness,
-		TotalMatches: len(symbols),
+		TotalMatches: totalMatches,
 	}, nil
 }
 
@@ -241,7 +286,9 @@ func (s *SCIPAdapter) FindReferences(ctx context.Context, symbolID string, opts 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	if s.index == nil {
+	repoName, scopedSymbolID := splitSymbolID(symbolID, s.defaultRepo)
+	repo, ok := s.indexes[repoName]
+	if !ok || repo.index == nil {
 		return nil, errors.NewCkbError(
 			errors.IndexMissing,
 			"SCIP index not loaded",
@@ -265,7 +312,7 @@ func (s *SCIPAdapter) FindReferences(ctx context.Context, symbolID string, opts 
 	}
 
 	// Find references
-	scipRefs, err := s.index.FindReferences(symbolID, scipOpts)
+	scipRefs, err := repo.index.FindReferences(scopedSymbolID, scipOpts)
 	if err != nil {
 		return nil, errors.NewCkbError(
 			errors.InternalError,
@@ -279,11 +326,11 @@ func (s *SCIPAdapter) FindReferences(ctx context.Context, symbolID string, opts 
 	// Convert results
 	references := make([]backends.Reference, len(scipRefs))
 	for i, scipRef := range scipRefs {
-		references[i] = s.convertToReference(scipRef)
+		references[i] = s.convertToReference(repo.name, scipRef)
 	}
 
 	// Compute completeness
-	completeness := s.computeCompleteness()
+	completeness := s.computeCompleteness(repoName)
 
 	return &backends.ReferencesResult{
 		References:      references,
@@ -292,12 +339,158 @@ func (s *SCIPAdapter) FindReferences(ctx context.Context, symbolID string, opts 
 	}, nil
 }
 
+func buildRepoIndexes(cfg *config.Config) map[string]*repoIndex {
+	indexes := make(map[string]*repoIndex)
+
+	if len(cfg.Backends.Scip.Indexes) > 0 {
+		for _, idx := range cfg.Backends.Scip.Indexes {
+			repoRoot := idx.RepoRoot
+			if repoRoot == "" {
+				repoRoot = cfg.RepoRoot
+			}
+
+			indexPath := idx.IndexPath
+			if indexPath == "" {
+				indexPath = cfg.Backends.Scip.IndexPath
+			}
+
+			name := idx.Name
+			if name == "" {
+				name = filepath.Base(repoRoot)
+				if name == "." || name == "" {
+					name = "default"
+				}
+			}
+
+			indexes[name] = &repoIndex{
+				name:      name,
+				repoRoot:  repoRoot,
+				indexPath: GetIndexPath(repoRoot, indexPath),
+			}
+		}
+	}
+
+	if len(indexes) == 0 {
+		defaultName := filepath.Base(cfg.RepoRoot)
+		if defaultName == "." || defaultName == "" {
+			defaultName = "default"
+		}
+
+		indexes[defaultName] = &repoIndex{
+			name:      defaultName,
+			repoRoot:  cfg.RepoRoot,
+			indexPath: GetIndexPath(cfg.RepoRoot, cfg.Backends.Scip.IndexPath),
+		}
+	}
+
+	return indexes
+}
+
+func selectDefaultRepo(indexes map[string]*repoIndex) string {
+	if _, ok := indexes["default"]; ok {
+		return "default"
+	}
+
+	if len(indexes) == 1 {
+		for name := range indexes {
+			return name
+		}
+	}
+
+	names := make([]string, 0, len(indexes))
+	for name := range indexes {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	if len(names) > 0 {
+		return names[0]
+	}
+
+	return ""
+}
+
+func splitSymbolID(symbolID, defaultRepo string) (string, string) {
+	parts := strings.SplitN(symbolID, "::", 2)
+	if len(parts) == 2 {
+		return parts[0], parts[1]
+	}
+
+	return defaultRepo, symbolID
+}
+
+func qualifySymbolID(repoName, symbolID string) string {
+	if repoName == "" {
+		return symbolID
+	}
+	return fmt.Sprintf("%s::%s", repoName, symbolID)
+}
+
+func qualifyPath(repoName, path string) string {
+	if repoName == "" {
+		return path
+	}
+	return fmt.Sprintf("%s:%s", repoName, path)
+}
+
+func filterScopeForRepo(scopes []string, repoName string) ([]string, bool) {
+	filtered := make([]string, 0, len(scopes))
+	hasRepoScoped := false
+	allowed := false
+
+	for _, scope := range scopes {
+		parts := strings.SplitN(scope, ":", 2)
+		if len(parts) == 2 && parts[0] != "" {
+			hasRepoScoped = true
+			if parts[0] == repoName {
+				filtered = append(filtered, parts[1])
+				allowed = true
+			}
+			continue
+		}
+
+		filtered = append(filtered, scope)
+		// If no repo-specific scope is provided, all repos are allowed.
+	}
+
+	if hasRepoScoped {
+		return filtered, allowed
+	}
+
+	return filtered, true
+}
+
+func (s *SCIPAdapter) computeAggregateCompleteness() backends.CompletenessInfo {
+	bestScore := 0.0
+	bestReason := backends.NoBackendAvailable
+	bestDetails := "No SCIP indexes loaded"
+	hasIndex := false
+
+	for name, repo := range s.indexes {
+		if repo.index == nil {
+			continue
+		}
+		hasIndex = true
+		info := s.computeCompleteness(name)
+		if bestScore == 0.0 || info.Score < bestScore {
+			bestScore = info.Score
+			bestReason = info.Reason
+			bestDetails = info.Details
+		}
+	}
+
+	if !hasIndex {
+		return backends.NewCompletenessInfo(0.0, bestReason, bestDetails)
+	}
+
+	return backends.NewCompletenessInfo(bestScore, bestReason, bestDetails)
+}
+
 // convertToSymbolResult converts a SCIPSymbol to a SymbolResult
-func (s *SCIPAdapter) convertToSymbolResult(scipSym *SCIPSymbol) *backends.SymbolResult {
+func (s *SCIPAdapter) convertToSymbolResult(repoName string, scipSym *SCIPSymbol) *backends.SymbolResult {
 	var location backends.Location
 	if scipSym.Location != nil {
 		location = backends.Location{
-			Path:      scipSym.Location.FileId,
+			Path:      qualifyPath(repoName, scipSym.Location.FileId),
 			Line:      scipSym.Location.StartLine + 1, // Convert to 1-indexed
 			Column:    scipSym.Location.StartColumn + 1,
 			EndLine:   scipSym.Location.EndLine + 1,
@@ -312,7 +505,7 @@ func (s *SCIPAdapter) convertToSymbolResult(scipSym *SCIPSymbol) *backends.Symbo
 	}
 
 	return &backends.SymbolResult{
-		StableID:             scipSym.StableId,
+		StableID:             qualifySymbolID(repoName, scipSym.StableId),
 		Name:                 scipSym.Name,
 		Kind:                 string(scipSym.Kind),
 		Location:             location,
@@ -321,18 +514,18 @@ func (s *SCIPAdapter) convertToSymbolResult(scipSym *SCIPSymbol) *backends.Symbo
 		Visibility:           scipSym.Visibility,
 		VisibilityConfidence: visibilityConfidence,
 		ContainerName:        scipSym.ContainerName,
-		ModuleID:             "", // TODO: Determine module ID
+		ModuleID:             repoName,
 		Documentation:        scipSym.Documentation,
-		Completeness:         s.computeCompleteness(),
+		Completeness:         s.computeCompleteness(repoName),
 	}
 }
 
 // convertToReference converts a SCIPReference to a Reference
-func (s *SCIPAdapter) convertToReference(scipRef *SCIPReference) backends.Reference {
+func (s *SCIPAdapter) convertToReference(repoName string, scipRef *SCIPReference) backends.Reference {
 	var location backends.Location
 	if scipRef.Location != nil {
 		location = backends.Location{
-			Path:      scipRef.Location.FileId,
+			Path:      qualifyPath(repoName, scipRef.Location.FileId),
 			Line:      scipRef.Location.StartLine + 1, // Convert to 1-indexed
 			Column:    scipRef.Location.StartColumn + 1,
 			EndLine:   scipRef.Location.EndLine + 1,
@@ -343,24 +536,29 @@ func (s *SCIPAdapter) convertToReference(scipRef *SCIPReference) backends.Refere
 	return backends.Reference{
 		Location: location,
 		Kind:     string(scipRef.Kind),
-		SymbolID: scipRef.SymbolId,
+		SymbolID: qualifySymbolID(repoName, scipRef.SymbolId),
 		Context:  scipRef.Context,
 	}
 }
 
 // computeCompleteness computes the completeness of results based on index freshness
-func (s *SCIPAdapter) computeCompleteness() backends.CompletenessInfo {
-	if s.freshness == nil {
+func (s *SCIPAdapter) computeCompleteness(repoName string) backends.CompletenessInfo {
+	repo, ok := s.indexes[repoName]
+	if !ok || repo == nil {
+		return backends.NewCompletenessInfo(0.0, backends.NoBackendAvailable, "SCIP index not loaded")
+	}
+
+	if repo.freshness == nil {
 		return backends.NewCompletenessInfo(1.0, backends.FullBackend, "SCIP index loaded")
 	}
 
-	score := s.freshness.GetCompletenessScore()
+	score := repo.freshness.GetCompletenessScore()
 	reason := backends.FullBackend
 	details := "SCIP index available"
 
-	if s.freshness.IsStale() {
+	if repo.freshness.IsStale() {
 		reason = backends.IndexStale
-		details = s.freshness.Warning
+		details = repo.freshness.Warning
 	}
 
 	return backends.NewCompletenessInfo(score, reason, details)
@@ -380,27 +578,62 @@ func (s *SCIPAdapter) GetIndexInfo() *IndexInfo {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	if s.index == nil {
-		return &IndexInfo{
-			Available: false,
-			Path:      s.indexPath,
-		}
+	info := &IndexInfo{Repositories: make([]RepoIndexInfo, 0, len(s.indexes))}
+
+	if len(s.indexes) == 0 {
+		return info
 	}
 
-	return &IndexInfo{
-		Available:     true,
-		Path:          s.indexPath,
-		DocumentCount: len(s.index.Documents),
-		SymbolCount:   len(s.index.Symbols),
-		IndexedCommit: s.index.IndexedCommit,
-		LoadedAt:      s.index.LoadedAt,
-		Freshness:     s.freshness,
+	for _, repo := range s.indexes {
+		repoInfo := RepoIndexInfo{
+			Name:      repo.name,
+			Path:      repo.indexPath,
+			Freshness: repo.freshness,
+		}
+
+		if repo.index != nil {
+			info.Available = true
+			repoInfo.DocumentCount = len(repo.index.Documents)
+			repoInfo.SymbolCount = len(repo.index.Symbols)
+			repoInfo.IndexedCommit = repo.index.IndexedCommit
+			repoInfo.LoadedAt = repo.index.LoadedAt
+
+			info.DocumentCount += repoInfo.DocumentCount
+			info.SymbolCount += repoInfo.SymbolCount
+		}
+
+		info.Repositories = append(info.Repositories, repoInfo)
 	}
+
+	if len(info.Repositories) == 1 {
+		repo := info.Repositories[0]
+		info.Path = repo.Path
+		info.IndexedCommit = repo.IndexedCommit
+		info.LoadedAt = repo.LoadedAt
+		info.Freshness = repo.Freshness
+	} else if info.Available {
+		info.Path = "multiple"
+	}
+
+	return info
 }
 
 // IndexInfo contains information about the SCIP index
 type IndexInfo struct {
 	Available     bool
+	Path          string
+	DocumentCount int
+	SymbolCount   int
+	IndexedCommit string
+	LoadedAt      time.Time
+	Freshness     *IndexFreshness
+
+	Repositories []RepoIndexInfo
+}
+
+// RepoIndexInfo describes a single repository index instance.
+type RepoIndexInfo struct {
+	Name          string
 	Path          string
 	DocumentCount int
 	SymbolCount   int
@@ -419,8 +652,10 @@ func (s *SCIPAdapter) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.index = nil
-	s.freshness = nil
+	for _, repo := range s.indexes {
+		repo.index = nil
+		repo.freshness = nil
+	}
 
 	s.logger.Info("SCIP adapter closed", nil)
 	return nil

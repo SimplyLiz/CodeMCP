@@ -20,6 +20,7 @@ CKB acts as a unified interface for code intelligence, aggregating data from mul
 - **Impact Analysis**: Understand the blast radius of changes
 - **Architecture Views**: Get high-level codebase structure
 - **Claude Code Integration**: Native MCP server for Claude Code
+- **Cross-Repo Support**: Query multiple SCIP indexes at once with repo-qualified symbol IDs
 
 ## Installation
 
@@ -118,7 +119,19 @@ CKB configuration is stored in `.ckb/config.json`:
   "backends": {
     "scip": {
       "enabled": true,
-      "indexPath": ".scip/index.scip"
+      "indexPath": ".scip/index.scip",
+      "indexes": [
+        {
+          "name": "api",
+          "repoRoot": "../api-service",
+          "indexPath": ".scip/index.scip"
+        },
+        {
+          "name": "frontend",
+          "repoRoot": "../web-app",
+          "indexPath": ".scip/index.scip"
+        }
+      ]
     },
     "lsp": {
       "enabled": true,
@@ -135,6 +148,8 @@ CKB configuration is stored in `.ckb/config.json`:
   }
 }
 ```
+
+**Repo-qualified symbol IDs**: When multiple SCIP indexes are configured, returned symbol IDs are prefixed with the repository name (e.g., `frontend::scip-go gomod pkg main main.Main()`). File paths are similarly prefixed (`frontend:src/main.ts`) so results stay unambiguous across repositories.
 
 ## Project Structure
 

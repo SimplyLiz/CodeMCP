@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"fmt"
 	"runtime"
 	"strconv"
 	"time"
@@ -89,7 +90,15 @@ func (e *Engine) getBackendStatuses(ctx context.Context) []BackendStatus {
 		} else {
 			info := e.scipAdapter.GetIndexInfo()
 			if info != nil {
-				scipStatus.Details = "Symbols: " + strconv.Itoa(info.SymbolCount) + ", Documents: " + strconv.Itoa(info.DocumentCount)
+				repoCount := len(info.Repositories)
+				detail := fmt.Sprintf("Symbols: %d", info.SymbolCount)
+				if repoCount > 1 {
+					detail += fmt.Sprintf(" across %d repos", repoCount)
+				}
+				if info.DocumentCount > 0 {
+					detail += fmt.Sprintf(", Documents: %d", info.DocumentCount)
+				}
+				scipStatus.Details = detail
 			}
 		}
 	}
