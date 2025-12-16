@@ -1,86 +1,59 @@
-# CKB API Reference
+# CKB HTTP API
 
-## Overview
+REST API for Code Knowledge Backend (CKB) providing codebase comprehension capabilities.
 
-CKB provides both a CLI and HTTP API. This document covers both interfaces.
+## Quick Start
 
-## HTTP API
+```bash
+# Start the server (default: localhost:8080)
+./ckb serve
 
-### Base URL
+# Start on custom port
+./ckb serve --port 8081
 
-```
-http://localhost:8080
-```
-
-### Authentication
-
-Currently no authentication required (local development mode).
-
-### Response Format
-
-All responses are JSON with consistent structure:
-
-```json
-{
-  "data": { ... },
-  "provenance": {
-    "backends": ["scip"],
-    "repoStateId": "...",
-    "headCommit": "...",
-    "cachedAt": "..."
-  },
-  "warnings": [],
-  "drilldowns": []
-}
+# Start on custom host
+./ckb serve --host 0.0.0.0 --port 8080
 ```
 
-### Error Format
+## API Endpoints
 
-```json
-{
-  "error": "Error message",
-  "code": "ERROR_CODE",
-  "details": { ... },
-  "suggestedFixes": [
-    {
-      "type": "run-command",
-      "command": "ckb doctor",
-      "description": "Run diagnostics",
-      "safe": true
-    }
-  ],
-  "drilldowns": []
-}
+### System & Health
+
+#### `GET /`
+Root endpoint with API information and available endpoints.
+
+```bash
+curl http://localhost:8080/
 ```
 
----
+#### `GET /health`
+Simple liveness check for load balancers.
 
-## Endpoints
+```bash
+curl http://localhost:8080/health
+```
 
-### Health & Status
-
-#### GET /health
-
-Simple liveness check.
-
-**Response:**
+Response:
 ```json
 {
   "status": "healthy",
-  "timestamp": "2025-12-16T12:00:00Z",
+  "timestamp": "2024-12-16T12:00:00Z",
   "version": "0.1.0"
 }
 ```
 
-#### GET /ready
+#### `GET /ready`
+Readiness check that verifies backend availability.
 
-Readiness check with backend status.
+```bash
+curl http://localhost:8080/ready
+```
 
-**Response:**
+Response:
 ```json
 {
   "status": "ready",
-  "timestamp": "2025-12-16T12:00:00Z",
+  "timestamp": "2024-12-16T12:00:00Z",
   "backends": {
     "scip": true,
     "lsp": true,
@@ -89,365 +62,413 @@ Readiness check with backend status.
 }
 ```
 
-#### GET /status
+#### `GET /status`
+Comprehensive system status including repository, backends, and cache.
 
-Full system status.
-
-**Response:**
-```json
-{
-  "repository": {
-    "root": "/path/to/repo",
-    "headCommit": "abc123...",
-    "dirty": false,
-    "repoStateId": "def456..."
-  },
-  "backends": {
-    "scip": { "available": true, "indexAge": "2h" },
-    "lsp": { "available": true, "serverPid": 1234 },
-    "git": { "available": true }
-  },
-  "cache": {
-    "queryCache": { "entries": 150, "hitRate": 0.85 },
-    "viewCache": { "entries": 20, "hitRate": 0.92 },
-    "negativeCache": { "entries": 5 }
-  }
-}
+```bash
+curl http://localhost:8080/status
 ```
-
----
 
 ### Diagnostics
 
-#### GET /doctor
+#### `GET /doctor`
+Run diagnostic checks on all system components.
 
-Run diagnostic checks.
+```bash
+curl http://localhost:8080/doctor
+```
 
-**Response:**
+Response:
 ```json
 {
   "status": "healthy",
-  "timestamp": "2025-12-16T12:00:00Z",
+  "timestamp": "2024-12-16T12:00:00Z",
   "checks": [
-    {
-      "name": "config",
-      "status": "pass",
-      "message": "Configuration is valid"
-    },
-    {
-      "name": "scip",
-      "status": "warn",
-      "message": "SCIP index is 5 commits behind HEAD"
-    }
+    {"name": "config", "status": "pass", "message": "Configuration is valid"},
+    {"name": "scip", "status": "pass", "message": "SCIP backend available"}
   ],
+  "issues": [],
   "summary": {
     "total": 4,
-    "passed": 3,
-    "warnings": 1,
+    "passed": 4,
+    "warnings": 0,
     "failed": 0
   }
 }
 ```
 
-#### POST /doctor/fix
+#### `POST /doctor/fix`
+Get a fix script for detected issues.
 
-Get fix script for issues.
-
-**Response:**
-```json
-{
-  "script": "#!/bin/bash\nscip-go\n",
-  "issues": ["scip-index-stale"]
-}
+```bash
+curl -X POST http://localhost:8080/doctor/fix
 ```
-
----
 
 ### Symbol Operations
 
-#### GET /symbol/:id
+#### `GET /symbol/:id`
+Retrieve detailed information about a symbol.
 
-Get symbol by stable ID.
-
-**Parameters:**
-| Name | Type | Description |
-|------|------|-------------|
-| `id` | path | Stable symbol ID |
-
-**Response:**
-```json
-{
-  "symbol": {
-    "stableId": "ckb:repo:sym:abc123",
-    "name": "ProcessData",
-    "kind": "function",
-    "signature": "func ProcessData(input Input) (Output, error)",
-    "location": {
-      "fileId": "internal/service/processor.go",
-      "startLine": 42,
-      "startColumn": 6,
-      "endLine": 42,
-      "endColumn": 17
-    },
-    "moduleId": "internal/service",
-    "visibility": "public",
-    "modifiers": ["exported"]
-  },
-  "provenance": { ... }
-}
-```
-
-**Errors:**
-- `404 SYMBOL_NOT_FOUND` - Symbol does not exist
-- `410 SYMBOL_DELETED` - Symbol was deleted (tombstone)
-
----
-
-#### GET /search
-
-Search for symbols.
-
-**Query Parameters:**
-| Name | Type | Default | Description |
-|------|------|---------|-------------|
-| `q` | string | required | Search query |
-| `scope` | string | - | Module ID to search within |
-| `kinds` | string | - | Comma-separated kinds (function, class, method, etc.) |
-| `limit` | int | 50 | Maximum results |
-| `merge` | string | prefer-first | Merge strategy: prefer-first, union |
-| `includeExternal` | bool | false | Include external dependencies |
-
-**Example:**
 ```bash
-curl "http://localhost:8080/search?q=Process&kinds=function,method&limit=10"
+curl http://localhost:8080/symbol/my-symbol-id
 ```
 
-**Response:**
+Response:
 ```json
 {
-  "query": "Process",
-  "results": [
-    {
-      "stableId": "ckb:repo:sym:abc123",
-      "name": "ProcessData",
-      "kind": "function",
-      "moduleId": "internal/service",
-      "confidence": 0.95
-    }
-  ],
-  "total": 1,
-  "hasMore": false,
-  "truncation": null
+  "id": "my-symbol-id",
+  "name": "ExampleSymbol",
+  "kind": "function",
+  "location": {
+    "file": "example.go",
+    "line": 42
+  },
+  "module": "example"
 }
 ```
 
----
-
-#### GET /refs/:id
-
-Find references to a symbol.
-
-**Parameters:**
-| Name | Type | Description |
-|------|------|-------------|
-| `id` | path | Stable symbol ID |
+#### `GET /search`
+Search for symbols matching a query.
 
 **Query Parameters:**
-| Name | Type | Default | Description |
-|------|------|---------|-------------|
-| `scope` | string | - | Module ID to search within |
-| `limit` | int | 100 | Maximum references |
-| `includeTests` | bool | true | Include test files |
+- `q` (required) - Search query
+- `scope` - Module ID to search within
+- `kinds` - Comma-separated list of symbol kinds
+- `limit` - Maximum results (default: 50)
+- `merge` - Merge strategy: "prefer-first" or "union"
+- `repoStateMode` - Repository state: "head" or "full"
+- `depth` - Search depth (default: 1)
+- `includeExternal` - Include external symbols (true/false)
+- `refresh` - Force refresh cache (true/false)
 
-**Response:**
+```bash
+curl "http://localhost:8080/search?q=myFunction&limit=10&kinds=function,method"
+```
+
+Response:
 ```json
 {
-  "symbolId": "ckb:repo:sym:abc123",
-  "references": [
-    {
-      "location": {
-        "fileId": "cmd/main.go",
-        "startLine": 25,
-        "startColumn": 10
-      },
-      "kind": "call",
-      "fromSymbol": "ckb:repo:sym:def456",
-      "fromModule": "cmd"
-    }
-  ],
-  "total": 15,
-  "truncation": {
-    "reason": "max-refs",
-    "originalCount": 150,
-    "returnedCount": 100
-  },
-  "drilldowns": [
-    {
-      "label": "Get all references",
-      "query": "findReferences abc123 --limit=1000"
-    }
-  ]
+  "query": "myFunction",
+  "results": [],
+  "total": 0,
+  "hasMore": false,
+  "timestamp": "2024-12-16T12:00:00Z"
 }
 ```
 
----
+#### `GET /refs/:id`
+Find all references to a symbol.
+
+```bash
+curl http://localhost:8080/refs/my-symbol-id
+```
+
+Response:
+```json
+{
+  "symbolId": "my-symbol-id",
+  "references": [],
+  "total": 0,
+  "timestamp": "2024-12-16T12:00:00Z"
+}
+```
 
 ### Analysis
 
-#### GET /architecture
+#### `GET /architecture`
+Get an overview of the codebase architecture.
 
-Get codebase architecture overview.
+```bash
+curl http://localhost:8080/architecture
+```
 
-**Query Parameters:**
-| Name | Type | Default | Description |
-|------|------|---------|-------------|
-| `depth` | int | 2 | Module depth |
-| `includeExternal` | bool | false | Include external deps |
-
-**Response:**
+Response:
 ```json
 {
-  "modules": [
-    {
-      "moduleId": "internal/api",
-      "name": "api",
-      "rootPath": "internal/api",
-      "symbolCount": 45,
-      "impactCount": 120
-    }
-  ],
-  "dependencies": [
-    {
-      "from": "internal/api",
-      "to": "internal/service",
-      "kind": "import",
-      "weight": 15
-    }
-  ],
-  "metrics": {
-    "totalModules": 12,
-    "totalSymbols": 350,
-    "avgModuleSize": 29
-  }
+  "timestamp": "2024-12-16T12:00:00Z",
+  "modules": [],
+  "dependencies": [],
+  "metrics": {}
 }
 ```
 
----
+#### `GET /impact/:id`
+Analyze the impact of changing a symbol.
 
-#### GET /impact/:id
-
-Analyze impact of changing a symbol.
-
-**Parameters:**
-| Name | Type | Description |
-|------|------|-------------|
-| `id` | path | Stable symbol ID |
-
-**Query Parameters:**
-| Name | Type | Default | Description |
-|------|------|---------|-------------|
-| `depth` | int | 2 | Analysis depth |
-| `includeTests` | bool | true | Include test impacts |
-
-**Response:**
-```json
-{
-  "symbolId": "ckb:repo:sym:abc123",
-  "symbol": {
-    "name": "ProcessData",
-    "kind": "function",
-    "moduleId": "internal/service"
-  },
-  "visibility": {
-    "visibility": "public",
-    "confidence": 0.95,
-    "source": "scip-modifiers"
-  },
-  "riskScore": {
-    "score": 0.72,
-    "level": "high",
-    "factors": {
-      "visibility": 0.9,
-      "directCallers": 0.65,
-      "moduleSpread": 0.8,
-      "impactKind": 0.5
-    },
-    "explanation": "High risk: public symbol with 15 callers across 4 modules"
-  },
-  "directImpact": [
-    {
-      "stableId": "ckb:repo:sym:def456",
-      "name": "HandleRequest",
-      "kind": "direct-caller",
-      "confidence": 0.9,
-      "moduleId": "internal/api"
-    }
-  ],
-  "modulesAffected": [
-    {
-      "moduleId": "internal/api",
-      "directImpacts": 3,
-      "transitiveImpacts": 5
-    }
-  ]
-}
+```bash
+curl http://localhost:8080/impact/my-symbol-id
 ```
 
----
+Response:
+```json
+{
+  "symbolId": "my-symbol-id",
+  "timestamp": "2024-12-16T12:00:00Z",
+  "impact": {},
+  "affected": [],
+  "risk": "low"
+}
+```
 
 ### Cache Operations
 
-#### POST /cache/warm
+#### `POST /cache/warm`
+Initiate cache warming for commonly accessed data.
 
-Warm cache with common queries.
+```bash
+curl -X POST http://localhost:8080/cache/warm
+```
 
-**Response:**
+Response:
 ```json
 {
   "status": "success",
   "message": "Cache warming initiated",
-  "timestamp": "2025-12-16T12:00:00Z"
+  "timestamp": "2024-12-16T12:00:00Z"
 }
 ```
 
-#### POST /cache/clear
+#### `POST /cache/clear`
+Clear all cached data.
 
-Clear all caches.
+```bash
+curl -X POST http://localhost:8080/cache/clear
+```
 
-**Response:**
+Response:
 ```json
 {
   "status": "success",
   "message": "Cache cleared",
-  "entriesRemoved": 175,
-  "timestamp": "2025-12-16T12:00:00Z"
+  "timestamp": "2024-12-16T12:00:00Z"
 }
 ```
 
----
+### Documentation
 
-## Error Codes
+#### `GET /openapi.json`
+Get the OpenAPI 3.0 specification for the API.
 
-| Code | HTTP Status | Description |
-|------|-------------|-------------|
-| `BACKEND_UNAVAILABLE` | 503 | No backend can handle request |
-| `INDEX_MISSING` | 503 | Required index not found |
-| `INDEX_STALE` | 412 | Index is outdated |
-| `WORKSPACE_NOT_READY` | 503 | LSP workspace initializing |
-| `TIMEOUT` | 504 | Query timed out |
-| `RATE_LIMITED` | 429 | Too many requests |
-| `SYMBOL_NOT_FOUND` | 404 | Symbol doesn't exist |
-| `SYMBOL_DELETED` | 410 | Symbol was deleted |
-| `SCOPE_INVALID` | 400 | Invalid scope parameter |
-| `BUDGET_EXCEEDED` | 413 | Response too large |
-| `INTERNAL_ERROR` | 500 | Unexpected error |
-
----
-
-## OpenAPI Specification
-
-Full OpenAPI 3.0 spec available at:
-
+```bash
+curl http://localhost:8080/openapi.json
 ```
-GET /openapi.json
+
+## Error Responses
+
+All errors return a consistent JSON structure:
+
+```json
+{
+  "error": "Symbol not found",
+  "code": "SYMBOL_NOT_FOUND",
+  "details": null,
+  "suggestedFixes": [
+    {
+      "type": "run-command",
+      "command": "ckb doctor",
+      "safe": true,
+      "description": "Check system configuration"
+    }
+  ],
+  "drilldowns": []
+}
 ```
+
+### HTTP Status Codes
+
+| Status | Meaning |
+|--------|---------|
+| 200 | Success |
+| 400 | Bad Request - Invalid parameters |
+| 404 | Not Found - Resource doesn't exist |
+| 410 | Gone - Resource was deleted |
+| 412 | Precondition Failed - Index stale |
+| 413 | Payload Too Large - Budget exceeded |
+| 422 | Unprocessable Entity - Validation error |
+| 429 | Too Many Requests - Rate limited |
+| 500 | Internal Server Error |
+| 503 | Service Unavailable - Backend unavailable |
+| 504 | Gateway Timeout |
+
+## Request Headers
+
+### Supported Headers
+- `X-Request-ID` - Custom request ID (auto-generated if not provided)
+- `Content-Type: application/json` - For POST requests
+
+### Response Headers
+- `Content-Type: application/json` - All responses are JSON
+- `X-Request-ID` - Request ID for tracing
+- `Access-Control-Allow-Origin: *` - CORS enabled for local dev
+
+## Middleware
+
+The API includes the following middleware (in order):
+1. **CORS** - Enables cross-origin requests
+2. **Request ID** - Generates unique request IDs
+3. **Logging** - Logs all requests and responses
+4. **Recovery** - Recovers from panics
+
+## Testing
+
+### Manual Testing
+
+```bash
+# Start server
+./ckb serve --port 8081
+
+# Test all endpoints
+curl http://localhost:8081/health | jq .
+curl http://localhost:8081/status | jq .
+curl "http://localhost:8081/search?q=test" | jq .
+curl -X POST http://localhost:8081/cache/clear | jq .
+```
+
+### Using jq for Pretty Output
+
+```bash
+# Install jq if not already installed
+brew install jq  # macOS
+apt-get install jq  # Linux
+
+# Pretty print responses
+curl -s http://localhost:8080/status | jq .
+```
+
+## Configuration
+
+Server configuration via command-line flags:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--port` | 8080 | Port to listen on |
+| `--host` | localhost | Host to bind to |
+
+## Graceful Shutdown
+
+The server supports graceful shutdown via interrupt signals:
+
+```bash
+# Press Ctrl+C to stop the server
+# Or send SIGTERM
+kill -TERM <pid>
+```
+
+The server will:
+1. Stop accepting new connections
+2. Wait for active requests to complete (up to 10 seconds)
+3. Shut down cleanly
+
+## Logging
+
+The API logs all requests and responses with:
+- HTTP method and path
+- Query parameters
+- Status code
+- Response time
+- Request ID
+
+Example log output:
+```
+2024-12-16T12:00:00Z [info] HTTP request | method=GET, path=/status, requestID=abc-123
+2024-12-16T12:00:01Z [info] HTTP response | method=GET, path=/status, status=200, duration=100ms, requestID=abc-123
+```
+
+## Development
+
+### Building
+
+```bash
+go build -o ckb ./cmd/ckb
+```
+
+### Running in Development
+
+```bash
+# Start with default settings
+./ckb serve
+
+# Start with custom port for development
+./ckb serve --port 8081
+```
+
+### Testing with curl
+
+```bash
+# Save to file
+curl http://localhost:8080/status > status.json
+
+# Show headers
+curl -i http://localhost:8080/health
+
+# Show request/response with verbose
+curl -v http://localhost:8080/ready
+```
+
+## Integration
+
+### With Frontend Applications
+
+```javascript
+// Fetch status
+fetch('http://localhost:8080/status')
+  .then(res => res.json())
+  .then(data => console.log(data));
+
+// Search symbols
+fetch('http://localhost:8080/search?q=myFunction&limit=10')
+  .then(res => res.json())
+  .then(data => console.log(data));
+```
+
+### With Other Tools
+
+```bash
+# HTTPie
+http GET localhost:8080/status
+
+# wget
+wget -qO- http://localhost:8080/health
+
+# Python
+python -c "import requests; print(requests.get('http://localhost:8080/status').json())"
+```
+
+## Troubleshooting
+
+### Server won't start
+
+```bash
+# Check if port is already in use
+lsof -i :8080
+
+# Use different port
+./ckb serve --port 8081
+```
+
+### Connection refused
+
+```bash
+# Verify server is running
+ps aux | grep ckb
+
+# Check server logs for errors
+./ckb serve 2>&1 | tee server.log
+```
+
+### Invalid JSON responses
+
+```bash
+# Validate JSON
+curl http://localhost:8080/status | jq .
+
+# Check response headers
+curl -i http://localhost:8080/status
+```
+
+## Support
+
+For issues or questions:
+1. Check the OpenAPI spec: `GET /openapi.json`
+2. Review server logs
+3. Check the implementation documentation: `PHASE-4.2-IMPLEMENTATION.md`
