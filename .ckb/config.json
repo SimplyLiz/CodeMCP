@@ -1,0 +1,99 @@
+{
+  "version": 5,
+  "repoRoot": ".",
+  "backends": {
+    "scip": {
+      "enabled": true,
+      "indexPath": ".scip/index.scip"
+    },
+    "lsp": {
+      "enabled": true,
+      "workspaceStrategy": "repo-root",
+      "servers": {
+        "dart": {
+          "command": "dart",
+          "args": [
+            "language-server"
+          ]
+        },
+        "typescript": {
+          "command": "typescript-language-server",
+          "args": [
+            "--stdio"
+          ]
+        }
+      }
+    },
+    "git": {
+      "enabled": true
+    }
+  },
+  "queryPolicy": {
+    "backendPreferenceOrder": [
+      "scip",
+      "glean",
+      "lsp"
+    ],
+    "alwaysUse": [
+      "git"
+    ],
+    "maxInFlightPerBackend": {
+      "git": 5,
+      "lsp": 3,
+      "scip": 10
+    },
+    "coalesceWindowMs": 50,
+    "mergeMode": "prefer-first",
+    "supplementThreshold": 0.8,
+    "timeoutMs": {
+      "git": 5000,
+      "lsp": 15000,
+      "scip": 5000
+    }
+  },
+  "lspSupervisor": {
+    "maxTotalProcesses": 4,
+    "queueSizePerLanguage": 10,
+    "maxQueueWaitMs": 200
+  },
+  "modules": {
+    "detection": "auto",
+    "roots": [],
+    "ignore": [
+      "node_modules",
+      "build",
+      ".dart_tool",
+      "vendor"
+    ]
+  },
+  "importScan": {
+    "enabled": true,
+    "maxFileSizeBytes": 1000000,
+    "scanTimeoutMs": 30000,
+    "customPatterns": {}
+  },
+  "cache": {
+    "queryTtlSeconds": 300,
+    "viewTtlSeconds": 3600,
+    "negativeTtlSeconds": 60
+  },
+  "budget": {
+    "maxModules": 10,
+    "maxSymbolsPerModule": 5,
+    "maxImpactItems": 20,
+    "maxDrilldowns": 5,
+    "estimatedMaxTokens": 4000
+  },
+  "backendLimits": {
+    "maxRefsPerQuery": 10000,
+    "maxFilesScanned": 5000,
+    "maxUnionModeTimeMs": 60000
+  },
+  "privacy": {
+    "mode": "normal"
+  },
+  "logging": {
+    "format": "human",
+    "level": "info"
+  }
+}
