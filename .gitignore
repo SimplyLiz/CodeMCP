@@ -3,7 +3,8 @@
 .scip/
 bin/
 
-# Test binaries
+# Binaries
+ckb
 ckb-test
 *_test
 
