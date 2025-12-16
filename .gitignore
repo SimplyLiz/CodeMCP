@@ -1,0 +1,29 @@
+# Generated folders
+.ckb/
+.scip/
+bin/
+
+# Test binaries
+ckb-test
+*_test
+
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.log
