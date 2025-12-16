@@ -122,7 +122,7 @@ func (g *ArchitectureGenerator) CountLOC(mod *modules.Module) (int, error) {
 					"file":  path,
 					"error": err.Error(),
 				})
-				return nil // Continue walking
+				return nil //nolint:nilerr // intentionally continue on file read errors
 			}
 			totalLOC += loc
 		}

@@ -250,7 +250,7 @@ func (s *ImportScanner) scanDirectoryWithContext(ctx context.Context, dirPath st
 				"file":  path,
 				"error": err.Error(),
 			})
-			return nil
+			return nil //nolint:nilerr // intentionally continue on scan errors
 		}
 
 		allEdges = append(allEdges, edges...)

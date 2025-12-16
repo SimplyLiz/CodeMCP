@@ -269,7 +269,7 @@ func Example_complexResponse() {
 
 	// Parse to verify structure (omitting provenance for example output)
 	var parsed map[string]interface{}
-	json.Unmarshal(jsonBytes, &parsed)
+	_ = json.Unmarshal(jsonBytes, &parsed)
 	delete(parsed, "provenance")
 
 	output, _ := json.MarshalIndent(parsed, "", "  ")
@@ -327,7 +327,7 @@ func Example_multiFieldSort() {
 		{Field: "ModuleId", Descending: false},
 	}
 
-	output.MultiFieldSort(&modules, criteria)
+	_ = output.MultiFieldSort(&modules, criteria)
 
 	for _, m := range modules {
 		fmt.Printf("%s: impact=%d symbols=%d\n", m.ModuleId, m.ImpactCount, m.SymbolCount)

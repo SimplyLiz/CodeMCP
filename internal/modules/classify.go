@@ -275,13 +275,10 @@ func (c *ImportClassifier) resolveDartImport(importStr string, fromFile string) 
 func (c *ImportClassifier) resolveGoImport(importStr string) string {
 	// Go imports are module-based
 	// Check if import starts with the current module path
-	for _, module := range c.context.Modules {
-		if module.Language == LanguageGo && module.ManifestType == ManifestGoMod {
-			// Would need to read go.mod to get module path
-			// For simplicity, check if import path could be within this module
-			// This is a simplified heuristic
-		}
-	}
+	// Note: Full resolution would require reading go.mod to get the module path.
+	// This is a simplified implementation that returns empty for now.
+	_ = c.context.Modules // acknowledge modules exist but resolution is not implemented
+	_ = importStr
 	return ""
 }
 

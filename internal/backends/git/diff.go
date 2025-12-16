@@ -346,8 +346,8 @@ func (g *GitAdapter) GetCommitDiff(commitHash string) ([]DiffStats, error) {
 	// Get status info for the commit
 	statusLines, err := g.executeGitCommandLines("diff", "--name-status", commitHash+"^", commitHash)
 	if err != nil {
-		// Non-fatal
-		return stats, nil
+		// Non-fatal - status info is supplementary
+		return stats, nil //nolint:nilerr // intentionally ignore status lookup errors
 	}
 
 	// Build status map

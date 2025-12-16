@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"runtime"
 	"time"
@@ -263,7 +262,7 @@ func addFileToZip(zipWriter *zip.Writer, filename string, content []byte) error 
 		return fmt.Errorf("failed to create zip entry: %w", err)
 	}
 
-	if _, err := io.WriteString(writer, string(content)); err != nil {
+	if _, err := writer.Write(content); err != nil {
 		return fmt.Errorf("failed to write zip entry: %w", err)
 	}
 

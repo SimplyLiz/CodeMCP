@@ -164,6 +164,7 @@ func (e *Engine) computeRepoState(ctx context.Context) (*RepoState, error) {
 		e.logger.Warn("failed to get repo state from git", map[string]interface{}{
 			"error": err.Error(),
 		})
+		//nolint:nilerr // return fallback state on git errors
 		return &RepoState{
 			RepoStateId: "unknown",
 			Dirty:       true,

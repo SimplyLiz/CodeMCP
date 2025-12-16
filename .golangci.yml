@@ -16,7 +16,6 @@ linters:
     - unconvert
     - bodyclose
     - nilerr
-    - exportloopref
 
 linters-settings:
   errcheck:

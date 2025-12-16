@@ -79,7 +79,7 @@ func (g *GitAdapter) GetRemoteURL() (string, error) {
 		g.logger.Debug("No remote URL found", map[string]interface{}{
 			"error": err.Error(),
 		})
-		return "", nil
+		return "", nil //nolint:nilerr // no remote is valid
 	}
 
 	return output, nil
@@ -213,7 +213,7 @@ func (g *GitAdapter) IsFileTracked(filePath string) (bool, error) {
 	output, err := g.executeGitCommand("ls-files", "--error-unmatch", "--", filePath)
 	if err != nil {
 		// If error, file is not tracked
-		return false, nil
+		return false, nil //nolint:nilerr // error means untracked
 	}
 
 	return output != "", nil

@@ -52,7 +52,7 @@ func Open(repoRoot string, logger *logging.Logger) (*DB, error) {
 
 	for _, pragma := range pragmas {
 		if _, err := conn.Exec(pragma); err != nil {
-			conn.Close()
+			_ = conn.Close()
 			return nil, fmt.Errorf("failed to set pragma: %w", err)
 		}
 	}

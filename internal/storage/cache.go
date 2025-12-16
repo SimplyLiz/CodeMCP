@@ -74,7 +74,7 @@ func (c *Cache) GetQueryCache(key string, headCommit string) (string, bool, erro
 
 	if time.Now().After(expiresAtTime) {
 		// Entry is expired, delete it
-		c.db.Exec("DELETE FROM query_cache WHERE key = ?", key)
+		_, _ = c.db.Exec("DELETE FROM query_cache WHERE key = ?", key)
 		return "", false, nil
 	}
 
@@ -125,7 +125,7 @@ func (c *Cache) GetViewCache(key string, stateID string) (string, bool, error) {
 
 	if time.Now().After(expiresAtTime) {
 		// Entry is expired, delete it
-		c.db.Exec("DELETE FROM view_cache WHERE key = ?", key)
+		_, _ = c.db.Exec("DELETE FROM view_cache WHERE key = ?", key)
 		return "", false, nil
 	}
 
@@ -185,7 +185,7 @@ func (c *Cache) GetNegativeCache(key string, stateID string) (*NegativeCacheEntr
 	// Check if expired
 	if time.Now().After(entry.ExpiresAt) {
 		// Entry is expired, delete it
-		c.db.Exec("DELETE FROM negative_cache WHERE key = ?", key)
+		_, _ = c.db.Exec("DELETE FROM negative_cache WHERE key = ?", key)
 		return nil, nil
 	}
 

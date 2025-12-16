@@ -272,9 +272,7 @@ func (p *LspProcess) stderrLoop() {
 		default:
 			n, err := p.stderr.Read(buf)
 			if err != nil {
-				if err != io.EOF {
-					// Could log error here if we had a logger
-				}
+				// EOF or other error - stop reading stderr
 				return
 			}
 
