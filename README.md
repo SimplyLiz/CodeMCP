@@ -2,6 +2,8 @@
 
 A language-agnostic codebase comprehension layer that orchestrates multiple code intelligence backends (SCIP, LSP, Git) and provides semantically compressed, LLM-optimized views.
 
+> **New to CKB?** Check out the **[Quick Start Guide](QUICKSTART.md)** for step-by-step installation instructions for Windows, macOS, and Linux.
+
 ## Overview
 
 CKB acts as a unified interface for code intelligence, aggregating data from multiple sources:
@@ -21,16 +23,18 @@ CKB acts as a unified interface for code intelligence, aggregating data from mul
 
 ## Installation
 
-```bash
-# Clone the repository
-git clone <repository-url>
-cd CodeMCP
+For detailed installation instructions with copy-paste commands, see the **[Quick Start Guide](QUICKSTART.md)**.
 
-# Build the CLI
+**Quick install (macOS/Linux):**
+
+```bash
+# Clone and build
+git clone https://github.com/anthropics/ckb.git
+cd ckb
 go build -o ckb ./cmd/ckb
 
 # Optional: Install globally
-go install ./cmd/ckb
+sudo cp ckb /usr/local/bin/
 ```
 
 ## Quick Start
