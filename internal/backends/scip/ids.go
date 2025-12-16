@@ -30,9 +30,10 @@ type SCIPIdentifier struct {
 // <scheme> <package-manager> <package-name> <package-version> <descriptor>
 //
 // Examples:
-//   scip-typescript npm @types/node 18.0.0 process.
-//   scip-go gomod ckb a6af7cfb2eff `ckb/internal/api`/NewServer().
-//   scip-java maven com.google.guava guava 31.0 ImmutableList#
+//
+//	scip-typescript npm @types/node 18.0.0 process.
+//	scip-go gomod ckb a6af7cfb2eff `ckb/internal/api`/NewServer().
+//	scip-java maven com.google.guava guava 31.0 ImmutableList#
 func ParseSCIPIdentifier(id string) (*SCIPIdentifier, error) {
 	if id == "" {
 		return nil, fmt.Errorf("empty SCIP identifier")

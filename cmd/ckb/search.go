@@ -93,10 +93,10 @@ func runSearch(cmd *cobra.Command, args []string) {
 
 // SearchResponseCLI contains search results for CLI output
 type SearchResponseCLI struct {
-	Query        string             `json:"query"`
-	TotalMatches int                `json:"totalMatches"`
-	Symbols      []SearchSymbolCLI  `json:"symbols"`
-	Provenance   *ProvenanceCLI     `json:"provenance,omitempty"`
+	Query        string            `json:"query"`
+	TotalMatches int               `json:"totalMatches"`
+	Symbols      []SearchSymbolCLI `json:"symbols"`
+	Provenance   *ProvenanceCLI    `json:"provenance,omitempty"`
 }
 
 // SearchSymbolCLI represents a symbol in search results

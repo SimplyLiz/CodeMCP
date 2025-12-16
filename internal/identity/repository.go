@@ -247,8 +247,8 @@ func (r *SymbolRepository) MarkDeleted(stableId, deletedStateId string) error {
 	}
 
 	r.logger.Info("marked symbol as deleted", map[string]interface{}{
-		"stable_id":      stableId,
-		"deleted_at":     now,
+		"stable_id":     stableId,
+		"deleted_at":    now,
 		"deleted_state": deletedStateId,
 	})
 

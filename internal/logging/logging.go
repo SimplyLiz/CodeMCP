@@ -101,28 +101,28 @@ func (l *Logger) log(level LogLevel, message string, fields map[string]interface
 func (l *Logger) logJSON(entry logEntry) {
 	data, err := json.Marshal(entry)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to marshal log entry: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "Failed to marshal log entry: %v\n", err)
 		return
 	}
-	fmt.Fprintln(l.writer, string(data))
+	_, _ = fmt.Fprintln(l.writer, string(data))
 }
 
 func (l *Logger) logHuman(entry logEntry) {
 	levelStr := fmt.Sprintf("[%s]", entry.Level)
-	fmt.Fprintf(l.writer, "%s %s %s", entry.Timestamp, levelStr, entry.Message)
+	_, _ = fmt.Fprintf(l.writer, "%s %s %s", entry.Timestamp, levelStr, entry.Message)
 
 	if len(entry.Fields) > 0 {
-		fmt.Fprintf(l.writer, " | ")
+		_, _ = fmt.Fprintf(l.writer, " | ")
 		first := true
 		for k, v := range entry.Fields {
 			if !first {
-				fmt.Fprintf(l.writer, ", ")
+				_, _ = fmt.Fprintf(l.writer, ", ")
 			}
-			fmt.Fprintf(l.writer, "%s=%v", k, v)
+			_, _ = fmt.Fprintf(l.writer, "%s=%v", k, v)
 			first = false
 		}
 	}
-	fmt.Fprintln(l.writer)
+	_, _ = fmt.Fprintln(l.writer)
 }
 
 // Debug logs a debug message

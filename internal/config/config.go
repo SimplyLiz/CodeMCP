@@ -13,16 +13,16 @@ type Config struct {
 	Version  int    `json:"version" mapstructure:"version"`
 	RepoRoot string `json:"repoRoot" mapstructure:"repoRoot"`
 
-	Backends       BackendsConfig       `json:"backends" mapstructure:"backends"`
-	QueryPolicy    QueryPolicyConfig    `json:"queryPolicy" mapstructure:"queryPolicy"`
-	LspSupervisor  LspSupervisorConfig  `json:"lspSupervisor" mapstructure:"lspSupervisor"`
-	Modules        ModulesConfig        `json:"modules" mapstructure:"modules"`
-	ImportScan     ImportScanConfig     `json:"importScan" mapstructure:"importScan"`
-	Cache          CacheConfig          `json:"cache" mapstructure:"cache"`
-	Budget         BudgetConfig         `json:"budget" mapstructure:"budget"`
-	BackendLimits  BackendLimitsConfig  `json:"backendLimits" mapstructure:"backendLimits"`
-	Privacy        PrivacyConfig        `json:"privacy" mapstructure:"privacy"`
-	Logging        LoggingConfig        `json:"logging" mapstructure:"logging"`
+	Backends      BackendsConfig      `json:"backends" mapstructure:"backends"`
+	QueryPolicy   QueryPolicyConfig   `json:"queryPolicy" mapstructure:"queryPolicy"`
+	LspSupervisor LspSupervisorConfig `json:"lspSupervisor" mapstructure:"lspSupervisor"`
+	Modules       ModulesConfig       `json:"modules" mapstructure:"modules"`
+	ImportScan    ImportScanConfig    `json:"importScan" mapstructure:"importScan"`
+	Cache         CacheConfig         `json:"cache" mapstructure:"cache"`
+	Budget        BudgetConfig        `json:"budget" mapstructure:"budget"`
+	BackendLimits BackendLimitsConfig `json:"backendLimits" mapstructure:"backendLimits"`
+	Privacy       PrivacyConfig       `json:"privacy" mapstructure:"privacy"`
+	Logging       LoggingConfig       `json:"logging" mapstructure:"logging"`
 }
 
 // BackendsConfig contains backend-specific configuration
@@ -58,13 +58,13 @@ type GitConfig struct {
 
 // QueryPolicyConfig contains query execution policy
 type QueryPolicyConfig struct {
-	BackendPreferenceOrder []string           `json:"backendPreferenceOrder" mapstructure:"backendPreferenceOrder"`
-	AlwaysUse              []string           `json:"alwaysUse" mapstructure:"alwaysUse"`
-	MaxInFlightPerBackend  map[string]int     `json:"maxInFlightPerBackend" mapstructure:"maxInFlightPerBackend"`
-	CoalesceWindowMs       int                `json:"coalesceWindowMs" mapstructure:"coalesceWindowMs"`
-	MergeMode              string             `json:"mergeMode" mapstructure:"mergeMode"`
-	SupplementThreshold    float64            `json:"supplementThreshold" mapstructure:"supplementThreshold"`
-	TimeoutMs              map[string]int     `json:"timeoutMs" mapstructure:"timeoutMs"`
+	BackendPreferenceOrder []string       `json:"backendPreferenceOrder" mapstructure:"backendPreferenceOrder"`
+	AlwaysUse              []string       `json:"alwaysUse" mapstructure:"alwaysUse"`
+	MaxInFlightPerBackend  map[string]int `json:"maxInFlightPerBackend" mapstructure:"maxInFlightPerBackend"`
+	CoalesceWindowMs       int            `json:"coalesceWindowMs" mapstructure:"coalesceWindowMs"`
+	MergeMode              string         `json:"mergeMode" mapstructure:"mergeMode"`
+	SupplementThreshold    float64        `json:"supplementThreshold" mapstructure:"supplementThreshold"`
+	TimeoutMs              map[string]int `json:"timeoutMs" mapstructure:"timeoutMs"`
 }
 
 // LspSupervisorConfig contains LSP supervisor configuration
@@ -99,18 +99,18 @@ type CacheConfig struct {
 
 // BudgetConfig contains response budget configuration
 type BudgetConfig struct {
-	MaxModules           int `json:"maxModules" mapstructure:"maxModules"`
-	MaxSymbolsPerModule  int `json:"maxSymbolsPerModule" mapstructure:"maxSymbolsPerModule"`
-	MaxImpactItems       int `json:"maxImpactItems" mapstructure:"maxImpactItems"`
-	MaxDrilldowns        int `json:"maxDrilldowns" mapstructure:"maxDrilldowns"`
-	EstimatedMaxTokens   int `json:"estimatedMaxTokens" mapstructure:"estimatedMaxTokens"`
+	MaxModules          int `json:"maxModules" mapstructure:"maxModules"`
+	MaxSymbolsPerModule int `json:"maxSymbolsPerModule" mapstructure:"maxSymbolsPerModule"`
+	MaxImpactItems      int `json:"maxImpactItems" mapstructure:"maxImpactItems"`
+	MaxDrilldowns       int `json:"maxDrilldowns" mapstructure:"maxDrilldowns"`
+	EstimatedMaxTokens  int `json:"estimatedMaxTokens" mapstructure:"estimatedMaxTokens"`
 }
 
 // BackendLimitsConfig contains backend limits
 type BackendLimitsConfig struct {
-	MaxRefsPerQuery      int `json:"maxRefsPerQuery" mapstructure:"maxRefsPerQuery"`
-	MaxFilesScanned      int `json:"maxFilesScanned" mapstructure:"maxFilesScanned"`
-	MaxUnionModeTimeMs   int `json:"maxUnionModeTimeMs" mapstructure:"maxUnionModeTimeMs"`
+	MaxRefsPerQuery    int `json:"maxRefsPerQuery" mapstructure:"maxRefsPerQuery"`
+	MaxFilesScanned    int `json:"maxFilesScanned" mapstructure:"maxFilesScanned"`
+	MaxUnionModeTimeMs int `json:"maxUnionModeTimeMs" mapstructure:"maxUnionModeTimeMs"`
 }
 
 // PrivacyConfig contains privacy settings

@@ -189,9 +189,9 @@ func TestEviction(t *testing.T) {
 // TestSymbolIDParsing tests symbol ID parsing
 func TestSymbolIDParsing(t *testing.T) {
 	testCases := []struct {
-		input       string
-		expectError bool
-		expectedURI string
+		input        string
+		expectError  bool
+		expectedURI  string
 		expectedLine int
 		expectedChar int
 	}{
@@ -340,8 +340,8 @@ func ExampleLspSupervisor() {
 		ctx,
 		"typescript",
 		"file:///path/to/file.ts",
-		10,  // line
-		5,   // character
+		10, // line
+		5,  // character
 	)
 
 	if err != nil {

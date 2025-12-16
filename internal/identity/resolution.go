@@ -57,14 +57,14 @@ func (r *IdentityResolver) resolveWithDepth(
 			"visited":      visited,
 		})
 		return &ResolvedSymbol{
-			Error: string(errors.AliasCycle),
-		}, errors.NewCkbError(
-			errors.AliasCycle,
-			fmt.Sprintf("circular alias chain detected for symbol %s", requestedId),
-			nil,
-			nil,
-			nil,
-		)
+				Error: string(errors.AliasCycle),
+			}, errors.NewCkbError(
+				errors.AliasCycle,
+				fmt.Sprintf("circular alias chain detected for symbol %s", requestedId),
+				nil,
+				nil,
+				nil,
+			)
 	}
 	visited[requestedId] = true
 
@@ -76,14 +76,14 @@ func (r *IdentityResolver) resolveWithDepth(
 			"max_depth":    AliasChainMaxDepth,
 		})
 		return &ResolvedSymbol{
-			Error: string(errors.AliasChainTooDeep),
-		}, errors.NewCkbError(
-			errors.AliasChainTooDeep,
-			fmt.Sprintf("alias chain exceeds maximum depth of %d for symbol %s", AliasChainMaxDepth, requestedId),
-			nil,
-			nil,
-			nil,
-		)
+				Error: string(errors.AliasChainTooDeep),
+			}, errors.NewCkbError(
+				errors.AliasChainTooDeep,
+				fmt.Sprintf("alias chain exceeds maximum depth of %d for symbol %s", AliasChainMaxDepth, requestedId),
+				nil,
+				nil,
+				nil,
+			)
 	}
 
 	// Try direct lookup first
@@ -148,14 +148,14 @@ func (r *IdentityResolver) resolveWithDepth(
 			"stable_id": requestedId,
 		})
 		return &ResolvedSymbol{
-			Error: string(errors.SymbolNotFound),
-		}, errors.NewCkbError(
-			errors.SymbolNotFound,
-			fmt.Sprintf("symbol not found: %s", requestedId),
-			nil,
-			nil,
-			nil,
-		)
+				Error: string(errors.SymbolNotFound),
+			}, errors.NewCkbError(
+				errors.SymbolNotFound,
+				fmt.Sprintf("symbol not found: %s", requestedId),
+				nil,
+				nil,
+				nil,
+			)
 	}
 
 	// Follow the alias recursively

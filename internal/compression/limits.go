@@ -30,8 +30,8 @@ func DefaultLimits() *BackendLimits {
 		MaxSymbolsPerSearch: 1000,
 		MaxFilesScanned:     5000,
 		MaxFileSizeBytes:    1_000_000, // 1MB
-		MaxUnionModeTimeMs:  60000,      // 60 seconds
-		MaxScipIndexSizeMb:  500,        // Warn if SCIP index > 500MB
+		MaxUnionModeTimeMs:  60000,     // 60 seconds
+		MaxScipIndexSizeMb:  500,       // Warn if SCIP index > 500MB
 	}
 }
 

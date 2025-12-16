@@ -1,3 +1,4 @@
+//go:build ignore
 // +build ignore
 
 // This file demonstrates example usage of the Git adapter.

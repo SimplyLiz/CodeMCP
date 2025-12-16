@@ -8,17 +8,17 @@ import (
 
 // SymbolMapping represents a symbol mapping record (Section 4.3)
 type SymbolMapping struct {
-	StableID                  string
-	State                     string // 'active' | 'deleted' | 'unknown'
-	BackendStableID           *string
-	FingerprintJSON           string
-	LocationJSON              string
-	DefinitionVersionID       *string
+	StableID                   string
+	State                      string // 'active' | 'deleted' | 'unknown'
+	BackendStableID            *string
+	FingerprintJSON            string
+	LocationJSON               string
+	DefinitionVersionID        *string
 	DefinitionVersionSemantics *string
-	LastVerifiedAt            time.Time
-	LastVerifiedStateID       string
-	DeletedAt                 *time.Time
-	DeletedInStateID          *string
+	LastVerifiedAt             time.Time
+	LastVerifiedStateID        string
+	DeletedAt                  *time.Time
+	DeletedInStateID           *string
 }
 
 // SymbolAlias represents an alias/redirect record (Section 4.4)

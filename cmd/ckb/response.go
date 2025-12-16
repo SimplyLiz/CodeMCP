@@ -11,34 +11,34 @@ import (
 // Response is the common wrapper for all CKB command responses
 // Per Section 7.2: CompressedResponse format
 type Response struct {
-	CkbVersion    string                        `json:"ckbVersion"`
-	SchemaVersion int                           `json:"schemaVersion"`
-	Capabilities  []string                      `json:"capabilities"`
-	Facts         interface{}                   `json:"facts"`
-	Explanation   string                        `json:"explanation,omitempty"`
-	Provenance    *Provenance                   `json:"provenance"`
-	Drilldowns    []output.Drilldown            `json:"drilldowns"`
+	CkbVersion    string                          `json:"ckbVersion"`
+	SchemaVersion int                             `json:"schemaVersion"`
+	Capabilities  []string                        `json:"capabilities"`
+	Facts         interface{}                     `json:"facts"`
+	Explanation   string                          `json:"explanation,omitempty"`
+	Provenance    *Provenance                     `json:"provenance"`
+	Drilldowns    []output.Drilldown              `json:"drilldowns"`
 	Compression   *compression.CompressionMetrics `json:"compression,omitempty"`
 }
 
 // Provenance tracks the source and quality of response data
 // Per Section 7.3: Provenance information
 type Provenance struct {
-	RepoStateId        string                  `json:"repoStateId"`
-	RepoStateDirty     bool                    `json:"repoStateDirty"`
-	RepoStateMode      string                  `json:"repoStateMode"`
-	Backends           []BackendContribution   `json:"backends"`
-	Completeness       *CompletenessInfo       `json:"completeness"`
-	IndexFreshness     *IndexFreshness         `json:"indexFreshness,omitempty"`
-	Warnings           []string                `json:"warnings"`
-	Timeouts           []string                `json:"timeouts"`
-	Truncations        []string                `json:"truncations"`
-	QueryDurationMs    int64                   `json:"queryDurationMs"`
+	RepoStateId     string                `json:"repoStateId"`
+	RepoStateDirty  bool                  `json:"repoStateDirty"`
+	RepoStateMode   string                `json:"repoStateMode"`
+	Backends        []BackendContribution `json:"backends"`
+	Completeness    *CompletenessInfo     `json:"completeness"`
+	IndexFreshness  *IndexFreshness       `json:"indexFreshness,omitempty"`
+	Warnings        []string              `json:"warnings"`
+	Timeouts        []string              `json:"timeouts"`
+	Truncations     []string              `json:"truncations"`
+	QueryDurationMs int64                 `json:"queryDurationMs"`
 }
 
 // BackendContribution tracks which backend provided data
 type BackendContribution struct {
-	BackendId   string   `json:"backendId"`
+	BackendId    string   `json:"backendId"`
 	Capabilities []string `json:"capabilities"`
 	DataSources  []string `json:"dataSources,omitempty"` // e.g., ["index", "runtime"]
 	DurationMs   int64    `json:"durationMs,omitempty"`

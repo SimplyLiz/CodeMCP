@@ -131,19 +131,19 @@ func (g *GitAdapter) GetRepositoryInfo() (map[string]interface{}, error) {
 	}
 
 	return map[string]interface{}{
-		"repoRoot":         g.repoRoot,
-		"repoStateId":      state.RepoStateID,
-		"headCommit":       state.HeadCommit,
-		"dirty":            state.Dirty,
-		"branch":           branch,
-		"remoteURL":        remoteURL,
-		"stagedFiles":      len(staged),
-		"modifiedFiles":    len(working),
-		"untrackedFiles":   len(untracked),
-		"stagedDiffHash":   state.StagedDiffHash,
-		"workingDiffHash":  state.WorkingTreeDiffHash,
-		"untrackedHash":    state.UntrackedListHash,
-		"computedAt":       state.ComputedAt,
+		"repoRoot":        g.repoRoot,
+		"repoStateId":     state.RepoStateID,
+		"headCommit":      state.HeadCommit,
+		"dirty":           state.Dirty,
+		"branch":          branch,
+		"remoteURL":       remoteURL,
+		"stagedFiles":     len(staged),
+		"modifiedFiles":   len(working),
+		"untrackedFiles":  len(untracked),
+		"stagedDiffHash":  state.StagedDiffHash,
+		"workingDiffHash": state.WorkingTreeDiffHash,
+		"untrackedHash":   state.UntrackedListHash,
+		"computedAt":      state.ComputedAt,
 	}, nil
 }
 

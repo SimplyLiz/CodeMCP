@@ -61,11 +61,11 @@ func (idx *SCIPIndex) FindReferences(symbolId string, options ReferenceOptions) 
 
 // ReferenceOptions contains options for finding references
 type ReferenceOptions struct {
-	MaxResults         int
-	IncludeDefinition  bool
-	IncludeTests       bool
-	IncludeContext     bool
-	Scope              []string
+	MaxResults          int
+	IncludeDefinition   bool
+	IncludeTests        bool
+	IncludeContext      bool
+	Scope               []string
 	ReferenceKindFilter []ReferenceKind
 }
 

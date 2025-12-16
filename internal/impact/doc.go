@@ -107,5 +107,4 @@
 //	        fmt.Printf("Breaking change at %s:%d\n", ref.Location.FileId, ref.Location.StartLine)
 //	    }
 //	}
-//
 package impact

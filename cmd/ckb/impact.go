@@ -84,21 +84,21 @@ func runImpact(cmd *cobra.Command, args []string) {
 
 // ImpactResponseCLI contains impact analysis results for CLI output
 type ImpactResponseCLI struct {
-	SymbolID         string              `json:"symbolId"`
-	Symbol           *SymbolInfoCLI      `json:"symbol,omitempty"`
-	RiskScore        *RiskScoreCLI       `json:"riskScore,omitempty"`
-	DirectImpact     []ImpactItemCLI     `json:"directImpact"`
-	TransitiveImpact []ImpactItemCLI     `json:"transitiveImpact,omitempty"`
-	ModulesAffected  []ModuleImpactCLI   `json:"modulesAffected"`
-	Provenance       *ProvenanceCLI      `json:"provenance,omitempty"`
+	SymbolID         string            `json:"symbolId"`
+	Symbol           *SymbolInfoCLI    `json:"symbol,omitempty"`
+	RiskScore        *RiskScoreCLI     `json:"riskScore,omitempty"`
+	DirectImpact     []ImpactItemCLI   `json:"directImpact"`
+	TransitiveImpact []ImpactItemCLI   `json:"transitiveImpact,omitempty"`
+	ModulesAffected  []ModuleImpactCLI `json:"modulesAffected"`
+	Provenance       *ProvenanceCLI    `json:"provenance,omitempty"`
 }
 
 // RiskScoreCLI describes risk assessment
 type RiskScoreCLI struct {
-	Level       string           `json:"level"`
-	Score       float64          `json:"score"`
-	Explanation string           `json:"explanation"`
-	Factors     []RiskFactorCLI  `json:"factors,omitempty"`
+	Level       string          `json:"level"`
+	Score       float64         `json:"score"`
+	Explanation string          `json:"explanation"`
+	Factors     []RiskFactorCLI `json:"factors,omitempty"`
 }
 
 // RiskFactorCLI describes a risk factor

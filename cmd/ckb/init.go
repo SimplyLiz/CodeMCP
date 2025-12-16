@@ -42,7 +42,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Check if .ckb already exists
 	ckbDir := filepath.Join(cwd, ".ckb")
-	if _, err := os.Stat(ckbDir); err == nil {
+	if _, statErr := os.Stat(ckbDir); statErr == nil {
 		if !initForce {
 			return errors.NewCkbError(
 				errors.InternalError,
@@ -60,15 +60,15 @@ func runInit(cmd *cobra.Command, args []string) error {
 			)
 		}
 		// Remove existing directory
-		if err := os.RemoveAll(ckbDir); err != nil {
-			return errors.NewCkbError(errors.InternalError, "Failed to remove existing .ckb directory", err, nil, nil)
+		if removeErr := os.RemoveAll(ckbDir); removeErr != nil {
+			return errors.NewCkbError(errors.InternalError, "Failed to remove existing .ckb directory", removeErr, nil, nil)
 		}
 		logger.Info("Removed existing .ckb directory", nil)
 	}
 
 	// Create .ckb directory
-	if err := os.MkdirAll(ckbDir, 0755); err != nil {
-		return errors.NewCkbError(errors.InternalError, "Failed to create .ckb directory", err, nil, nil)
+	if mkdirErr := os.MkdirAll(ckbDir, 0755); mkdirErr != nil {
+		return errors.NewCkbError(errors.InternalError, "Failed to create .ckb directory", mkdirErr, nil, nil)
 	}
 
 	// Create default config
@@ -82,8 +82,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return errors.NewCkbError(errors.InternalError, "Failed to marshal config", err, nil, nil)
 	}
 
-	if err := os.WriteFile(configPath, configData, 0644); err != nil {
-		return errors.NewCkbError(errors.InternalError, "Failed to write config file", err, nil, nil)
+	if writeErr := os.WriteFile(configPath, configData, 0644); writeErr != nil {
+		return errors.NewCkbError(errors.InternalError, "Failed to write config file", writeErr, nil, nil)
 	}
 
 	logger.Info("CKB initialized successfully", map[string]interface{}{

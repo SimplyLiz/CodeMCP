@@ -74,10 +74,10 @@ func runSymbol(cmd *cobra.Command, args []string) {
 
 // SymbolResponseCLI contains detailed symbol information for CLI output
 type SymbolResponseCLI struct {
-	Symbol     SymbolInfoCLI   `json:"symbol"`
-	Location   *LocationCLI    `json:"location,omitempty"`
-	Module     *ModuleInfoCLI  `json:"module,omitempty"`
-	Provenance *ProvenanceCLI  `json:"provenance,omitempty"`
+	Symbol     SymbolInfoCLI  `json:"symbol"`
+	Location   *LocationCLI   `json:"location,omitempty"`
+	Module     *ModuleInfoCLI `json:"module,omitempty"`
+	Provenance *ProvenanceCLI `json:"provenance,omitempty"`
 }
 
 // SymbolInfoCLI contains symbol details

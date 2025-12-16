@@ -348,11 +348,11 @@ func (c *Cache) GetCacheStats() (map[string]interface{}, error) {
 	}
 
 	stats["query_cache"] = map[string]interface{}{
-		"entries": queryCount,
+		"entries":    queryCount,
 		"size_bytes": querySizeBytes,
 	}
 	stats["view_cache"] = map[string]interface{}{
-		"entries": viewCount,
+		"entries":    viewCount,
 		"size_bytes": viewSizeBytes,
 	}
 	stats["negative_cache"] = map[string]interface{}{

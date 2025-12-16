@@ -347,9 +347,9 @@ func (g *GitAdapter) GetTotalChurnMetrics(since string) (map[string]interface{},
 	}
 
 	return map[string]interface{}{
-		"totalCommits":   totalCommits,
-		"totalAuthors":   len(authorLines),
-		"changedFiles":   len(files),
-		"since":          since,
+		"totalCommits": totalCommits,
+		"totalAuthors": len(authorLines),
+		"changedFiles": len(files),
+		"since":        since,
 	}, nil
 }

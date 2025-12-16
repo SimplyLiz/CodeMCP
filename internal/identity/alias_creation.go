@@ -48,9 +48,9 @@ func (c *AliasCreator) CreateAliasesOnRefresh(
 	}
 
 	c.logger.Debug("analyzing symbol changes", map[string]interface{}{
-		"old_count":   len(oldMappings),
-		"new_count":   len(newMappings),
-		"repo_state":  repoStateId,
+		"old_count":  len(oldMappings),
+		"new_count":  len(newMappings),
+		"repo_state": repoStateId,
 	})
 
 	aliasCount := 0
@@ -169,9 +169,9 @@ func (c *AliasCreator) CreateAliasesOnRefresh(
 	}
 
 	c.logger.Info("alias refresh complete", map[string]interface{}{
-		"aliases_created":   aliasCount,
+		"aliases_created":    aliasCount,
 		"tombstones_created": tombstoneCount,
-		"repo_state":        repoStateId,
+		"repo_state":         repoStateId,
 	})
 
 	return nil

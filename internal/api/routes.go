@@ -15,9 +15,9 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("/doctor", s.handleDoctor)
 
 	// Symbol operations
-	s.router.HandleFunc("/symbol/", s.handleGetSymbol)     // GET /symbol/:id
-	s.router.HandleFunc("/search", s.handleSearchSymbols)   // GET /search?q=...
-	s.router.HandleFunc("/refs/", s.handleFindReferences)   // GET /refs/:id
+	s.router.HandleFunc("/symbol/", s.handleGetSymbol)    // GET /symbol/:id
+	s.router.HandleFunc("/search", s.handleSearchSymbols) // GET /search?q=...
+	s.router.HandleFunc("/refs/", s.handleFindReferences) // GET /refs/:id
 
 	// Architecture and impact
 	s.router.HandleFunc("/architecture", s.handleGetArchitecture)

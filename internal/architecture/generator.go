@@ -86,9 +86,9 @@ func (g *ArchitectureGenerator) Generate(ctx context.Context, repoStateId string
 	}
 
 	g.logger.Info("Generating architecture view", map[string]interface{}{
-		"repoStateId":           repoStateId,
-		"includeExternalDeps":   opts.IncludeExternalDeps,
-		"depth":                 opts.Depth,
+		"repoStateId":         repoStateId,
+		"includeExternalDeps": opts.IncludeExternalDeps,
+		"depth":               opts.Depth,
 	})
 
 	// Step 1: Detect modules
@@ -152,10 +152,10 @@ func (g *ArchitectureGenerator) Generate(ctx context.Context, repoStateId string
 
 	duration := time.Since(startTime)
 	g.logger.Info("Architecture generation completed", map[string]interface{}{
-		"durationMs":     duration.Milliseconds(),
-		"modules":        len(moduleSummaries),
-		"dependencies":   len(dependencyGraph),
-		"entrypoints":    len(entrypoints),
+		"durationMs":   duration.Milliseconds(),
+		"modules":      len(moduleSummaries),
+		"dependencies": len(dependencyGraph),
+		"entrypoints":  len(entrypoints),
 	})
 
 	return response, nil

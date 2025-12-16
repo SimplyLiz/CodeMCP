@@ -19,9 +19,9 @@ func (s *LspSupervisor) ensureCapacity() error {
 	}
 
 	s.logger.Info("Evicting LSP process to make room", map[string]interface{}{
-		"languageId":     lruProc.LanguageId,
-		"lastResponse":   lruProc.GetLastResponseTime(),
-		"timeSinceUsed":  time.Since(lruProc.GetLastResponseTime()).String(),
+		"languageId":    lruProc.LanguageId,
+		"lastResponse":  lruProc.GetLastResponseTime(),
+		"timeSinceUsed": time.Since(lruProc.GetLastResponseTime()).String(),
 	})
 
 	// Shutdown the LRU process

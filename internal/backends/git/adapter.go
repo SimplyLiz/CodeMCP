@@ -87,10 +87,10 @@ func NewGitAdapter(cfg *config.Config, logger *logging.Logger) (*GitAdapter, err
 	}
 
 	logger.Info("Git adapter initialized", map[string]interface{}{
-		"backend":      BackendID,
-		"repoRoot":     cfg.RepoRoot,
-		"timeout":      timeout.String(),
-		"enabled":      enabled,
+		"backend":  BackendID,
+		"repoRoot": cfg.RepoRoot,
+		"timeout":  timeout.String(),
+		"enabled":  enabled,
 	})
 
 	return adapter, nil

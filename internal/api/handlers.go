@@ -12,13 +12,13 @@ import (
 
 // StatusResponse represents the system status response
 type StatusResponse struct {
-	Status      string                 `json:"status"`
-	Timestamp   time.Time              `json:"timestamp"`
-	CkbVersion  string                 `json:"ckbVersion"`
-	Repository  map[string]interface{} `json:"repository"`
-	Backends    []BackendInfo          `json:"backends"`
-	Cache       CacheInfo              `json:"cache"`
-	Healthy     bool                   `json:"healthy"`
+	Status     string                 `json:"status"`
+	Timestamp  time.Time              `json:"timestamp"`
+	CkbVersion string                 `json:"ckbVersion"`
+	Repository map[string]interface{} `json:"repository"`
+	Backends   []BackendInfo          `json:"backends"`
+	Cache      CacheInfo              `json:"cache"`
+	Healthy    bool                   `json:"healthy"`
 }
 
 // BackendInfo represents backend status information
@@ -86,12 +86,12 @@ type ProvenanceInfo struct {
 
 // SearchResponse represents a symbol search response
 type SearchResponse struct {
-	Query      string           `json:"query"`
-	Results    []SearchResult   `json:"results"`
-	Total      int              `json:"total"`
-	HasMore    bool             `json:"hasMore"`
-	Timestamp  time.Time        `json:"timestamp"`
-	Provenance *ProvenanceInfo  `json:"provenance,omitempty"`
+	Query      string          `json:"query"`
+	Results    []SearchResult  `json:"results"`
+	Total      int             `json:"total"`
+	HasMore    bool            `json:"hasMore"`
+	Timestamp  time.Time       `json:"timestamp"`
+	Provenance *ProvenanceInfo `json:"provenance,omitempty"`
 }
 
 // SearchResult represents a search result item
@@ -107,7 +107,7 @@ type SearchResult struct {
 
 // ReferencesResponse represents a find references response
 type ReferencesResponse struct {
-	SymbolID   string           `json:"symbolId"`
+	SymbolID   string            `json:"symbolId"`
 	References []ReferenceResult `json:"references"`
 	Total      int               `json:"total"`
 	Timestamp  time.Time         `json:"timestamp"`
@@ -124,11 +124,11 @@ type ReferenceResult struct {
 
 // ArchitectureResponse represents an architecture overview response
 type ArchitectureResponse struct {
-	Timestamp    time.Time         `json:"timestamp"`
-	Modules      []ModuleInfo      `json:"modules"`
-	Dependencies []DependencyInfo  `json:"dependencies"`
-	Entrypoints  []EntrypointInfo  `json:"entrypoints"`
-	Provenance   *ProvenanceInfo   `json:"provenance,omitempty"`
+	Timestamp    time.Time        `json:"timestamp"`
+	Modules      []ModuleInfo     `json:"modules"`
+	Dependencies []DependencyInfo `json:"dependencies"`
+	Entrypoints  []EntrypointInfo `json:"entrypoints"`
+	Provenance   *ProvenanceInfo  `json:"provenance,omitempty"`
 }
 
 // ModuleInfo represents information about a module
@@ -161,13 +161,13 @@ type EntrypointInfo struct {
 
 // ImpactResponse represents an impact analysis response
 type ImpactResponse struct {
-	SymbolID        string          `json:"symbolId"`
-	Timestamp       time.Time       `json:"timestamp"`
-	RiskScore       *RiskScoreInfo  `json:"riskScore,omitempty"`
-	DirectImpact    []ImpactItem    `json:"directImpact"`
-	TransitiveImpact []ImpactItem   `json:"transitiveImpact,omitempty"`
-	ModulesAffected []ModuleImpact  `json:"modulesAffected"`
-	Provenance      *ProvenanceInfo `json:"provenance,omitempty"`
+	SymbolID         string          `json:"symbolId"`
+	Timestamp        time.Time       `json:"timestamp"`
+	RiskScore        *RiskScoreInfo  `json:"riskScore,omitempty"`
+	DirectImpact     []ImpactItem    `json:"directImpact"`
+	TransitiveImpact []ImpactItem    `json:"transitiveImpact,omitempty"`
+	ModulesAffected  []ModuleImpact  `json:"modulesAffected"`
+	Provenance       *ProvenanceInfo `json:"provenance,omitempty"`
 }
 
 // RiskScoreInfo represents risk assessment
@@ -353,11 +353,11 @@ func (s *Server) handleGetSymbol(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := SymbolResponse{
-		ID:       symbolResp.Symbol.StableId,
-		Name:     symbolResp.Symbol.Name,
-		Kind:     symbolResp.Symbol.Kind,
-		Module:   symbolResp.Symbol.ModuleId,
-		Signature: symbolResp.Symbol.Signature,
+		ID:            symbolResp.Symbol.StableId,
+		Name:          symbolResp.Symbol.Name,
+		Kind:          symbolResp.Symbol.Kind,
+		Module:        symbolResp.Symbol.ModuleId,
+		Signature:     symbolResp.Symbol.Signature,
 		Documentation: symbolResp.Symbol.Documentation,
 	}
 

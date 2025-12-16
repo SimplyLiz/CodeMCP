@@ -9,11 +9,11 @@ import (
 
 // ErrorResponse represents an HTTP error response
 type ErrorResponse struct {
-	Error          string                `json:"error"`
-	Code           string                `json:"code"`
-	Details        interface{}           `json:"details,omitempty"`
-	SuggestedFixes []errors.FixAction    `json:"suggestedFixes,omitempty"`
-	Drilldowns     []errors.Drilldown    `json:"drilldowns,omitempty"`
+	Error          string             `json:"error"`
+	Code           string             `json:"code"`
+	Details        interface{}        `json:"details,omitempty"`
+	SuggestedFixes []errors.FixAction `json:"suggestedFixes,omitempty"`
+	Drilldowns     []errors.Drilldown `json:"drilldowns,omitempty"`
 }
 
 // WriteError writes an error response to the HTTP response writer

@@ -167,7 +167,7 @@ func (g *ArchitectureGenerator) detectFromPackageJSON(mod *modules.Module, modul
 	}
 
 	var pkg struct {
-		Main string   `json:"main"`
+		Main string      `json:"main"`
 		Bin  interface{} `json:"bin"`
 	}
 	if err := json.Unmarshal(data, &pkg); err != nil {

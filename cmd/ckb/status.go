@@ -61,11 +61,11 @@ func runStatus(cmd *cobra.Command, args []string) {
 
 // StatusResponseCLI contains the complete system status for CLI output
 type StatusResponseCLI struct {
-	CkbVersion string              `json:"ckbVersion"`
-	RepoState  *query.RepoState    `json:"repoState"`
-	Backends   []BackendStatusCLI  `json:"backends"`
-	Cache      CacheStatusCLI      `json:"cache"`
-	Healthy    bool                `json:"healthy"`
+	CkbVersion string             `json:"ckbVersion"`
+	RepoState  *query.RepoState   `json:"repoState"`
+	Backends   []BackendStatusCLI `json:"backends"`
+	Cache      CacheStatusCLI     `json:"cache"`
+	Healthy    bool               `json:"healthy"`
 }
 
 // BackendStatusCLI describes the status of a backend

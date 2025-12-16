@@ -31,16 +31,16 @@ type Module struct {
 
 // ManifestType constants for well-known manifest files
 const (
-	ManifestPackageJSON  = "package.json"
-	ManifestPubspecYaml  = "pubspec.yaml"
-	ManifestGoMod        = "go.mod"
-	ManifestCargoToml    = "Cargo.toml"
-	ManifestPyprojectToml = "pyproject.toml"
-	ManifestSetupPy      = "setup.py"
-	ManifestPomXML       = "pom.xml"
-	ManifestBuildGradle  = "build.gradle"
+	ManifestPackageJSON    = "package.json"
+	ManifestPubspecYaml    = "pubspec.yaml"
+	ManifestGoMod          = "go.mod"
+	ManifestCargoToml      = "Cargo.toml"
+	ManifestPyprojectToml  = "pyproject.toml"
+	ManifestSetupPy        = "setup.py"
+	ManifestPomXML         = "pom.xml"
+	ManifestBuildGradle    = "build.gradle"
 	ManifestBuildGradleKts = "build.gradle.kts"
-	ManifestNone         = "" // For convention-based or directory fallback detection
+	ManifestNone           = "" // For convention-based or directory fallback detection
 )
 
 // Language constants

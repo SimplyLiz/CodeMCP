@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"ckb/internal/errors"
-	"google.golang.org/protobuf/proto"
 	scippb "github.com/sourcegraph/scip/bindings/go/scip"
+	"google.golang.org/protobuf/proto"
 )
 
 // SCIPIndex represents a loaded SCIP index

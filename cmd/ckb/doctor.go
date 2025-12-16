@@ -78,16 +78,16 @@ func runDoctor(cmd *cobra.Command, args []string) {
 
 // DoctorResponseCLI contains diagnostic results for CLI output
 type DoctorResponseCLI struct {
-	Healthy bool              `json:"healthy"`
-	Checks  []DoctorCheckCLI  `json:"checks"`
+	Healthy bool             `json:"healthy"`
+	Checks  []DoctorCheckCLI `json:"checks"`
 }
 
 // DoctorCheckCLI represents a single diagnostic check
 type DoctorCheckCLI struct {
-	Name           string          `json:"name"`
-	Status         string          `json:"status"` // "pass", "warn", "fail"
-	Message        string          `json:"message"`
-	SuggestedFixes []FixActionCLI  `json:"suggestedFixes,omitempty"`
+	Name           string         `json:"name"`
+	Status         string         `json:"status"` // "pass", "warn", "fail"
+	Message        string         `json:"message"`
+	SuggestedFixes []FixActionCLI `json:"suggestedFixes,omitempty"`
 }
 
 // FixActionCLI represents a suggested fix

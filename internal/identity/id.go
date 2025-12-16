@@ -3,7 +3,7 @@ package identity
 // SymbolIdentity contains all ID-related fields for a symbol
 // Section 4.1: Stable ID + Definition Version ID
 type SymbolIdentity struct {
-	StableId                   string            `json:"stableId"`                    // ckb:<repo>:sym:<fingerprint>
+	StableId                   string            `json:"stableId"` // ckb:<repo>:sym:<fingerprint>
 	DefinitionVersionId        string            `json:"definitionVersionId,omitempty"`
 	DefinitionVersionSemantics VersionSemantics  `json:"definitionVersionSemantics"`
 	Fingerprint                SymbolFingerprint `json:"fingerprint"`
@@ -48,20 +48,20 @@ type Location struct {
 type SymbolKind string
 
 const (
-	KindFunction   SymbolKind = "function"
-	KindMethod     SymbolKind = "method"
-	KindClass      SymbolKind = "class"
-	KindInterface  SymbolKind = "interface"
-	KindStruct     SymbolKind = "struct"
-	KindEnum       SymbolKind = "enum"
-	KindVariable   SymbolKind = "variable"
-	KindConstant   SymbolKind = "constant"
-	KindField      SymbolKind = "field"
-	KindProperty   SymbolKind = "property"
-	KindNamespace  SymbolKind = "namespace"
-	KindModule     SymbolKind = "module"
-	KindPackage    SymbolKind = "package"
-	KindType       SymbolKind = "type"
-	KindParameter  SymbolKind = "parameter"
-	KindUnknown    SymbolKind = "unknown"
+	KindFunction  SymbolKind = "function"
+	KindMethod    SymbolKind = "method"
+	KindClass     SymbolKind = "class"
+	KindInterface SymbolKind = "interface"
+	KindStruct    SymbolKind = "struct"
+	KindEnum      SymbolKind = "enum"
+	KindVariable  SymbolKind = "variable"
+	KindConstant  SymbolKind = "constant"
+	KindField     SymbolKind = "field"
+	KindProperty  SymbolKind = "property"
+	KindNamespace SymbolKind = "namespace"
+	KindModule    SymbolKind = "module"
+	KindPackage   SymbolKind = "package"
+	KindType      SymbolKind = "type"
+	KindParameter SymbolKind = "parameter"
+	KindUnknown   SymbolKind = "unknown"
 )

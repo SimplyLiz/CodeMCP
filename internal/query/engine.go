@@ -30,9 +30,9 @@ type Engine struct {
 	repoRoot   string
 
 	// Backend references
-	orchestrator *backends.Orchestrator
-	scipAdapter  *scip.SCIPAdapter
-	gitAdapter   *git.GitAdapter
+	orchestrator  *backends.Orchestrator
+	scipAdapter   *scip.SCIPAdapter
+	gitAdapter    *git.GitAdapter
 	lspSupervisor *lsp.LspSupervisor
 
 	// Cached repo state

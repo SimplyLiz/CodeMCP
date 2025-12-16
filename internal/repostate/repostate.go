@@ -88,8 +88,8 @@ func ComputeRepoState(repoRoot string) (*RepoState, error) {
 
 	// Determine if repo is dirty
 	dirty := stagedDiffHash != EmptyHash ||
-	         workingTreeDiffHash != EmptyHash ||
-	         untrackedListHash != EmptyHash
+		workingTreeDiffHash != EmptyHash ||
+		untrackedListHash != EmptyHash
 
 	// Compute composite repoStateId
 	repoStateId := computeRepoStateID(headCommit, stagedDiffHash, workingTreeDiffHash, untrackedListHash)

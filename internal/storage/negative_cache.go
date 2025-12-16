@@ -29,9 +29,9 @@ const (
 
 // NegativeCachePolicy defines TTL and behavior for each error type
 type NegativeCachePolicy struct {
-	TTLSeconds     int
-	TriggerWarmup  bool
-	Description    string
+	TTLSeconds    int
+	TriggerWarmup bool
+	Description   string
 }
 
 // negativeCachePolicies maps error types to their policies per Section 9.2

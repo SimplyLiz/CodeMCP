@@ -41,13 +41,13 @@ func Open(repoRoot string, logger *logging.Logger) (*DB, error) {
 
 	// Set pragmas for performance and reliability
 	pragmas := []string{
-		"PRAGMA journal_mode=WAL",        // Write-Ahead Logging for better concurrency
-		"PRAGMA synchronous=NORMAL",      // Balance between safety and performance
-		"PRAGMA foreign_keys=ON",         // Enable foreign key constraints
-		"PRAGMA busy_timeout=5000",       // Wait up to 5 seconds on lock
-		"PRAGMA cache_size=-64000",       // 64MB cache
-		"PRAGMA temp_store=MEMORY",       // Use memory for temp tables
-		"PRAGMA mmap_size=268435456",     // 256MB mmap
+		"PRAGMA journal_mode=WAL",    // Write-Ahead Logging for better concurrency
+		"PRAGMA synchronous=NORMAL",  // Balance between safety and performance
+		"PRAGMA foreign_keys=ON",     // Enable foreign key constraints
+		"PRAGMA busy_timeout=5000",   // Wait up to 5 seconds on lock
+		"PRAGMA cache_size=-64000",   // 64MB cache
+		"PRAGMA temp_store=MEMORY",   // Use memory for temp tables
+		"PRAGMA mmap_size=268435456", // 256MB mmap
 	}
 
 	for _, pragma := range pragmas {

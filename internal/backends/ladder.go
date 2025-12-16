@@ -9,8 +9,8 @@ import (
 // BackendLadder implements the backend selection ladder
 // It selects backends based on preference order and availability
 type BackendLadder struct {
-	policy  *QueryPolicy
-	logger  *logging.Logger
+	policy *QueryPolicy
+	logger *logging.Logger
 }
 
 // NewBackendLadder creates a new backend ladder
@@ -68,8 +68,8 @@ func (l *BackendLadder) SelectBackends(
 
 	if len(selected) == 0 {
 		l.logger.Warn("No backends selected", map[string]interface{}{
-			"queryType":       req.Type,
-			"availableCount":  len(availableBackends),
+			"queryType":      req.Type,
+			"availableCount": len(availableBackends),
 		})
 	}
 
@@ -207,10 +207,10 @@ func (l *BackendLadder) supportsQueryType(backend Backend, queryType QueryType) 
 	switch queryType {
 	case QueryTypeSymbol:
 		return containsCapability(capabilities, "symbol-info") ||
-			   containsCapability(capabilities, "goto-definition")
+			containsCapability(capabilities, "goto-definition")
 	case QueryTypeSearch:
 		return containsCapability(capabilities, "symbol-search") ||
-			   containsCapability(capabilities, "workspace-symbols")
+			containsCapability(capabilities, "workspace-symbols")
 	case QueryTypeReferences:
 		return containsCapability(capabilities, "find-references")
 	default:

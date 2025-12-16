@@ -9,9 +9,9 @@ import (
 
 // Scanner provides high-level module and import scanning functionality
 type Scanner struct {
-	config         *config.Config
-	logger         *logging.Logger
-	importScanner  *ImportScanner
+	config        *config.Config
+	logger        *logging.Logger
+	importScanner *ImportScanner
 }
 
 // NewScanner creates a new module scanner
@@ -80,7 +80,7 @@ func (s *Scanner) ScanImports(repoRoot string, module *Module, allModules []*Mod
 	}
 
 	s.logger.Info("Import scanning completed", map[string]interface{}{
-		"moduleId":    module.ID,
+		"moduleId":     module.ID,
 		"importsFound": len(edges),
 	})
 

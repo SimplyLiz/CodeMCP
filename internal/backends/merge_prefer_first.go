@@ -63,10 +63,10 @@ func (m *PreferFirstMerger) MergeSymbolResults(
 
 	// Track provenance
 	provenance := Provenance{
-		PrimaryBackend:      primaryResult.BackendID,
-		SupplementBackends:  []BackendID{},
-		MergeMode:           MergeModePreferFirst,
-		MetadataConflicts:   []MetadataConflict{},
+		PrimaryBackend:     primaryResult.BackendID,
+		SupplementBackends: []BackendID{},
+		MergeMode:          MergeModePreferFirst,
+		MetadataConflicts:  []MetadataConflict{},
 	}
 
 	primaryPriority := m.policy.GetBackendPriority(primaryResult.BackendID)

@@ -229,9 +229,9 @@ func TestDeriveFromReferences(t *testing.T) {
 			expectedVis: ptr(VisibilityInternal),
 		},
 		{
-			name:     "no references",
-			moduleId: "module1",
-			refs:     []Reference{},
+			name:        "no references",
+			moduleId:    "module1",
+			refs:        []Reference{},
 			expectedVis: nil,
 		},
 		{

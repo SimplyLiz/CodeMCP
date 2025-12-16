@@ -106,12 +106,12 @@ func TestClassifyImpact(t *testing.T) {
 
 func TestClassifyImpactWithConfidence(t *testing.T) {
 	tests := []struct {
-		name              string
-		ref               *Reference
-		symbol            *Symbol
-		expectedKind      ImpactKind
-		minConfidence     float64
-		maxConfidence     float64
+		name          string
+		ref           *Reference
+		symbol        *Symbol
+		expectedKind  ImpactKind
+		minConfidence float64
+		maxConfidence float64
 	}{
 		{
 			name: "direct call - high confidence",

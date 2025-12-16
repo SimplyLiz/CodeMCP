@@ -22,13 +22,13 @@ func NewImpactAnalyzer(maxDepth int) *ImpactAnalyzer {
 
 // ImpactAnalysisResult contains the complete results of an impact analysis
 type ImpactAnalysisResult struct {
-	Symbol           *Symbol          // The analyzed symbol
-	Visibility       *VisibilityInfo  // Visibility information
-	RiskScore        *RiskScore       // Risk assessment
-	DirectImpact     []ImpactItem     // Direct references (distance = 1)
-	TransitiveImpact []ImpactItem     // Transitive references (distance > 1)
-	ModulesAffected  []ModuleSummary  // Summary by module
-	AnalysisLimits   *AnalysisLimits  // Limitations of the analysis
+	Symbol           *Symbol         // The analyzed symbol
+	Visibility       *VisibilityInfo // Visibility information
+	RiskScore        *RiskScore      // Risk assessment
+	DirectImpact     []ImpactItem    // Direct references (distance = 1)
+	TransitiveImpact []ImpactItem    // Transitive references (distance > 1)
+	ModulesAffected  []ModuleSummary // Summary by module
+	AnalysisLimits   *AnalysisLimits // Limitations of the analysis
 }
 
 // ModuleSummary provides a summary of impact for a single module
@@ -101,7 +101,7 @@ func (a *ImpactAnalyzer) processDirectReferences(symbol *Symbol, refs []Referenc
 			ModuleName: extractModuleNameFromId(ref.FromModule),
 			Location:   ref.Location,
 			Visibility: symbolVisibility, // Use the same visibility as the symbol
-			Distance:   1,                 // Direct reference
+			Distance:   1,                // Direct reference
 		}
 
 		items = append(items, item)
@@ -217,9 +217,9 @@ func isHigherRisk(a, b RiskLevel) bool {
 
 // AnalyzeWithOptions performs impact analysis with custom options
 type AnalyzeOptions struct {
-	MaxDepth             int  // Override analyzer's default max depth
-	IncludeTests         bool // Include test dependencies in analysis
-	OnlyBreakingChanges  bool // Only include potentially breaking changes
+	MaxDepth            int  // Override analyzer's default max depth
+	IncludeTests        bool // Include test dependencies in analysis
+	OnlyBreakingChanges bool // Only include potentially breaking changes
 }
 
 // AnalyzeWithOptions performs analysis with custom options

@@ -14,10 +14,10 @@ type HealthResponse struct {
 
 // ReadyResponse represents the readiness check response
 type ReadyResponse struct {
-	Status    string               `json:"status"`
-	Timestamp time.Time            `json:"timestamp"`
-	Backends  map[string]bool      `json:"backends"`
-	Details   map[string]string    `json:"details,omitempty"`
+	Status    string            `json:"status"`
+	Timestamp time.Time         `json:"timestamp"`
+	Backends  map[string]bool   `json:"backends"`
+	Details   map[string]string `json:"details,omitempty"`
 }
 
 // handleHealth responds to health check requests (simple liveness check)
@@ -46,9 +46,9 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 	// TODO: Actually check backend availability
 	// For now, return a placeholder response
 	backends := map[string]bool{
-		"scip": true,  // Placeholder
-		"lsp":  true,  // Placeholder
-		"git":  true,  // Placeholder
+		"scip": true, // Placeholder
+		"lsp":  true, // Placeholder
+		"git":  true, // Placeholder
 	}
 
 	// Determine overall readiness

@@ -42,9 +42,9 @@ func TestAddNote(t *testing.T) {
 
 func TestHasLimitations(t *testing.T) {
 	tests := []struct {
-		name        string
-		setupFunc   func() *AnalysisLimits
-		expected    bool
+		name      string
+		setupFunc func() *AnalysisLimits
+		expected  bool
 	}{
 		{
 			name: "no limitations",

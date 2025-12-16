@@ -107,8 +107,8 @@ func (s *LspSupervisor) checkHealth(languageId string) bool {
 		lastResponse := proc.GetLastResponseTime()
 		if !lastResponse.IsZero() && time.Since(lastResponse) > ResponseTimeout {
 			s.logger.Warn("LSP process not responding", map[string]interface{}{
-				"languageId":       languageId,
-				"lastResponse":     lastResponse,
+				"languageId":        languageId,
+				"lastResponse":      lastResponse,
 				"timeSinceResponse": time.Since(lastResponse).String(),
 			})
 			proc.SetState(StateUnhealthy)

@@ -17,28 +17,28 @@ const (
 // This combines identity, state, and tracking information
 type SymbolMapping struct {
 	// Identity
-	StableId              string            `json:"stableId"`   // Canonical stable ID
-	BackendStableId       string            `json:"backendStableId,omitempty"` // Backend-provided ID (for anchoring)
-	Fingerprint           *SymbolFingerprint `json:"fingerprint"`
+	StableId        string             `json:"stableId"`                  // Canonical stable ID
+	BackendStableId string             `json:"backendStableId,omitempty"` // Backend-provided ID (for anchoring)
+	Fingerprint     *SymbolFingerprint `json:"fingerprint"`
 
 	// State
-	State                 SymbolState       `json:"state"`
+	State SymbolState `json:"state"`
 
 	// Location
-	Location              *Location         `json:"location"`
-	LocationFreshness     LocationFreshness `json:"locationFreshness"`
+	Location          *Location         `json:"location"`
+	LocationFreshness LocationFreshness `json:"locationFreshness"`
 
 	// Versioning
-	DefinitionVersionId   string            `json:"definitionVersionId,omitempty"`
+	DefinitionVersionId        string           `json:"definitionVersionId,omitempty"`
 	DefinitionVersionSemantics VersionSemantics `json:"definitionVersionSemantics"`
 
 	// Tracking
-	LastVerifiedAt        string            `json:"lastVerifiedAt"`        // ISO 8601 timestamp
-	LastVerifiedStateId   string            `json:"lastVerifiedStateId"`   // RepoStateId when last verified
+	LastVerifiedAt      string `json:"lastVerifiedAt"`      // ISO 8601 timestamp
+	LastVerifiedStateId string `json:"lastVerifiedStateId"` // RepoStateId when last verified
 
 	// Tombstone fields (only set when state=deleted)
-	DeletedAt             string            `json:"deletedAt,omitempty"`         // ISO 8601 timestamp
-	DeletedInStateId      string            `json:"deletedInStateId,omitempty"` // RepoStateId when deleted
+	DeletedAt        string `json:"deletedAt,omitempty"`        // ISO 8601 timestamp
+	DeletedInStateId string `json:"deletedInStateId,omitempty"` // RepoStateId when deleted
 }
 
 // IsActive returns true if the symbol is in active state

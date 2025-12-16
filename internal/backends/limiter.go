@@ -180,10 +180,10 @@ func (l *RateLimiter) CoalesceOrExecute(
 func (l *RateLimiter) generateQueryKey(backendID BackendID, req QueryRequest) string {
 	// Create a deterministic representation of the request
 	data := map[string]interface{}{
-		"backend":   backendID,
-		"type":      req.Type,
-		"symbolID":  req.SymbolID,
-		"query":     req.Query,
+		"backend":    backendID,
+		"type":       req.Type,
+		"symbolID":   req.SymbolID,
+		"query":      req.Query,
 		"searchOpts": req.SearchOpts,
 		"refOpts":    req.RefOpts,
 	}

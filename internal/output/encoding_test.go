@@ -28,7 +28,7 @@ func TestDeterministicEncode(t *testing.T) {
 		{
 			name: "struct with omitted nil fields",
 			input: struct {
-				Name  string  `json:"name"`
+				Name  string   `json:"name"`
 				Score *float64 `json:"score,omitempty"`
 			}{
 				Name:  "test",
@@ -232,10 +232,10 @@ func TestDeterministicMapMarshalJSON(t *testing.T) {
 
 func TestComplexNestedStructure(t *testing.T) {
 	type ComplexResponse struct {
-		Modules   []Module   `json:"modules"`
-		Symbols   []Symbol   `json:"symbols,omitempty"`
+		Modules   []Module               `json:"modules"`
+		Symbols   []Symbol               `json:"symbols,omitempty"`
 		Metadata  map[string]interface{} `json:"metadata"`
-		Timestamp *string    `json:"timestamp,omitempty"`
+		Timestamp *string                `json:"timestamp,omitempty"`
 	}
 
 	response := ComplexResponse{
@@ -290,8 +290,8 @@ func TestComplexNestedStructure(t *testing.T) {
 	// Re-encode to check key order
 	metadataJSON, _ := json.Marshal(metadata)
 	if !bytes.Contains(metadataJSON, []byte(`"alpha"`)) ||
-	   !bytes.Contains(metadataJSON, []byte(`"score"`)) ||
-	   !bytes.Contains(metadataJSON, []byte(`"zebra"`)) {
+		!bytes.Contains(metadataJSON, []byte(`"score"`)) ||
+		!bytes.Contains(metadataJSON, []byte(`"zebra"`)) {
 		t.Error("metadata keys are not properly handled")
 	}
 }

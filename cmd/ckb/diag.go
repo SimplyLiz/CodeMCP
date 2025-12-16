@@ -53,14 +53,14 @@ func init() {
 
 // DiagnosticBundle contains all diagnostic information
 type DiagnosticBundle struct {
-	GeneratedAt string               `json:"generatedAt"`
-	CkbVersion  string               `json:"ckbVersion"`
-	System      DiagSystemInfo       `json:"system"`
-	RepoState   *query.RepoState     `json:"repoState,omitempty"`
-	Config      *config.Config       `json:"config,omitempty"`
-	Status      *StatusResponseCLI   `json:"status,omitempty"`
-	Doctor      *DoctorResponseCLI   `json:"doctor,omitempty"`
-	Anonymized  bool                 `json:"anonymized"`
+	GeneratedAt string             `json:"generatedAt"`
+	CkbVersion  string             `json:"ckbVersion"`
+	System      DiagSystemInfo     `json:"system"`
+	RepoState   *query.RepoState   `json:"repoState,omitempty"`
+	Config      *config.Config     `json:"config,omitempty"`
+	Status      *StatusResponseCLI `json:"status,omitempty"`
+	Doctor      *DoctorResponseCLI `json:"doctor,omitempty"`
+	Anonymized  bool               `json:"anonymized"`
 }
 
 // DiagSystemInfo contains system information
