@@ -151,6 +151,70 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				"required": []string{"symbolId"},
 			},
 		},
+		{
+			Name:        "explainSymbol",
+			Description: "Explain a symbol with usage, history, and summary",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"symbolId": map[string]interface{}{
+						"type":        "string",
+						"description": "The stable symbol ID to explain",
+					},
+				},
+				"required": []string{"symbolId"},
+			},
+		},
+		{
+			Name:        "justifySymbol",
+			Description: "Provide a keep/investigate/remove style verdict",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"symbolId": map[string]interface{}{
+						"type":        "string",
+						"description": "The stable symbol ID to justify",
+					},
+				},
+				"required": []string{"symbolId"},
+			},
+		},
+		{
+			Name:        "getCallGraph",
+			Description: "Return a lightweight call graph rooted at a symbol",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"symbolId": map[string]interface{}{
+						"type":        "string",
+						"description": "Root symbol ID",
+					},
+					"direction": map[string]interface{}{
+						"type":    "string",
+						"enum":    []string{"callers", "callees", "both"},
+						"default": "callers",
+					},
+				},
+				"required": []string{"symbolId"},
+			},
+		},
+		{
+			Name:        "getModuleOverview",
+			Description: "Basic module overview including size and recent commits",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"path": map[string]interface{}{
+						"type":        "string",
+						"description": "Module root path",
+					},
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "Friendly module name",
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -163,4 +227,8 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["findReferences"] = s.toolFindReferences
 	s.tools["getArchitecture"] = s.toolGetArchitecture
 	s.tools["analyzeImpact"] = s.toolAnalyzeImpact
+	s.tools["explainSymbol"] = s.toolExplainSymbol
+	s.tools["justifySymbol"] = s.toolJustifySymbol
+	s.tools["getCallGraph"] = s.toolGetCallGraph
+	s.tools["getModuleOverview"] = s.toolGetModuleOverview
 }

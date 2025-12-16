@@ -562,3 +562,86 @@ func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (interface{
 
 	return string(jsonBytes), nil
 }
+
+// toolExplainSymbol implements the explainSymbol tool
+func (s *MCPServer) toolExplainSymbol(params map[string]interface{}) (interface{}, error) {
+	symbolId, ok := params["symbolId"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid 'symbolId' parameter")
+	}
+
+	s.logger.Debug("Executing explainSymbol", map[string]interface{}{"symbolId": symbolId})
+	ctx := context.Background()
+	resp, err := s.engine.ExplainSymbol(ctx, query.ExplainSymbolOptions{SymbolId: symbolId})
+	if err != nil {
+		return nil, err
+	}
+
+	jsonBytes, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return string(jsonBytes), nil
+}
+
+// toolJustifySymbol implements the justifySymbol tool
+func (s *MCPServer) toolJustifySymbol(params map[string]interface{}) (interface{}, error) {
+	symbolId, ok := params["symbolId"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid 'symbolId' parameter")
+	}
+
+	s.logger.Debug("Executing justifySymbol", map[string]interface{}{"symbolId": symbolId})
+	ctx := context.Background()
+	resp, err := s.engine.JustifySymbol(ctx, query.JustifySymbolOptions{SymbolId: symbolId})
+	if err != nil {
+		return nil, err
+	}
+
+	jsonBytes, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return string(jsonBytes), nil
+}
+
+// toolGetCallGraph implements the getCallGraph tool
+func (s *MCPServer) toolGetCallGraph(params map[string]interface{}) (interface{}, error) {
+	symbolId, ok := params["symbolId"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid 'symbolId' parameter")
+	}
+	direction, _ := params["direction"].(string)
+
+	s.logger.Debug("Executing getCallGraph", map[string]interface{}{"symbolId": symbolId})
+	ctx := context.Background()
+	resp, err := s.engine.GetCallGraph(ctx, query.CallGraphOptions{SymbolId: symbolId, Direction: direction})
+	if err != nil {
+		return nil, err
+	}
+
+	jsonBytes, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return string(jsonBytes), nil
+}
+
+// toolGetModuleOverview implements the getModuleOverview tool
+func (s *MCPServer) toolGetModuleOverview(params map[string]interface{}) (interface{}, error) {
+	path, _ := params["path"].(string)
+	name, _ := params["name"].(string)
+
+	s.logger.Debug("Executing getModuleOverview", map[string]interface{}{"path": path, "name": name})
+	ctx := context.Background()
+	resp, err := s.engine.GetModuleOverview(ctx, query.ModuleOverviewOptions{Path: path, Name: name})
+	if err != nil {
+		return nil, err
+	}
+
+	jsonBytes, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return string(jsonBytes), nil
+}
