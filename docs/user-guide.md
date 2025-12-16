@@ -175,6 +175,67 @@ ckb serve --port 8081
 ckb serve --host 0.0.0.0
 ```
 
+### `ckb symbol`
+
+Get detailed information about a specific symbol:
+
+```bash
+# Get symbol by stable ID
+ckb symbol "ckb:myrepo:sym:abc123"
+
+# Output as human-readable format
+ckb symbol "ckb:myrepo:sym:abc123" --format=human
+
+# Use full repo state (includes dirty working tree)
+ckb symbol "ckb:myrepo:sym:abc123" --repo-state-mode=full
+```
+
+### `ckb arch`
+
+Get a high-level architecture view of the codebase:
+
+```bash
+# Basic architecture overview
+ckb arch
+
+# Increase dependency depth
+ckb arch --depth=3
+
+# Include external dependencies
+ckb arch --include-external-deps
+
+# Force refresh (bypass cache)
+ckb arch --refresh
+```
+
+### `ckb mcp`
+
+Start the MCP (Model Context Protocol) server for AI assistant integration:
+
+```bash
+# Start MCP server (stdio mode)
+ckb mcp
+
+# Start with verbose logging
+ckb mcp --verbose
+```
+
+See [MCP Integration](mcp-integration.md) for setup with Claude Desktop.
+
+### `ckb diag`
+
+Create a diagnostic bundle for troubleshooting:
+
+```bash
+# Create diagnostic bundle
+ckb diag --out ckb-diagnostic.zip
+
+# Anonymize symbol names and paths
+ckb diag --out ckb-diagnostic.zip --anonymize
+```
+
+The bundle includes sanitized configuration, doctor output, backend status, and system information. It excludes source code and sensitive credentials.
+
 ## Working with Responses
 
 ### Response Structure

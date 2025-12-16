@@ -94,8 +94,8 @@ Find all references to a symbol.
 |------|------|----------|-------------|
 | `symbolId` | string | Yes | Stable symbol ID |
 | `scope` | string | No | Module to search within |
-| `includeTests` | boolean | No | Include test files |
-| `limit` | number | No | Max references |
+| `merge` | string | No | Backend merge strategy: "prefer-first" (default) or "union" |
+| `limit` | number | No | Max references (default: 100) |
 
 **Example:**
 ```json
@@ -103,7 +103,7 @@ Find all references to a symbol.
   "tool": "findReferences",
   "arguments": {
     "symbolId": "ckb:repo:sym:abc123",
-    "includeTests": false,
+    "merge": "prefer-first",
     "limit": 100
   }
 }
@@ -173,22 +173,17 @@ Get system status.
 
 ---
 
-### runDoctor
+### doctor
 
 Run diagnostic checks.
 
-**Parameters:**
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| `fix` | boolean | No | Return fix script |
+**Parameters:** None
 
 **Example:**
 ```json
 {
-  "tool": "runDoctor",
-  "arguments": {
-    "fix": false
-  }
+  "tool": "doctor",
+  "arguments": {}
 }
 ```
 
