@@ -1,0 +1,464 @@
+package modules
+
+import (
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"ckb/internal/logging"
+	"ckb/internal/paths"
+)
+
+// ManifestFile represents a manifest file that can be used to detect modules
+type ManifestFile struct {
+	// FileName is the name of the manifest file
+	FileName string
+	// Language is the language associated with this manifest
+	Language string
+	// Priority is used to break ties when multiple manifests are found in the same directory
+	Priority int
+}
+
+// ManifestFiles is the list of manifest files to search for, in priority order
+var ManifestFiles = []ManifestFile{
+	{FileName: ManifestPackageJSON, Language: LanguageTypeScript, Priority: 10},
+	{FileName: ManifestPubspecYaml, Language: LanguageDart, Priority: 10},
+	{FileName: ManifestGoMod, Language: LanguageGo, Priority: 10},
+	{FileName: ManifestCargoToml, Language: LanguageRust, Priority: 10},
+	{FileName: ManifestPyprojectToml, Language: LanguagePython, Priority: 10},
+	{FileName: ManifestSetupPy, Language: LanguagePython, Priority: 5},
+	{FileName: ManifestPomXML, Language: LanguageJava, Priority: 10},
+	{FileName: ManifestBuildGradle, Language: LanguageJava, Priority: 9},
+	{FileName: ManifestBuildGradleKts, Language: LanguageKotlin, Priority: 9},
+}
+
+// ConventionDirectory represents a convention-based directory that might contain a module
+type ConventionDirectory struct {
+	DirName  string
+	Language string
+}
+
+// ConventionDirectories is the list of convention-based directories to check
+var ConventionDirectories = []ConventionDirectory{
+	{DirName: "src", Language: LanguageUnknown},
+	{DirName: "lib", Language: LanguageUnknown},
+	{DirName: "internal", Language: LanguageGo},
+	{DirName: "pkg", Language: LanguageGo},
+}
+
+// DetectionResult represents the result of module detection
+type DetectionResult struct {
+	Modules         []*Module
+	DetectionMethod string // "explicit", "manifest", "convention", "fallback"
+}
+
+// DetectModules detects modules in a repository using the cascading resolution order
+func DetectModules(repoRoot string, explicitRoots []string, ignoreDirs []string, stateId string, logger *logging.Logger) (*DetectionResult, error) {
+	// Step 1: Check explicit config
+	if len(explicitRoots) > 0 {
+		modules, err := detectExplicitModules(repoRoot, explicitRoots, stateId, logger)
+		if err != nil {
+			return nil, err
+		}
+		return &DetectionResult{
+			Modules:         modules,
+			DetectionMethod: "explicit",
+		}, nil
+	}
+
+	// Step 2: Try manifest-based detection
+	modules, err := detectManifestModules(repoRoot, ignoreDirs, stateId, logger)
+	if err != nil {
+		return nil, err
+	}
+	if len(modules) > 0 {
+		return &DetectionResult{
+			Modules:         modules,
+			DetectionMethod: "manifest",
+		}, nil
+	}
+
+	// Step 3: Try language convention detection
+	modules, err = detectConventionModules(repoRoot, ignoreDirs, stateId, logger)
+	if err != nil {
+		return nil, err
+	}
+	if len(modules) > 0 {
+		return &DetectionResult{
+			Modules:         modules,
+			DetectionMethod: "convention",
+		}, nil
+	}
+
+	// Step 4: Fallback to top-level directories
+	modules, err = detectFallbackModules(repoRoot, ignoreDirs, stateId, logger)
+	if err != nil {
+		return nil, err
+	}
+	return &DetectionResult{
+		Modules:         modules,
+		DetectionMethod: "fallback",
+	}, nil
+}
+
+// detectExplicitModules detects modules from explicit configuration
+func detectExplicitModules(repoRoot string, explicitRoots []string, stateId string, logger *logging.Logger) ([]*Module, error) {
+	var modules []*Module
+
+	for _, root := range explicitRoots {
+		absPath := filepath.Join(repoRoot, root)
+
+		// Check if path exists
+		if _, err := os.Stat(absPath); os.IsNotExist(err) {
+			logger.Warn("Explicit module root does not exist", map[string]interface{}{
+				"root": root,
+			})
+			continue
+		}
+
+		// Try to detect manifest in this directory
+		manifest, language := detectManifestInDir(absPath)
+
+		// Generate module ID
+		moduleID := generateModuleID(repoRoot, root)
+
+		// Extract name from path or manifest
+		name := extractModuleName(absPath, manifest, root)
+
+		module := NewModule(moduleID, name, root, manifest, language, stateId)
+		modules = append(modules, module)
+
+		logger.Debug("Detected explicit module", map[string]interface{}{
+			"id":           moduleID,
+			"name":         name,
+			"rootPath":     root,
+			"manifestType": manifest,
+		})
+	}
+
+	return modules, nil
+}
+
+// detectManifestModules walks the repository and finds all manifest files
+func detectManifestModules(repoRoot string, ignoreDirs []string, stateId string, logger *logging.Logger) ([]*Module, error) {
+	var modules []*Module
+	ignoreMap := make(map[string]bool)
+	for _, dir := range ignoreDirs {
+		ignoreMap[dir] = true
+	}
+
+	err := filepath.Walk(repoRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip ignored directories
+		if info.IsDir() {
+			relPath, _ := filepath.Rel(repoRoot, path)
+			if relPath != "." && shouldIgnore(relPath, ignoreMap) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		// Check if this is a manifest file
+		for _, mf := range ManifestFiles {
+			if info.Name() == mf.FileName {
+				dir := filepath.Dir(path)
+				relPath, _ := filepath.Rel(repoRoot, dir)
+				relPath = paths.NormalizePath(relPath)
+
+				moduleID := generateModuleID(repoRoot, relPath)
+				name := extractModuleName(path, mf.FileName, relPath)
+
+				module := NewModule(moduleID, name, relPath, mf.FileName, mf.Language, stateId)
+				modules = append(modules, module)
+
+				logger.Debug("Detected manifest module", map[string]interface{}{
+					"id":           moduleID,
+					"name":         name,
+					"rootPath":     relPath,
+					"manifestType": mf.FileName,
+				})
+
+				// Don't descend into this module's subdirectories
+				return filepath.SkipDir
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return modules, nil
+}
+
+// detectConventionModules detects modules based on language conventions
+func detectConventionModules(repoRoot string, ignoreDirs []string, stateId string, logger *logging.Logger) ([]*Module, error) {
+	var modules []*Module
+	ignoreMap := make(map[string]bool)
+	for _, dir := range ignoreDirs {
+		ignoreMap[dir] = true
+	}
+
+	for _, conv := range ConventionDirectories {
+		convPath := filepath.Join(repoRoot, conv.DirName)
+		if info, err := os.Stat(convPath); err == nil && info.IsDir() {
+			if shouldIgnore(conv.DirName, ignoreMap) {
+				continue
+			}
+
+			relPath := conv.DirName
+			moduleID := generateModuleID(repoRoot, relPath)
+			name := conv.DirName
+			language := conv.Language
+
+			module := NewModule(moduleID, name, relPath, ManifestNone, language, stateId)
+			modules = append(modules, module)
+
+			logger.Debug("Detected convention module", map[string]interface{}{
+				"id":       moduleID,
+				"name":     name,
+				"rootPath": relPath,
+			})
+		}
+	}
+
+	return modules, nil
+}
+
+// detectFallbackModules detects modules using top-level directories as fallback
+func detectFallbackModules(repoRoot string, ignoreDirs []string, stateId string, logger *logging.Logger) ([]*Module, error) {
+	var modules []*Module
+	ignoreMap := make(map[string]bool)
+	for _, dir := range ignoreDirs {
+		ignoreMap[dir] = true
+	}
+
+	entries, err := os.ReadDir(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		dirName := entry.Name()
+
+		// Skip hidden directories and ignored directories
+		if strings.HasPrefix(dirName, ".") || shouldIgnore(dirName, ignoreMap) {
+			continue
+		}
+
+		relPath := dirName
+		moduleID := generateModuleID(repoRoot, relPath)
+		name := dirName
+
+		module := NewModule(moduleID, name, relPath, ManifestNone, LanguageUnknown, stateId)
+		modules = append(modules, module)
+
+		logger.Debug("Detected fallback module", map[string]interface{}{
+			"id":       moduleID,
+			"name":     name,
+			"rootPath": relPath,
+		})
+	}
+
+	return modules, nil
+}
+
+// detectManifestInDir checks for manifest files in a specific directory
+func detectManifestInDir(dir string) (string, string) {
+	for _, mf := range ManifestFiles {
+		manifestPath := filepath.Join(dir, mf.FileName)
+		if _, err := os.Stat(manifestPath); err == nil {
+			return mf.FileName, mf.Language
+		}
+	}
+	return ManifestNone, LanguageUnknown
+}
+
+// generateModuleID generates a stable module ID based on the repo and module path
+func generateModuleID(repoRoot, modulePath string) string {
+	// Normalize path
+	normalizedPath := paths.NormalizePath(modulePath)
+
+	// Use a simple scheme: ckb:module:<hash>
+	// Hash the normalized path for uniqueness
+	hash := sha256.Sum256([]byte(normalizedPath))
+	hashStr := fmt.Sprintf("%x", hash[:8]) // Use first 8 bytes for shorter ID
+
+	return fmt.Sprintf("ckb:module:%s", hashStr)
+}
+
+// extractModuleName extracts the module name from manifest or path
+func extractModuleName(manifestPath, manifestType, fallbackPath string) string {
+	// Try to extract name from manifest file
+	switch manifestType {
+	case ManifestPackageJSON:
+		return extractNameFromPackageJSON(manifestPath)
+	case ManifestPubspecYaml:
+		return extractNameFromPubspec(manifestPath)
+	case ManifestGoMod:
+		return extractNameFromGoMod(manifestPath)
+	case ManifestCargoToml:
+		return extractNameFromCargoToml(manifestPath)
+	}
+
+	// Fallback to directory name
+	if fallbackPath != "" {
+		parts := strings.Split(fallbackPath, "/")
+		if len(parts) > 0 {
+			return parts[len(parts)-1]
+		}
+	}
+
+	return "unknown"
+}
+
+// extractNameFromPackageJSON extracts name from package.json
+func extractNameFromPackageJSON(path string) string {
+	// If path is a directory, look for package.json in it
+	if info, err := os.Stat(path); err == nil && info.IsDir() {
+		path = filepath.Join(path, "package.json")
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return filepath.Base(filepath.Dir(path))
+	}
+
+	var pkg struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(data, &pkg); err != nil {
+		return filepath.Base(filepath.Dir(path))
+	}
+
+	if pkg.Name != "" {
+		return pkg.Name
+	}
+
+	return filepath.Base(filepath.Dir(path))
+}
+
+// extractNameFromPubspec extracts name from pubspec.yaml
+func extractNameFromPubspec(path string) string {
+	if info, err := os.Stat(path); err == nil && info.IsDir() {
+		path = filepath.Join(path, "pubspec.yaml")
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return filepath.Base(filepath.Dir(path))
+	}
+
+	// Simple YAML parsing for name field
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "name:") {
+			parts := strings.SplitN(trimmed, ":", 2)
+			if len(parts) == 2 {
+				return strings.TrimSpace(parts[1])
+			}
+		}
+	}
+
+	return filepath.Base(filepath.Dir(path))
+}
+
+// extractNameFromGoMod extracts module name from go.mod
+func extractNameFromGoMod(path string) string {
+	if info, err := os.Stat(path); err == nil && info.IsDir() {
+		path = filepath.Join(path, "go.mod")
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return filepath.Base(filepath.Dir(path))
+	}
+
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "module ") {
+			parts := strings.Fields(trimmed)
+			if len(parts) >= 2 {
+				// Return the last part of the module path
+				modulePath := parts[1]
+				pathParts := strings.Split(modulePath, "/")
+				return pathParts[len(pathParts)-1]
+			}
+		}
+	}
+
+	return filepath.Base(filepath.Dir(path))
+}
+
+// extractNameFromCargoToml extracts name from Cargo.toml
+func extractNameFromCargoToml(path string) string {
+	if info, err := os.Stat(path); err == nil && info.IsDir() {
+		path = filepath.Join(path, "Cargo.toml")
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return filepath.Base(filepath.Dir(path))
+	}
+
+	// Simple TOML parsing for name field in [package] section
+	lines := strings.Split(string(data), "\n")
+	inPackageSection := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		if trimmed == "[package]" {
+			inPackageSection = true
+			continue
+		}
+
+		if inPackageSection && strings.HasPrefix(trimmed, "name") {
+			parts := strings.SplitN(trimmed, "=", 2)
+			if len(parts) == 2 {
+				name := strings.TrimSpace(parts[1])
+				// Remove quotes
+				name = strings.Trim(name, `"'`)
+				return name
+			}
+		}
+
+		// Stop at next section
+		if inPackageSection && strings.HasPrefix(trimmed, "[") {
+			break
+		}
+	}
+
+	return filepath.Base(filepath.Dir(path))
+}
+
+// shouldIgnore checks if a directory should be ignored
+func shouldIgnore(relPath string, ignoreMap map[string]bool) bool {
+	// Check exact match
+	if ignoreMap[relPath] {
+		return true
+	}
+
+	// Check if any parent directory is ignored
+	parts := strings.Split(relPath, string(filepath.Separator))
+	for _, part := range parts {
+		if ignoreMap[part] {
+			return true
+		}
+	}
+
+	return false
+}

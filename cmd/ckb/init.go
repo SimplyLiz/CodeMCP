@@ -6,10 +6,14 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ckb/ckb/internal/config"
-	"github.com/ckb/ckb/internal/errors"
-	"github.com/ckb/ckb/internal/logging"
+	"ckb/internal/config"
+	"ckb/internal/errors"
+	"ckb/internal/logging"
 	"github.com/spf13/cobra"
+)
+
+var (
+	initForce bool
 )
 
 var initCmd = &cobra.Command{
@@ -20,6 +24,7 @@ var initCmd = &cobra.Command{
 }
 
 func init() {
+	initCmd.Flags().BoolVarP(&initForce, "force", "f", false, "Force reinitialization (removes existing .ckb directory)")
 	rootCmd.AddCommand(initCmd)
 }
 
@@ -38,20 +43,27 @@ func runInit(cmd *cobra.Command, args []string) error {
 	// Check if .ckb already exists
 	ckbDir := filepath.Join(cwd, ".ckb")
 	if _, err := os.Stat(ckbDir); err == nil {
-		return errors.NewCkbError(
-			errors.InternalError,
-			fmt.Sprintf(".ckb directory already exists at %s", ckbDir),
-			nil,
-			[]errors.FixAction{
-				{
-					Type:        "run-command",
-					Command:     "rm -rf .ckb && ckb init",
-					Safe:        false,
-					Description: "Remove existing .ckb directory and reinitialize",
+		if !initForce {
+			return errors.NewCkbError(
+				errors.InternalError,
+				fmt.Sprintf(".ckb directory already exists at %s", ckbDir),
+				nil,
+				[]errors.FixAction{
+					{
+						Type:        "run-command",
+						Command:     "ckb init --force",
+						Safe:        false,
+						Description: "Force reinitialization",
+					},
 				},
-			},
-			nil,
-		)
+				nil,
+			)
+		}
+		// Remove existing directory
+		if err := os.RemoveAll(ckbDir); err != nil {
+			return errors.NewCkbError(errors.InternalError, "Failed to remove existing .ckb directory", err, nil, nil)
+		}
+		logger.Info("Removed existing .ckb directory", nil)
 	}
 
 	// Create .ckb directory

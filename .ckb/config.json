@@ -16,6 +16,14 @@
             "language-server"
           ]
         },
+        "go": {
+          "command": "/Users/lisa/go/bin/gopls",
+          "args": []
+        },
+        "python": {
+          "command": "pylsp",
+          "args": []
+        },
         "typescript": {
           "command": "typescript-language-server",
           "args": [
@@ -70,6 +78,7 @@
     "enabled": true,
     "maxFileSizeBytes": 1000000,
     "scanTimeoutMs": 30000,
+    "skipBinary": true,
     "customPatterns": {}
   },
   "cache": {

@@ -1,0 +1,365 @@
+package query
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+// DoctorResponse is the response for the doctor command.
+type DoctorResponse struct {
+	Healthy         bool          `json:"healthy"`
+	Checks          []DoctorCheck `json:"checks"`
+	QueryDurationMs int64         `json:"queryDurationMs"`
+}
+
+// DoctorCheck represents a single diagnostic check.
+type DoctorCheck struct {
+	Name           string      `json:"name"`
+	Status         string      `json:"status"` // "pass", "warn", "fail"
+	Message        string      `json:"message"`
+	SuggestedFixes []FixAction `json:"suggestedFixes,omitempty"`
+}
+
+// FixAction describes a suggested fix.
+type FixAction struct {
+	Type        string   `json:"type"` // "run-command", "open-docs", "install-tool"
+	Command     string   `json:"command,omitempty"`
+	Safe        bool     `json:"safe"`
+	Description string   `json:"description"`
+	URL         string   `json:"url,omitempty"`
+	Tool        string   `json:"tool,omitempty"`
+	Methods     []string `json:"methods,omitempty"`
+}
+
+// Doctor runs diagnostic checks.
+func (e *Engine) Doctor(ctx context.Context, checkName string) (*DoctorResponse, error) {
+	startTime := time.Now()
+	checks := make([]DoctorCheck, 0)
+	healthy := true
+
+	// Run all checks or specific one
+	if checkName == "" || checkName == "all" {
+		checks = append(checks, e.checkGit(ctx))
+		checks = append(checks, e.checkScip(ctx))
+		checks = append(checks, e.checkLsp(ctx))
+		checks = append(checks, e.checkConfig(ctx))
+		checks = append(checks, e.checkStorage(ctx))
+	} else {
+		switch checkName {
+		case "git":
+			checks = append(checks, e.checkGit(ctx))
+		case "scip":
+			checks = append(checks, e.checkScip(ctx))
+		case "lsp":
+			checks = append(checks, e.checkLsp(ctx))
+		case "config":
+			checks = append(checks, e.checkConfig(ctx))
+		case "storage":
+			checks = append(checks, e.checkStorage(ctx))
+		default:
+			checks = append(checks, DoctorCheck{
+				Name:    checkName,
+				Status:  "fail",
+				Message: fmt.Sprintf("Unknown check: %s", checkName),
+			})
+		}
+	}
+
+	// Determine overall health
+	for _, check := range checks {
+		if check.Status == "fail" {
+			healthy = false
+			break
+		}
+	}
+
+	return &DoctorResponse{
+		Healthy:         healthy,
+		Checks:          checks,
+		QueryDurationMs: time.Since(startTime).Milliseconds(),
+	}, nil
+}
+
+// checkGit verifies git is available and repo is valid.
+func (e *Engine) checkGit(ctx context.Context) DoctorCheck {
+	check := DoctorCheck{
+		Name: "git",
+	}
+
+	if e.gitAdapter == nil {
+		check.Status = "fail"
+		check.Message = "Git backend not initialized"
+		check.SuggestedFixes = []FixAction{
+			{
+				Type:        "install-tool",
+				Tool:        "git",
+				Description: "Install git",
+				Methods:     []string{"brew", "apt", "manual"},
+			},
+		}
+		return check
+	}
+
+	if !e.gitAdapter.IsAvailable() {
+		check.Status = "fail"
+		check.Message = "Not a git repository"
+		check.SuggestedFixes = []FixAction{
+			{
+				Type:        "run-command",
+				Command:     "git init",
+				Safe:        true,
+				Description: "Initialize git repository",
+			},
+		}
+		return check
+	}
+
+	// Check if repo state can be computed
+	state, err := e.gitAdapter.GetRepoState()
+	if err != nil {
+		check.Status = "warn"
+		check.Message = fmt.Sprintf("Git available but repo state error: %s", err.Error())
+		return check
+	}
+
+	check.Status = "pass"
+	if state.Dirty {
+		commitShort := state.HeadCommit
+		if len(commitShort) > 12 {
+			commitShort = commitShort[:12]
+		}
+		check.Message = fmt.Sprintf("Git repository at %s (uncommitted changes)", commitShort)
+	} else {
+		commitShort := state.HeadCommit
+		if len(commitShort) > 12 {
+			commitShort = commitShort[:12]
+		}
+		check.Message = fmt.Sprintf("Git repository at %s", commitShort)
+	}
+
+	return check
+}
+
+// checkScip verifies SCIP index availability.
+func (e *Engine) checkScip(ctx context.Context) DoctorCheck {
+	check := DoctorCheck{
+		Name: "scip",
+	}
+
+	if e.scipAdapter == nil {
+		check.Status = "warn"
+		check.Message = "SCIP backend not configured"
+		check.SuggestedFixes = e.getSCIPInstallSuggestions()
+		return check
+	}
+
+	if !e.scipAdapter.IsAvailable() {
+		check.Status = "warn"
+		check.Message = "SCIP index not found"
+		check.SuggestedFixes = e.getSCIPInstallSuggestions()
+		return check
+	}
+
+	// Check index info
+	info := e.scipAdapter.GetIndexInfo()
+	if info == nil {
+		check.Status = "warn"
+		check.Message = "SCIP index info unavailable"
+		return check
+	}
+
+	if info.Freshness != nil && info.Freshness.IsStale() {
+		check.Status = "warn"
+		check.Message = fmt.Sprintf("SCIP index is stale: %s", info.Freshness.Warning)
+		check.SuggestedFixes = []FixAction{
+			{
+				Type:        "run-command",
+				Command:     e.detectSCIPCommand(),
+				Safe:        true,
+				Description: "Regenerate SCIP index",
+			},
+		}
+		return check
+	}
+
+	check.Status = "pass"
+	check.Message = fmt.Sprintf("SCIP index available (%d symbols)", info.SymbolCount)
+	return check
+}
+
+// checkLsp verifies LSP servers.
+func (e *Engine) checkLsp(ctx context.Context) DoctorCheck {
+	check := DoctorCheck{
+		Name: "lsp",
+	}
+
+	if e.lspSupervisor == nil {
+		check.Status = "warn"
+		check.Message = "LSP supervisor not configured"
+		return check
+	}
+
+	stats := e.lspSupervisor.GetStats()
+	processCount, ok := stats["totalProcesses"].(int)
+	if !ok || processCount == 0 {
+		check.Status = "warn"
+		check.Message = "No LSP servers running"
+		check.SuggestedFixes = []FixAction{
+			{
+				Type:        "run-command",
+				Command:     "ckb status --wait-for-ready",
+				Safe:        true,
+				Description: "Wait for LSP servers to start",
+			},
+		}
+		return check
+	}
+
+	check.Status = "pass"
+	check.Message = fmt.Sprintf("%d LSP server(s) healthy", processCount)
+	return check
+}
+
+// checkConfig verifies configuration.
+func (e *Engine) checkConfig(ctx context.Context) DoctorCheck {
+	check := DoctorCheck{
+		Name: "config",
+	}
+
+	configPath := filepath.Join(e.repoRoot, ".ckb", "config.json")
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		check.Status = "warn"
+		check.Message = "No .ckb/config.json found (using defaults)"
+		check.SuggestedFixes = []FixAction{
+			{
+				Type:        "run-command",
+				Command:     "ckb init",
+				Safe:        true,
+				Description: "Initialize CKB configuration",
+			},
+		}
+		return check
+	}
+
+	check.Status = "pass"
+	check.Message = "Configuration file found"
+	return check
+}
+
+// checkStorage verifies storage layer.
+func (e *Engine) checkStorage(ctx context.Context) DoctorCheck {
+	check := DoctorCheck{
+		Name: "storage",
+	}
+
+	if e.db == nil {
+		check.Status = "fail"
+		check.Message = "Database not initialized"
+		return check
+	}
+
+	// Try a simple query to check DB is working
+	var count int
+	row := e.db.QueryRow("SELECT COUNT(*) FROM symbols")
+	if err := row.Scan(&count); err != nil {
+		check.Status = "warn"
+		check.Message = "Database tables not initialized"
+		return check
+	}
+
+	check.Status = "pass"
+	check.Message = fmt.Sprintf("Database OK (%d symbols)", count)
+	return check
+}
+
+// getSCIPInstallSuggestions returns suggestions for installing SCIP.
+func (e *Engine) getSCIPInstallSuggestions() []FixAction {
+	suggestions := make([]FixAction, 0)
+
+	// Detect language and suggest appropriate indexer
+	if e.hasFile("package.json") || e.hasFile("tsconfig.json") {
+		suggestions = append(suggestions, FixAction{
+			Type:        "run-command",
+			Command:     "npm install -g @sourcegraph/scip-typescript && scip-typescript index",
+			Safe:        true,
+			Description: "Install and run scip-typescript",
+		})
+	}
+
+	if e.hasFile("go.mod") {
+		suggestions = append(suggestions, FixAction{
+			Type:        "run-command",
+			Command:     "go install github.com/sourcegraph/scip-go/cmd/scip-go@latest && scip-go",
+			Safe:        true,
+			Description: "Install and run scip-go",
+		})
+	}
+
+	if e.hasFile("Cargo.toml") {
+		suggestions = append(suggestions, FixAction{
+			Type:        "run-command",
+			Command:     "cargo install scip-rust && scip-rust",
+			Safe:        true,
+			Description: "Install and run scip-rust",
+		})
+	}
+
+	if len(suggestions) == 0 {
+		suggestions = append(suggestions, FixAction{
+			Type:        "open-docs",
+			URL:         "https://sourcegraph.com/docs/code-intelligence/references/indexers",
+			Description: "Find SCIP indexer for your language",
+		})
+	}
+
+	return suggestions
+}
+
+// detectSCIPCommand detects the appropriate SCIP command for the repo.
+func (e *Engine) detectSCIPCommand() string {
+	if e.hasFile("package.json") || e.hasFile("tsconfig.json") {
+		return "scip-typescript index"
+	}
+	if e.hasFile("go.mod") {
+		return "scip-go"
+	}
+	if e.hasFile("Cargo.toml") {
+		return "scip-rust"
+	}
+	return "scip-<language> index"
+}
+
+// hasFile checks if a file exists in the repo root.
+func (e *Engine) hasFile(name string) bool {
+	_, err := os.Stat(filepath.Join(e.repoRoot, name))
+	return err == nil
+}
+
+// GenerateFixScript generates a shell script for all suggested fixes.
+func (e *Engine) GenerateFixScript(response *DoctorResponse) string {
+	var script strings.Builder
+	script.WriteString("#!/bin/bash\n")
+	script.WriteString("# CKB Doctor Fix Script\n")
+	script.WriteString("# Generated at: " + time.Now().Format(time.RFC3339) + "\n")
+	script.WriteString("set -e\n\n")
+
+	for _, check := range response.Checks {
+		if check.Status != "pass" && len(check.SuggestedFixes) > 0 {
+			script.WriteString(fmt.Sprintf("# Fix: %s\n", check.Name))
+			script.WriteString(fmt.Sprintf("# Problem: %s\n", check.Message))
+			for _, fix := range check.SuggestedFixes {
+				if fix.Type == "run-command" && fix.Safe {
+					script.WriteString(fmt.Sprintf("echo 'Running: %s'\n", fix.Description))
+					script.WriteString(fix.Command + "\n\n")
+				}
+			}
+		}
+	}
+
+	script.WriteString("echo 'Fix script complete. Run ckb doctor to verify.'\n")
+	return script.String()
+}

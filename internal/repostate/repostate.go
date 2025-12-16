@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ckb/ckb/internal/errors"
+	"ckb/internal/errors"
 )
 
 const (

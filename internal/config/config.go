@@ -83,10 +83,11 @@ type ModulesConfig struct {
 
 // ImportScanConfig contains import scanning configuration
 type ImportScanConfig struct {
-	Enabled          bool                       `json:"enabled" mapstructure:"enabled"`
-	MaxFileSizeBytes int                        `json:"maxFileSizeBytes" mapstructure:"maxFileSizeBytes"`
-	ScanTimeoutMs    int                        `json:"scanTimeoutMs" mapstructure:"scanTimeoutMs"`
-	CustomPatterns   map[string]interface{}     `json:"customPatterns" mapstructure:"customPatterns"`
+	Enabled          bool                   `json:"enabled" mapstructure:"enabled"`
+	MaxFileSizeBytes int                    `json:"maxFileSizeBytes" mapstructure:"maxFileSizeBytes"`
+	ScanTimeoutMs    int                    `json:"scanTimeoutMs" mapstructure:"scanTimeoutMs"`
+	SkipBinary       bool                   `json:"skipBinary" mapstructure:"skipBinary"`
+	CustomPatterns   map[string]interface{} `json:"customPatterns" mapstructure:"customPatterns"`
 }
 
 // CacheConfig contains cache configuration
@@ -145,6 +146,14 @@ func DefaultConfig() *Config {
 						Command: "dart",
 						Args:    []string{"language-server"},
 					},
+					"go": {
+						Command: "gopls",
+						Args:    []string{},
+					},
+					"python": {
+						Command: "pylsp",
+						Args:    []string{},
+					},
 				},
 			},
 			Git: GitConfig{
@@ -182,6 +191,7 @@ func DefaultConfig() *Config {
 			Enabled:          true,
 			MaxFileSizeBytes: 1000000,
 			ScanTimeoutMs:    30000,
+			SkipBinary:       true,
 			CustomPatterns:   map[string]interface{}{},
 		},
 		Cache: CacheConfig{

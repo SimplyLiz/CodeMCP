@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/ckb/ckb/internal/logging"
+	"ckb/internal/logging"
 )
 
 func main() {
