@@ -28,6 +28,7 @@ type Engine struct {
 	compressor *compression.Compressor
 	resolver   *identity.IdentityResolver
 	repoRoot   string
+	cache      *storage.Cache
 
 	// Backend references
 	orchestrator  *backends.Orchestrator
@@ -39,6 +40,11 @@ type Engine struct {
 	repoStateMu     sync.RWMutex
 	cachedState     *RepoState
 	stateComputedAt time.Time
+
+	// Cache stats
+	cacheStatsMu sync.RWMutex
+	cacheHits    int64
+	cacheMisses  int64
 }
 
 // RepoState represents the current state of the repository.
@@ -66,6 +72,9 @@ func NewEngine(repoRoot string, db *storage.DB, logger *logging.Logger, cfg *con
 	policy := backends.LoadQueryPolicy(cfg)
 	orchestrator := backends.NewOrchestrator(policy, logger)
 
+	// Create cache
+	cache := storage.NewCache(db)
+
 	engine := &Engine{
 		db:           db,
 		logger:       logger,
@@ -74,6 +83,7 @@ func NewEngine(repoRoot string, db *storage.DB, logger *logging.Logger, cfg *con
 		resolver:     resolver,
 		repoRoot:     repoRoot,
 		orchestrator: orchestrator,
+		cache:        cache,
 	}
 
 	// Initialize backends

@@ -2,6 +2,8 @@ package api
 
 import (
 	"net/http"
+
+	"ckb/internal/version"
 )
 
 // registerRoutes registers all API routes
@@ -50,7 +52,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 
 	response := map[string]interface{}{
 		"name":    "CKB HTTP API",
-		"version": "0.1.0",
+		"version": version.Version,
 		"endpoints": []string{
 			"GET /health - Health check",
 			"GET /ready - Readiness check",

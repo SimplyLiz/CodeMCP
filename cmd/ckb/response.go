@@ -6,6 +6,7 @@ import (
 	"ckb/internal/compression"
 	"ckb/internal/output"
 	"ckb/internal/repostate"
+	"ckb/internal/version"
 )
 
 // Response is the common wrapper for all CKB command responses
@@ -62,7 +63,7 @@ type IndexFreshness struct {
 // NewResponse creates a basic response with provenance
 func NewResponse(facts interface{}, repoState *repostate.RepoState, repoStateMode string, durationMs int64) *Response {
 	return &Response{
-		CkbVersion:    CKBVersion,
+		CkbVersion:    version.Version,
 		SchemaVersion: 1,
 		Capabilities:  []string{},
 		Facts:         facts,

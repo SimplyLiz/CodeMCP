@@ -10,6 +10,7 @@ import (
 	"ckb/internal/logging"
 	"ckb/internal/query"
 	"ckb/internal/storage"
+	"ckb/internal/version"
 )
 
 // newTestMCPServer creates an MCP server for testing
@@ -52,7 +53,7 @@ func newTestMCPServer(t *testing.T) *MCPServer {
 	}
 
 	// Create MCP server
-	server := NewMCPServer("0.1.0", engine, logger)
+	server := NewMCPServer(version.Version, engine, logger)
 
 	return server
 }

@@ -116,6 +116,15 @@ func (e *Engine) GetArchitecture(ctx context.Context, opts GetArchitectureOption
 	edges := convertArchEdges(arch.DependencyGraph, opts.IncludeExternalDeps)
 	entrypoints := convertArchEntrypoints(arch.Entrypoints)
 
+	// Enrich module summaries with symbol counts from SCIP
+	if e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
+		for i := range moduleSummaries {
+			// Count symbols for this module's path prefix
+			symbolCount := e.scipAdapter.CountSymbolsByPath(moduleSummaries[i].Path)
+			moduleSummaries[i].SymbolCount = symbolCount
+		}
+	}
+
 	// Compute edge counts for modules
 	computeEdgeCounts(moduleSummaries, edges)
 

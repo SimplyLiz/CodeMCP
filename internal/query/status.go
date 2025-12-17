@@ -5,6 +5,8 @@ import (
 	"runtime"
 	"strconv"
 	"time"
+
+	"ckb/internal/version"
 )
 
 // StatusResponse is the response for getStatus.
@@ -63,7 +65,7 @@ func (e *Engine) GetStatus(ctx context.Context) (*StatusResponse, error) {
 	cacheStatus := e.getCacheStatus()
 
 	return &StatusResponse{
-		CkbVersion:      "0.1.0",
+		CkbVersion:      version.Version,
 		Healthy:         healthy,
 		RepoState:       repoState,
 		Backends:        backendStatuses,
@@ -130,6 +132,7 @@ func (e *Engine) getCacheStatus() *CacheStatus {
 	if e.db == nil {
 		return &CacheStatus{}
 	}
+
 	// Query basic stats from DB
 	var queryCount int
 	var sizeBytes int64
@@ -137,8 +140,30 @@ func (e *Engine) getCacheStatus() *CacheStatus {
 	if err := row.Scan(&queryCount, &sizeBytes); err != nil {
 		return &CacheStatus{}
 	}
+
+	// Get view cache count
+	var viewCount int
+	row = e.db.QueryRow("SELECT COUNT(*) FROM view_cache")
+	if err := row.Scan(&viewCount); err != nil {
+		viewCount = 0
+	}
+
+	// Calculate hit rate from in-memory stats
+	e.cacheStatsMu.RLock()
+	hits := e.cacheHits
+	misses := e.cacheMisses
+	e.cacheStatsMu.RUnlock()
+
+	var hitRate float64
+	total := hits + misses
+	if total > 0 {
+		hitRate = float64(hits) / float64(total)
+	}
+
 	return &CacheStatus{
 		QueriesCached: queryCount,
+		ViewsCached:   viewCount,
+		HitRate:       hitRate,
 		SizeBytes:     sizeBytes,
 	}
 }

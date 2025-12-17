@@ -1,12 +1,9 @@
 package main
 
 import (
-	"github.com/spf13/cobra"
-)
+	"ckb/internal/version"
 
-const (
-	// CKBVersion is the current version of CKB
-	CKBVersion = "0.1.0"
+	"github.com/spf13/cobra"
 )
 
 var rootCmd = &cobra.Command{
@@ -15,7 +12,7 @@ var rootCmd = &cobra.Command{
 	Long: `CKB (Code Knowledge Backend) is a language-agnostic codebase comprehension layer
 that orchestrates existing code intelligence backends (SCIP, Glean, LSP, Git) and provides
 semantically compressed, LLM-optimized views.`,
-	Version: CKBVersion,
+	Version: version.Version,
 }
 
 func init() {

@@ -2,6 +2,8 @@ package api
 
 import (
 	"net/http"
+
+	"ckb/internal/version"
 )
 
 // handleOpenAPISpec returns the OpenAPI specification
@@ -21,7 +23,7 @@ func GenerateOpenAPISpec() map[string]interface{} {
 		"openapi": "3.0.0",
 		"info": map[string]interface{}{
 			"title":       "CKB HTTP API",
-			"version":     "0.1.0",
+			"version":     version.Version,
 			"description": "Code Knowledge Backend HTTP API for codebase comprehension",
 		},
 		"servers": []map[string]interface{}{

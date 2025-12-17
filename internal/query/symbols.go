@@ -2,6 +2,9 @@ package query
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -253,6 +256,26 @@ type SearchResultItem struct {
 	Ranking    *RankingV52     `json:"ranking,omitempty"`
 }
 
+// generateCacheKey creates a deterministic cache key for search options.
+func generateSearchCacheKey(opts SearchSymbolsOptions) string {
+	// Build a deterministic key from the options
+	keyParts := []string{
+		"search",
+		opts.Query,
+		opts.Scope,
+		fmt.Sprintf("%d", opts.Limit),
+	}
+	if len(opts.Kinds) > 0 {
+		sort.Strings(opts.Kinds)
+		keyParts = append(keyParts, strings.Join(opts.Kinds, ","))
+	}
+	keyStr := strings.Join(keyParts, "|")
+
+	// Hash for shorter key
+	hash := sha256.Sum256([]byte(keyStr))
+	return "search:" + hex.EncodeToString(hash[:16])
+}
+
 // SearchSymbols searches for symbols by name.
 func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (*SearchSymbolsResponse, error) {
 	startTime := time.Now()
@@ -266,6 +289,30 @@ func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (
 	repoState, err := e.GetRepoState(ctx, "head")
 	if err != nil {
 		return nil, e.wrapError(err, errors.InternalError)
+	}
+
+	// Check cache first
+	cacheKey := generateSearchCacheKey(opts)
+	if e.cache != nil && repoState.HeadCommit != "" {
+		cachedJSON, found, err := e.cache.GetQueryCache(cacheKey, repoState.HeadCommit)
+		if err == nil && found {
+			var cached SearchSymbolsResponse
+			if err := json.Unmarshal([]byte(cachedJSON), &cached); err == nil {
+				// Update stats
+				e.cacheStatsMu.Lock()
+				e.cacheHits++
+				e.cacheStatsMu.Unlock()
+
+				// Update duration to reflect cache hit
+				cached.Provenance.QueryDurationMs = time.Since(startTime).Milliseconds()
+				cached.Provenance.CachedAt = cached.Provenance.RepoStateId
+				return &cached, nil
+			}
+		}
+		// Track cache miss
+		e.cacheStatsMu.Lock()
+		e.cacheMisses++
+		e.cacheStatsMu.Unlock()
 	}
 
 	var results []SearchResultItem
@@ -361,14 +408,27 @@ func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (
 	}
 	drilldowns := e.generateDrilldowns(compTrunc, completeness, "", nil)
 
-	return &SearchSymbolsResponse{
+	response := &SearchSymbolsResponse{
 		Symbols:        results,
 		TotalCount:     totalCount,
 		Truncated:      truncationInfo != nil,
 		TruncationInfo: truncationInfo,
 		Provenance:     provenance,
 		Drilldowns:     drilldowns,
-	}, nil
+	}
+
+	// Store in cache
+	if e.cache != nil && repoState.HeadCommit != "" && len(results) > 0 {
+		if responseJSON, err := json.Marshal(response); err == nil {
+			ttl := 300 // 5 minutes default
+			if e.config != nil && e.config.Cache.QueryTtlSeconds > 0 {
+				ttl = e.config.Cache.QueryTtlSeconds
+			}
+			_ = e.cache.SetQueryCache(cacheKey, string(responseJSON), repoState.HeadCommit, repoState.RepoStateId, ttl)
+		}
+	}
+
+	return response, nil
 }
 
 // parseScope converts scope string to slice.

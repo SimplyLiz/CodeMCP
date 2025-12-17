@@ -15,6 +15,7 @@ import (
 	"ckb/internal/backends/git"
 	"ckb/internal/backends/scip"
 	"ckb/internal/output"
+	"ckb/internal/version"
 )
 
 // AINavigationMeta captures common response metadata aligned with the navigation spec.
@@ -301,7 +302,7 @@ func (e *Engine) ExplainSymbol(ctx context.Context, opts ExplainSymbolOptions) (
 
 	return &ExplainSymbolResponse{
 		AINavigationMeta: AINavigationMeta{
-			CkbVersion:    "0.1.0",
+			CkbVersion:    version.Version,
 			SchemaVersion: 1,
 			Tool:          "explainSymbol",
 			Resolved:      resolved,
@@ -351,7 +352,7 @@ func (e *Engine) JustifySymbol(ctx context.Context, opts JustifySymbolOptions) (
 
 	return &JustifySymbolResponse{
 		AINavigationMeta: AINavigationMeta{
-			CkbVersion:    "0.1.0",
+			CkbVersion:    version.Version,
 			SchemaVersion: 1,
 			Tool:          "justifySymbol",
 			Resolved:      explain.Resolved,
@@ -588,7 +589,7 @@ func (e *Engine) GetCallGraph(ctx context.Context, opts CallGraphOptions) (*Call
 
 	return &CallGraphResponse{
 		AINavigationMeta: AINavigationMeta{
-			CkbVersion:    "0.1.0",
+			CkbVersion:    version.Version,
 			SchemaVersion: 1,
 			Tool:          "getCallGraph",
 			Resolved:      &ResolvedTarget{SymbolId: rootId, ResolvedFrom: "id", Confidence: 1.0},
@@ -655,7 +656,7 @@ func (e *Engine) GetModuleOverview(ctx context.Context, opts ModuleOverviewOptio
 
 	return &ModuleOverviewResponse{
 		AINavigationMeta: AINavigationMeta{
-			CkbVersion:    "0.1.0",
+			CkbVersion:    version.Version,
 			SchemaVersion: 1,
 			Tool:          "getModuleOverview",
 			Resolved:      &ResolvedTarget{SymbolId: modulePath, ResolvedFrom: "path", Confidence: 1.0},

@@ -14,6 +14,7 @@ import (
 	"ckb/internal/logging"
 	"ckb/internal/paths"
 	"ckb/internal/query"
+	"ckb/internal/version"
 )
 
 var (
@@ -103,7 +104,7 @@ func runDiag(cmd *cobra.Command, args []string) {
 func collectDiagnostics(repoRoot string, logger *logging.Logger) *DiagnosticBundle {
 	bundle := &DiagnosticBundle{
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
-		CkbVersion:  CKBVersion,
+		CkbVersion:  version.Version,
 		Anonymized:  diagAnonymize,
 	}
 

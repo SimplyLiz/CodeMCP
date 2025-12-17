@@ -5,6 +5,7 @@ import (
 
 	"ckb/internal/logging"
 	"ckb/internal/mcp"
+	"ckb/internal/version"
 
 	"github.com/spf13/cobra"
 )
@@ -54,7 +55,7 @@ func runMCP(cmd *cobra.Command, args []string) error {
 	})
 
 	logger.Info("Starting MCP server", map[string]interface{}{
-		"version": CKBVersion,
+		"version": version.Version,
 	})
 
 	// Get repo root and create Query Engine
@@ -62,7 +63,7 @@ func runMCP(cmd *cobra.Command, args []string) error {
 	engine := mustGetEngine(repoRoot, logger)
 
 	// Create and start MCP server
-	server := mcp.NewMCPServer(CKBVersion, engine, logger)
+	server := mcp.NewMCPServer(version.Version, engine, logger)
 
 	if err := server.Start(); err != nil {
 		logger.Error("MCP server error", map[string]interface{}{

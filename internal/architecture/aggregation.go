@@ -20,7 +20,7 @@ func (g *ArchitectureGenerator) AggregateModules(mods []*modules.Module) ([]Modu
 			Name:        mod.Name,
 			RootPath:    mod.RootPath,
 			Language:    mod.Language,
-			SymbolCount: 0, // TODO: Integrate with symbol backend when available
+			SymbolCount: 0, // Populated by query layer from SCIP backend
 		}
 
 		// Count files

@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 
+	"ckb/internal/version"
+
 	"github.com/spf13/cobra"
 )
 
@@ -18,5 +20,5 @@ func init() {
 }
 
 func runVersion(cmd *cobra.Command, args []string) {
-	fmt.Printf("CKB version %s\n", CKBVersion)
+	fmt.Println(version.Full())
 }

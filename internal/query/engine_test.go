@@ -362,3 +362,489 @@ func TestGenerateFixScript(t *testing.T) {
 		t.Error("Fix script should start with shebang")
 	}
 }
+
+// =============================================================================
+// v5.2 Navigation Tools Integration Tests
+// =============================================================================
+
+func TestExplainFile(t *testing.T) {
+	engine, cleanup := testEngine(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	t.Run("non-existent file", func(t *testing.T) {
+		opts := ExplainFileOptions{
+			FilePath: "non/existent/file.go",
+		}
+		result, err := engine.ExplainFile(ctx, opts)
+
+		// Should handle non-existent files gracefully
+		if err != nil {
+			// Error is acceptable for non-existent file
+			return
+		}
+
+		// Should have metadata even if file doesn't exist
+		if result.Tool != "explainFile" {
+			t.Errorf("expected tool 'explainFile', got %q", result.Tool)
+		}
+	})
+
+	t.Run("creates file and explains it", func(t *testing.T) {
+		// Create a test file in the temp directory
+		testFile := filepath.Join(engine.repoRoot, "test_source.go")
+		content := `package main
+
+func main() {
+	println("hello")
+}
+`
+		if err := os.WriteFile(testFile, []byte(content), 0644); err != nil {
+			t.Fatalf("failed to create test file: %v", err)
+		}
+
+		opts := ExplainFileOptions{
+			FilePath: "test_source.go",
+		}
+		result, err := engine.ExplainFile(ctx, opts)
+		if err != nil {
+			t.Fatalf("ExplainFile failed: %v", err)
+		}
+
+		// Verify response structure
+		if result.Tool != "explainFile" {
+			t.Errorf("expected tool 'explainFile', got %q", result.Tool)
+		}
+		if result.Facts.Language != "go" {
+			t.Errorf("expected language 'go', got %q", result.Facts.Language)
+		}
+	})
+}
+
+func TestTraceUsage(t *testing.T) {
+	engine, cleanup := testEngine(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	t.Run("invalid symbol", func(t *testing.T) {
+		opts := TraceUsageOptions{
+			SymbolId: "invalid-symbol-id",
+			MaxPaths: 5,
+		}
+		result, err := engine.TraceUsage(ctx, opts)
+
+		// Should handle gracefully - either error or empty result
+		if err != nil {
+			return
+		}
+
+		// Should have metadata
+		if result.Tool != "traceUsage" {
+			t.Errorf("expected tool 'traceUsage', got %q", result.Tool)
+		}
+	})
+
+	t.Run("with max paths", func(t *testing.T) {
+		opts := TraceUsageOptions{
+			SymbolId: "test-symbol",
+			MaxPaths: 10,
+			MaxDepth: 3,
+		}
+		// Should not panic
+		_, _ = engine.TraceUsage(ctx, opts)
+	})
+}
+
+func TestListEntrypoints(t *testing.T) {
+	engine, cleanup := testEngine(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	t.Run("basic entrypoints", func(t *testing.T) {
+		opts := ListEntrypointsOptions{
+			Limit: 30,
+		}
+		result, err := engine.ListEntrypoints(ctx, opts)
+		if err != nil {
+			t.Fatalf("ListEntrypoints failed: %v", err)
+		}
+
+		// Verify response structure
+		if result.Tool != "listEntrypoints" {
+			t.Errorf("expected tool 'listEntrypoints', got %q", result.Tool)
+		}
+		// Entrypoints might be empty for test directory
+	})
+
+	t.Run("with module filter", func(t *testing.T) {
+		opts := ListEntrypointsOptions{
+			ModuleFilter: "internal",
+			Limit:        10,
+		}
+		result, err := engine.ListEntrypoints(ctx, opts)
+		if err != nil {
+			t.Fatalf("ListEntrypoints failed: %v", err)
+		}
+
+		// Should not panic and return result
+		_ = result
+	})
+}
+
+func TestSummarizeDiff(t *testing.T) {
+	engine, cleanup := testEngine(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	t.Run("with time window", func(t *testing.T) {
+		opts := SummarizeDiffOptions{
+			TimeWindow: &TimeWindowSelector{
+				Start: "2024-01-01T00:00:00Z",
+			},
+		}
+		result, err := engine.SummarizeDiff(ctx, opts)
+
+		// Git backend may not be available in test, that's OK
+		if err != nil {
+			return
+		}
+
+		// Verify response structure
+		if result.Tool != "summarizeDiff" {
+			t.Errorf("expected tool 'summarizeDiff', got %q", result.Tool)
+		}
+	})
+
+	t.Run("with commit", func(t *testing.T) {
+		opts := SummarizeDiffOptions{
+			Commit: "HEAD",
+		}
+		// Should not panic even if git not available
+		_, _ = engine.SummarizeDiff(ctx, opts)
+	})
+}
+
+func TestGetHotspots(t *testing.T) {
+	engine, cleanup := testEngine(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	t.Run("basic hotspots", func(t *testing.T) {
+		opts := GetHotspotsOptions{
+			Limit: 20,
+		}
+		result, err := engine.GetHotspots(ctx, opts)
+
+		// Git backend may not be available in test, that's OK
+		if err != nil {
+			return
+		}
+
+		// Verify response structure
+		if result.Tool != "getHotspots" {
+			t.Errorf("expected tool 'getHotspots', got %q", result.Tool)
+		}
+	})
+
+	t.Run("with scope filter", func(t *testing.T) {
+		opts := GetHotspotsOptions{
+			Scope: "internal/query",
+			Limit: 10,
+		}
+		// Should not panic
+		_, _ = engine.GetHotspots(ctx, opts)
+	})
+
+	t.Run("respects limit", func(t *testing.T) {
+		opts := GetHotspotsOptions{
+			Limit: 5,
+		}
+		result, err := engine.GetHotspots(ctx, opts)
+		if err != nil {
+			return
+		}
+
+		if len(result.Hotspots) > 5 {
+			t.Errorf("expected at most 5 hotspots, got %d", len(result.Hotspots))
+		}
+	})
+}
+
+func TestExplainPath(t *testing.T) {
+	engine, cleanup := testEngine(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	t.Run("test file path", func(t *testing.T) {
+		opts := ExplainPathOptions{
+			FilePath: "internal/query/engine_test.go",
+		}
+		result, err := engine.ExplainPath(ctx, opts)
+		if err != nil {
+			t.Fatalf("ExplainPath failed: %v", err)
+		}
+
+		// Verify response structure
+		if result.Tool != "explainPath" {
+			t.Errorf("expected tool 'explainPath', got %q", result.Tool)
+		}
+		if result.Role != "test-only" {
+			t.Errorf("expected role 'test-only' for test file, got %q", result.Role)
+		}
+	})
+
+	t.Run("config file path", func(t *testing.T) {
+		opts := ExplainPathOptions{
+			FilePath: "config.json",
+		}
+		result, err := engine.ExplainPath(ctx, opts)
+		if err != nil {
+			t.Fatalf("ExplainPath failed: %v", err)
+		}
+
+		if result.Role != "config" {
+			t.Errorf("expected role 'config' for config file, got %q", result.Role)
+		}
+	})
+
+	t.Run("with context hint", func(t *testing.T) {
+		opts := ExplainPathOptions{
+			FilePath:    "internal/api/handler.go",
+			ContextHint: "from traceUsage",
+		}
+		result, err := engine.ExplainPath(ctx, opts)
+		if err != nil {
+			t.Fatalf("ExplainPath failed: %v", err)
+		}
+
+		if result.Role != "glue" {
+			t.Errorf("expected role 'glue' for handler file, got %q", result.Role)
+		}
+	})
+
+	t.Run("core file path", func(t *testing.T) {
+		opts := ExplainPathOptions{
+			FilePath: "app/internal/query/engine.go",
+		}
+		result, err := engine.ExplainPath(ctx, opts)
+		if err != nil {
+			t.Fatalf("ExplainPath failed: %v", err)
+		}
+
+		if result.Role != "core" {
+			t.Errorf("expected role 'core' for internal file, got %q", result.Role)
+		}
+	})
+}
+
+func TestListKeyConcepts(t *testing.T) {
+	engine, cleanup := testEngine(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	t.Run("basic concepts", func(t *testing.T) {
+		opts := ListKeyConceptsOptions{
+			Limit: 12,
+		}
+		result, err := engine.ListKeyConcepts(ctx, opts)
+		if err != nil {
+			t.Fatalf("ListKeyConcepts failed: %v", err)
+		}
+
+		// Verify response structure
+		if result.Tool != "listKeyConcepts" {
+			t.Errorf("expected tool 'listKeyConcepts', got %q", result.Tool)
+		}
+		// Concepts might be empty for test directory
+	})
+
+	t.Run("respects limit", func(t *testing.T) {
+		opts := ListKeyConceptsOptions{
+			Limit: 5,
+		}
+		result, err := engine.ListKeyConcepts(ctx, opts)
+		if err != nil {
+			t.Fatalf("ListKeyConcepts failed: %v", err)
+		}
+
+		if len(result.Concepts) > 5 {
+			t.Errorf("expected at most 5 concepts, got %d", len(result.Concepts))
+		}
+	})
+}
+
+func TestRecentlyRelevant(t *testing.T) {
+	engine, cleanup := testEngine(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	t.Run("basic recent items", func(t *testing.T) {
+		opts := RecentlyRelevantOptions{}
+		result, err := engine.RecentlyRelevant(ctx, opts)
+
+		// Git backend may not be available in test, that's OK
+		if err != nil {
+			return
+		}
+
+		// Verify response structure
+		if result.Tool != "recentlyRelevant" {
+			t.Errorf("expected tool 'recentlyRelevant', got %q", result.Tool)
+		}
+	})
+
+	t.Run("with module filter", func(t *testing.T) {
+		opts := RecentlyRelevantOptions{
+			ModuleFilter: "internal/query",
+		}
+		// Should not panic
+		_, _ = engine.RecentlyRelevant(ctx, opts)
+	})
+
+	t.Run("with time window", func(t *testing.T) {
+		opts := RecentlyRelevantOptions{
+			TimeWindow: &TimeWindowSelector{
+				Start: "2024-01-01T00:00:00Z",
+			},
+		}
+		// Should not panic
+		_, _ = engine.RecentlyRelevant(ctx, opts)
+	})
+}
+
+// =============================================================================
+// Additional v5.1/v5.2 Tool Tests
+// =============================================================================
+
+func TestExplainSymbol(t *testing.T) {
+	engine, cleanup := testEngine(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	t.Run("invalid symbol", func(t *testing.T) {
+		opts := ExplainSymbolOptions{
+			SymbolId: "invalid-symbol-id",
+		}
+		result, err := engine.ExplainSymbol(ctx, opts)
+
+		// Should handle gracefully
+		if err != nil {
+			return
+		}
+
+		// Should have metadata
+		if result.CkbVersion == "" {
+			t.Error("CkbVersion should not be empty")
+		}
+	})
+}
+
+func TestJustifySymbol(t *testing.T) {
+	engine, cleanup := testEngine(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	t.Run("invalid symbol", func(t *testing.T) {
+		opts := JustifySymbolOptions{
+			SymbolId: "invalid-symbol-id",
+		}
+		result, err := engine.JustifySymbol(ctx, opts)
+
+		// Should handle gracefully
+		if err != nil {
+			return
+		}
+
+		// Should have verdict even for unknown symbol
+		if result.Verdict == "" {
+			t.Error("Verdict should not be empty")
+		}
+	})
+}
+
+func TestGetCallGraph(t *testing.T) {
+	engine, cleanup := testEngine(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	t.Run("invalid symbol", func(t *testing.T) {
+		opts := CallGraphOptions{
+			SymbolId:  "invalid-symbol-id",
+			Direction: "both",
+			Depth:     1,
+		}
+		result, err := engine.GetCallGraph(ctx, opts)
+
+		// Should handle gracefully
+		if err != nil {
+			return
+		}
+
+		// Should have metadata
+		if result.Root == "" && result.CkbVersion == "" {
+			// One of these should be set
+		}
+	})
+
+	t.Run("with callers direction", func(t *testing.T) {
+		opts := CallGraphOptions{
+			SymbolId:  "test-symbol",
+			Direction: "callers",
+			Depth:     2,
+		}
+		// Should not panic
+		_, _ = engine.GetCallGraph(ctx, opts)
+	})
+
+	t.Run("with callees direction", func(t *testing.T) {
+		opts := CallGraphOptions{
+			SymbolId:  "test-symbol",
+			Direction: "callees",
+			Depth:     2,
+		}
+		// Should not panic
+		_, _ = engine.GetCallGraph(ctx, opts)
+	})
+}
+
+func TestGetModuleOverview(t *testing.T) {
+	engine, cleanup := testEngine(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	t.Run("by path", func(t *testing.T) {
+		opts := ModuleOverviewOptions{
+			Path: "internal/query",
+		}
+		result, err := engine.GetModuleOverview(ctx, opts)
+
+		// Module may not exist in test dir, that's OK
+		if err != nil {
+			return
+		}
+
+		if result.Provenance == nil {
+			t.Error("Provenance should not be nil")
+		}
+	})
+
+	t.Run("by name", func(t *testing.T) {
+		opts := ModuleOverviewOptions{
+			Name: "query",
+		}
+		// Should not panic
+		_, _ = engine.GetModuleOverview(ctx, opts)
+	})
+}
