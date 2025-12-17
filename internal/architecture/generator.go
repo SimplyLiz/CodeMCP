@@ -10,6 +10,9 @@ import (
 	"ckb/internal/modules"
 )
 
+// SymbolCounter is a function that counts symbols for a given path prefix
+type SymbolCounter func(pathPrefix string) int
+
 // ArchitectureGenerator generates architecture views of the repository
 type ArchitectureGenerator struct {
 	repoRoot      string
@@ -18,6 +21,7 @@ type ArchitectureGenerator struct {
 	logger        *logging.Logger
 	limits        *ArchitectureLimits
 	cache         *ArchitectureCache
+	symbolCounter SymbolCounter
 }
 
 // GeneratorOptions contains options for architecture generation
@@ -206,4 +210,9 @@ func (g *ArchitectureGenerator) InvalidateCache(repoStateId string) {
 // ClearCache clears all cached architectures
 func (g *ArchitectureGenerator) ClearCache() {
 	g.cache.Clear()
+}
+
+// SetSymbolCounter sets the function used to count symbols per module path
+func (g *ArchitectureGenerator) SetSymbolCounter(counter SymbolCounter) {
+	g.symbolCounter = counter
 }

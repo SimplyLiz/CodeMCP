@@ -505,6 +505,12 @@ func (e *Engine) GetModuleOverview(ctx context.Context, opts ModuleOverviewOptio
 		}
 	}
 
+	// Count symbols if SCIP is available
+	symbolCount := 0
+	if e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
+		symbolCount = e.scipAdapter.CountSymbolsByPath(modulePath)
+	}
+
 	prov := &Provenance{QueryDurationMs: time.Since(startTime).Milliseconds()}
 
 	moduleName := opts.Name
@@ -531,7 +537,7 @@ func (e *Engine) GetModuleOverview(ctx context.Context, opts ModuleOverviewOptio
 		},
 		Size: ModuleSize{
 			FileCount:   fileCount,
-			SymbolCount: 0, // Not yet implemented
+			SymbolCount: symbolCount,
 		},
 		RecentCommits: recentCommits,
 	}, nil

@@ -81,6 +81,11 @@ func (e *Engine) GetArchitecture(ctx context.Context, opts GetArchitectureOption
 	// Create architecture generator
 	generator := architecture.NewArchitectureGenerator(e.repoRoot, e.config, importScanner, e.logger)
 
+	// Set symbol counter if SCIP is available
+	if e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
+		generator.SetSymbolCounter(e.scipAdapter.CountSymbolsByPath)
+	}
+
 	// Build generator options
 	genOpts := &architecture.GeneratorOptions{
 		Depth:               opts.Depth,

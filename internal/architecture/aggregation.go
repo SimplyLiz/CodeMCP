@@ -15,12 +15,18 @@ func (g *ArchitectureGenerator) AggregateModules(mods []*modules.Module) ([]Modu
 	summaries := make([]ModuleSummary, 0, len(mods))
 
 	for _, mod := range mods {
+		// Count symbols if counter is available
+		symbolCount := 0
+		if g.symbolCounter != nil {
+			symbolCount = g.symbolCounter(mod.RootPath)
+		}
+
 		summary := ModuleSummary{
 			ModuleId:    mod.ID,
 			Name:        mod.Name,
 			RootPath:    mod.RootPath,
 			Language:    mod.Language,
-			SymbolCount: 0, // TODO: Integrate with symbol backend when available
+			SymbolCount: symbolCount,
 		}
 
 		// Count files

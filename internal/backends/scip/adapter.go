@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -407,6 +408,35 @@ type IndexInfo struct {
 	IndexedCommit string
 	LoadedAt      time.Time
 	Freshness     *IndexFreshness
+}
+
+// CountSymbolsByPath counts symbols in documents matching a path prefix
+func (s *SCIPAdapter) CountSymbolsByPath(pathPrefix string) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.index == nil {
+		return 0
+	}
+
+	count := 0
+	for _, doc := range s.index.Documents {
+		// Skip external/cache paths (starting with ../)
+		if strings.HasPrefix(doc.RelativePath, "../") {
+			continue
+		}
+
+		// Handle root path - count all project symbols
+		if pathPrefix == "." || pathPrefix == "" {
+			count += len(doc.Symbols)
+			continue
+		}
+
+		if strings.HasPrefix(doc.RelativePath, pathPrefix) {
+			count += len(doc.Symbols)
+		}
+	}
+	return count
 }
 
 // Reload reloads the SCIP index

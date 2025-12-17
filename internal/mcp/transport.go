@@ -9,15 +9,19 @@ import (
 
 // readMessage reads a JSON-RPC message from the input stream
 func (s *MCPServer) readMessage() (*MCPMessage, error) {
-	scanner := bufio.NewScanner(s.stdin)
-	if !scanner.Scan() {
-		if err := scanner.Err(); err != nil {
+	// Lazily initialize the scanner to ensure it uses the correct reader
+	if s.scanner == nil {
+		s.scanner = bufio.NewScanner(s.stdin)
+	}
+
+	if !s.scanner.Scan() {
+		if err := s.scanner.Err(); err != nil {
 			return nil, fmt.Errorf("error reading from stdin: %w", err)
 		}
 		return nil, io.EOF
 	}
 
-	line := scanner.Text()
+	line := s.scanner.Text()
 	s.logger.Debug("Received message", map[string]interface{}{
 		"raw": line,
 	})
@@ -51,18 +55,4 @@ func (s *MCPServer) writeMessage(msg *MCPMessage) error {
 // writeError writes an error response
 func (s *MCPServer) writeError(id interface{}, code int, message string) error {
 	return s.writeMessage(NewErrorMessage(id, code, message, nil))
-}
-
-// writeErrorWithData writes an error response with additional data (kept for future use)
-var _ = (*MCPServer).writeErrorWithData
-
-func (s *MCPServer) writeErrorWithData(id interface{}, code int, message string, data interface{}) error {
-	return s.writeMessage(NewErrorMessage(id, code, message, data))
-}
-
-// writeResult writes a successful result response (kept for future use)
-var _ = (*MCPServer).writeResult
-
-func (s *MCPServer) writeResult(id interface{}, result interface{}) error {
-	return s.writeMessage(NewResultMessage(id, result))
 }
