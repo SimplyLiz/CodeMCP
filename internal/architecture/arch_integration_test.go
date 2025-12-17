@@ -2,7 +2,9 @@ package architecture_test
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"ckb/internal/config"
@@ -12,8 +14,34 @@ import (
 	"ckb/internal/storage"
 )
 
+// findRepoRoot finds the repository root by looking for go.mod
+func findRepoRoot() (string, error) {
+	// Start from current working directory
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+
+	// Walk up until we find go.mod
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir, nil
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("could not find go.mod in any parent directory")
+		}
+		dir = parent
+	}
+}
+
 func TestArchitectureIntegration(t *testing.T) {
-	repoRoot := "/Users/lisa/Work/Ideas/CodeMCP"
+	// Get repo root from working directory (tests run from repo root via go test ./...)
+	repoRoot, err := findRepoRoot()
+	if err != nil {
+		t.Skipf("Could not find repo root: %v", err)
+	}
 
 	// Change to repo root so relative paths work
 	origDir, _ := os.Getwd()
@@ -85,7 +113,10 @@ func TestArchitectureIntegration(t *testing.T) {
 }
 
 func TestModuleDetection(t *testing.T) {
-	repoRoot := "/Users/lisa/Work/Ideas/CodeMCP"
+	repoRoot, err := findRepoRoot()
+	if err != nil {
+		t.Skipf("Could not find repo root: %v", err)
+	}
 
 	origDir, _ := os.Getwd()
 	defer func() { _ = os.Chdir(origDir) }()

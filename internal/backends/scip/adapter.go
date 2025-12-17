@@ -467,3 +467,15 @@ func (s *SCIPAdapter) GetCalleeCount(symbolId string) int {
 
 	return s.index.GetCalleeCount(symbolId)
 }
+
+// CountSymbolsByPath counts the number of symbols in documents matching a path prefix
+func (s *SCIPAdapter) CountSymbolsByPath(pathPrefix string) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.index == nil {
+		return 0
+	}
+
+	return s.index.CountSymbolsByPath(pathPrefix)
+}

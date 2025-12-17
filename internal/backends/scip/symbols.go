@@ -373,3 +373,16 @@ func isTestFile(path string) bool {
 		strings.HasSuffix(pathLower, "_test") ||
 		strings.HasSuffix(pathLower, ".spec.")
 }
+
+// CountSymbolsByPath counts the number of symbols in documents matching a path prefix
+func (idx *SCIPIndex) CountSymbolsByPath(pathPrefix string) int {
+	count := 0
+	for _, doc := range idx.Documents {
+		// Match documents where the path starts with the prefix
+		// or if the prefix is "." (root), count all
+		if pathPrefix == "." || strings.HasPrefix(doc.RelativePath, pathPrefix) {
+			count += len(doc.Symbols)
+		}
+	}
+	return count
+}

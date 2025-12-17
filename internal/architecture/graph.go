@@ -1,12 +1,33 @@
 package architecture
 
 import (
+	"bufio"
+	"os"
 	"path/filepath"
 	"strings"
 
 	"ckb/internal/modules"
 	"ckb/internal/paths"
 )
+
+// getGoModulePath reads the module path from go.mod in the repo root
+func getGoModulePath(repoRoot string) string {
+	goModPath := filepath.Join(repoRoot, "go.mod")
+	file, err := os.Open(goModPath)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "module ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "module "))
+		}
+	}
+	return ""
+}
 
 // BuildDependencyGraph creates edges between modules based on imports
 func (g *ArchitectureGenerator) BuildDependencyGraph(
@@ -88,20 +109,51 @@ func (g *ArchitectureGenerator) classifyImport(
 ) (string, modules.ImportEdgeKind) {
 	importPath := importEdge.To
 
-	// Check for stdlib imports
+	// For Go: use go.mod module path to classify imports
+	// - Contains dot (.) → external dependency
+	// - Starts with module path (e.g., "ckb/") → local workspace
+	// - Otherwise → stdlib
+	if fromModule.Language == modules.LanguageGo {
+		goModPath := getGoModulePath(g.repoRoot)
+
+		// External: contains a domain (has dot)
+		if strings.Contains(importPath, ".") {
+			externalModuleId := "external:" + extractPackageName(importPath)
+			return externalModuleId, modules.ExternalDependency
+		}
+
+		// Local workspace: starts with our module path
+		if goModPath != "" && strings.HasPrefix(importPath, goModPath+"/") {
+			// Try to match to a specific module
+			for _, mod := range allModules {
+				if mod.ID == fromModule.ID {
+					continue
+				}
+				if strings.HasSuffix(importPath, "/"+mod.RootPath) ||
+					strings.HasSuffix(importPath, mod.RootPath) {
+					return mod.ID, modules.WorkspacePackage
+				}
+			}
+			// Local but not matching a specific module
+			return "", modules.Unknown
+		}
+
+		// No dot and not local → stdlib
+		return "", modules.Stdlib
+	}
+
+	// Non-Go languages: use existing logic
 	if isStdlibImport(importPath, fromModule.Language) {
 		return "", modules.Stdlib
 	}
 
 	// Check for relative imports (./foo, ../bar)
 	if strings.HasPrefix(importPath, "./") || strings.HasPrefix(importPath, "../") {
-		// Resolve relative path
 		fromFilePath := importEdge.From
 		fromDir := filepath.Dir(fromFilePath)
 		resolvedPath := filepath.Join(fromDir, importPath)
 		resolvedPath = paths.NormalizePath(resolvedPath)
 
-		// Find which module this resolves to
 		targetModule := findModuleForPath(resolvedPath, allModules)
 		if targetModule != nil {
 			if targetModule.ID == fromModule.ID {
@@ -112,81 +164,31 @@ func (g *ArchitectureGenerator) classifyImport(
 		return "", modules.Unknown
 	}
 
-	// Check for workspace packages (imports within the monorepo)
+	// Check for workspace packages
 	for _, mod := range allModules {
 		if mod.ID == fromModule.ID {
 			continue
 		}
-
-		// Check if import matches module name or is a subpath
 		if strings.HasPrefix(importPath, mod.Name) {
 			return mod.ID, modules.WorkspacePackage
-		}
-
-		// For Go imports: check if import path ends with or contains the module's root path
-		// e.g., import "ckb/internal/config" should match module with RootPath "internal/config"
-		if fromModule.Language == modules.LanguageGo {
-			if strings.HasSuffix(importPath, "/"+mod.RootPath) ||
-				strings.HasSuffix(importPath, mod.RootPath) {
-				return mod.ID, modules.WorkspacePackage
-			}
 		}
 	}
 
 	// Default to external dependency
-	// Create a synthetic module ID for external dependencies
 	externalModuleId := "external:" + extractPackageName(importPath)
 	return externalModuleId, modules.ExternalDependency
 }
 
-// isStdlibImport checks if an import is from the standard library
+// isStdlibImport checks if an import is from the standard library (non-Go languages)
+// Note: Go stdlib detection is handled in classifyImport using go.mod module path
 func isStdlibImport(importPath string, language string) bool {
 	switch language {
 	case modules.LanguageDart:
 		return strings.HasPrefix(importPath, "dart:")
-	case modules.LanguageGo:
-		// Go stdlib packages don't have dots (external) AND don't have slashes (internal)
-		// Examples:
-		//   "fmt", "context", "os" - stdlib (no dots, no slashes)
-		//   "path/filepath", "encoding/json" - stdlib (no dots, has slashes but is standard)
-		//   "github.com/foo/bar" - external (has dots)
-		//   "ckb/internal/config" - local (no dots, but has slashes indicating project path)
-		// The key insight: stdlib packages either have no slashes OR have specific patterns
-		// like "encoding/json", "net/http", etc.
-		if strings.Contains(importPath, ".") {
-			return false // External package (has domain)
-		}
-		// Check if it looks like a project-local import (contains certain patterns)
-		if strings.Contains(importPath, "/internal/") ||
-			strings.Contains(importPath, "/cmd/") ||
-			strings.Contains(importPath, "/pkg/") {
-			return false // Local project package
-		}
-		// If it has a slash, check if the first part looks like a stdlib category
-		parts := strings.Split(importPath, "/")
-		if len(parts) > 1 {
-			// Common Go stdlib top-level packages that have subpackages
-			stdlibPrefixes := map[string]bool{
-				"archive": true, "bufio": true, "bytes": true, "compress": true,
-				"container": true, "context": true, "crypto": true, "database": true,
-				"debug": true, "embed": true, "encoding": true, "errors": true,
-				"expvar": true, "flag": true, "fmt": true, "go": true, "hash": true,
-				"html": true, "image": true, "index": true, "io": true, "log": true,
-				"math": true, "mime": true, "net": true, "os": true, "path": true,
-				"plugin": true, "reflect": true, "regexp": true, "runtime": true,
-				"sort": true, "strconv": true, "strings": true, "sync": true,
-				"syscall": true, "testing": true, "text": true, "time": true,
-				"unicode": true, "unsafe": true,
-			}
-			return stdlibPrefixes[parts[0]]
-		}
-		// Single-segment package without dots is stdlib
-		return true
 	case modules.LanguageTypeScript, modules.LanguageJavaScript:
-		// Node.js built-in modules
 		return strings.HasPrefix(importPath, "node:")
 	case modules.LanguagePython:
-		// Common Python stdlib modules
+		// Best-effort heuristic for common Python stdlib modules
 		stdlibModules := map[string]bool{
 			"os": true, "sys": true, "json": true, "re": true,
 			"datetime": true, "collections": true, "itertools": true,

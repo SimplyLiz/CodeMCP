@@ -4,6 +4,12 @@ import (
 	"strings"
 )
 
+// DefaultMaxFunctionLines is the default maximum function length (in lines) used
+// when we can't determine the actual function boundary. This is a heuristic
+// workaround because scip-go doesn't populate EnclosingRange for functions.
+// This value is conservative to avoid missing callees in long functions.
+const DefaultMaxFunctionLines = 500
+
 // CallGraphNode represents a node in the call graph
 type CallGraphNode struct {
 	SymbolID string
@@ -76,7 +82,7 @@ func (idx *SCIPIndex) FindCallees(symbolId string) ([]*CallGraphNode, error) {
 	funcRange, found := funcRanges[symbolId]
 	if !found {
 		// Function not in range map, create a default range
-		funcRange = lineRange{start: funcDefLine, end: funcDefLine + 500}
+		funcRange = lineRange{start: funcDefLine, end: funcDefLine + DefaultMaxFunctionLines}
 	}
 
 	// Search for all function references within this function's body
@@ -228,7 +234,7 @@ func buildFunctionRanges(doc *Document) map[string]lineRange {
 
 	// Assign end lines (next function's start - 1, or a reasonable default)
 	for i, f := range funcs {
-		endLine := f.startLine + 500 // Default max function length
+		endLine := f.startLine + DefaultMaxFunctionLines
 		if i+1 < len(funcs) {
 			endLine = funcs[i+1].startLine - 1
 		}
@@ -238,11 +244,19 @@ func buildFunctionRanges(doc *Document) map[string]lineRange {
 	return ranges
 }
 
-// isFunctionSymbol detects if a symbol ID represents a function/method
+// isFunctionSymbol detects if a SCIP symbol ID represents a function/method.
+// This is a heuristic workaround because scip-go doesn't populate the Kind field.
 // scip-go uses format like: scip-go gomod mod version `pkg`/FuncName().
-// Functions have () before the final . in the descriptor
+// Functions have "()" before the final "." in the descriptor.
+//
+// Examples:
+//   - "scip-go go ckb/internal/query NewEngine()." → function (has "()")
+//   - "scip-go go ckb/internal/query Engine#Close()." → method (has "()")
+//   - "scip-go go ckb/internal/query Engine#" → type (no "()")
+//   - "scip-go go ckb/internal/query Engine#logger." → field (no "()")
+//
+// TODO: Switch to using sym.Kind when scip-go is updated to populate it correctly.
 func isFunctionSymbol(symbolId string) bool {
-	// Check for ()., which indicates a function
 	return strings.Contains(symbolId, "().")
 }
 
@@ -264,6 +278,9 @@ func (idx *SCIPIndex) BuildCallGraph(symbolId string, opts CallGraphOptions) (*C
 		Callers: make([]*CallGraphNode, 0),
 		Callees: make([]*CallGraphNode, 0),
 	}
+
+	// Track seen edges to avoid duplicates (key: "from->to")
+	seenEdges := make(map[string]bool)
 
 	// Create root node
 	rootInfo := idx.GetSymbol(symbolId)
@@ -305,12 +322,16 @@ func (idx *SCIPIndex) BuildCallGraph(symbolId string, opts CallGraphOptions) (*C
 			}
 
 			for _, caller := range callers {
-				// Add edge
-				graph.Edges = append(graph.Edges, CallGraphEdge{
-					From: caller.SymbolID,
-					To:   current.id,
-					Kind: "call",
-				})
+				// Add edge if not already seen
+				edgeKey := caller.SymbolID + "->" + current.id
+				if !seenEdges[edgeKey] {
+					seenEdges[edgeKey] = true
+					graph.Edges = append(graph.Edges, CallGraphEdge{
+						From: caller.SymbolID,
+						To:   current.id,
+						Kind: "call",
+					})
+				}
 
 				// Add to direct callers list if at depth 1 from root
 				if current.id == symbolId {
@@ -358,12 +379,16 @@ func (idx *SCIPIndex) BuildCallGraph(symbolId string, opts CallGraphOptions) (*C
 			}
 
 			for _, callee := range callees {
-				// Add edge
-				graph.Edges = append(graph.Edges, CallGraphEdge{
-					From: current.id,
-					To:   callee.SymbolID,
-					Kind: "call",
-				})
+				// Add edge if not already seen
+				edgeKey := current.id + "->" + callee.SymbolID
+				if !seenEdges[edgeKey] {
+					seenEdges[edgeKey] = true
+					graph.Edges = append(graph.Edges, CallGraphEdge{
+						From: current.id,
+						To:   callee.SymbolID,
+						Kind: "call",
+					})
+				}
 
 				// Add to direct callees list if at depth 1 from root
 				if current.id == symbolId {

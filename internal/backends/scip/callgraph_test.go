@@ -1,15 +1,41 @@
 package scip
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"ckb/internal/config"
 	"ckb/internal/logging"
 )
 
+// findRepoRoot finds the repository root by looking for go.mod
+func findRepoRoot() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("could not find go.mod")
+		}
+		dir = parent
+	}
+}
+
 func TestFindCallers(t *testing.T) {
+	repoRoot, err := findRepoRoot()
+	if err != nil {
+		t.Skipf("Could not find repo root: %v", err)
+	}
+
 	cfg := config.DefaultConfig()
-	cfg.RepoRoot = "/Users/lisa/Work/Ideas/CodeMCP"
+	cfg.RepoRoot = repoRoot
 
 	logger := logging.NewLogger(logging.Config{
 		Format: logging.HumanFormat,
@@ -125,8 +151,13 @@ func TestFindCallers(t *testing.T) {
 }
 
 func TestCallGraph(t *testing.T) {
+	repoRoot, err := findRepoRoot()
+	if err != nil {
+		t.Skipf("Could not find repo root: %v", err)
+	}
+
 	cfg := config.DefaultConfig()
-	cfg.RepoRoot = "/Users/lisa/Work/Ideas/CodeMCP"
+	cfg.RepoRoot = repoRoot
 
 	logger := logging.NewLogger(logging.Config{
 		Format: logging.HumanFormat,
@@ -185,8 +216,13 @@ func TestCallGraph(t *testing.T) {
 }
 
 func TestCountSymbolsByPath(t *testing.T) {
+	repoRoot, err := findRepoRoot()
+	if err != nil {
+		t.Skipf("Could not find repo root: %v", err)
+	}
+
 	cfg := config.DefaultConfig()
-	cfg.RepoRoot = "/Users/lisa/Work/Ideas/CodeMCP"
+	cfg.RepoRoot = repoRoot
 
 	logger := logging.NewLogger(logging.Config{
 		Format: logging.HumanFormat,
@@ -226,5 +262,65 @@ func TestCountSymbolsByPath(t *testing.T) {
 			break
 		}
 		t.Logf("  Doc %d: %s (symbols: %d)", i, doc.RelativePath, len(doc.Symbols))
+	}
+}
+
+func TestIsFunctionSymbol(t *testing.T) {
+	tests := []struct {
+		name     string
+		symbolId string
+		want     bool
+	}{
+		// Functions should return true
+		{
+			name:     "function",
+			symbolId: "scip-go go ckb/internal/query NewEngine().",
+			want:     true,
+		},
+		{
+			name:     "method",
+			symbolId: "scip-go go ckb/internal/query Engine#Close().",
+			want:     true,
+		},
+		{
+			name:     "function with params",
+			symbolId: "scip-go go fmt Printf().",
+			want:     true,
+		},
+		// Non-functions should return false
+		{
+			name:     "type/struct",
+			symbolId: "scip-go go ckb/internal/query Engine#",
+			want:     false,
+		},
+		{
+			name:     "field",
+			symbolId: "scip-go go ckb/internal/query Engine#logger.",
+			want:     false,
+		},
+		{
+			name:     "package",
+			symbolId: "scip-go go ckb/internal/query/",
+			want:     false,
+		},
+		{
+			name:     "variable",
+			symbolId: "scip-go go ckb/internal/config DefaultConfig.",
+			want:     false,
+		},
+		{
+			name:     "empty string",
+			symbolId: "",
+			want:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isFunctionSymbol(tt.symbolId)
+			if got != tt.want {
+				t.Errorf("isFunctionSymbol(%q) = %v, want %v", tt.symbolId, got, tt.want)
+			}
+		})
 	}
 }
