@@ -168,7 +168,7 @@ func ExtractContextFromFile(repoRoot, relativePath string, location *Location, c
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Read all lines
 	content, err := io.ReadAll(file)

@@ -822,7 +822,9 @@ func (s *Server) handleCacheClear(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, response, http.StatusOK)
 }
 
-// newContext creates a context with timeout
+// newContext creates a context with timeout (kept for future use)
+var _ = newContext
+
 func newContext() context.Context {
 	return context.Background()
 }

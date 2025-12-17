@@ -285,7 +285,9 @@ func (p *LspProcess) stderrLoop() {
 	}
 }
 
-// formatLspMessage formats a message for debugging
+// formatLspMessage formats a message for debugging (kept for future use)
+var _ = formatLspMessage
+
 func formatLspMessage(msg *JsonRpcMessage) string {
 	var buf bytes.Buffer
 	encoder := json.NewEncoder(&buf)

@@ -51,7 +51,7 @@ func DeriveVisibility(symbol *Symbol, refs []Reference) *VisibilityInfo {
 
 // deriveFromModifiers extracts visibility from SCIP modifiers
 func deriveFromModifiers(symbol *Symbol) *VisibilityInfo {
-	if symbol.Modifiers == nil || len(symbol.Modifiers) == 0 {
+	if len(symbol.Modifiers) == 0 {
 		return nil
 	}
 
@@ -84,7 +84,7 @@ func deriveFromModifiers(symbol *Symbol) *VisibilityInfo {
 
 // deriveFromReferences analyzes references to determine visibility
 func deriveFromReferences(symbol *Symbol, refs []Reference) *VisibilityInfo {
-	if refs == nil || len(refs) == 0 {
+	if len(refs) == 0 {
 		return nil
 	}
 

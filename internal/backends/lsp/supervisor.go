@@ -120,7 +120,7 @@ func (s *LspSupervisor) StartServer(languageId string) error {
 			return nil // Already running and healthy
 		}
 		// If unhealthy, shut it down first
-		proc.Shutdown()
+		_ = proc.Shutdown()
 		delete(s.processes, languageId)
 	}
 
@@ -182,7 +182,7 @@ func (s *LspSupervisor) StartServer(languageId string) error {
 
 	// Send initialize request
 	if err := s.initializeServer(proc); err != nil {
-		proc.Shutdown()
+		_ = proc.Shutdown()
 		return fmt.Errorf("failed to initialize LSP server: %w", err)
 	}
 
@@ -328,7 +328,7 @@ func (s *LspSupervisor) Shutdown() error {
 		s.logger.Info("Shutting down LSP server", map[string]interface{}{
 			"languageId": langId,
 		})
-		proc.Shutdown()
+		_ = proc.Shutdown()
 	}
 	s.processes = make(map[string]*LspProcess)
 	s.mu.Unlock()
@@ -359,7 +359,7 @@ func (s *LspSupervisor) GetStats() map[string]interface{} {
 	}
 
 	for langId, proc := range s.processes {
-		stats["processes"].(map[string]interface{})[langId] = map[string]interface{}{
+		stats["processes"].(map[string]interface{})[langId] = map[string]interface{}{ //nolint:errcheck // type assertion, not function call
 			"state":               proc.GetState(),
 			"restartCount":        proc.GetRestartCount(),
 			"consecutiveFailures": proc.GetConsecutiveFailures(),

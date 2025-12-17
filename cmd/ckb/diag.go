@@ -137,7 +137,7 @@ func collectDiagnostics(repoRoot string, logger *logging.Logger) *DiagnosticBund
 	}
 
 	// Config (sanitize sensitive fields)
-	if cfg, err := config.LoadConfig(repoRoot); err == nil {
+	if cfg, loadErr := config.LoadConfig(repoRoot); loadErr == nil {
 		bundle.Config = sanitizeConfig(cfg)
 	}
 
@@ -189,11 +189,11 @@ func createDiagnosticZip(bundle *DiagnosticBundle, outPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	// Create zip writer
 	zipWriter := zip.NewWriter(outFile)
-	defer zipWriter.Close()
+	defer func() { _ = zipWriter.Close() }()
 
 	// Add bundle.json
 	bundleJSON, err := json.MarshalIndent(bundle, "", "  ")

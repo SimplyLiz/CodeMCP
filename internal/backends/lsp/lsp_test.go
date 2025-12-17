@@ -79,7 +79,7 @@ func TestBackoffCalculation(t *testing.T) {
 	})
 
 	supervisor := NewLspSupervisor(cfg, logger)
-	defer supervisor.Shutdown()
+	defer func() { _ = supervisor.Shutdown() }()
 
 	// Test backoff calculation
 	testCases := []struct {
@@ -114,7 +114,7 @@ func TestQueueManagement(t *testing.T) {
 	})
 
 	supervisor := NewLspSupervisor(cfg, logger)
-	defer supervisor.Shutdown()
+	defer func() { _ = supervisor.Shutdown() }()
 
 	// Check queue size
 	queueSize := supervisor.getQueueSize("typescript")
@@ -137,7 +137,7 @@ func TestLspAdapter(t *testing.T) {
 	})
 
 	supervisor := NewLspSupervisor(cfg, logger)
-	defer supervisor.Shutdown()
+	defer func() { _ = supervisor.Shutdown() }()
 
 	adapter := NewLspAdapter(supervisor, "typescript", logger)
 
@@ -172,7 +172,7 @@ func TestEviction(t *testing.T) {
 	})
 
 	supervisor := NewLspSupervisor(cfg, logger)
-	defer supervisor.Shutdown()
+	defer func() { _ = supervisor.Shutdown() }()
 
 	// Check capacity
 	if supervisor.GetMaxProcesses() != 2 {
@@ -279,7 +279,7 @@ func TestHealthChecking(t *testing.T) {
 	})
 
 	supervisor := NewLspSupervisor(cfg, logger)
-	defer supervisor.Shutdown()
+	defer func() { _ = supervisor.Shutdown() }()
 
 	// Get health status for non-existent process
 	status := supervisor.GetHealthStatus()
@@ -303,7 +303,7 @@ func BenchmarkBackoffCalculation(b *testing.B) {
 	})
 
 	supervisor := NewLspSupervisor(cfg, logger)
-	defer supervisor.Shutdown()
+	defer func() { _ = supervisor.Shutdown() }()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -324,7 +324,7 @@ func ExampleLspSupervisor() {
 
 	// Create supervisor
 	supervisor := NewLspSupervisor(cfg, logger)
-	defer supervisor.Shutdown()
+	defer func() { _ = supervisor.Shutdown() }()
 
 	// Start a TypeScript LSP server
 	if err := supervisor.StartServer("typescript"); err != nil {

@@ -59,8 +59,8 @@ type LspProcess struct {
 	// stderr is the error stream from the process
 	stderr io.ReadCloser
 
-	// reader wraps stdout for reading responses
-	reader *bufio.Reader
+	// _reader wraps stdout for reading responses (kept for future use)
+	_reader *bufio.Reader //nolint:unused
 
 	// mu protects access to process state
 	mu sync.RWMutex
@@ -197,24 +197,24 @@ func (p *LspProcess) Shutdown() error {
 
 	// Send shutdown request
 	if p.stdin != nil {
-		p.sendNotification("shutdown", nil)
-		p.sendNotification("exit", nil)
+		_ = p.sendNotification("shutdown", nil)
+		_ = p.sendNotification("exit", nil)
 	}
 
 	// Close streams
 	if p.stdin != nil {
-		p.stdin.Close()
+		_ = p.stdin.Close()
 	}
 	if p.stdout != nil {
-		p.stdout.Close()
+		_ = p.stdout.Close()
 	}
 	if p.stderr != nil {
-		p.stderr.Close()
+		_ = p.stderr.Close()
 	}
 
 	// Kill process if it's still running
 	if p.cmd != nil && p.cmd.Process != nil {
-		p.cmd.Process.Kill()
+		_ = p.cmd.Process.Kill()
 	}
 
 	p.SetState(StateDead)

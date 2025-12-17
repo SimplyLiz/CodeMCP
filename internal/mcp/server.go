@@ -58,7 +58,7 @@ func (s *MCPServer) Start() error {
 
 			// Try to send error response if we can extract an ID
 			if msg != nil && msg.Id != nil {
-				s.writeError(msg.Id, ParseError, fmt.Sprintf("Failed to parse message: %v", err))
+				_ = s.writeError(msg.Id, ParseError, fmt.Sprintf("Failed to parse message: %v", err))
 			}
 			continue
 		}

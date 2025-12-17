@@ -22,7 +22,8 @@ func NewPreferFirstMerger(policy *QueryPolicy, logger *logging.Logger) *PreferFi
 }
 
 // Allowed supplement fields per Section 6.2
-var allowedSupplementFields = map[string]bool{
+var _ = _allowedSupplementFields // prevent unused error
+var _allowedSupplementFields = map[string]bool{
 	"Visibility":           true,
 	"VisibilityConfidence": true,
 	"SignatureNormalized":  true,

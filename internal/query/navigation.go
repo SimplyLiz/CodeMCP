@@ -317,7 +317,7 @@ func buildExplainSummary(facts ExplainSymbolFacts) ExplainSymbolSummary {
 
 // JustifySymbol applies simple heuristics using explainSymbol facts.
 func (e *Engine) JustifySymbol(ctx context.Context, opts JustifySymbolOptions) (*JustifySymbolResponse, error) {
-	explain, err := e.ExplainSymbol(ctx, ExplainSymbolOptions{SymbolId: opts.SymbolId})
+	explain, err := e.ExplainSymbol(ctx, ExplainSymbolOptions(opts))
 	if err != nil {
 		return nil, err
 	}

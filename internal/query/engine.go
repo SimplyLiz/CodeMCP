@@ -237,7 +237,9 @@ func (e *Engine) buildProvenance(
 	}
 }
 
-// sortAndEncode applies deterministic sorting and encoding to response data.
+// sortAndEncode applies deterministic sorting and encoding to response data (kept for future use)
+var _ = (*Engine).sortAndEncode
+
 func (e *Engine) sortAndEncode(data interface{}) ([]byte, error) {
 	return output.DeterministicEncode(data)
 }

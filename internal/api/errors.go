@@ -35,7 +35,7 @@ func WriteError(w http.ResponseWriter, err error, status int) {
 		resp.Code = "INTERNAL_ERROR"
 	}
 
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // WriteCkbError writes a CkbError with automatic status code mapping
@@ -82,7 +82,7 @@ func MapCkbErrorToStatus(code errors.ErrorCode) int {
 func WriteJSON(w http.ResponseWriter, data interface{}, status int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data)
 }
 
 // BadRequest writes a 400 Bad Request error
