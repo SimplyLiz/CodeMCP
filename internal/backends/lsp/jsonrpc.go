@@ -254,7 +254,7 @@ func (p *LspProcess) handleServerMessage(msg *JsonRpcMessage) {
 			Id:      msg.Id,
 			Result:  nil,
 		}
-		p.writeMessage(&resp)
+		_ = p.writeMessage(&resp)
 	}
 }
 
@@ -290,6 +290,6 @@ func formatLspMessage(msg *JsonRpcMessage) string {
 	var buf bytes.Buffer
 	encoder := json.NewEncoder(&buf)
 	encoder.SetIndent("", "  ")
-	encoder.Encode(msg)
+	_ = encoder.Encode(msg)
 	return buf.String()
 }

@@ -23,7 +23,7 @@ func ExampleBasicSetup(repoRoot string) error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Database is ready to use
 	return nil
@@ -55,13 +55,13 @@ func ExampleSymbolMappingCRUD(db *DB) error {
 
 	// Update the mapping
 	retrieved.State = "active"
-	if err := repo.Update(retrieved); err != nil {
-		return err
+	if updateErr := repo.Update(retrieved); updateErr != nil {
+		return updateErr
 	}
 
 	// Mark as deleted (tombstone)
-	if err := repo.MarkAsDeleted("sym-abc123", "state-new456"); err != nil {
-		return err
+	if deleteErr := repo.MarkAsDeleted("sym-abc123", "state-new456"); deleteErr != nil {
+		return deleteErr
 	}
 
 	// List all active symbols

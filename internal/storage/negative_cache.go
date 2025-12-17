@@ -171,7 +171,7 @@ func (m *NegativeCacheManager) GetErrorStats() (map[string]int, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get error stats: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	stats := make(map[string]int)
 	for rows.Next() {

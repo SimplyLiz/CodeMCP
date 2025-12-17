@@ -32,7 +32,7 @@ func TestLspSupervisorCreation(t *testing.T) {
 	}
 
 	// Cleanup
-	supervisor.Shutdown()
+	_ = supervisor.Shutdown()
 }
 
 // TestProcessLifecycle tests process state transitions
@@ -67,7 +67,7 @@ func TestProcessLifecycle(t *testing.T) {
 	}
 
 	// Cleanup
-	proc.Shutdown()
+	_ = proc.Shutdown()
 }
 
 // TestBackoffCalculation tests exponential backoff

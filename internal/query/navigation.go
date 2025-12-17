@@ -477,7 +477,7 @@ func (e *Engine) GetModuleOverview(ctx context.Context, opts ModuleOverviewOptio
 	fileCount := 0
 	_ = filepath.Walk(modulePath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil
+			return nil //nolint:nilerr // continue walking on individual file errors
 		}
 
 		if info.IsDir() {

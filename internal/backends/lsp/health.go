@@ -77,7 +77,7 @@ func (s *LspSupervisor) restart(languageId string) error {
 	s.mu.Unlock()
 
 	// Shutdown old process
-	proc.Shutdown()
+	_ = proc.Shutdown()
 
 	s.logger.Info("Restarting LSP server", map[string]interface{}{
 		"languageId":   languageId,
@@ -221,7 +221,7 @@ func (s *LspSupervisor) ForceRestart(languageId string) error {
 	s.mu.Unlock()
 
 	if exists {
-		proc.Shutdown()
+		_ = proc.Shutdown()
 	}
 
 	s.logger.Info("Force restarting LSP server", map[string]interface{}{

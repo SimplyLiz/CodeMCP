@@ -25,7 +25,7 @@ func setupTestDB(t *testing.T) (*DB, string) {
 	// Open database
 	db, err := Open(tmpDir, logger)
 	if err != nil {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 		t.Fatalf("Failed to open database: %v", err)
 	}
 
@@ -101,8 +101,8 @@ func TestSymbolRepository(t *testing.T) {
 	}
 
 	// Test MarkAsDeleted
-	if err := repo.MarkAsDeleted("sym-123", "state-456"); err != nil {
-		t.Fatalf("Failed to mark symbol as deleted: %v", err)
+	if markErr := repo.MarkAsDeleted("sym-123", "state-456"); markErr != nil {
+		t.Fatalf("Failed to mark symbol as deleted: %v", markErr)
 	}
 
 	deleted, err := repo.GetByStableID("sym-123")
@@ -127,8 +127,8 @@ func TestSymbolRepository(t *testing.T) {
 		LastVerifiedAt:      time.Now(),
 		LastVerifiedStateID: "state-123",
 	}
-	if err := repo.Create(active); err != nil {
-		t.Fatalf("Failed to create second symbol: %v", err)
+	if createErr := repo.Create(active); createErr != nil {
+		t.Fatalf("Failed to create second symbol: %v", createErr)
 	}
 
 	activeList, err := repo.ListByState("active", 100)
@@ -393,8 +393,8 @@ func TestModuleAndDependencyRepositories(t *testing.T) {
 		Strength:   10,
 	}
 
-	if err := depRepo.Create(edge); err != nil {
-		t.Fatalf("Failed to create dependency: %v", err)
+	if depErr := depRepo.Create(edge); depErr != nil {
+		t.Fatalf("Failed to create dependency: %v", depErr)
 	}
 
 	// Test GetByFromModule

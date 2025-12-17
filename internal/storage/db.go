@@ -69,7 +69,7 @@ func Open(repoRoot string, logger *logging.Logger) (*DB, error) {
 			"path": dbPath,
 		})
 		if err := db.initializeSchema(); err != nil {
-			conn.Close()
+			_ = conn.Close()
 			return nil, fmt.Errorf("failed to initialize schema: %w", err)
 		}
 	} else {
@@ -78,7 +78,7 @@ func Open(repoRoot string, logger *logging.Logger) (*DB, error) {
 			"path": dbPath,
 		})
 		if err := db.runMigrations(); err != nil {
-			conn.Close()
+			_ = conn.Close()
 			return nil, fmt.Errorf("failed to run migrations: %w", err)
 		}
 	}
@@ -115,7 +115,7 @@ func (db *DB) WithTx(fn func(*sql.Tx) error) error {
 
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			panic(p) // Re-throw panic after rollback
 		}
 	}()

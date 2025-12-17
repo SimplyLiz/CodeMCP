@@ -23,9 +23,9 @@ func testEngine(t *testing.T) (*Engine, func()) {
 
 	// Create .ckb directory
 	ckbDir := filepath.Join(tmpDir, ".ckb")
-	if err := os.MkdirAll(ckbDir, 0755); err != nil {
-		os.RemoveAll(tmpDir)
-		t.Fatalf("failed to create .ckb dir: %v", err)
+	if mkdirErr := os.MkdirAll(ckbDir, 0755); mkdirErr != nil {
+		_ = os.RemoveAll(tmpDir)
+		t.Fatalf("failed to create .ckb dir: %v", mkdirErr)
 	}
 
 	// Create test logger (silent)
