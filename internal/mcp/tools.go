@@ -151,6 +151,76 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				"required": []string{"symbolId"},
 			},
 		},
+		{
+			Name:        "explainSymbol",
+			Description: "Get an AI-friendly explanation of a symbol including usage, history, and summary",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"symbolId": map[string]interface{}{
+						"type":        "string",
+						"description": "The stable symbol ID to explain",
+					},
+				},
+				"required": []string{"symbolId"},
+			},
+		},
+		{
+			Name:        "justifySymbol",
+			Description: "Get a keep/investigate/remove verdict for a symbol based on usage analysis",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"symbolId": map[string]interface{}{
+						"type":        "string",
+						"description": "The stable symbol ID to justify",
+					},
+				},
+				"required": []string{"symbolId"},
+			},
+		},
+		{
+			Name:        "getCallGraph",
+			Description: "Get a lightweight call graph showing callers and callees of a symbol",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"symbolId": map[string]interface{}{
+						"type":        "string",
+						"description": "The root symbol ID for the call graph",
+					},
+					"direction": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"callers", "callees", "both"},
+						"default":     "both",
+						"description": "Which direction to traverse",
+					},
+					"depth": map[string]interface{}{
+						"type":        "number",
+						"default":     1,
+						"description": "Maximum depth to traverse (1-4)",
+					},
+				},
+				"required": []string{"symbolId"},
+			},
+		},
+		{
+			Name:        "getModuleOverview",
+			Description: "Get a high-level overview of a module including size and recent activity",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"path": map[string]interface{}{
+						"type":        "string",
+						"description": "Path to the module directory",
+					},
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional friendly name for the module",
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -163,4 +233,8 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["findReferences"] = s.toolFindReferences
 	s.tools["getArchitecture"] = s.toolGetArchitecture
 	s.tools["analyzeImpact"] = s.toolAnalyzeImpact
+	s.tools["explainSymbol"] = s.toolExplainSymbol
+	s.tools["justifySymbol"] = s.toolJustifySymbol
+	s.tools["getCallGraph"] = s.toolGetCallGraph
+	s.tools["getModuleOverview"] = s.toolGetModuleOverview
 }
