@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "ckb": {
+      "type": "stdio",
+      "command": "/Users/lisa/Work/Ideas/CodeMCP/ckb",
+      "args": [
+        "mcp"
+      ],
+      "env": {}
+    }
+  }
+}

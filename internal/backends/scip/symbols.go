@@ -227,12 +227,19 @@ func extractModifiers(symInfo *SymbolInformation) []string {
 
 // inferVisibility infers the visibility of a symbol
 func inferVisibility(symInfo *SymbolInformation, scipId *SCIPIdentifier, name string) string {
+	// Extract the actual symbol name from compound names like "Type#field" or "Type#Method"
+	// For visibility, we care about the last component
+	checkName := name
+	if idx := strings.LastIndex(name, "#"); idx != -1 && idx < len(name)-1 {
+		checkName = name[idx+1:]
+	}
+
 	// Check for common visibility indicators in the name
-	if strings.HasPrefix(name, "_") {
+	if strings.HasPrefix(checkName, "_") {
 		return "private"
 	}
 
-	if strings.HasPrefix(name, "__") {
+	if strings.HasPrefix(checkName, "__") {
 		return "internal"
 	}
 
@@ -241,22 +248,22 @@ func inferVisibility(symInfo *SymbolInformation, scipId *SCIPIdentifier, name st
 	switch language {
 	case "go":
 		// In Go, uppercase first letter means exported
-		if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
+		if len(checkName) > 0 && checkName[0] >= 'A' && checkName[0] <= 'Z' {
 			return "public"
 		}
 		return "private"
 	case "typescript", "javascript":
 		// TypeScript/JavaScript: underscore prefix means private
-		if strings.HasPrefix(name, "_") {
+		if strings.HasPrefix(checkName, "_") {
 			return "private"
 		}
 		return "public"
 	case "python":
 		// Python: single underscore is protected, double is private
-		if strings.HasPrefix(name, "__") && !strings.HasSuffix(name, "__") {
+		if strings.HasPrefix(checkName, "__") && !strings.HasSuffix(checkName, "__") {
 			return "private"
 		}
-		if strings.HasPrefix(name, "_") {
+		if strings.HasPrefix(checkName, "_") {
 			return "protected"
 		}
 		return "public"

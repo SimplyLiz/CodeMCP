@@ -172,12 +172,23 @@ func (s *SCIPIdentifier) ExtractSymbolKind() SymbolKind {
 
 	// Check for function/method (contains '(')
 	if strings.Contains(descriptor, "(") {
+		// If it has '#' before '(', it's a method of a type
+		if strings.Contains(descriptor, "#") {
+			return KindMethod
+		}
 		return KindFunction
 	}
 
-	// Check for type/class (contains '#')
+	// Check for type/class vs field/property
+	// '#' separates a type from its members: Type# is a type, Type#member. is a field
 	if strings.Contains(descriptor, "#") {
-		return KindClass
+		// If it ends with just '#' or '#.', it's the type itself
+		trimmed := strings.TrimSuffix(descriptor, ".")
+		if strings.HasSuffix(trimmed, "#") {
+			return KindClass
+		}
+		// Otherwise it's a field/property of a type
+		return KindField
 	}
 
 	// Check for constant (all uppercase)

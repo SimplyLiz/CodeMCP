@@ -88,6 +88,52 @@ func (e *Engine) GetSymbol(ctx context.Context, opts GetSymbolOptions) (*GetSymb
 	// Resolve symbol ID through aliases
 	resolved, err := e.resolver.ResolveSymbolId(opts.SymbolId)
 	if err != nil {
+		// Resolver didn't find it in DB - try SCIP backend directly
+		// This handles raw SCIP IDs from searchSymbols that aren't in the DB yet
+		if e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
+			result, scipErr := e.scipAdapter.GetSymbol(ctx, opts.SymbolId)
+			if scipErr == nil && result != nil {
+				// Found in SCIP - build response directly
+				backendContribs := []BackendContribution{{
+					BackendId:    "scip",
+					Available:    true,
+					Used:         true,
+					ResultCount:  1,
+					Completeness: result.Completeness.Score,
+				}}
+				completeness := CompletenessInfo{
+					Score:  result.Completeness.Score,
+					Reason: string(result.Completeness.Reason),
+				}
+				return &GetSymbolResponse{
+					Symbol: &SymbolInfo{
+						StableId:            result.StableID,
+						Name:                result.Name,
+						Kind:                result.Kind,
+						Signature:           result.SignatureFull,
+						SignatureNormalized: result.SignatureNormalized,
+						ContainerName:       result.ContainerName,
+						ModuleId:            result.ModuleID,
+						Documentation:       result.Documentation,
+						LocationFreshness:   e.getLocationFreshness(repoState),
+						Visibility: &VisibilityInfo{
+							Visibility: result.Visibility,
+							Confidence: result.VisibilityConfidence,
+							Source:     "scip",
+						},
+						Location: &LocationInfo{
+							FileId:      result.Location.Path,
+							StartLine:   result.Location.Line,
+							StartColumn: result.Location.Column,
+							EndLine:     result.Location.EndLine,
+							EndColumn:   result.Location.EndColumn,
+						},
+					},
+					Provenance: e.buildProvenance(repoState, opts.RepoStateMode, startTime, backendContribs, completeness),
+				}, nil
+			}
+		}
+
 		// Check if it's a known error type
 		if ckbErr, ok := err.(*errors.CkbError); ok {
 			completeness := CompletenessInfo{Score: 0.0, Reason: "symbol-not-found"}
