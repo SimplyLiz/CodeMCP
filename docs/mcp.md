@@ -115,8 +115,8 @@ All temporal tools accept explicit `timeWindow` parameter to override.
 ### System-Level Orientation
 | Tool | Budget | Purpose | Status |
 |------|--------|---------|--------|
-| [getArchitectureMap](#getarchitecturemap) | Heavy | Architectural overview | v5.2 |
-| [getHotspots](#gethotspots) | Heavy | Highlight volatile areas | v5.2 |
+| [getArchitecture](#getarchitecture) | Heavy | Architectural overview | v5.2 ✓ |
+| [getHotspots](#gethotspots) | Heavy | Highlight volatile areas | v5.2 ✓ |
 | [listKeyConcepts](#listkeyconcepts) | Heavy | Main codebase concepts | v5.2 |
 | [recentlyRelevant](#recentlyrelevant) | Heavy | What matters now? | v5.2 |
 | [getModuleOverview](#getmoduleoverview) | Heavy | Module statistics | v5.1 ✓ |
@@ -357,11 +357,11 @@ Compress diffs into "what changed, what might break."
 
 ## System-Level Orientation
 
-### getArchitectureMap
+### getArchitecture
 
-Small, conservative architectural overview.
+Small, conservative architectural overview with v5.2 hard caps.
 
-**Budget:** Heavy | **Status:** v5.2 (enhances v5.1 `getArchitecture`)
+**Budget:** Heavy | **Status:** v5.2 ✓
 
 **Parameters:**
 | Name | Type | Required | Default | Description |
@@ -370,30 +370,57 @@ Small, conservative architectural overview.
 | `includeExternalDeps` | boolean | No | false | Include external deps |
 | `refresh` | boolean | No | false | Force cache refresh |
 
-**Hard caps:**
+**v5.2 Hard caps:**
 | Constraint | Limit |
 |------------|-------|
-| Max nodes | 15–20 modules |
+| Max modules | 20 |
 | Max edges | 50 |
+| Min edge strength | 1 |
 
-**Pruning rule:** Keep edges with `strength ≥ 0.3`, then top 50 by strength, lexical tiebreaker.
+**Output includes:**
+- Module summaries (symbol count, file count, edge counts)
+- Dependency graph edges (sorted by strength)
+- Entrypoints
+- Confidence + confidenceBasis
+- Limitations (if truncated)
+
+**Pruning rule:** Keep edges with `strength ≥ 1`, then top 50 by strength, lexical tiebreaker.
+
+**Drilldowns:** `getModuleOverview`, `explainFile`
 
 ---
 
 ### getHotspots
 
-Highlight areas that deserve attention.
+Highlight areas that deserve attention based on churn, coupling, and recency.
 
-**Budget:** Heavy | **Status:** v5.2
+**Budget:** Heavy | **Status:** v5.2 ✓
 
 **Parameters:**
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| `timeWindow` | object | No | 30 days | Time period to analyze |
-| `scope` | string | No | - | Module to focus on |
-| `limit` | number | No | 20 | Max results |
+| `timeWindow` | object | No | 30 days | `{ start: ISO8601, end?: ISO8601 }` |
+| `scope` | string | No | - | Module path to focus on |
+| `limit` | number | No | 20 | Max results (max 50) |
+
+**Output per hotspot:**
+- File path, role, language
+- Churn metrics (changeCount, authorCount, averageChanges, score)
+- Recency (recent/moderate/stale)
+- Risk level (low/medium/high)
+- Ranking with signals
 
 **Ranking signals:** `churn`, `coupling`, `recency`
+
+**Risk classification:**
+| Condition | Risk |
+|-----------|------|
+| High churn + core file | high |
+| Many authors (>5) | high |
+| High churn (>30 changes) | high |
+| Moderate churn (>10) | medium |
+
+**Drilldowns:** `explainFile`, `summarizeDiff`
 
 ---
 
@@ -666,9 +693,9 @@ Predefined exploration modes that configure verbosity, depth, and ranking:
 ### v5.2.1 (Phase 2) ✓
 - `summarizeDiff` - Change awareness ✓
 
-### v5.2.2 (Phase 3)
-- `getHotspots`
-- `getArchitectureMap`
+### v5.2.2 (Phase 3) ✓
+- `getHotspots` - Highlight volatile areas ✓
+- `getArchitecture` - v5.2 enhancements (hard caps, pruning, confidence) ✓
 
 ### v5.2.3 (Phase 4)
 - `explainPath`

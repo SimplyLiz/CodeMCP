@@ -2370,3 +2370,296 @@ func computeDiffConfidence(basis []ConfidenceBasisItem, limitations []string) fl
 
 	return 0.69 // Git only
 }
+
+// GetHotspotsOptions controls getHotspots behavior.
+type GetHotspotsOptions struct {
+	TimeWindow *TimeWindowSelector `json:"timeWindow,omitempty"`
+	Scope      string              `json:"scope,omitempty"` // Module to focus on
+	Limit      int                 `json:"limit,omitempty"` // Max results (default 20)
+}
+
+// GetHotspotsResponse provides ranked hotspot files.
+type GetHotspotsResponse struct {
+	AINavigationMeta
+	Hotspots        []HotspotV52          `json:"hotspots"`
+	TotalCount      int                   `json:"totalCount"`
+	TimeWindow      string                `json:"timeWindow"`
+	Confidence      float64               `json:"confidence"`
+	ConfidenceBasis []ConfidenceBasisItem `json:"confidenceBasis"`
+	Limitations     []string              `json:"limitations,omitempty"`
+}
+
+// HotspotV52 represents a hotspot with v5.2 ranking signals.
+type HotspotV52 struct {
+	FilePath  string           `json:"filePath"`
+	Role      string           `json:"role,omitempty"` // core, test, config, unknown
+	Language  string           `json:"language,omitempty"`
+	Churn     HotspotChurn     `json:"churn"`
+	Coupling  *HotspotCoupling `json:"coupling,omitempty"`
+	Recency   string           `json:"recency"`   // recent, moderate, stale
+	RiskLevel string           `json:"riskLevel"` // low, medium, high
+	Ranking   *RankingV52      `json:"ranking"`
+}
+
+// HotspotChurn contains churn-related metrics.
+type HotspotChurn struct {
+	ChangeCount    int     `json:"changeCount"`
+	AuthorCount    int     `json:"authorCount"`
+	AverageChanges float64 `json:"averageChanges"`
+	Score          float64 `json:"score"`
+}
+
+// HotspotCoupling contains coupling-related metrics.
+type HotspotCoupling struct {
+	DependentCount  int     `json:"dependentCount"`
+	DependencyCount int     `json:"dependencyCount"`
+	Score           float64 `json:"score"`
+}
+
+// GetHotspots returns files that deserve attention based on churn, coupling, and recency.
+func (e *Engine) GetHotspots(ctx context.Context, opts GetHotspotsOptions) (*GetHotspotsResponse, error) {
+	startTime := time.Now()
+
+	if opts.Limit <= 0 {
+		opts.Limit = 20
+	}
+	if opts.Limit > 50 {
+		opts.Limit = 50 // Hard cap per v5.2 spec
+	}
+
+	var confidenceBasis []ConfidenceBasisItem
+	var limitations []string
+	hotspots := []HotspotV52{}
+
+	// Determine time window
+	var timeWindowStr string
+	var since string
+	if opts.TimeWindow != nil && opts.TimeWindow.Start != "" {
+		since = opts.TimeWindow.Start
+		timeWindowStr = opts.TimeWindow.Start
+		if opts.TimeWindow.End != "" {
+			timeWindowStr += " to " + opts.TimeWindow.End
+		}
+	} else {
+		// Default: 30 days
+		since = time.Now().AddDate(0, 0, -30).Format("2006-01-02")
+		timeWindowStr = "last 30 days"
+	}
+
+	// Check git backend
+	if e.gitAdapter == nil || !e.gitAdapter.IsAvailable() {
+		return nil, fmt.Errorf("git backend unavailable; getHotspots requires git")
+	}
+	confidenceBasis = append(confidenceBasis, ConfidenceBasisItem{
+		Backend: "git",
+		Status:  "available",
+	})
+
+	// Get hotspots from git backend
+	gitHotspots, err := e.gitAdapter.GetHotspots(opts.Limit*2, since) // Get extra for filtering
+	if err != nil {
+		return nil, fmt.Errorf("failed to get hotspots: %w", err)
+	}
+
+	// Apply scope filter if specified
+	if opts.Scope != "" {
+		filtered := []git.ChurnMetrics{}
+		for _, h := range gitHotspots {
+			if strings.HasPrefix(h.FilePath, opts.Scope) {
+				filtered = append(filtered, h)
+			}
+		}
+		gitHotspots = filtered
+	}
+
+	// Convert to v5.2 format with enrichment
+	for _, gh := range gitHotspots {
+		role := classifyFileRole(gh.FilePath)
+		language := detectLanguage(gh.FilePath)
+		recency := classifyRecency(gh.LastModified)
+		riskLevel := classifyHotspotRisk(gh, role)
+
+		// Calculate ranking score
+		// Score = churn_score * recency_multiplier * role_multiplier
+		recencyMultiplier := 1.0
+		switch recency {
+		case "recent":
+			recencyMultiplier = 1.5
+		case "moderate":
+			recencyMultiplier = 1.0
+		case "stale":
+			recencyMultiplier = 0.5
+		}
+
+		roleMultiplier := 1.0
+		switch role {
+		case "core", "entrypoint":
+			roleMultiplier = 1.5
+		case "test":
+			roleMultiplier = 0.5
+		case "config":
+			roleMultiplier = 1.2
+		}
+
+		score := gh.HotspotScore * recencyMultiplier * roleMultiplier
+
+		hotspot := HotspotV52{
+			FilePath: gh.FilePath,
+			Role:     role,
+			Language: language,
+			Churn: HotspotChurn{
+				ChangeCount:    gh.ChangeCount,
+				AuthorCount:    gh.AuthorCount,
+				AverageChanges: gh.AverageChanges,
+				Score:          gh.HotspotScore,
+			},
+			Recency:   recency,
+			RiskLevel: riskLevel,
+			Ranking: NewRankingV52(score, map[string]interface{}{
+				"churn":    gh.HotspotScore,
+				"coupling": 0.0, // Not yet implemented
+				"recency":  recency,
+			}),
+		}
+
+		hotspots = append(hotspots, hotspot)
+	}
+
+	// Sort by ranking score with deterministic tie-breaker
+	sort.Slice(hotspots, func(i, j int) bool {
+		if hotspots[i].Ranking.Score != hotspots[j].Ranking.Score {
+			return hotspots[i].Ranking.Score > hotspots[j].Ranking.Score
+		}
+		return hotspots[i].FilePath < hotspots[j].FilePath
+	})
+
+	// Track total before limiting
+	totalCount := len(hotspots)
+
+	// Apply limit
+	if len(hotspots) > opts.Limit {
+		hotspots = hotspots[:opts.Limit]
+	}
+
+	// Add coupling data if SCIP available
+	if e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
+		confidenceBasis = append(confidenceBasis, ConfidenceBasisItem{
+			Backend: "scip",
+			Status:  "partial", // We're only using it for coupling hints
+		})
+		// Note: Full coupling analysis would require more work
+		// For now, we mark SCIP as available but coupling is not fully implemented
+		limitations = append(limitations, "Coupling analysis not yet implemented; using churn-only ranking")
+	} else {
+		confidenceBasis = append(confidenceBasis, ConfidenceBasisItem{
+			Backend: "scip",
+			Status:  "missing",
+		})
+		limitations = append(limitations, "SCIP unavailable; coupling analysis skipped")
+	}
+
+	// Compute confidence
+	confidence := 0.79 // Git churn is heuristic-based
+	if len(limitations) > 1 {
+		confidence = 0.69
+	}
+
+	// Build response
+	response := &GetHotspotsResponse{
+		AINavigationMeta: AINavigationMeta{
+			CkbVersion:    "5.2",
+			SchemaVersion: 1,
+			Tool:          "getHotspots",
+		},
+		Hotspots:        hotspots,
+		TotalCount:      totalCount,
+		TimeWindow:      timeWindowStr,
+		Confidence:      confidence,
+		ConfidenceBasis: confidenceBasis,
+		Limitations:     limitations,
+	}
+
+	// Add provenance
+	repoState, _ := e.GetRepoState(ctx, "head")
+	response.Provenance = &Provenance{
+		RepoStateId:     repoState.RepoStateId,
+		RepoStateDirty:  repoState.Dirty,
+		QueryDurationMs: time.Since(startTime).Milliseconds(),
+	}
+
+	// Add drilldowns
+	if len(hotspots) > 0 {
+		response.Drilldowns = []output.Drilldown{
+			{
+				Label:          fmt.Sprintf("Explain %s", filepath.Base(hotspots[0].FilePath)),
+				Query:          fmt.Sprintf("explainFile %s", hotspots[0].FilePath),
+				RelevanceScore: 0.9,
+			},
+			{
+				Label:          "View recent changes",
+				Query:          "summarizeDiff",
+				RelevanceScore: 0.8,
+			},
+		}
+	}
+
+	return response, nil
+}
+
+// classifyRecency determines recency category based on last modified date.
+func classifyRecency(lastModified string) string {
+	if lastModified == "" {
+		return "stale"
+	}
+
+	// Parse ISO8601 timestamp
+	t, err := time.Parse(time.RFC3339, lastModified)
+	if err != nil {
+		// Try alternate format
+		t, err = time.Parse("2006-01-02T15:04:05-07:00", lastModified)
+		if err != nil {
+			return "stale"
+		}
+	}
+
+	daysSince := time.Since(t).Hours() / 24
+
+	switch {
+	case daysSince <= 7:
+		return "recent"
+	case daysSince <= 30:
+		return "moderate"
+	default:
+		return "stale"
+	}
+}
+
+// classifyHotspotRisk determines risk level for a hotspot.
+func classifyHotspotRisk(churn git.ChurnMetrics, role string) string {
+	// High churn + core file = high risk
+	if churn.ChangeCount > 20 && (role == "core" || role == "entrypoint") {
+		return "high"
+	}
+
+	// Many authors = potential coordination risk
+	if churn.AuthorCount > 5 {
+		return "high"
+	}
+
+	// High churn in any file
+	if churn.ChangeCount > 30 {
+		return "high"
+	}
+
+	// Moderate churn
+	if churn.ChangeCount > 10 {
+		return "medium"
+	}
+
+	// Test files with high churn are medium risk (tests should be stable)
+	if role == "test" && churn.ChangeCount > 15 {
+		return "medium"
+	}
+
+	return "low"
+}

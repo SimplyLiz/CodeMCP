@@ -451,6 +451,12 @@ func (s *MCPServer) toolGetArchitecture(params map[string]interface{}) (interfac
 		"modules":         modules,
 		"dependencyGraph": depEdges,
 		"truncated":       archResp.Truncated,
+		"confidence":      archResp.Confidence,
+		"confidenceBasis": archResp.ConfidenceBasis,
+	}
+
+	if len(archResp.Limitations) > 0 {
+		result["limitations"] = archResp.Limitations
 	}
 
 	if archResp.Provenance != nil {
@@ -459,6 +465,18 @@ func (s *MCPServer) toolGetArchitecture(params map[string]interface{}) (interfac
 			"repoStateDirty":  archResp.Provenance.RepoStateDirty,
 			"queryDurationMs": archResp.Provenance.QueryDurationMs,
 		}
+	}
+
+	if len(archResp.Drilldowns) > 0 {
+		drilldowns := make([]map[string]interface{}, 0, len(archResp.Drilldowns))
+		for _, d := range archResp.Drilldowns {
+			drilldowns = append(drilldowns, map[string]interface{}{
+				"label":          d.Label,
+				"query":          d.Query,
+				"relevanceScore": d.RelevanceScore,
+			})
+		}
+		result["drilldowns"] = drilldowns
 	}
 
 	jsonBytes, err := json.MarshalIndent(result, "", "  ")
@@ -1196,4 +1214,119 @@ func (s *MCPServer) toolSummarizeDiff(params map[string]interface{}) (interface{
 	}
 
 	return string(jsonBytesDiff), nil
+}
+
+// toolGetHotspots handles the getHotspots tool call
+func (s *MCPServer) toolGetHotspots(params map[string]interface{}) (interface{}, error) {
+	ctx := context.Background()
+
+	opts := query.GetHotspotsOptions{}
+
+	// Parse timeWindow if provided
+	if timeWindow, ok := params["timeWindow"].(map[string]interface{}); ok {
+		start, _ := timeWindow["start"].(string)
+		end, _ := timeWindow["end"].(string)
+		if start != "" {
+			opts.TimeWindow = &query.TimeWindowSelector{
+				Start: start,
+				End:   end,
+			}
+		}
+	}
+
+	// Parse scope if provided
+	if scope, ok := params["scope"].(string); ok {
+		opts.Scope = scope
+	}
+
+	// Parse limit if provided
+	if limit, ok := params["limit"].(float64); ok {
+		opts.Limit = int(limit)
+	}
+
+	resp, err := s.engine.GetHotspots(ctx, opts)
+	if err != nil {
+		return nil, fmt.Errorf("getHotspots failed: %w", err)
+	}
+
+	// Build hotspots response
+	hotspots := make([]map[string]interface{}, 0, len(resp.Hotspots))
+	for _, h := range resp.Hotspots {
+		hotspotInfo := map[string]interface{}{
+			"filePath":  h.FilePath,
+			"recency":   h.Recency,
+			"riskLevel": h.RiskLevel,
+			"churn": map[string]interface{}{
+				"changeCount":    h.Churn.ChangeCount,
+				"authorCount":    h.Churn.AuthorCount,
+				"averageChanges": h.Churn.AverageChanges,
+				"score":          h.Churn.Score,
+			},
+		}
+		if h.Role != "" {
+			hotspotInfo["role"] = h.Role
+		}
+		if h.Language != "" {
+			hotspotInfo["language"] = h.Language
+		}
+		if h.Coupling != nil {
+			hotspotInfo["coupling"] = map[string]interface{}{
+				"dependentCount":  h.Coupling.DependentCount,
+				"dependencyCount": h.Coupling.DependencyCount,
+				"score":           h.Coupling.Score,
+			}
+		}
+		if h.Ranking != nil {
+			hotspotInfo["ranking"] = map[string]interface{}{
+				"score":         h.Ranking.Score,
+				"signals":       h.Ranking.Signals,
+				"policyVersion": h.Ranking.PolicyVersion,
+			}
+		}
+		hotspots = append(hotspots, hotspotInfo)
+	}
+
+	result := map[string]interface{}{
+		"meta": map[string]interface{}{
+			"ckbVersion":    resp.CkbVersion,
+			"schemaVersion": resp.SchemaVersion,
+			"tool":          resp.Tool,
+		},
+		"hotspots":        hotspots,
+		"totalCount":      resp.TotalCount,
+		"timeWindow":      resp.TimeWindow,
+		"confidence":      resp.Confidence,
+		"confidenceBasis": resp.ConfidenceBasis,
+	}
+
+	if len(resp.Limitations) > 0 {
+		result["limitations"] = resp.Limitations
+	}
+
+	if resp.Provenance != nil {
+		result["provenance"] = map[string]interface{}{
+			"repoStateId":     resp.Provenance.RepoStateId,
+			"repoStateDirty":  resp.Provenance.RepoStateDirty,
+			"queryDurationMs": resp.Provenance.QueryDurationMs,
+		}
+	}
+
+	if len(resp.Drilldowns) > 0 {
+		drilldowns := make([]map[string]interface{}, 0, len(resp.Drilldowns))
+		for _, d := range resp.Drilldowns {
+			drilldowns = append(drilldowns, map[string]interface{}{
+				"label":          d.Label,
+				"query":          d.Query,
+				"relevanceScore": d.RelevanceScore,
+			})
+		}
+		result["drilldowns"] = drilldowns
+	}
+
+	jsonBytesHotspots, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	return string(jsonBytesHotspots), nil
 }

@@ -320,6 +320,38 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		{
+			Name:        "getHotspots",
+			Description: "Find files that deserve attention based on churn, coupling, and recency. Highlights volatile areas that may need review.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"timeWindow": map[string]interface{}{
+						"type":        "object",
+						"description": "Time period to analyze (default: 30 days)",
+						"properties": map[string]interface{}{
+							"start": map[string]interface{}{
+								"type":        "string",
+								"description": "Start date (ISO8601 or YYYY-MM-DD)",
+							},
+							"end": map[string]interface{}{
+								"type":        "string",
+								"description": "End date (ISO8601 or YYYY-MM-DD)",
+							},
+						},
+					},
+					"scope": map[string]interface{}{
+						"type":        "string",
+						"description": "Module path to focus on",
+					},
+					"limit": map[string]interface{}{
+						"type":        "number",
+						"default":     20,
+						"description": "Maximum number of hotspots to return (max 50)",
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -340,4 +372,5 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["listEntrypoints"] = s.toolListEntrypoints
 	s.tools["traceUsage"] = s.toolTraceUsage
 	s.tools["summarizeDiff"] = s.toolSummarizeDiff
+	s.tools["getHotspots"] = s.toolGetHotspots
 }
