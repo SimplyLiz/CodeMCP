@@ -1,6 +1,9 @@
-# MCP Tools Reference
+# CKB MCP Tools Reference (v5.2)
 
-CKB exposes code intelligence capabilities via the Model Context Protocol (MCP), enabling AI assistants like Claude Code to understand and navigate codebases.
+CKB exposes AI-native code navigation capabilities via the Model Context Protocol (MCP), enabling AI assistants like Claude Code to discover, understand, and navigate codebases.
+
+> **v5.2 Theme:** Discovery, orientation, and flow comprehension
+> **Non-goal:** Code mutation, refactoring, enforcement, or policy
 
 ## Quick Setup
 
@@ -15,463 +18,517 @@ claude mcp add --transport stdio ckb --scope user -- /path/to/ckb mcp
 claude mcp list
 ```
 
-## Tools Overview
+---
 
-| Tool | Purpose | Use Case |
-|------|---------|----------|
-| [searchSymbols](#searchsymbols) | Find symbols by name | "Find all handlers in the codebase" |
-| [getSymbol](#getsymbol) | Get symbol details | "What does UserService do?" |
-| [findReferences](#findreferences) | Find all usages | "Where is this function called?" |
-| [getArchitecture](#getarchitecture) | Module overview | "How is this codebase structured?" |
-| [analyzeImpact](#analyzeimpact) | Change risk analysis | "What breaks if I change this?" |
-| [explainSymbol](#explainsymbol) | AI-friendly summary | "Explain this symbol to me" |
-| [justifySymbol](#justifysymbol) | Keep/remove verdict | "Is this code still needed?" |
-| [getCallGraph](#getcallgraph) | Caller/callee graph | "What calls this function?" |
-| [getModuleOverview](#getmoduleoverview) | Module statistics | "How active is this package?" |
-| [getStatus](#getstatus) | System health | "Is CKB working?" |
-| [doctor](#doctor) | Diagnostics | "Why isn't CKB working?" |
+## Platform Contracts
+
+### Backend Budget Classification
+
+Tools are classified by performance budget to ensure predictable behavior.
+
+#### Cheap Tools
+`findSymbols` · `explainFile` · `listEntrypoints` · `explainPath` · `getSymbol` · `searchSymbols` · `explainSymbol`
+
+| Constraint | Rule |
+|------------|------|
+| Allowed backends | Symbol index, lightweight metadata, file system |
+| Forbidden | Callgraph expansion, git history > 50 commits, deep traversal |
+| Traversal limit | Max 1 hop in dependency/call graphs |
+| Max latency | P95 < 300ms |
+| Max result size | 50 items |
+
+#### Heavy Tools
+`traceUsage` · `getArchitectureMap` · `getHotspots` · `summarizeDiff` · `recentlyRelevant` · `listKeyConcepts` · `analyzeImpact` · `getCallGraph` · `findReferences` · `justifySymbol`
+
+| Constraint | Rule |
+|------------|------|
+| Allowed backends | Multi-backend joins, bounded graph traversal (depth ≤ 5), bounded git queries (≤ 1000 commits) |
+| Max latency | P95 < 2000ms |
+| Must include | `limitations` field explaining any truncation or missing data |
 
 ---
 
-## Core Navigation Tools
+### Confidence Computation Rules
+
+Confidence scores are derived, not arbitrary:
+
+| Condition | Confidence cap |
+|-----------|----------------|
+| Full static analysis (SCIP/LSP) coverage | 1.0 |
+| Partial static analysis coverage | 0.89 |
+| Heuristics only (naming, patterns, location) | 0.79 |
+| Key backend missing | 0.69 |
+| Multiple backends missing or speculative | 0.39 |
+
+**Composition rule:** Use `min(signal_caps)` as ceiling when combining signals.
+
+**Required fields in responses:**
+```typescript
+confidence: number
+confidenceBasis: Array<{
+  backend: "scip" | "lsp" | "git" | "naming" | "location" | "pattern"
+  status: "available" | "partial" | "missing"
+  heuristic?: string
+}>
+```
+
+---
+
+### Time Window Defaults
+
+| Tool | Default window |
+|------|----------------|
+| `getHotspots` | 30 days |
+| `summarizeDiff` | 30 days |
+| `recentlyRelevant` | 7 days |
+
+All temporal tools accept explicit `timeWindow` parameter to override.
+
+---
+
+## Tools Overview
+
+### Discovery & Search
+| Tool | Budget | Purpose | Status |
+|------|--------|---------|--------|
+| [findSymbols](#findsymbols) | Cheap | Fast symbol discovery | v5.2 |
+| [searchSymbols](#searchsymbols) | Cheap | Search with filtering | v5.1 ✓ |
+| [getSymbol](#getsymbol) | Cheap | Get symbol details | v5.1 ✓ |
+
+### Flow & Runtime Orientation
+| Tool | Budget | Purpose | Status |
+|------|--------|---------|--------|
+| [traceUsage](#traceusage) | Heavy | Show how something is reached | v5.2 |
+| [listEntrypoints](#listentrypoints) | Cheap | List system entrypoints | v5.2 |
+| [getCallGraph](#getcallgraph) | Heavy | Caller/callee graph | v5.1 ✓ |
+
+### File-Level Navigation
+| Tool | Budget | Purpose | Status |
+|------|--------|---------|--------|
+| [explainFile](#explainfile) | Cheap | File orientation | v5.2 |
+| [explainPath](#explainpath) | Cheap | Path role explanation | v5.2 |
+
+### Change Awareness
+| Tool | Budget | Purpose | Status |
+|------|--------|---------|--------|
+| [summarizeDiff](#summarizediff) | Heavy | Compress diffs into intent | v5.2 |
+
+### System-Level Orientation
+| Tool | Budget | Purpose | Status |
+|------|--------|---------|--------|
+| [getArchitectureMap](#getarchitecturemap) | Heavy | Architectural overview | v5.2 |
+| [getHotspots](#gethotspots) | Heavy | Highlight volatile areas | v5.2 |
+| [listKeyConcepts](#listkeyconcepts) | Heavy | Main codebase concepts | v5.2 |
+| [recentlyRelevant](#recentlyrelevant) | Heavy | What matters now? | v5.2 |
+| [getModuleOverview](#getmoduleoverview) | Heavy | Module statistics | v5.1 ✓ |
+
+### Symbol Analysis
+| Tool | Budget | Purpose | Status |
+|------|--------|---------|--------|
+| [explainSymbol](#explainsymbol) | Cheap | AI-friendly symbol explanation | v5.1 ✓ |
+| [justifySymbol](#justifysymbol) | Heavy | Keep/remove verdict | v5.1 ✓ |
+| [findReferences](#findreferences) | Heavy | Find all usages | v5.1 ✓ |
+| [analyzeImpact](#analyzeimpact) | Heavy | Change risk analysis | v5.1 ✓ |
+
+### System
+| Tool | Budget | Purpose | Status |
+|------|--------|---------|--------|
+| [getStatus](#getstatus) | Cheap | System health | v5.1 ✓ |
+| [doctor](#doctor) | Cheap | Diagnostics | v5.1 ✓ |
+
+---
+
+## Discovery & Search
+
+### findSymbols
+
+Fast, explicit symbol discovery without side effects.
+
+**Budget:** Cheap | **Status:** v5.2
+
+**Why it exists:** Avoids overloading `explainSymbol` as a search tool. Gives agents a cheap "list candidates" step.
+
+**Parameters:**
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `query` | string | Yes | - | Search query |
+| `kinds` | string[] | No | all | Filter by symbol kinds |
+| `scope` | string | No | - | Module to search within |
+| `limit` | number | No | 50 | Max results |
+
+**Ranking signals:** `matchType` (exact/partial/fuzzy), `kind`, `scope`
+
+**Example:**
+```json
+{ "query": "auth", "kinds": ["function", "class"], "limit": 20 }
+```
+
+**Drilldowns:** `explainSymbol`, `getCallGraph`
+
+---
 
 ### searchSymbols
 
 Search for symbols by name with optional filtering.
 
+**Budget:** Cheap | **Status:** v5.1 ✓
+
 **Parameters:**
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| `query` | string | Yes | - | Search query (substring match, case-insensitive) |
-| `scope` | string | No | - | Module ID to limit search scope |
+| `query` | string | Yes | - | Search query (substring, case-insensitive) |
+| `scope` | string | No | - | Module ID to limit scope |
 | `kinds` | string[] | No | - | Symbol kinds: `function`, `method`, `class`, `interface`, `variable`, `constant` |
 | `limit` | number | No | 20 | Maximum results |
 
-**Use Cases:**
-
-1. **Find all HTTP handlers:**
-   ```json
-   { "query": "Handler", "kinds": ["function", "method"], "limit": 50 }
-   ```
-
-2. **Find classes in a specific module:**
-   ```json
-   { "query": "", "scope": "internal/api", "kinds": ["class"] }
-   ```
-
-3. **Quick symbol lookup:**
-   ```json
-   { "query": "NewServer" }
-   ```
-
-**Response:**
+**Example:**
 ```json
-{
-  "symbols": [
-    {
-      "stableId": "scip-go gomod ckb ... `pkg/path`/Symbol().",
-      "name": "NewServer",
-      "kind": "function",
-      "score": 100,
-      "location": { "fileId": "internal/api/server.go", "startLine": 42 },
-      "visibility": { "visibility": "public", "confidence": 0.9 }
-    }
-  ],
-  "totalCount": 15,
-  "truncated": true,
-  "provenance": { "queryDurationMs": 45 }
-}
+{ "query": "Handler", "kinds": ["function", "method"], "limit": 50 }
 ```
 
 ---
 
 ### getSymbol
 
-Get detailed metadata for a specific symbol by its stable ID.
+Get detailed metadata for a symbol by stable ID.
 
-**Parameters:**
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| `symbolId` | string | Yes | - | Stable symbol ID from search results |
-| `repoStateMode` | string | No | `head` | `head` (committed only) or `full` (include uncommitted) |
-
-**Use Cases:**
-
-1. **Get full symbol details after search:**
-   ```json
-   { "symbolId": "scip-go gomod ckb ... `internal/query`/Engine#SearchSymbols()." }
-   ```
-
-2. **Include uncommitted changes:**
-   ```json
-   { "symbolId": "...", "repoStateMode": "full" }
-   ```
-
-**Response:**
-```json
-{
-  "symbol": {
-    "stableId": "scip-go gomod ckb ... `internal/query`/Engine#SearchSymbols().",
-    "name": "SearchSymbols",
-    "kind": "method",
-    "signature": "func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (*SearchSymbolsResponse, error)",
-    "containerName": "Engine",
-    "documentation": "SearchSymbols finds symbols matching the query",
-    "location": { "fileId": "internal/query/engine.go", "startLine": 156, "endLine": 210 },
-    "moduleId": "internal/query",
-    "visibility": { "visibility": "public", "confidence": 0.9 }
-  }
-}
-```
-
----
-
-### findReferences
-
-Find all references to a symbol across the codebase.
+**Budget:** Cheap | **Status:** v5.1 ✓
 
 **Parameters:**
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
 | `symbolId` | string | Yes | - | Stable symbol ID |
-| `scope` | string | No | - | Module ID to limit search |
-| `includeTests` | boolean | No | false | Include test file references |
-| `merge` | string | No | `prefer-first` | Backend merge: `prefer-first` or `union` |
-| `limit` | number | No | 100 | Maximum references |
-
-**Use Cases:**
-
-1. **Find all callers of a function:**
-   ```json
-   { "symbolId": "scip-go gomod ckb ... `internal/api`/NewServer()." }
-   ```
-
-2. **Find usages including tests:**
-   ```json
-   { "symbolId": "...", "includeTests": true }
-   ```
-
-3. **Find usages in specific module:**
-   ```json
-   { "symbolId": "...", "scope": "internal/mcp" }
-   ```
-
-**Response:**
-```json
-{
-  "references": [
-    {
-      "kind": "call",
-      "location": { "fileId": "cmd/ckb/serve.go", "startLine": 45 },
-      "context": "server := api.NewServer(engine, logger)",
-      "isTest": false
-    }
-  ],
-  "totalCount": 12,
-  "truncated": false
-}
-```
+| `repoStateMode` | string | No | `head` | `head` or `full` (include uncommitted) |
 
 ---
 
-### getArchitecture
+## Flow & Runtime Orientation
 
-Get codebase architecture with module dependencies.
+### traceUsage
+
+Show how something is reached, not just who calls whom.
+
+**Budget:** Heavy | **Status:** v5.2
+
+**Why it exists:** Call graphs are structural. Agents need causal paths: Route → controller → service → DB.
+
+**Boundary with getCallGraph:**
+| Tool | Scope | Direction | Output |
+|------|-------|-----------|--------|
+| `getCallGraph` | Local neighborhood | Outward/inward | Structural adjacency |
+| `traceUsage` | From entrypoints to target | Inward | Ranked paths with `pathType` |
+
+> **Rule:** `traceUsage` returns **paths**, not **neighbors**.
 
 **Parameters:**
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| `depth` | number | No | 2 | Dependency traversal depth |
-| `includeExternalDeps` | boolean | No | false | Include external dependencies |
-| `refresh` | boolean | No | false | Force cache refresh |
+| `symbolId` | string | Yes | - | Target symbol to trace |
+| `maxPaths` | number | No | 10 | Max paths to return |
+| `pathTypes` | string[] | No | all | Filter by path type |
 
-**Use Cases:**
+**Path types:** `api` | `cli` | `job` | `event` | `test` | `unknown`
 
-1. **Get codebase overview:**
-   ```json
-   {}
-   ```
+**Ranking signals:** `pathType`, `pathLength`, `confidence`
 
-2. **Deep dependency analysis:**
-   ```json
-   { "depth": 4, "includeExternalDeps": true }
-   ```
+**Start nodes:** Paths start from `listEntrypoints` output, test files, framework configs, or CLI mains.
 
-**Response:**
-```json
-{
-  "modules": [
-    {
-      "moduleId": "internal/query",
-      "name": "query",
-      "path": "internal/query",
-      "symbolCount": 245,
-      "fileCount": 12,
-      "language": "go"
-    }
-  ],
-  "dependencyGraph": [
-    { "from": "internal/api", "to": "internal/query", "kind": "import", "strength": 15 }
-  ]
-}
-```
+**Fallback:** If no entrypoints found, returns paths from nearest callers with `pathType: "unknown"` and includes `limitations`.
 
 ---
 
-### analyzeImpact
+### listEntrypoints
 
-Analyze the blast radius of changing a symbol.
+Explicit list of system entrypoints.
+
+**Budget:** Cheap | **Status:** v5.2
 
 **Parameters:**
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| `symbolId` | string | Yes | - | Stable symbol ID to analyze |
-| `depth` | number | No | 2 | Transitive impact depth |
+| `types` | string[] | No | all | Filter by entrypoint type |
+| `limit` | number | No | 30 | Max results |
 
-**Use Cases:**
+**Entrypoint types:** `api` | `cli` | `job` | `event`
 
-1. **Before refactoring a function:**
-   ```json
-   { "symbolId": "scip-go gomod ckb ... `internal/query`/Engine#SearchSymbols()." }
-   ```
+**Detection basis:** `naming` | `framework-config` | `static-call`
 
-2. **Deep impact analysis:**
-   ```json
-   { "symbolId": "...", "depth": 4 }
-   ```
+**Ranking signals:** `type`, `detectionBasis`, `fanOut`
 
-**Response:**
-```json
-{
-  "directImpact": [
-    {
-      "stableId": "...",
-      "name": "handleSearch",
-      "kind": "function",
-      "distance": 1,
-      "moduleId": "internal/api",
-      "confidence": 0.95,
-      "location": { "fileId": "internal/api/handlers.go", "startLine": 89 }
-    }
-  ],
-  "transitiveImpact": [
-    { "name": "ServeHTTP", "distance": 2, "moduleId": "internal/api" }
-  ],
-  "riskScore": {
-    "score": 0.65,
-    "level": "medium",
-    "explanation": "Changes affect 3 modules with 12 direct dependents",
-    "factors": [
-      { "name": "publicAPI", "value": 0.8 },
-      { "name": "crossModule", "value": 0.6 }
-    ]
-  }
-}
-```
-
----
-
-## AI Navigation Tools
-
-These tools are designed specifically for AI assistants to quickly understand code.
-
-### explainSymbol
-
-Get an AI-friendly explanation of a symbol including usage patterns, history, and summary.
-
-**Parameters:**
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| `symbolId` | string | Yes | Stable symbol ID to explain |
-
-**Use Cases:**
-
-1. **Understand what a function does:**
-   ```json
-   { "symbolId": "scip-go gomod ckb ... `internal/query`/Engine#SearchSymbols()." }
-   ```
-
-**Response:**
-```json
-{
-  "symbolId": "...",
-  "name": "SearchSymbols",
-  "kind": "method",
-  "summary": "Core search function that finds symbols by name across the codebase",
-  "signature": "func (e *Engine) SearchSymbols(...) (*SearchSymbolsResponse, error)",
-  "location": { "fileId": "internal/query/engine.go", "startLine": 156 },
-  "documentation": "SearchSymbols finds symbols matching the query...",
-  "usageStats": {
-    "referenceCount": 8,
-    "callerCount": 5,
-    "testCoverage": true
-  },
-  "history": {
-    "lastModified": "2025-12-15",
-    "recentCommits": 3,
-    "authors": ["alice", "bob"]
-  },
-  "relatedSymbols": [
-    { "name": "SearchSymbolsOptions", "kind": "struct", "relationship": "parameter" }
-  ]
-}
-```
-
----
-
-### justifySymbol
-
-Get a keep/investigate/remove verdict for a symbol based on usage analysis. Useful for identifying dead code.
-
-**Parameters:**
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| `symbolId` | string | Yes | Stable symbol ID to analyze |
-
-**Use Cases:**
-
-1. **Check if code is still needed:**
-   ```json
-   { "symbolId": "scip-go gomod ckb ... `internal/legacy`/OldHandler()." }
-   ```
-
-**Response:**
-```json
-{
-  "symbolId": "...",
-  "name": "OldHandler",
-  "verdict": "investigate",
-  "confidence": 0.75,
-  "reasoning": [
-    "Only 2 references found",
-    "No test coverage",
-    "Not modified in 6 months"
-  ],
-  "usageEvidence": {
-    "referenceCount": 2,
-    "callerModules": ["internal/api"],
-    "isExported": true,
-    "hasTests": false,
-    "lastModified": "2025-06-10"
-  },
-  "recommendation": "Review usage in internal/api - may be dead code"
-}
-```
-
-**Verdicts:**
-- `keep` - Symbol is actively used, well-tested
-- `investigate` - Low usage, may need review
-- `remove` - Appears to be dead code
+> Detection basis is always surfaced separately—never merged into confidence.
 
 ---
 
 ### getCallGraph
 
-Get a lightweight call graph showing callers and callees of a symbol.
+Get caller/callee relationships for a symbol.
+
+**Budget:** Heavy | **Status:** v5.1 ✓
 
 **Parameters:**
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| `symbolId` | string | Yes | - | Root symbol for the graph |
+| `symbolId` | string | Yes | - | Root symbol |
 | `direction` | string | No | `both` | `callers`, `callees`, or `both` |
 | `depth` | number | No | 1 | Traversal depth (1-4) |
 
-**Use Cases:**
+---
 
-1. **Find what calls a function:**
-   ```json
-   { "symbolId": "...", "direction": "callers" }
-   ```
+## File-Level Navigation
 
-2. **Find what a function calls:**
-   ```json
-   { "symbolId": "...", "direction": "callees" }
-   ```
+### explainFile
 
-3. **Full call graph with depth 2:**
-   ```json
-   { "symbolId": "...", "direction": "both", "depth": 2 }
-   ```
+Lightweight orientation when a file is the starting point.
 
-**Response:**
-```json
+**Budget:** Cheap | **Status:** v5.2
+
+**Why it exists:** Too big for `explainSymbol`, too small for `getModuleOverview`.
+
+**Parameters:**
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `filePath` | string | Yes | Path to the file |
+
+**Output includes:**
+- File role summary
+- Top defined symbols (max 15)
+- Key imports/exports
+- Local hotspots
+
+**Drilldowns:** `explainSymbol`, `getModuleOverview`
+
+---
+
+### explainPath
+
+Explain why a path exists and what role it plays.
+
+**Budget:** Cheap | **Status:** v5.2
+
+**Parameters:**
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `filePath` | string | Yes | Path to explain |
+| `contextHint` | string | No | Optional context (e.g., "from traceUsage") |
+
+**Role classifications:** `core` | `glue` | `legacy` | `test-only` | `config` | `unknown`
+
+**Classification basis:** `naming` | `location` | `usage` | `history`
+
+> All responses include `limitations`: "intent inferred from static signals; actual purpose may differ."
+
+---
+
+## Change Awareness
+
+### summarizeDiff
+
+Compress diffs into "what changed, what might break."
+
+**Budget:** Heavy | **Status:** v5.2
+
+**Input (exactly one required):**
+```typescript
+commitRange?: { base: string; head: string }
+prId?: string
+commit?: string
+timeWindow?: { start: ISO8601; end: ISO8601 }
+```
+
+**Output includes:**
+- Files/symbols touched
+- Behavior-relevant changes
+- Risk signals (API change, signature change)
+- Suggested tests to run
+- Migration steps (procedural only)
+
+**Allowed vs Not Allowed:**
+| Allowed | Not allowed |
+|---------|-------------|
+| Risk flags | Proposed code changes |
+| Affected surfaces | Refactor plans |
+| Suggested drilldowns | Style enforcement |
+| Suggested tests | Rewrites or code suggestions |
+
+**Default time window:** 30 days if no selector specified.
+
+---
+
+## System-Level Orientation
+
+### getArchitectureMap
+
+Small, conservative architectural overview.
+
+**Budget:** Heavy | **Status:** v5.2 (enhances v5.1 `getArchitecture`)
+
+**Parameters:**
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `depth` | number | No | 2 | Dependency depth |
+| `includeExternalDeps` | boolean | No | false | Include external deps |
+| `refresh` | boolean | No | false | Force cache refresh |
+
+**Hard caps:**
+| Constraint | Limit |
+|------------|-------|
+| Max nodes | 15–20 modules |
+| Max edges | 50 |
+
+**Pruning rule:** Keep edges with `strength ≥ 0.3`, then top 50 by strength, lexical tiebreaker.
+
+---
+
+### getHotspots
+
+Highlight areas that deserve attention.
+
+**Budget:** Heavy | **Status:** v5.2
+
+**Parameters:**
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `timeWindow` | object | No | 30 days | Time period to analyze |
+| `scope` | string | No | - | Module to focus on |
+| `limit` | number | No | 20 | Max results |
+
+**Ranking signals:** `churn`, `coupling`, `recency`
+
+---
+
+### listKeyConcepts
+
+What are the main ideas in this codebase?
+
+**Budget:** Heavy | **Status:** v5.2
+
+**Why it exists:** Not architecture—semantic clustering. Helps onboarding agents understand domain vocabulary.
+
+**Parameters:**
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `limit` | number | No | 12 | Max concepts |
+
+**Output per concept:**
+```typescript
 {
-  "root": {
-    "symbolId": "...",
-    "name": "SearchSymbols",
-    "kind": "method"
-  },
-  "callers": [
-    {
-      "symbolId": "...",
-      "name": "handleSearch",
-      "kind": "function",
-      "location": { "fileId": "internal/api/handlers.go", "startLine": 89 },
-      "depth": 1
-    }
-  ],
-  "callees": [
-    {
-      "symbolId": "...",
-      "name": "searchSCIP",
-      "kind": "method",
-      "depth": 1
-    }
-  ],
-  "truncated": false
+  label: string           // e.g., "Auth", "Billing", "Sync"
+  evidence: string[]      // top 3–5 modules/symbols
+  basis: "naming" | "cluster" | "entrypoints"
+  confidence: number
+  confidenceBasis: ConfidenceBasis[]
 }
 ```
+
+**Hard caps:** Max 12 concepts, 3–5 evidence items each.
+
+**Ranking signals:** `evidenceCount`, `basis`, `spread`
+
+---
+
+### recentlyRelevant
+
+What should I care about now?
+
+**Budget:** Heavy | **Status:** v5.2
+
+**Parameters:**
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `timeWindow` | object | No | 7 days | Time period |
+| `moduleFilter` | string | No | - | Module to focus on |
+
+**Ranking signals:** `churn`, `fanIn`, `hasOpenChanges`
+
+**Open changes:** Unmerged PRs touching the symbol/file/module (if PR backend available).
 
 ---
 
 ### getModuleOverview
 
-Get a high-level overview of a module including size, complexity, and recent activity.
+High-level overview of a module.
+
+**Budget:** Heavy | **Status:** v5.1 ✓
 
 **Parameters:**
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `path` | string | No | Path to module directory |
-| `name` | string | No | Friendly name for the module |
+| `path` | string | No | Module directory path |
+| `name` | string | No | Friendly module name |
 
-**Use Cases:**
+---
 
-1. **Understand a package:**
-   ```json
-   { "path": "internal/query" }
-   ```
+## Symbol Analysis
 
-2. **Get codebase root overview:**
-   ```json
-   {}
-   ```
+### explainSymbol
 
-**Response:**
-```json
-{
-  "moduleId": "internal/query",
-  "name": "query",
-  "path": "internal/query",
-  "stats": {
-    "fileCount": 12,
-    "symbolCount": 245,
-    "linesOfCode": 3500,
-    "publicSymbols": 45,
-    "privateSymbols": 200
-  },
-  "activity": {
-    "lastModified": "2025-12-16",
-    "commitsLast30Days": 15,
-    "activeContributors": 3
-  },
-  "topSymbols": [
-    { "name": "Engine", "kind": "struct", "referenceCount": 89 },
-    { "name": "SearchSymbols", "kind": "method", "referenceCount": 45 }
-  ],
-  "dependencies": ["internal/backends", "internal/storage"],
-  "dependents": ["internal/api", "internal/mcp", "cmd/ckb"]
-}
-```
+AI-friendly explanation of a symbol including usage, history, and summary.
+
+**Budget:** Cheap | **Status:** v5.1 ✓
+
+**Parameters:**
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `symbolId` | string | Yes | Stable symbol ID |
+
+**Output includes:**
+- Symbol metadata (name, kind, signature, location)
+- Usage statistics (callerCount, referenceCount, testCoverage)
+- Git history (lastModified, recentCommits, authors)
+- Related symbols
+
+---
+
+### justifySymbol
+
+Keep/investigate/remove verdict for dead code detection.
+
+**Budget:** Heavy | **Status:** v5.1 ✓
+
+**Parameters:**
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `symbolId` | string | Yes | Stable symbol ID |
+
+**Verdicts:**
+- `keep` - Actively used, well-tested
+- `investigate` - Low usage, may need review
+- `remove` - Appears to be dead code
+
+---
+
+### findReferences
+
+Find all references to a symbol.
+
+**Budget:** Heavy | **Status:** v5.1 ✓
+
+**Parameters:**
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `symbolId` | string | Yes | - | Stable symbol ID |
+| `scope` | string | No | - | Module to search |
+| `includeTests` | boolean | No | false | Include test refs |
+| `limit` | number | No | 100 | Max references |
+
+---
+
+### analyzeImpact
+
+Analyze blast radius of changing a symbol.
+
+**Budget:** Heavy | **Status:** v5.1 ✓
+
+**Parameters:**
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `symbolId` | string | Yes | - | Stable symbol ID |
+| `depth` | number | No | 2 | Transitive depth |
+
+**Output includes:**
+- Direct impact (distance 1)
+- Transitive impact (distance 2+)
+- Risk score with factors
 
 ---
 
@@ -479,47 +536,23 @@ Get a high-level overview of a module including size, complexity, and recent act
 
 ### getStatus
 
-Get CKB system status including backend health and cache statistics.
+Get CKB system health.
 
-**Parameters:** None
+**Budget:** Cheap | **Status:** v5.1 ✓
 
-**Use Cases:**
-
-1. **Check system health before queries:**
-   ```json
-   {}
-   ```
-
-**Response:**
-```json
+**Output includes:**
+```typescript
 {
-  "status": "healthy",
-  "healthy": true,
-  "backends": [
-    {
-      "id": "scip",
-      "available": true,
-      "healthy": true,
-      "capabilities": ["symbol-search", "find-references", "goto-definition"],
-      "details": { "symbolCount": 2915, "documentCount": 153 }
-    },
-    {
-      "id": "git",
-      "available": true,
-      "healthy": true,
-      "capabilities": ["blame", "history", "churn"]
+  status: "healthy" | "degraded" | "unhealthy"
+  backends: BackendStatus[]
+  cache: CacheStats
+  repoState: RepoState
+  health: {
+    index: {
+      completeness: number      // 0.0–1.0
+      staleness: "fresh" | "stale" | "very-stale"
+      lastRefresh: ISO8601
     }
-  ],
-  "cache": {
-    "sizeBytes": 1048576,
-    "queriesCached": 45,
-    "viewsCached": 12,
-    "hitRate": 0.85
-  },
-  "repoState": {
-    "dirty": true,
-    "headCommit": "abc123",
-    "repoStateId": "def456"
   }
 }
 ```
@@ -530,106 +563,113 @@ Get CKB system status including backend health and cache statistics.
 
 Run diagnostic checks and get suggested fixes.
 
-**Parameters:** None
+**Budget:** Cheap | **Status:** v5.1 ✓
 
-**Use Cases:**
+---
 
-1. **Diagnose issues:**
-   ```json
-   {}
-   ```
+## Navigation Presets
 
-**Response:**
-```json
-{
-  "healthy": false,
-  "checks": [
-    {
-      "name": "SCIP Index",
-      "status": "warning",
-      "message": "SCIP index is stale (uncommitted changes)",
-      "fixes": ["scip-go --repository-root=."]
-    },
-    {
-      "name": "LSP Server",
-      "status": "error",
-      "message": "gopls not found in PATH",
-      "fixes": ["go install golang.org/x/tools/gopls@latest"]
-    }
-  ]
-}
-```
+Predefined exploration modes that configure verbosity, depth, and ranking:
+
+| Preset | Focus |
+|--------|-------|
+| `onboarding` | Broad, high-level, concept-first |
+| `bug-investigation` | Trace-focused, recent changes emphasized |
+| `refactor-safety` | Coupling and hotspot aware |
+| `review` | Diff-centric, risk signals prominent |
 
 ---
 
 ## Recommended Workflows
 
 ### Understanding a New Codebase
-
 ```
 1. getStatus()           → Verify CKB is healthy
-2. getArchitecture()     → See module structure
-3. getModuleOverview()   → Understand key modules
-4. searchSymbols()       → Find entry points
+2. listKeyConcepts()     → Understand domain vocabulary
+3. getArchitectureMap()  → See module structure
+4. listEntrypoints()     → Find where execution starts
+5. findSymbols()         → Discover relevant code
+```
+
+### Investigating a Bug
+```
+1. findSymbols("ErrorType")  → Find related code
+2. traceUsage(symbolId)      → How is it reached?
+3. getCallGraph(symbolId)    → What does it call?
+4. recentlyRelevant()        → What changed recently?
 ```
 
 ### Before Making Changes
-
 ```
-1. searchSymbols("TargetFunction")  → Find the symbol
-2. getSymbol(symbolId)              → Get full details
-3. findReferences(symbolId)         → Find all usages
-4. analyzeImpact(symbolId)          → Assess risk
-5. getCallGraph(symbolId)           → Understand call flow
-```
-
-### Code Review / Dead Code Detection
-
-```
-1. searchSymbols(query, kinds=["function"])  → Find candidates
-2. justifySymbol(symbolId)                    → Get verdict
-3. explainSymbol(symbolId)                    → Understand context
+1. findSymbols("Target")      → Find the symbol
+2. explainSymbol(symbolId)    → Understand it
+3. findReferences(symbolId)   → Find all usages
+4. analyzeImpact(symbolId)    → Assess risk
+5. getHotspots()              → Check volatility
 ```
 
-### Debugging
-
+### Code Review
 ```
-1. searchSymbols("ErrorHandler")    → Find error handling
-2. getCallGraph(symbolId, "callers") → Trace call path
-3. findReferences(symbolId)          → Find all error sites
+1. summarizeDiff(prId)       → What changed?
+2. getHotspots()             → Check affected areas
+3. traceUsage(symbolId)      → Verify paths still work
+```
+
+### Dead Code Detection
+```
+1. findSymbols(query)        → Find candidates
+2. justifySymbol(symbolId)   → Get verdict
+3. explainFile(filePath)     → Understand context
 ```
 
 ---
 
-## Error Handling
+## Error Codes
 
-All tools return structured errors with suggested fixes:
-
-```json
-{
-  "error": {
-    "code": "SYMBOL_NOT_FOUND",
-    "message": "Symbol not found: invalid-id",
-    "suggestedFixes": [
-      "Run searchSymbols() to find valid symbol IDs",
-      "Check if the symbol was renamed or removed"
-    ]
-  }
-}
-```
-
-**Common Error Codes:**
-- `SYMBOL_NOT_FOUND` - Invalid symbol ID
-- `BACKEND_UNAVAILABLE` - Required backend not running
-- `INDEX_STALE` - SCIP index needs regeneration
-- `QUERY_TIMEOUT` - Query took too long
+| Code | Description | Fix |
+|------|-------------|-----|
+| `SYMBOL_NOT_FOUND` | Invalid symbol ID | Use findSymbols() first |
+| `BACKEND_UNAVAILABLE` | Backend not running | Check getStatus() |
+| `INDEX_STALE` | SCIP needs refresh | Run scip-go |
+| `QUERY_TIMEOUT` | Query too slow | Add scope/limit |
+| `BUDGET_EXCEEDED` | Tool violated budget | Use cheaper alternative |
 
 ---
 
-## Performance Tips
+## What CKB Does NOT Do
 
-1. **Use `limit` parameter** - Don't fetch more results than needed
-2. **Use `scope` parameter** - Limit searches to relevant modules
-3. **Start with `getStatus()`** - Avoid queries if backends are unhealthy
-4. **Cache symbol IDs** - Reuse stable IDs across related queries
-5. **Prefer `prefer-first` merge** - Faster than `union` for most cases
+- ❌ Code mutation or refactoring
+- ❌ Test generation
+- ❌ Fix suggestions (code)
+- ❌ Enforcement / policy checks
+- ❌ Lint-style judgments
+
+*Navigation and comprehension only.*
+
+---
+
+## Implementation Status
+
+### v5.1 (Implemented)
+- `searchSymbols`, `getSymbol`, `findReferences`
+- `explainSymbol`, `justifySymbol`
+- `getCallGraph`, `getModuleOverview`, `analyzeImpact`
+- `getStatus`, `doctor`
+
+### v5.2 MVP (Phase 1)
+- `findSymbols` - Fast discovery
+- `explainFile` - File orientation
+- `traceUsage` - Causal paths
+
+### v5.2.1 (Phase 2)
+- `listEntrypoints`
+- `summarizeDiff`
+
+### v5.2.2 (Phase 3)
+- `getHotspots`
+- `getArchitectureMap`
+
+### v5.2.3 (Phase 4)
+- `explainPath`
+- `listKeyConcepts`
+- `recentlyRelevant`
