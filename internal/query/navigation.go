@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"ckb/internal/backends"
 	"ckb/internal/backends/git"
 	"ckb/internal/backends/scip"
 	"ckb/internal/output"
@@ -699,4 +700,619 @@ func classifyCommitFrequency(count int) string {
 	default:
 		return "unknown"
 	}
+}
+
+// ExplainFileOptions controls explainFile behavior.
+type ExplainFileOptions struct {
+	FilePath string
+}
+
+// ExplainFileResponse provides lightweight file-level orientation.
+type ExplainFileResponse struct {
+	AINavigationMeta
+	Facts    ExplainFileFacts   `json:"facts"`
+	Summary  ExplainFileSummary `json:"summary"`
+	Warnings []string           `json:"warnings,omitempty"`
+}
+
+// ExplainFileFacts contains the factual information about a file.
+type ExplainFileFacts struct {
+	Path       string                `json:"path"`
+	Role       string                `json:"role"` // core, glue, test, config, unknown
+	Language   string                `json:"language,omitempty"`
+	LineCount  int                   `json:"lineCount"`
+	Symbols    []ExplainFileSymbol   `json:"symbols"`    // Top defined symbols (max 15)
+	Imports    []string              `json:"imports"`    // Key imports
+	Exports    []string              `json:"exports"`    // Key exports/public symbols
+	Hotspots   []ExplainFileHotspot  `json:"hotspots"`   // Local hotspots
+	Confidence float64               `json:"confidence"`
+	Basis      []ConfidenceBasisItem `json:"confidenceBasis"`
+}
+
+// ExplainFileSymbol represents a symbol defined in the file.
+type ExplainFileSymbol struct {
+	StableId   string `json:"stableId"`
+	Name       string `json:"name"`
+	Kind       string `json:"kind"`
+	Line       int    `json:"line"`
+	Visibility string `json:"visibility,omitempty"`
+}
+
+// ExplainFileHotspot represents a hotspot in the file.
+type ExplainFileHotspot struct {
+	Line      int    `json:"line"`
+	Name      string `json:"name"`
+	Reason    string `json:"reason"` // high-churn, high-coupling, complex
+	Intensity string `json:"intensity"`
+}
+
+// ExplainFileSummary provides a natural language summary.
+type ExplainFileSummary struct {
+	OneLiner    string   `json:"oneLiner"`
+	KeySymbols  []string `json:"keySymbols"`
+	Suggestions []string `json:"suggestions,omitempty"`
+}
+
+// ConfidenceBasisItem describes a component of confidence.
+type ConfidenceBasisItem struct {
+	Backend   string `json:"backend"`
+	Status    string `json:"status"` // available, partial, missing
+	Heuristic string `json:"heuristic,omitempty"`
+}
+
+// ExplainFile provides lightweight orientation for a file.
+func (e *Engine) ExplainFile(ctx context.Context, opts ExplainFileOptions) (*ExplainFileResponse, error) {
+	startTime := time.Now()
+
+	// Normalize file path
+	filePath := opts.FilePath
+	if !filepath.IsAbs(filePath) {
+		filePath = filepath.Join(e.repoRoot, filePath)
+	}
+
+	// Check if file exists
+	fileInfo, err := os.Stat(filePath)
+	if os.IsNotExist(err) {
+		return nil, fmt.Errorf("file not found: %s", opts.FilePath)
+	}
+	if fileInfo.IsDir() {
+		return nil, fmt.Errorf("path is a directory, not a file: %s", opts.FilePath)
+	}
+
+	// Get relative path for display
+	relPath := opts.FilePath
+	if filepath.IsAbs(opts.FilePath) {
+		if rel, err := filepath.Rel(e.repoRoot, opts.FilePath); err == nil {
+			relPath = rel
+		}
+	}
+
+	// Determine file role
+	role := classifyFileRole(relPath)
+
+	// Detect language from extension
+	language := detectLanguage(relPath)
+
+	// Count lines
+	lineCount := countFileLines(filePath)
+
+	// Collect symbols defined in this file
+	symbols := []ExplainFileSymbol{}
+	exports := []string{}
+	imports := []string{}
+	var confidenceBasis []ConfidenceBasisItem
+
+	if e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
+		confidenceBasis = append(confidenceBasis, ConfidenceBasisItem{
+			Backend: "scip",
+			Status:  "available",
+		})
+
+		// Search for symbols in this file
+		searchResult, err := e.scipAdapter.SearchSymbols(ctx, "", backends.SearchOptions{
+			MaxResults: 50,
+			Scope:      []string{relPath},
+		})
+
+		if err == nil && searchResult != nil {
+			for _, sym := range searchResult.Symbols {
+				if sym.Location.Path == relPath {
+					symbols = append(symbols, ExplainFileSymbol{
+						StableId:   sym.StableID,
+						Name:       sym.Name,
+						Kind:       sym.Kind,
+						Line:       sym.Location.Line,
+						Visibility: sym.Visibility,
+					})
+
+					// Track exports (public symbols)
+					if sym.Visibility == "public" || sym.Visibility == "" {
+						// For Go, exported = starts with uppercase
+						if len(sym.Name) > 0 && sym.Name[0] >= 'A' && sym.Name[0] <= 'Z' {
+							exports = append(exports, sym.Name)
+						}
+					}
+				}
+			}
+		}
+	} else {
+		confidenceBasis = append(confidenceBasis, ConfidenceBasisItem{
+			Backend: "scip",
+			Status:  "missing",
+		})
+	}
+
+	// Sort symbols by line number and limit to 15
+	sort.Slice(symbols, func(i, j int) bool {
+		return symbols[i].Line < symbols[j].Line
+	})
+	if len(symbols) > 15 {
+		symbols = symbols[:15]
+	}
+
+	// Limit exports to 10
+	if len(exports) > 10 {
+		exports = exports[:10]
+	}
+
+	// Get git history for hotspots
+	hotspots := []ExplainFileHotspot{}
+	if e.gitAdapter != nil && e.gitAdapter.IsAvailable() {
+		confidenceBasis = append(confidenceBasis, ConfidenceBasisItem{
+			Backend: "git",
+			Status:  "available",
+		})
+
+		// Get file blame to identify frequently changed areas
+		// This is a simplified version - real hotspot detection would be more sophisticated
+	} else {
+		confidenceBasis = append(confidenceBasis, ConfidenceBasisItem{
+			Backend: "git",
+			Status:  "missing",
+		})
+	}
+
+	// Compute confidence based on available backends
+	confidence := computeExplainFileConfidence(confidenceBasis)
+
+	// Build key symbols for summary
+	keySymbols := []string{}
+	for i, sym := range symbols {
+		if i >= 5 {
+			break
+		}
+		keySymbols = append(keySymbols, sym.Name)
+	}
+
+	// Build one-liner summary
+	oneLiner := buildFileOneLiner(relPath, role, len(symbols), keySymbols)
+
+	// Build response
+	response := &ExplainFileResponse{
+		AINavigationMeta: AINavigationMeta{
+			CkbVersion:    "5.2",
+			SchemaVersion: 1,
+			Tool:          "explainFile",
+		},
+		Facts: ExplainFileFacts{
+			Path:       relPath,
+			Role:       role,
+			Language:   language,
+			LineCount:  lineCount,
+			Symbols:    symbols,
+			Imports:    imports,
+			Exports:    exports,
+			Hotspots:   hotspots,
+			Confidence: confidence,
+			Basis:      confidenceBasis,
+		},
+		Summary: ExplainFileSummary{
+			OneLiner:   oneLiner,
+			KeySymbols: keySymbols,
+		},
+	}
+
+	// Add provenance
+	repoState, _ := e.GetRepoState(ctx, "head")
+	response.Provenance = &Provenance{
+		RepoStateId:     repoState.RepoStateId,
+		RepoStateDirty:  repoState.Dirty,
+		QueryDurationMs: time.Since(startTime).Milliseconds(),
+	}
+
+	// Add drilldowns
+	response.Drilldowns = []output.Drilldown{
+		{
+			Label:          "Get module overview",
+			Query:          fmt.Sprintf("getModuleOverview --path=%s", filepath.Dir(relPath)),
+			RelevanceScore: 0.9,
+		},
+	}
+	if len(symbols) > 0 {
+		response.Drilldowns = append(response.Drilldowns, output.Drilldown{
+			Label:          fmt.Sprintf("Explore %s", symbols[0].Name),
+			Query:          fmt.Sprintf("explainSymbol %s", symbols[0].StableId),
+			RelevanceScore: 0.85,
+		})
+	}
+
+	return response, nil
+}
+
+// classifyFileRole determines the role of a file based on its path.
+func classifyFileRole(path string) string {
+	pathLower := strings.ToLower(path)
+
+	// Test files
+	if strings.Contains(pathLower, "_test.") || strings.Contains(pathLower, ".test.") ||
+		strings.Contains(pathLower, "/test/") || strings.Contains(pathLower, "/tests/") ||
+		strings.HasSuffix(pathLower, ".spec.") {
+		return "test"
+	}
+
+	// Config files
+	if strings.HasSuffix(pathLower, ".json") || strings.HasSuffix(pathLower, ".yaml") ||
+		strings.HasSuffix(pathLower, ".yml") || strings.HasSuffix(pathLower, ".toml") ||
+		strings.HasSuffix(pathLower, ".ini") || strings.Contains(pathLower, "config") {
+		return "config"
+	}
+
+	// Documentation
+	if strings.HasSuffix(pathLower, ".md") || strings.HasSuffix(pathLower, ".txt") ||
+		strings.Contains(pathLower, "/docs/") {
+		return "docs"
+	}
+
+	// Vendor/external
+	if strings.Contains(pathLower, "/vendor/") || strings.Contains(pathLower, "/node_modules/") {
+		return "vendor"
+	}
+
+	// Main entry points
+	if strings.Contains(pathLower, "/cmd/") || strings.HasSuffix(pathLower, "main.go") ||
+		strings.HasSuffix(pathLower, "index.ts") || strings.HasSuffix(pathLower, "index.js") {
+		return "entrypoint"
+	}
+
+	// Internal implementation
+	if strings.Contains(pathLower, "/internal/") || strings.Contains(pathLower, "/pkg/") ||
+		strings.Contains(pathLower, "/lib/") || strings.Contains(pathLower, "/src/") {
+		return "core"
+	}
+
+	return "unknown"
+}
+
+// detectLanguage determines the programming language from file extension.
+func detectLanguage(path string) string {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".go":
+		return "go"
+	case ".ts", ".tsx":
+		return "typescript"
+	case ".js", ".jsx":
+		return "javascript"
+	case ".py":
+		return "python"
+	case ".rs":
+		return "rust"
+	case ".java":
+		return "java"
+	case ".rb":
+		return "ruby"
+	case ".dart":
+		return "dart"
+	case ".swift":
+		return "swift"
+	case ".kt", ".kts":
+		return "kotlin"
+	case ".c", ".h":
+		return "c"
+	case ".cpp", ".hpp", ".cc", ".cxx":
+		return "cpp"
+	case ".cs":
+		return "csharp"
+	case ".php":
+		return "php"
+	default:
+		return ""
+	}
+}
+
+// countFileLines counts the number of lines in a file.
+func countFileLines(path string) int {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return 0
+	}
+	return strings.Count(string(content), "\n") + 1
+}
+
+// computeExplainFileConfidence computes confidence based on available backends.
+func computeExplainFileConfidence(basis []ConfidenceBasisItem) float64 {
+	// Start with max confidence
+	confidence := 1.0
+
+	scipAvailable := false
+	for _, b := range basis {
+		if b.Backend == "scip" && b.Status == "available" {
+			scipAvailable = true
+		}
+	}
+
+	if !scipAvailable {
+		// Cap at 0.69 if key backend missing
+		confidence = 0.69
+	}
+
+	return confidence
+}
+
+// buildFileOneLiner creates a one-line summary of the file.
+func buildFileOneLiner(path, role string, symbolCount int, keySymbols []string) string {
+	fileName := filepath.Base(path)
+
+	switch role {
+	case "test":
+		return fmt.Sprintf("%s is a test file with %d test functions/helpers", fileName, symbolCount)
+	case "config":
+		return fmt.Sprintf("%s is a configuration file", fileName)
+	case "entrypoint":
+		return fmt.Sprintf("%s is an entry point/main file", fileName)
+	case "core":
+		if len(keySymbols) > 0 {
+			return fmt.Sprintf("%s defines %s and %d other symbols", fileName, keySymbols[0], symbolCount-1)
+		}
+		return fmt.Sprintf("%s is a core implementation file with %d symbols", fileName, symbolCount)
+	default:
+		if len(keySymbols) > 0 {
+			return fmt.Sprintf("%s defines %s and %d other symbols", fileName, keySymbols[0], symbolCount-1)
+		}
+		return fmt.Sprintf("%s contains %d symbols", fileName, symbolCount)
+	}
+}
+
+// ListEntrypointsOptions controls listEntrypoints behavior.
+type ListEntrypointsOptions struct {
+	ModuleFilter string // Optional filter to specific module
+	Limit        int    // Max results (default 30)
+}
+
+// ListEntrypointsResponse provides the list of system entrypoints.
+type ListEntrypointsResponse struct {
+	AINavigationMeta
+	Entrypoints     []EntrypointV52       `json:"entrypoints"`
+	TotalCount      int                   `json:"totalCount"`
+	Confidence      float64               `json:"confidence"`
+	ConfidenceBasis []ConfidenceBasisItem `json:"confidenceBasis"`
+	Warnings        []string              `json:"warnings,omitempty"`
+}
+
+// EntrypointV52 represents a system entrypoint with v5.2 ranking signals.
+type EntrypointV52 struct {
+	SymbolId       string        `json:"symbolId"`
+	Name           string        `json:"name"`
+	Type           string        `json:"type"` // api, cli, job, event
+	Location       *LocationInfo `json:"location"`
+	DetectionBasis string        `json:"detectionBasis"` // naming, framework-config, static-call
+	FanOut         int           `json:"fanOut"`         // Number of functions called
+	Ranking        *RankingV52   `json:"ranking"`
+}
+
+// ListEntrypoints returns the system entrypoints.
+func (e *Engine) ListEntrypoints(ctx context.Context, opts ListEntrypointsOptions) (*ListEntrypointsResponse, error) {
+	startTime := time.Now()
+
+	if opts.Limit <= 0 {
+		opts.Limit = 30
+	}
+
+	entrypoints := []EntrypointV52{}
+	var warnings []string
+	var confidenceBasis []ConfidenceBasisItem
+
+	if e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
+		confidenceBasis = append(confidenceBasis, ConfidenceBasisItem{
+			Backend: "scip",
+			Status:  "available",
+		})
+
+		// Search for main functions
+		mainResults, _ := e.scipAdapter.SearchSymbols(ctx, "main", backends.SearchOptions{
+			MaxResults: 50,
+			Kind:       []string{"function"},
+		})
+
+		if mainResults != nil {
+			for _, sym := range mainResults.Symbols {
+				if sym.Name == "main" && strings.Contains(sym.Location.Path, "/cmd/") {
+					fanOut := e.scipAdapter.GetCalleeCount(sym.StableID)
+					entrypoints = append(entrypoints, EntrypointV52{
+						SymbolId: sym.StableID,
+						Name:     sym.Name,
+						Type:     "cli",
+						Location: &LocationInfo{
+							FileId:    sym.Location.Path,
+							StartLine: sym.Location.Line,
+						},
+						DetectionBasis: "naming",
+						FanOut:         fanOut,
+					})
+				}
+			}
+		}
+
+		// Search for handler patterns
+		handlerPatterns := []string{"Handle", "Handler", "Serve", "Route"}
+		for _, pattern := range handlerPatterns {
+			results, _ := e.scipAdapter.SearchSymbols(ctx, pattern, backends.SearchOptions{
+				MaxResults: 30,
+				Kind:       []string{"function", "method"},
+			})
+			if results != nil {
+				for _, sym := range results.Symbols {
+					// Skip test files
+					if strings.Contains(sym.Location.Path, "_test.") {
+						continue
+					}
+					// Check if it looks like an API handler
+					if strings.HasPrefix(sym.Name, "Handle") ||
+						strings.HasSuffix(sym.Name, "Handler") ||
+						strings.HasPrefix(sym.Name, "Serve") {
+						fanOut := e.scipAdapter.GetCalleeCount(sym.StableID)
+						entrypoints = append(entrypoints, EntrypointV52{
+							SymbolId: sym.StableID,
+							Name:     sym.Name,
+							Type:     "api",
+							Location: &LocationInfo{
+								FileId:    sym.Location.Path,
+								StartLine: sym.Location.Line,
+							},
+							DetectionBasis: "naming",
+							FanOut:         fanOut,
+						})
+					}
+				}
+			}
+		}
+
+		// Search for job/worker patterns
+		jobPatterns := []string{"Run", "Execute", "Process", "Worker"}
+		for _, pattern := range jobPatterns {
+			results, _ := e.scipAdapter.SearchSymbols(ctx, pattern, backends.SearchOptions{
+				MaxResults: 20,
+				Kind:       []string{"function", "method"},
+			})
+			if results != nil {
+				for _, sym := range results.Symbols {
+					if strings.Contains(sym.Location.Path, "_test.") {
+						continue
+					}
+					if strings.HasPrefix(sym.Name, "Run") ||
+						strings.HasPrefix(sym.Name, "Execute") ||
+						strings.Contains(sym.Location.Path, "worker") ||
+						strings.Contains(sym.Location.Path, "job") {
+						fanOut := e.scipAdapter.GetCalleeCount(sym.StableID)
+						entrypoints = append(entrypoints, EntrypointV52{
+							SymbolId: sym.StableID,
+							Name:     sym.Name,
+							Type:     "job",
+							Location: &LocationInfo{
+								FileId:    sym.Location.Path,
+								StartLine: sym.Location.Line,
+							},
+							DetectionBasis: "naming",
+							FanOut:         fanOut,
+						})
+					}
+				}
+			}
+		}
+	} else {
+		confidenceBasis = append(confidenceBasis, ConfidenceBasisItem{
+			Backend: "scip",
+			Status:  "missing",
+		})
+		warnings = append(warnings, "SCIP index unavailable; entrypoint detection limited")
+	}
+
+	// Deduplicate by symbol ID
+	seen := make(map[string]bool)
+	uniqueEntrypoints := []EntrypointV52{}
+	for _, ep := range entrypoints {
+		if !seen[ep.SymbolId] {
+			seen[ep.SymbolId] = true
+			uniqueEntrypoints = append(uniqueEntrypoints, ep)
+		}
+	}
+	entrypoints = uniqueEntrypoints
+
+	// Apply ranking signals
+	for i := range entrypoints {
+		score := 0.0
+		ep := &entrypoints[i]
+
+		// Score by type
+		switch ep.Type {
+		case "cli":
+			score += 100 // CLI mains are most important
+		case "api":
+			score += 80
+		case "job":
+			score += 60
+		case "event":
+			score += 40
+		}
+
+		// Score by fan-out (higher fan-out = more important)
+		score += float64(ep.FanOut) * 2
+		if score > 200 {
+			score = 200 // Cap
+		}
+
+		ep.Ranking = NewRankingV52(score, map[string]interface{}{
+			"type":           ep.Type,
+			"detectionBasis": ep.DetectionBasis,
+			"fanOut":         ep.FanOut,
+		})
+	}
+
+	// Sort by ranking score
+	sort.Slice(entrypoints, func(i, j int) bool {
+		return entrypoints[i].Ranking.Score > entrypoints[j].Ranking.Score
+	})
+
+	// Apply limit
+	if len(entrypoints) > opts.Limit {
+		entrypoints = entrypoints[:opts.Limit]
+	}
+
+	// Compute confidence
+	confidence := 0.79 // Heuristics-based
+	for _, b := range confidenceBasis {
+		if b.Backend == "scip" && b.Status == "available" {
+			confidence = 0.89 // Partial static analysis
+		}
+	}
+
+	// Build response
+	response := &ListEntrypointsResponse{
+		AINavigationMeta: AINavigationMeta{
+			CkbVersion:    "5.2",
+			SchemaVersion: 1,
+			Tool:          "listEntrypoints",
+		},
+		Entrypoints:     entrypoints,
+		TotalCount:      len(entrypoints),
+		Confidence:      confidence,
+		ConfidenceBasis: confidenceBasis,
+		Warnings:        warnings,
+	}
+
+	// Add provenance
+	repoState, _ := e.GetRepoState(ctx, "head")
+	response.Provenance = &Provenance{
+		RepoStateId:     repoState.RepoStateId,
+		RepoStateDirty:  repoState.Dirty,
+		QueryDurationMs: time.Since(startTime).Milliseconds(),
+	}
+
+	// Add drilldowns
+	if len(entrypoints) > 0 {
+		response.Drilldowns = []output.Drilldown{
+			{
+				Label:          fmt.Sprintf("Explore %s", entrypoints[0].Name),
+				Query:          fmt.Sprintf("explainSymbol %s", entrypoints[0].SymbolId),
+				RelevanceScore: 0.9,
+			},
+			{
+				Label:          "Trace usage from entrypoint",
+				Query:          fmt.Sprintf("traceUsage --from=%s", entrypoints[0].SymbolId),
+				RelevanceScore: 0.85,
+			},
+		}
+	}
+
+	return response, nil
 }

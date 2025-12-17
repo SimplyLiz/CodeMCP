@@ -221,6 +221,38 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		{
+			Name:        "explainFile",
+			Description: "Get lightweight orientation for a file including role, symbols, and key relationships",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"filePath": map[string]interface{}{
+						"type":        "string",
+						"description": "Path to the file (relative or absolute)",
+					},
+				},
+				"required": []string{"filePath"},
+			},
+		},
+		{
+			Name:        "listEntrypoints",
+			Description: "List system entrypoints (API handlers, CLI mains, jobs) with ranking signals",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"moduleFilter": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional filter to specific module",
+					},
+					"limit": map[string]interface{}{
+						"type":        "number",
+						"default":     30,
+						"description": "Maximum number of entrypoints to return",
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -237,4 +269,6 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["justifySymbol"] = s.toolJustifySymbol
 	s.tools["getCallGraph"] = s.toolGetCallGraph
 	s.tools["getModuleOverview"] = s.toolGetModuleOverview
+	s.tools["explainFile"] = s.toolExplainFile
+	s.tools["listEntrypoints"] = s.toolListEntrypoints
 }

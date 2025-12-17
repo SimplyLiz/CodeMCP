@@ -224,6 +224,22 @@ type SearchSymbolsResponse struct {
 	Drilldowns     []output.Drilldown `json:"drilldowns,omitempty"`
 }
 
+// RankingV52 contains v5.2 ranking signals for auditable, deterministic ordering.
+type RankingV52 struct {
+	Score         float64                `json:"score"`
+	Signals       map[string]interface{} `json:"signals"`
+	PolicyVersion string                 `json:"policyVersion"`
+}
+
+// NewRankingV52 creates a new v5.2 ranking with the given score and signals.
+func NewRankingV52(score float64, signals map[string]interface{}) *RankingV52 {
+	return &RankingV52{
+		Score:         score,
+		Signals:       signals,
+		PolicyVersion: "5.2",
+	}
+}
+
 // SearchResultItem represents a symbol search result.
 type SearchResultItem struct {
 	StableId   string          `json:"stableId"`
@@ -234,6 +250,7 @@ type SearchResultItem struct {
 	Location   *LocationInfo   `json:"location,omitempty"`
 	Visibility *VisibilityInfo `json:"visibility,omitempty"`
 	Score      float64         `json:"score"`
+	Ranking    *RankingV52     `json:"ranking,omitempty"`
 }
 
 // SearchSymbols searches for symbols by name.
@@ -362,18 +379,28 @@ func parseScope(scope string) []string {
 	return []string{scope}
 }
 
-// rankSearchResults applies ranking to search results.
+// rankSearchResults applies ranking to search results with v5.2 signals.
 func rankSearchResults(results []SearchResultItem, query string) {
 	queryLower := strings.ToLower(query)
 
 	for i := range results {
 		score := 0.0
+		var matchType string
 
-		// Exact match bonus
+		// Determine match type and apply score
+		nameLower := strings.ToLower(results[i].Name)
 		if strings.EqualFold(results[i].Name, query) {
+			matchType = "exact"
 			score += 100
-		} else if strings.HasPrefix(strings.ToLower(results[i].Name), queryLower) {
+		} else if strings.HasPrefix(nameLower, queryLower) {
+			matchType = "partial"
 			score += 50
+		} else if strings.Contains(nameLower, queryLower) {
+			matchType = "partial"
+			score += 25
+		} else {
+			matchType = "fuzzy"
+			score += 10
 		}
 
 		// Visibility weight
@@ -405,6 +432,21 @@ func rankSearchResults(results []SearchResultItem, query string) {
 		}
 
 		results[i].Score = score
+
+		// Build v5.2 ranking signals
+		scope := ""
+		if results[i].Location != nil && results[i].Location.FileId != "" {
+			scope = results[i].Location.FileId
+		}
+		if results[i].ModuleId != "" {
+			scope = results[i].ModuleId
+		}
+
+		results[i].Ranking = NewRankingV52(score, map[string]interface{}{
+			"matchType": matchType,
+			"kind":      results[i].Kind,
+			"scope":     scope,
+		})
 	}
 }
 
