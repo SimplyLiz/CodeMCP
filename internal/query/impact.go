@@ -85,23 +85,22 @@ func (e *Engine) AnalyzeImpact(ctx context.Context, opts AnalyzeImpactOptions) (
 		return nil, e.wrapError(err, errors.InternalError)
 	}
 
-	// Resolve symbol ID
-	resolved, err := e.resolver.ResolveSymbolId(opts.SymbolId)
-	if err != nil || resolved.Symbol == nil {
-		return nil, errors.NewCkbError(
-			errors.SymbolNotFound,
-			fmt.Sprintf("Symbol not found: %s", opts.SymbolId),
-			nil, nil, nil,
-		)
-	}
+	// Resolve symbol ID - try resolver first, then fall back to SCIP directly
+	resolved, _ := e.resolver.ResolveSymbolId(opts.SymbolId)
 
 	// Get symbol info from backend
 	var symbolInfo *SymbolInfo
 	var backendContribs []BackendContribution
 	var completeness CompletenessInfo
 
+	// Determine the symbol ID to use for SCIP lookup
+	symbolIdForLookup := opts.SymbolId
+	if resolved != nil && resolved.Symbol != nil {
+		symbolIdForLookup = resolved.Symbol.StableId
+	}
+
 	if e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
-		result, symbolErr := e.scipAdapter.GetSymbol(ctx, resolved.Symbol.StableId)
+		result, symbolErr := e.scipAdapter.GetSymbol(ctx, symbolIdForLookup)
 		if symbolErr == nil && result != nil {
 			symbolInfo = &SymbolInfo{
 				StableId:      result.StableID,
@@ -134,7 +133,7 @@ func (e *Engine) AnalyzeImpact(ctx context.Context, opts AnalyzeImpactOptions) (
 	}
 
 	// Fallback to identity data
-	if symbolInfo == nil && resolved.Symbol.Fingerprint != nil {
+	if symbolInfo == nil && resolved != nil && resolved.Symbol != nil && resolved.Symbol.Fingerprint != nil {
 		symbolInfo = &SymbolInfo{
 			StableId:      resolved.Symbol.StableId,
 			Name:          resolved.Symbol.Fingerprint.Name,
@@ -149,6 +148,15 @@ func (e *Engine) AnalyzeImpact(ctx context.Context, opts AnalyzeImpactOptions) (
 		completeness = CompletenessInfo{Score: 0.5, Reason: "identity-only"}
 	}
 
+	// If we still don't have symbol info, return not found
+	if symbolInfo == nil {
+		return nil, errors.NewCkbError(
+			errors.SymbolNotFound,
+			fmt.Sprintf("Symbol not found: %s", opts.SymbolId),
+			nil, nil, nil,
+		)
+	}
+
 	// Find references for impact analysis
 	var refs []impact.Reference
 	if e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
@@ -156,7 +164,7 @@ func (e *Engine) AnalyzeImpact(ctx context.Context, opts AnalyzeImpactOptions) (
 			MaxResults:   500,
 			IncludeTests: opts.IncludeTests,
 		}
-		refsResult, refsErr := e.scipAdapter.FindReferences(ctx, resolved.Symbol.StableId, refOpts)
+		refsResult, refsErr := e.scipAdapter.FindReferences(ctx, symbolIdForLookup, refOpts)
 		if refsErr == nil && refsResult != nil {
 			for _, ref := range refsResult.References {
 				impactRef := impact.Reference{
@@ -180,7 +188,7 @@ func (e *Engine) AnalyzeImpact(ctx context.Context, opts AnalyzeImpactOptions) (
 	analyzer := impact.NewImpactAnalyzer(opts.Depth)
 
 	impactSymbol := &impact.Symbol{
-		StableId: resolved.Symbol.StableId,
+		StableId: symbolInfo.StableId,
 		Name:     symbolInfo.Name,
 		Kind:     impact.SymbolKind(symbolInfo.Kind),
 		ModuleId: symbolInfo.ModuleId,
