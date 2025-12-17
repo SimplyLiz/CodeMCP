@@ -277,6 +277,145 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				"required": []string{"symbolId"},
 			},
 		},
+		{
+			Name:        "summarizeDiff",
+			Description: "Compress diffs into 'what changed, what might break'. Supports commit ranges, single commits, or time windows. Default: last 30 days.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"commitRange": map[string]interface{}{
+						"type":        "object",
+						"description": "Commit range selector (base..head)",
+						"properties": map[string]interface{}{
+							"base": map[string]interface{}{
+								"type":        "string",
+								"description": "Base commit hash or ref",
+							},
+							"head": map[string]interface{}{
+								"type":        "string",
+								"description": "Head commit hash or ref",
+							},
+						},
+						"required": []string{"base", "head"},
+					},
+					"commit": map[string]interface{}{
+						"type":        "string",
+						"description": "Single commit hash to analyze",
+					},
+					"timeWindow": map[string]interface{}{
+						"type":        "object",
+						"description": "Time window selector",
+						"properties": map[string]interface{}{
+							"start": map[string]interface{}{
+								"type":        "string",
+								"description": "Start date (ISO8601)",
+							},
+							"end": map[string]interface{}{
+								"type":        "string",
+								"description": "End date (ISO8601)",
+							},
+						},
+						"required": []string{"start"},
+					},
+				},
+			},
+		},
+		{
+			Name:        "getHotspots",
+			Description: "Find files that deserve attention based on churn, coupling, and recency. Highlights volatile areas that may need review.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"timeWindow": map[string]interface{}{
+						"type":        "object",
+						"description": "Time period to analyze (default: 30 days)",
+						"properties": map[string]interface{}{
+							"start": map[string]interface{}{
+								"type":        "string",
+								"description": "Start date (ISO8601 or YYYY-MM-DD)",
+							},
+							"end": map[string]interface{}{
+								"type":        "string",
+								"description": "End date (ISO8601 or YYYY-MM-DD)",
+							},
+						},
+					},
+					"scope": map[string]interface{}{
+						"type":        "string",
+						"description": "Module path to focus on",
+					},
+					"limit": map[string]interface{}{
+						"type":        "number",
+						"default":     20,
+						"description": "Maximum number of hotspots to return (max 50)",
+					},
+				},
+			},
+		},
+		{
+			Name:        "explainPath",
+			Description: "Explain why a path exists and what role it plays. Returns role classification (core, glue, legacy, test-only, config, unknown) with reasoning.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"filePath": map[string]interface{}{
+						"type":        "string",
+						"description": "Path to explain (relative or absolute)",
+					},
+					"contextHint": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional context hint (e.g., 'from traceUsage')",
+					},
+				},
+				"required": []string{"filePath"},
+			},
+		},
+		{
+			Name:        "listKeyConcepts",
+			Description: "Discover main ideas/concepts in the codebase through semantic clustering. Helps understand domain vocabulary.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"limit": map[string]interface{}{
+						"type":        "number",
+						"default":     12,
+						"description": "Maximum number of concepts to return (max 12)",
+					},
+				},
+			},
+		},
+		{
+			Name:        "recentlyRelevant",
+			Description: "Find what matters now - files/symbols with recent activity that may need attention.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"timeWindow": map[string]interface{}{
+						"type":        "object",
+						"description": "Time period to analyze (default: 7 days)",
+						"properties": map[string]interface{}{
+							"start": map[string]interface{}{
+								"type":        "string",
+								"description": "Start date (ISO8601 or YYYY-MM-DD)",
+							},
+							"end": map[string]interface{}{
+								"type":        "string",
+								"description": "End date (ISO8601 or YYYY-MM-DD)",
+							},
+						},
+					},
+					"moduleFilter": map[string]interface{}{
+						"type":        "string",
+						"description": "Module path to focus on",
+					},
+					"limit": map[string]interface{}{
+						"type":        "number",
+						"default":     20,
+						"description": "Maximum results to return",
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -296,4 +435,9 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["explainFile"] = s.toolExplainFile
 	s.tools["listEntrypoints"] = s.toolListEntrypoints
 	s.tools["traceUsage"] = s.toolTraceUsage
+	s.tools["summarizeDiff"] = s.toolSummarizeDiff
+	s.tools["getHotspots"] = s.toolGetHotspots
+	s.tools["explainPath"] = s.toolExplainPath
+	s.tools["listKeyConcepts"] = s.toolListKeyConcepts
+	s.tools["recentlyRelevant"] = s.toolRecentlyRelevant
 }

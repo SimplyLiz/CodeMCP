@@ -97,28 +97,28 @@ All temporal tools accept explicit `timeWindow` parameter to override.
 ### Flow & Runtime Orientation
 | Tool | Budget | Purpose | Status |
 |------|--------|---------|--------|
-| [traceUsage](#traceusage) | Heavy | Show how something is reached | v5.2 |
-| [listEntrypoints](#listentrypoints) | Cheap | List system entrypoints | v5.2 |
+| [traceUsage](#traceusage) | Heavy | Show how something is reached | v5.2 ✓ |
+| [listEntrypoints](#listentrypoints) | Cheap | List system entrypoints | v5.2 ✓ |
 | [getCallGraph](#getcallgraph) | Heavy | Caller/callee graph | v5.1 ✓ |
 
 ### File-Level Navigation
 | Tool | Budget | Purpose | Status |
 |------|--------|---------|--------|
-| [explainFile](#explainfile) | Cheap | File orientation | v5.2 |
-| [explainPath](#explainpath) | Cheap | Path role explanation | v5.2 |
+| [explainFile](#explainfile) | Cheap | File orientation | v5.2 ✓ |
+| [explainPath](#explainpath) | Cheap | Path role explanation | v5.2 ✓ |
 
 ### Change Awareness
 | Tool | Budget | Purpose | Status |
 |------|--------|---------|--------|
-| [summarizeDiff](#summarizediff) | Heavy | Compress diffs into intent | v5.2 |
+| [summarizeDiff](#summarizediff) | Heavy | Compress diffs into intent | v5.2 ✓ |
 
 ### System-Level Orientation
 | Tool | Budget | Purpose | Status |
 |------|--------|---------|--------|
-| [getArchitectureMap](#getarchitecturemap) | Heavy | Architectural overview | v5.2 |
-| [getHotspots](#gethotspots) | Heavy | Highlight volatile areas | v5.2 |
-| [listKeyConcepts](#listkeyconcepts) | Heavy | Main codebase concepts | v5.2 |
-| [recentlyRelevant](#recentlyrelevant) | Heavy | What matters now? | v5.2 |
+| [getArchitecture](#getarchitecture) | Heavy | Architectural overview | v5.2 ✓ |
+| [getHotspots](#gethotspots) | Heavy | Highlight volatile areas | v5.2 ✓ |
+| [listKeyConcepts](#listkeyconcepts) | Heavy | Main codebase concepts | v5.2 ✓ |
+| [recentlyRelevant](#recentlyrelevant) | Heavy | What matters now? | v5.2 ✓ |
 | [getModuleOverview](#getmoduleoverview) | Heavy | Module statistics | v5.1 ✓ |
 
 ### Symbol Analysis
@@ -188,7 +188,7 @@ Get detailed metadata for a symbol by stable ID.
 
 Show how something is reached, not just who calls whom.
 
-**Budget:** Heavy | **Status:** v5.2
+**Budget:** Heavy | **Status:** v5.2 ✓
 
 **Why it exists:** Call graphs are structural. Agents need causal paths: Route → controller → service → DB.
 
@@ -221,7 +221,7 @@ Show how something is reached, not just who calls whom.
 
 Explicit list of system entrypoints.
 
-**Budget:** Cheap | **Status:** v5.2
+**Budget:** Cheap | **Status:** v5.2 ✓
 
 **Parameters:**
 | Name | Type | Required | Default | Description |
@@ -260,7 +260,7 @@ Get caller/callee relationships for a symbol.
 
 Lightweight orientation when a file is the starting point.
 
-**Budget:** Cheap | **Status:** v5.2
+**Budget:** Cheap | **Status:** v5.2 ✓
 
 **Why it exists:** Too big for `explainSymbol`, too small for `getModuleOverview`.
 
@@ -283,7 +283,7 @@ Lightweight orientation when a file is the starting point.
 
 Explain why a path exists and what role it plays.
 
-**Budget:** Cheap | **Status:** v5.2
+**Budget:** Cheap | **Status:** v5.2 ✓
 
 **Parameters:**
 | Name | Type | Required | Description |
@@ -305,22 +305,43 @@ Explain why a path exists and what role it plays.
 
 Compress diffs into "what changed, what might break."
 
-**Budget:** Heavy | **Status:** v5.2
+**Budget:** Heavy | **Status:** v5.2 ✓
 
-**Input (exactly one required):**
-```typescript
-commitRange?: { base: string; head: string }
-prId?: string
-commit?: string
-timeWindow?: { start: ISO8601; end: ISO8601 }
-```
+**Parameters:**
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `commitRange` | object | No* | - | `{ base: string, head: string }` |
+| `commit` | string | No* | - | Single commit hash |
+| `timeWindow` | object | No* | - | `{ start: ISO8601, end?: ISO8601 }` |
+
+> *Exactly one selector required. If none provided, defaults to last 30 days.
 
 **Output includes:**
-- Files/symbols touched
-- Behavior-relevant changes
-- Risk signals (API change, signature change)
+- Changed files with risk levels (low/medium/high)
+- Symbols affected with public API flags
+- Risk signals (api-change, high-churn, signature-change)
 - Suggested tests to run
-- Migration steps (procedural only)
+- Commit history summary
+
+**Risk signal types:**
+| Type | Severity | Trigger |
+|------|----------|---------|
+| `api-change` | high | Public symbol modified |
+| `high-churn` | medium | Large change (>200 lines) |
+| `signature-change` | high | Function signature changed |
+| `breaking-change` | high | Deleted public API |
+
+**Example:**
+```json
+// Analyze last commit
+{ "commit": "abc123" }
+
+// Analyze commit range
+{ "commitRange": { "base": "main", "head": "feature-branch" } }
+
+// Analyze last 7 days
+{ "timeWindow": { "start": "2024-01-01T00:00:00Z" } }
+```
 
 **Allowed vs Not Allowed:**
 | Allowed | Not allowed |
@@ -330,17 +351,17 @@ timeWindow?: { start: ISO8601; end: ISO8601 }
 | Suggested drilldowns | Style enforcement |
 | Suggested tests | Rewrites or code suggestions |
 
-**Default time window:** 30 days if no selector specified.
+**Drilldowns:** `explainFile`, `explainSymbol`, `getArchitecture`
 
 ---
 
 ## System-Level Orientation
 
-### getArchitectureMap
+### getArchitecture
 
-Small, conservative architectural overview.
+Small, conservative architectural overview with v5.2 hard caps.
 
-**Budget:** Heavy | **Status:** v5.2 (enhances v5.1 `getArchitecture`)
+**Budget:** Heavy | **Status:** v5.2 ✓
 
 **Parameters:**
 | Name | Type | Required | Default | Description |
@@ -349,30 +370,57 @@ Small, conservative architectural overview.
 | `includeExternalDeps` | boolean | No | false | Include external deps |
 | `refresh` | boolean | No | false | Force cache refresh |
 
-**Hard caps:**
+**v5.2 Hard caps:**
 | Constraint | Limit |
 |------------|-------|
-| Max nodes | 15–20 modules |
+| Max modules | 20 |
 | Max edges | 50 |
+| Min edge strength | 1 |
 
-**Pruning rule:** Keep edges with `strength ≥ 0.3`, then top 50 by strength, lexical tiebreaker.
+**Output includes:**
+- Module summaries (symbol count, file count, edge counts)
+- Dependency graph edges (sorted by strength)
+- Entrypoints
+- Confidence + confidenceBasis
+- Limitations (if truncated)
+
+**Pruning rule:** Keep edges with `strength ≥ 1`, then top 50 by strength, lexical tiebreaker.
+
+**Drilldowns:** `getModuleOverview`, `explainFile`
 
 ---
 
 ### getHotspots
 
-Highlight areas that deserve attention.
+Highlight areas that deserve attention based on churn, coupling, and recency.
 
-**Budget:** Heavy | **Status:** v5.2
+**Budget:** Heavy | **Status:** v5.2 ✓
 
 **Parameters:**
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| `timeWindow` | object | No | 30 days | Time period to analyze |
-| `scope` | string | No | - | Module to focus on |
-| `limit` | number | No | 20 | Max results |
+| `timeWindow` | object | No | 30 days | `{ start: ISO8601, end?: ISO8601 }` |
+| `scope` | string | No | - | Module path to focus on |
+| `limit` | number | No | 20 | Max results (max 50) |
+
+**Output per hotspot:**
+- File path, role, language
+- Churn metrics (changeCount, authorCount, averageChanges, score)
+- Recency (recent/moderate/stale)
+- Risk level (low/medium/high)
+- Ranking with signals
 
 **Ranking signals:** `churn`, `coupling`, `recency`
+
+**Risk classification:**
+| Condition | Risk |
+|-----------|------|
+| High churn + core file | high |
+| Many authors (>5) | high |
+| High churn (>30 changes) | high |
+| Moderate churn (>10) | medium |
+
+**Drilldowns:** `explainFile`, `summarizeDiff`
 
 ---
 
@@ -380,7 +428,7 @@ Highlight areas that deserve attention.
 
 What are the main ideas in this codebase?
 
-**Budget:** Heavy | **Status:** v5.2
+**Budget:** Heavy | **Status:** v5.2 ✓
 
 **Why it exists:** Not architecture—semantic clustering. Helps onboarding agents understand domain vocabulary.
 
@@ -410,7 +458,7 @@ What are the main ideas in this codebase?
 
 What should I care about now?
 
-**Budget:** Heavy | **Status:** v5.2
+**Budget:** Heavy | **Status:** v5.2 ✓
 
 **Parameters:**
 | Name | Type | Required | Default | Description |
@@ -636,18 +684,18 @@ Predefined exploration modes that configure verbosity, depth, and ranking:
 - `getCallGraph`, `getModuleOverview`, `analyzeImpact`
 - `getStatus`, `doctor`
 
-### v5.2 MVP (Phase 1)
-- `searchSymbols` - Fast discovery with ranking
-- `explainFile` - File orientation
-- `traceUsage` - Causal paths
+### v5.2 MVP (Phase 1) ✓
+- `searchSymbols` - Fast discovery with ranking ✓
+- `explainFile` - File orientation ✓
+- `traceUsage` - Causal paths ✓
+- `listEntrypoints` - System entrypoints ✓
 
-### v5.2.1 (Phase 2)
-- `listEntrypoints`
-- `summarizeDiff`
+### v5.2.1 (Phase 2) ✓
+- `summarizeDiff` - Change awareness ✓
 
-### v5.2.2 (Phase 3)
-- `getHotspots`
-- `getArchitectureMap`
+### v5.2.2 (Phase 3) ✓
+- `getHotspots` - Highlight volatile areas ✓
+- `getArchitecture` - v5.2 enhancements (hard caps, pruning, confidence) ✓
 
 ### v5.2.3 (Phase 4)
 - `explainPath`

@@ -21,13 +21,16 @@ type GetArchitectureOptions struct {
 
 // GetArchitectureResponse is the response for getArchitecture.
 type GetArchitectureResponse struct {
-	Modules         []ModuleSummary    `json:"modules"`
-	DependencyGraph []DependencyEdge   `json:"dependencyGraph"`
-	Entrypoints     []Entrypoint       `json:"entrypoints"`
-	Truncated       bool               `json:"truncated,omitempty"`
-	TruncationInfo  *TruncationInfo    `json:"truncationInfo,omitempty"`
-	Provenance      *Provenance        `json:"provenance"`
-	Drilldowns      []output.Drilldown `json:"drilldowns,omitempty"`
+	Modules         []ModuleSummary       `json:"modules"`
+	DependencyGraph []DependencyEdge      `json:"dependencyGraph"`
+	Entrypoints     []Entrypoint          `json:"entrypoints"`
+	Truncated       bool                  `json:"truncated,omitempty"`
+	TruncationInfo  *TruncationInfo       `json:"truncationInfo,omitempty"`
+	Provenance      *Provenance           `json:"provenance"`
+	Drilldowns      []output.Drilldown    `json:"drilldowns,omitempty"`
+	Confidence      float64               `json:"confidence"`
+	ConfidenceBasis []ConfidenceBasisItem `json:"confidenceBasis"`
+	Limitations     []string              `json:"limitations,omitempty"`
 }
 
 // ModuleSummary describes a module in the architecture.
@@ -61,13 +64,22 @@ type Entrypoint struct {
 }
 
 // GetArchitecture returns the codebase architecture.
+// v5.2 compliant with hard caps: max 20 modules, 50 edges
 func (e *Engine) GetArchitecture(ctx context.Context, opts GetArchitectureOptions) (*GetArchitectureResponse, error) {
 	startTime := time.Now()
+
+	// v5.2 hard caps
+	const maxModules = 20
+	const maxEdges = 50
+	const minEdgeStrength = 1 // Minimum strength to keep an edge
 
 	// Default options
 	if opts.Depth <= 0 {
 		opts.Depth = 2
 	}
+
+	var confidenceBasis []ConfidenceBasisItem
+	var limitations []string
 
 	// Get repo state (full mode for architecture)
 	repoState, err := e.GetRepoState(ctx, "full")
@@ -94,6 +106,11 @@ func (e *Engine) GetArchitecture(ctx context.Context, opts GetArchitectureOption
 		return nil, e.wrapError(err, errors.InternalError)
 	}
 
+	confidenceBasis = append(confidenceBasis, ConfidenceBasisItem{
+		Backend: "scip",
+		Status:  "available",
+	})
+
 	// Convert to response format
 	moduleSummaries := convertModuleSummaries(arch.Modules)
 	edges := convertArchEdges(arch.DependencyGraph, opts.IncludeExternalDeps)
@@ -102,7 +119,7 @@ func (e *Engine) GetArchitecture(ctx context.Context, opts GetArchitectureOption
 	// Compute edge counts for modules
 	computeEdgeCounts(moduleSummaries, edges)
 
-	// Sort modules by impact (incoming edges DESC)
+	// Sort modules by impact (incoming edges DESC) with deterministic tie-breaker
 	sort.Slice(moduleSummaries, func(i, j int) bool {
 		if moduleSummaries[i].IncomingEdges != moduleSummaries[j].IncomingEdges {
 			return moduleSummaries[i].IncomingEdges > moduleSummaries[j].IncomingEdges
@@ -113,16 +130,54 @@ func (e *Engine) GetArchitecture(ctx context.Context, opts GetArchitectureOption
 		return moduleSummaries[i].ModuleId < moduleSummaries[j].ModuleId
 	})
 
-	// Apply budget
-	budget := e.compressor.GetBudget()
+	// v5.2: Prune edges - keep only those with strength >= minEdgeStrength
+	originalEdgeCount := len(edges)
+	prunedEdges := make([]DependencyEdge, 0, len(edges))
+	for _, edge := range edges {
+		if edge.Strength >= minEdgeStrength {
+			prunedEdges = append(prunedEdges, edge)
+		}
+	}
+	edges = prunedEdges
+
+	// v5.2: Sort edges by strength DESC, then lexical tie-breaker
+	sort.Slice(edges, func(i, j int) bool {
+		if edges[i].Strength != edges[j].Strength {
+			return edges[i].Strength > edges[j].Strength
+		}
+		if edges[i].From != edges[j].From {
+			return edges[i].From < edges[j].From
+		}
+		return edges[i].To < edges[j].To
+	})
+
+	// v5.2: Apply edge cap
 	var truncationInfo *TruncationInfo
-	if len(moduleSummaries) > budget.MaxModules {
+	if len(edges) > maxEdges {
+		limitations = append(limitations, "Edge count exceeded; showing top 50 by strength")
+		edges = edges[:maxEdges]
+	}
+
+	// v5.2: Apply module cap
+	if len(moduleSummaries) > maxModules {
 		truncationInfo = &TruncationInfo{
 			Reason:        "max-modules",
 			OriginalCount: len(moduleSummaries),
-			ReturnedCount: budget.MaxModules,
+			ReturnedCount: maxModules,
 		}
-		moduleSummaries = moduleSummaries[:budget.MaxModules]
+		limitations = append(limitations, "Module count exceeded; showing top 20 by impact")
+		moduleSummaries = moduleSummaries[:maxModules]
+	}
+
+	// Track if we pruned edges
+	if originalEdgeCount > len(edges) && len(limitations) == 0 {
+		limitations = append(limitations, "Some weak edges pruned")
+	}
+
+	// Compute confidence
+	confidence := 0.89 // Partial static analysis (SCIP available)
+	if len(limitations) > 0 {
+		confidence = 0.79 // With limitations
 	}
 
 	// Build completeness
@@ -162,6 +217,9 @@ func (e *Engine) GetArchitecture(ctx context.Context, opts GetArchitectureOption
 		TruncationInfo:  truncationInfo,
 		Provenance:      provenance,
 		Drilldowns:      drilldowns,
+		Confidence:      confidence,
+		ConfidenceBasis: confidenceBasis,
+		Limitations:     limitations,
 	}, nil
 }
 
