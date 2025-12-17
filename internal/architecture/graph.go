@@ -122,6 +122,15 @@ func (g *ArchitectureGenerator) classifyImport(
 		if strings.HasPrefix(importPath, mod.Name) {
 			return mod.ID, modules.WorkspacePackage
 		}
+
+		// For Go imports: check if import path ends with or contains the module's root path
+		// e.g., import "ckb/internal/config" should match module with RootPath "internal/config"
+		if fromModule.Language == modules.LanguageGo {
+			if strings.HasSuffix(importPath, "/"+mod.RootPath) ||
+				strings.HasSuffix(importPath, mod.RootPath) {
+				return mod.ID, modules.WorkspacePackage
+			}
+		}
 	}
 
 	// Default to external dependency
@@ -136,8 +145,43 @@ func isStdlibImport(importPath string, language string) bool {
 	case modules.LanguageDart:
 		return strings.HasPrefix(importPath, "dart:")
 	case modules.LanguageGo:
-		// Go stdlib packages don't have dots in them
-		return !strings.Contains(importPath, ".")
+		// Go stdlib packages don't have dots (external) AND don't have slashes (internal)
+		// Examples:
+		//   "fmt", "context", "os" - stdlib (no dots, no slashes)
+		//   "path/filepath", "encoding/json" - stdlib (no dots, has slashes but is standard)
+		//   "github.com/foo/bar" - external (has dots)
+		//   "ckb/internal/config" - local (no dots, but has slashes indicating project path)
+		// The key insight: stdlib packages either have no slashes OR have specific patterns
+		// like "encoding/json", "net/http", etc.
+		if strings.Contains(importPath, ".") {
+			return false // External package (has domain)
+		}
+		// Check if it looks like a project-local import (contains certain patterns)
+		if strings.Contains(importPath, "/internal/") ||
+			strings.Contains(importPath, "/cmd/") ||
+			strings.Contains(importPath, "/pkg/") {
+			return false // Local project package
+		}
+		// If it has a slash, check if the first part looks like a stdlib category
+		parts := strings.Split(importPath, "/")
+		if len(parts) > 1 {
+			// Common Go stdlib top-level packages that have subpackages
+			stdlibPrefixes := map[string]bool{
+				"archive": true, "bufio": true, "bytes": true, "compress": true,
+				"container": true, "context": true, "crypto": true, "database": true,
+				"debug": true, "embed": true, "encoding": true, "errors": true,
+				"expvar": true, "flag": true, "fmt": true, "go": true, "hash": true,
+				"html": true, "image": true, "index": true, "io": true, "log": true,
+				"math": true, "mime": true, "net": true, "os": true, "path": true,
+				"plugin": true, "reflect": true, "regexp": true, "runtime": true,
+				"sort": true, "strconv": true, "strings": true, "sync": true,
+				"syscall": true, "testing": true, "text": true, "time": true,
+				"unicode": true, "unsafe": true,
+			}
+			return stdlibPrefixes[parts[0]]
+		}
+		// Single-segment package without dots is stdlib
+		return true
 	case modules.LanguageTypeScript, modules.LanguageJavaScript:
 		// Node.js built-in modules
 		return strings.HasPrefix(importPath, "node:")

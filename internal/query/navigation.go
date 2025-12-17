@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"ckb/internal/backends/git"
+	"ckb/internal/backends/scip"
 	"ckb/internal/output"
 )
 
@@ -193,6 +194,31 @@ func (e *Engine) ExplainSymbol(ctx context.Context, opts ExplainSymbolOptions) (
 		facts.Module = symbolResp.Symbol.ModuleId
 	}
 
+	// Collect callee data from call graph if SCIP is available
+	var calleeCount int
+	if e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
+		symbolId := opts.SymbolId
+		if symbolResp.Symbol != nil {
+			symbolId = symbolResp.Symbol.StableId
+		}
+		calleeCount = e.scipAdapter.GetCalleeCount(symbolId)
+		if calleeCount > 0 {
+			// Populate callees list with symbol IDs
+			graph, graphErr := e.scipAdapter.BuildCallGraph(symbolId, scip.CallGraphOptions{
+				Direction: scip.DirectionCallees,
+				MaxDepth:  1,
+				MaxNodes:  20,
+			})
+			if graphErr == nil && graph != nil {
+				for _, callee := range graph.Callees {
+					facts.Callees = append(facts.Callees, ExplainCallee{
+						SymbolId: callee.SymbolID,
+					})
+				}
+			}
+		}
+	}
+
 	// Collect reference data for usage/callers
 	refResp, err := e.FindReferences(ctx, FindReferencesOptions{SymbolId: opts.SymbolId, IncludeTests: true, Limit: 200})
 	if err == nil && refResp != nil {
@@ -221,17 +247,13 @@ func (e *Engine) ExplainSymbol(ctx context.Context, opts ExplainSymbolOptions) (
 		facts.Callers = callers
 		facts.Usage = &ExplainUsage{
 			CallerCount:    len(callers),
-			CalleeCount:    len(facts.Callees),
+			CalleeCount:    calleeCount,
 			ReferenceCount: len(refResp.References),
 			ModuleCount:    len(moduleSet),
 		}
 
 		if facts.Flags != nil {
 			facts.Flags.HasTests = hasTests
-		}
-
-		if len(facts.Callees) == 0 {
-			facts.Warnings = append(facts.Warnings, "callee analysis not yet implemented")
 		}
 	}
 
@@ -357,12 +379,15 @@ func computeJustifyVerdict(facts ExplainSymbolFacts) (verdict string, confidence
 	return "remove-candidate", 0.7, "No callers found"
 }
 
-// GetCallGraph builds a shallow caller graph using reference data.
+// GetCallGraph builds a call graph using SCIP index data.
 func (e *Engine) GetCallGraph(ctx context.Context, opts CallGraphOptions) (*CallGraphResponse, error) {
 	startTime := time.Now()
 
 	if opts.Depth == 0 {
 		opts.Depth = 1
+	}
+	if opts.Depth > 4 {
+		opts.Depth = 4 // Hard limit
 	}
 	if opts.Direction == "" {
 		opts.Direction = "both"
@@ -373,62 +398,172 @@ func (e *Engine) GetCallGraph(ctx context.Context, opts CallGraphOptions) (*Call
 		return nil, err
 	}
 
-	refResp, err := e.FindReferences(ctx, FindReferencesOptions{SymbolId: opts.SymbolId, IncludeTests: true, Limit: 200})
-	if err != nil {
-		return nil, err
-	}
-
 	nodes := []CallGraphNode{}
 	edges := []CallGraphEdge{}
+	var warnings []string
 
 	// Add root node
 	rootId := opts.SymbolId
+	rootName := opts.SymbolId
 	if symbolResp.Symbol != nil {
 		rootId = symbolResp.Symbol.StableId
-		nodes = append(nodes, CallGraphNode{
-			ID:       rootId,
-			SymbolId: rootId,
-			Name:     symbolResp.Symbol.Name,
-			Depth:    0,
-			Role:     "root",
-			Score:    1.0,
-		})
+		rootName = symbolResp.Symbol.Name
 	}
+	nodes = append(nodes, CallGraphNode{
+		ID:       rootId,
+		SymbolId: rootId,
+		Name:     rootName,
+		Depth:    0,
+		Role:     "root",
+		Score:    1.0,
+	})
 
-	// Collect callers if requested
-	if opts.Direction == "both" || opts.Direction == "callers" {
-		callerCounts := map[string]int{}
-		callerLocations := map[string]*LocationInfo{}
-
-		for _, ref := range refResp.References {
-			if !strings.Contains(strings.ToLower(ref.Kind), "call") {
-				continue
+	// Use SCIP backend for call graph if available
+	if e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
+		scipIndex := e.scipAdapter.GetIndexInfo()
+		if scipIndex.Available {
+			// Convert direction
+			var scipDirection scip.CallGraphDirection
+			switch opts.Direction {
+			case "callers":
+				scipDirection = scip.DirectionCallers
+			case "callees":
+				scipDirection = scip.DirectionCallees
+			default:
+				scipDirection = scip.DirectionBoth
 			}
-			key := fmt.Sprintf("%s:%d:%d", ref.Location.FileId, ref.Location.StartLine, ref.Location.StartColumn)
-			callerCounts[key]++
-			callerLocations[key] = &LocationInfo{
-				FileId:      ref.Location.FileId,
-				StartLine:   ref.Location.StartLine,
-				StartColumn: ref.Location.StartColumn,
-			}
-		}
 
-		for callerKey := range callerCounts {
-			parts := strings.SplitN(callerKey, ":", 3)
-			nodes = append(nodes, CallGraphNode{
-				ID:       callerKey,
-				Name:     parts[0],
-				Location: callerLocations[callerKey],
-				Depth:    1,
-				Role:     "caller",
-				Score:    float64(callerCounts[callerKey]),
+			// Build call graph from SCIP using resolved symbol ID
+			graph, err := e.scipAdapter.BuildCallGraph(rootId, scip.CallGraphOptions{
+				Direction: scipDirection,
+				MaxDepth:  opts.Depth,
+				MaxNodes:  100,
 			})
-			edges = append(edges, CallGraphEdge{From: callerKey, To: rootId})
+
+			if err == nil && graph != nil {
+				// Add callers
+				for _, caller := range graph.Callers {
+					var loc *LocationInfo
+					if caller.Location != nil {
+						loc = &LocationInfo{
+							FileId:      caller.Location.FileId,
+							StartLine:   caller.Location.StartLine + 1, // Convert to 1-indexed
+							StartColumn: caller.Location.StartColumn + 1,
+						}
+					}
+					nodes = append(nodes, CallGraphNode{
+						ID:       caller.SymbolID,
+						SymbolId: caller.SymbolID,
+						Name:     caller.Name,
+						Location: loc,
+						Depth:    1,
+						Role:     "caller",
+						Score:    1.0,
+					})
+					edges = append(edges, CallGraphEdge{From: caller.SymbolID, To: rootId})
+				}
+
+				// Add callees
+				for _, callee := range graph.Callees {
+					var loc *LocationInfo
+					if callee.Location != nil {
+						loc = &LocationInfo{
+							FileId:      callee.Location.FileId,
+							StartLine:   callee.Location.StartLine + 1, // Convert to 1-indexed
+							StartColumn: callee.Location.StartColumn + 1,
+						}
+					}
+					nodes = append(nodes, CallGraphNode{
+						ID:       callee.SymbolID,
+						SymbolId: callee.SymbolID,
+						Name:     callee.Name,
+						Location: loc,
+						Depth:    1,
+						Role:     "callee",
+						Score:    1.0,
+					})
+					edges = append(edges, CallGraphEdge{From: rootId, To: callee.SymbolID})
+				}
+
+				// Add edges from BFS traversal (for deeper levels)
+				for _, edge := range graph.Edges {
+					// Skip edges already added (depth 1)
+					alreadyAdded := false
+					for _, e := range edges {
+						if e.From == edge.From && e.To == edge.To {
+							alreadyAdded = true
+							break
+						}
+					}
+					if !alreadyAdded {
+						edges = append(edges, CallGraphEdge{From: edge.From, To: edge.To})
+					}
+				}
+
+				// Add nodes from BFS traversal (for deeper levels)
+				for id, node := range graph.Nodes {
+					if id == rootId {
+						continue
+					}
+					// Check if already added
+					found := false
+					for _, n := range nodes {
+						if n.ID == id {
+							found = true
+							break
+						}
+					}
+					if !found {
+						var loc *LocationInfo
+						if node.Location != nil {
+							loc = &LocationInfo{
+								FileId:      node.Location.FileId,
+								StartLine:   node.Location.StartLine + 1,
+								StartColumn: node.Location.StartColumn + 1,
+							}
+						}
+						nodes = append(nodes, CallGraphNode{
+							ID:       node.SymbolID,
+							SymbolId: node.SymbolID,
+							Name:     node.Name,
+							Location: loc,
+							Depth:    2, // Deeper than direct callers/callees
+							Role:     "transitive",
+							Score:    0.5,
+						})
+					}
+				}
+			}
+		}
+	} else {
+		warnings = append(warnings, "SCIP backend not available; call graph may be incomplete")
+
+		// Fallback: use reference-based approach for callers only
+		if opts.Direction == "both" || opts.Direction == "callers" {
+			refResp, err := e.FindReferences(ctx, FindReferencesOptions{SymbolId: opts.SymbolId, IncludeTests: true, Limit: 200})
+			if err == nil {
+				for _, ref := range refResp.References {
+					if ref.Location == nil {
+						continue
+					}
+					key := fmt.Sprintf("%s:%d:%d", ref.Location.FileId, ref.Location.StartLine, ref.Location.StartColumn)
+					nodes = append(nodes, CallGraphNode{
+						ID:       key,
+						Name:     ref.Location.FileId,
+						Location: ref.Location,
+						Depth:    1,
+						Role:     "caller",
+						Score:    1.0,
+					})
+					edges = append(edges, CallGraphEdge{From: key, To: rootId})
+				}
+			}
+		}
+
+		if opts.Direction == "both" || opts.Direction == "callees" {
+			warnings = append(warnings, "Callee analysis requires SCIP index")
 		}
 	}
-
-	// Note: callees direction not yet implemented - would require analyzing
-	// what symbols the target symbol references, which needs different backend queries
 
 	// Sort nodes by score for deterministic output
 	sort.Slice(nodes, func(i, j int) bool { return nodes[i].Score > nodes[j].Score })
@@ -436,17 +571,15 @@ func (e *Engine) GetCallGraph(ctx context.Context, opts CallGraphOptions) (*Call
 	prov := symbolResp.Provenance
 	if prov != nil {
 		prov.QueryDurationMs = time.Since(startTime).Milliseconds()
+		prov.Warnings = append(prov.Warnings, warnings...)
 	}
 
 	var truncation *TruncationInfo
-	if refResp.TruncationInfo != nil {
-		truncation = refResp.TruncationInfo
-	} else if opts.Depth > 1 {
-		// Note limitation for deeper traversal
+	if len(nodes) >= 100 {
 		truncation = &TruncationInfo{
-			Reason:        "depth",
-			OriginalCount: refResp.TotalCount,
-			ReturnedCount: len(refResp.References),
+			Reason:        "max-nodes",
+			OriginalCount: len(nodes),
+			ReturnedCount: len(nodes),
 		}
 	}
 
