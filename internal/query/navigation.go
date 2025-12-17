@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"ckb/internal/backends/git"
+	"ckb/internal/output"
 )
 
 // ExplainSymbolOptions controls explainSymbol behavior.
@@ -17,11 +18,29 @@ type ExplainSymbolOptions struct {
 	SymbolId string
 }
 
+// AINavigationMeta captures common response metadata aligned with the navigation spec.
+type AINavigationMeta struct {
+	CkbVersion    string             `json:"ckbVersion"`
+	SchemaVersion int                `json:"schemaVersion"`
+	Tool          string             `json:"tool"`
+	Resolved      *ResolvedTarget    `json:"resolved,omitempty"`
+	Truncation    *TruncationInfo    `json:"truncation,omitempty"`
+	Drilldowns    []output.Drilldown `json:"drilldowns,omitempty"`
+	Provenance    *Provenance        `json:"provenance,omitempty"`
+}
+
+// ResolvedTarget mirrors the resolution summary in the navigation spec.
+type ResolvedTarget struct {
+	SymbolId     string  `json:"symbolId,omitempty"`
+	ResolvedFrom string  `json:"resolvedFrom,omitempty"`
+	Confidence   float64 `json:"confidence,omitempty"`
+}
+
 // ExplainSymbolResponse provides an AI-navigation friendly symbol overview.
 type ExplainSymbolResponse struct {
-	Facts      ExplainSymbolFacts   `json:"facts"`
-	Summary    ExplainSymbolSummary `json:"summary"`
-	Provenance *Provenance          `json:"provenance"`
+	AINavigationMeta
+	Facts   ExplainSymbolFacts   `json:"facts"`
+	Summary ExplainSymbolSummary `json:"summary"`
 }
 
 // ExplainSymbolFacts mirrors the CKB navigation contract at a simplified level.
@@ -89,11 +108,11 @@ type JustifySymbolOptions struct {
 
 // JustifySymbolResponse returns a verdict-like assessment.
 type JustifySymbolResponse struct {
+	AINavigationMeta
 	Facts      *ExplainSymbolFacts `json:"facts"`
 	Verdict    string              `json:"verdict"`
 	Confidence float64             `json:"confidence"`
 	Reasoning  string              `json:"reasoning"`
-	Provenance *Provenance         `json:"provenance"`
 }
 
 // CallGraphOptions configures call graph retrieval.
@@ -105,19 +124,21 @@ type CallGraphOptions struct {
 
 // CallGraphResponse contains a lightweight call graph.
 type CallGraphResponse struct {
-	Root       string          `json:"root"`
-	Nodes      []CallGraphNode `json:"nodes"`
-	Edges      []CallGraphEdge `json:"edges"`
-	Provenance *Provenance     `json:"provenance"`
+	AINavigationMeta
+	Root  string          `json:"root"`
+	Nodes []CallGraphNode `json:"nodes"`
+	Edges []CallGraphEdge `json:"edges"`
 }
 
 // CallGraphNode captures a node in the call graph.
 type CallGraphNode struct {
-	SymbolId string  `json:"symbolId"`
-	Name     string  `json:"name"`
-	Depth    int     `json:"depth"`
-	Role     string  `json:"role"`
-	Score    float64 `json:"score"`
+	ID       string        `json:"id"`
+	SymbolId string        `json:"symbolId,omitempty"`
+	Name     string        `json:"name"`
+	Location *LocationInfo `json:"location,omitempty"`
+	Depth    int           `json:"depth"`
+	Role     string        `json:"role"`
+	Score    float64       `json:"score"`
 }
 
 // CallGraphEdge encodes a caller->callee relationship.
@@ -134,10 +155,10 @@ type ModuleOverviewOptions struct {
 
 // ModuleOverviewResponse returns coarse module facts.
 type ModuleOverviewResponse struct {
+	AINavigationMeta
 	Module        ModuleOverviewModule `json:"module"`
 	Size          ModuleSize           `json:"size"`
 	RecentCommits []string             `json:"recentCommits,omitempty"`
-	Provenance    *Provenance          `json:"provenance"`
 }
 
 // ModuleOverviewModule contains module identity.
@@ -177,6 +198,7 @@ func (e *Engine) ExplainSymbol(ctx context.Context, opts ExplainSymbolOptions) (
 	if err == nil && refResp != nil {
 		callers := make([]ExplainCaller, 0, len(refResp.References))
 		moduleSet := map[string]struct{}{}
+		hasTests := false
 		for _, ref := range refResp.References {
 			moduleName := topLevelModule(ref.Location.FileId)
 			moduleSet[moduleName] = struct{}{}
@@ -190,8 +212,8 @@ func (e *Engine) ExplainSymbol(ctx context.Context, opts ExplainSymbolOptions) (
 					Context: ref.Context,
 				})
 			}
-			if ref.IsTest && facts.Flags != nil {
-				facts.Flags.HasTests = true
+			if ref.IsTest {
+				hasTests = true
 			}
 		}
 
@@ -203,8 +225,12 @@ func (e *Engine) ExplainSymbol(ctx context.Context, opts ExplainSymbolOptions) (
 			ModuleCount:    len(moduleSet),
 		}
 
-		if facts.Flags != nil && facts.Usage != nil {
-			facts.Flags.HasTests = facts.Usage.CallerCount != len(callers) && len(callers) > 0
+		if facts.Flags != nil {
+			facts.Flags.HasTests = hasTests
+		}
+
+		if len(facts.Callees) == 0 {
+			facts.Warnings = append(facts.Warnings, "callee analysis not implemented")
 		}
 	}
 
@@ -238,10 +264,30 @@ func (e *Engine) ExplainSymbol(ctx context.Context, opts ExplainSymbolOptions) (
 		prov.QueryDurationMs = time.Since(startTime).Milliseconds()
 	}
 
+	resolved := &ResolvedTarget{}
+	if facts.Symbol != nil {
+		resolved.SymbolId = facts.Symbol.StableId
+		resolved.ResolvedFrom = "id"
+		resolved.Confidence = 1.0
+	}
+
+	truncation := refResp.TruncationInfo
+	if refResp.Truncated && truncation == nil {
+		truncation = &TruncationInfo{Reason: "limit", OriginalCount: refResp.TotalCount, ReturnedCount: len(refResp.References)}
+	}
+
 	return &ExplainSymbolResponse{
-		Facts:      facts,
-		Summary:    summary,
-		Provenance: prov,
+		AINavigationMeta: AINavigationMeta{
+			CkbVersion:    "0.1.0",
+			SchemaVersion: 1,
+			Tool:          "explainSymbol",
+			Resolved:      resolved,
+			Truncation:    truncation,
+			Drilldowns:    symbolResp.Drilldowns,
+			Provenance:    prov,
+		},
+		Facts:   facts,
+		Summary: summary,
 	}, nil
 }
 
@@ -252,33 +298,42 @@ func (e *Engine) JustifySymbol(ctx context.Context, opts JustifySymbolOptions) (
 		return nil, err
 	}
 
-	verdict := "investigate"
-	confidence := 0.5
-	reasoning := "Usage unclear"
-
-	if explain.Facts.Usage != nil {
-		if explain.Facts.Usage.CallerCount > 0 {
-			verdict = "keep"
-			confidence = 0.9
-			reasoning = fmt.Sprintf("Active callers detected (%d)", explain.Facts.Usage.CallerCount)
-		} else if explain.Facts.Flags != nil && explain.Facts.Flags.IsPublicApi {
-			verdict = "investigate"
-			confidence = 0.6
-			reasoning = "Public API but no callers found"
-		} else {
-			verdict = "remove-candidate"
-			confidence = 0.7
-			reasoning = "No callers found"
-		}
-	}
+	verdict, confidence, reasoning := computeJustifyVerdict(explain.Facts)
 
 	return &JustifySymbolResponse{
+		AINavigationMeta: AINavigationMeta{
+			CkbVersion:    "0.1.0",
+			SchemaVersion: 1,
+			Tool:          "justifySymbol",
+			Resolved:      explain.Resolved,
+			Truncation:    explain.Truncation,
+			Drilldowns:    explain.Drilldowns,
+			Provenance:    explain.Provenance,
+		},
 		Facts:      &explain.Facts,
 		Verdict:    verdict,
 		Confidence: confidence,
 		Reasoning:  reasoning,
-		Provenance: explain.Provenance,
 	}, nil
+}
+
+// computeJustifyVerdict encapsulates verdict selection logic for unit testing.
+func computeJustifyVerdict(facts ExplainSymbolFacts) (string, float64, string) {
+	verdict := "investigate"
+	confidence := 0.5
+	reasoning := "Usage unclear"
+
+	if facts.Usage != nil {
+		if facts.Usage.CallerCount > 0 {
+			return "keep", 0.9, fmt.Sprintf("Active callers detected (%d)", facts.Usage.CallerCount)
+		}
+	}
+
+	if facts.Flags != nil && facts.Flags.IsPublicApi {
+		return "investigate", 0.6, "Public API but no callers found"
+	}
+
+	return "remove-candidate", 0.7, "No callers found"
 }
 
 // GetCallGraph builds a shallow caller graph using reference data.
@@ -286,6 +341,9 @@ func (e *Engine) GetCallGraph(ctx context.Context, opts CallGraphOptions) (*Call
 	startTime := time.Now()
 	if opts.Depth == 0 {
 		opts.Depth = 1
+	}
+	if opts.Direction == "" {
+		opts.Direction = "both"
 	}
 
 	symbolResp, err := e.GetSymbol(ctx, GetSymbolOptions{SymbolId: opts.SymbolId, RepoStateMode: "full"})
@@ -302,24 +360,31 @@ func (e *Engine) GetCallGraph(ctx context.Context, opts CallGraphOptions) (*Call
 	edges := []CallGraphEdge{}
 
 	if symbolResp.Symbol != nil {
-		nodes = append(nodes, CallGraphNode{SymbolId: symbolResp.Symbol.StableId, Name: symbolResp.Symbol.Name, Depth: 0, Role: "root", Score: 1.0})
+		nodes = append(nodes, CallGraphNode{ID: symbolResp.Symbol.StableId, SymbolId: symbolResp.Symbol.StableId, Name: symbolResp.Symbol.Name, Depth: 0, Role: "root", Score: 1.0})
 	}
 
 	callerCounts := map[string]int{}
-	for _, ref := range refResp.References {
-		if !strings.Contains(strings.ToLower(ref.Kind), "call") {
-			continue
+	callerLocations := map[string]*LocationInfo{}
+	if opts.Direction == "both" || opts.Direction == "callers" {
+		for _, ref := range refResp.References {
+			if !strings.Contains(strings.ToLower(ref.Kind), "call") {
+				continue
+			}
+			key := fmt.Sprintf("%s:%d:%d", ref.Location.FileId, ref.Location.StartLine, ref.Location.StartColumn)
+			callerCounts[key]++
+			callerLocations[key] = &LocationInfo{FileId: ref.Location.FileId, StartLine: ref.Location.StartLine, StartColumn: ref.Location.StartColumn}
+			if opts.Depth <= 1 {
+				continue
+			}
+			// Depth>1 not yet supported - we'll note via truncation below.
 		}
-		callerKey := fmt.Sprintf("%s:%d", ref.Location.FileId, ref.Location.StartLine)
-		callerCounts[callerKey]++
 	}
 
 	for callerKey := range callerCounts {
-		parts := strings.SplitN(callerKey, ":", 2)
-		depth := 1
-		nodes = append(nodes, CallGraphNode{SymbolId: callerKey, Name: parts[0], Depth: depth, Role: "caller", Score: float64(callerCounts[callerKey])})
-		if len(nodes) > 0 {
-			edges = append(edges, CallGraphEdge{From: callerKey, To: opts.SymbolId})
+		parts := strings.SplitN(callerKey, ":", 3)
+		nodes = append(nodes, CallGraphNode{ID: callerKey, Name: parts[0], Location: callerLocations[callerKey], Depth: 1, Role: "caller", Score: float64(callerCounts[callerKey])})
+		if len(nodes) > 0 && symbolResp.Symbol != nil {
+			edges = append(edges, CallGraphEdge{From: callerKey, To: symbolResp.Symbol.StableId})
 		}
 	}
 
@@ -331,11 +396,23 @@ func (e *Engine) GetCallGraph(ctx context.Context, opts CallGraphOptions) (*Call
 		prov.QueryDurationMs = time.Since(startTime).Milliseconds()
 	}
 
+	truncation := refResp.TruncationInfo
+	if truncation == nil && opts.Depth > 1 {
+		truncation = &TruncationInfo{Reason: "depth", OriginalCount: refResp.TotalCount, ReturnedCount: len(refResp.References)}
+	}
+
 	return &CallGraphResponse{
-		Root:       opts.SymbolId,
-		Nodes:      nodes,
-		Edges:      edges,
-		Provenance: prov,
+		AINavigationMeta: AINavigationMeta{
+			CkbVersion:    "0.1.0",
+			SchemaVersion: 1,
+			Tool:          "getCallGraph",
+			Resolved:      &ResolvedTarget{SymbolId: opts.SymbolId, ResolvedFrom: "id", Confidence: 1.0},
+			Truncation:    truncation,
+			Provenance:    prov,
+		},
+		Root:  opts.SymbolId,
+		Nodes: nodes,
+		Edges: edges,
 	}, nil
 }
 
@@ -352,6 +429,15 @@ func (e *Engine) GetModuleOverview(ctx context.Context, opts ModuleOverviewOptio
 		if err != nil {
 			return nil
 		}
+
+		if info.IsDir() {
+			base := filepath.Base(path)
+			if strings.HasPrefix(base, ".") || base == "node_modules" || base == "vendor" || base == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
 		if info.Mode().IsRegular() {
 			fileCount++
 		}
@@ -371,6 +457,13 @@ func (e *Engine) GetModuleOverview(ctx context.Context, opts ModuleOverviewOptio
 	prov := &Provenance{QueryDurationMs: time.Since(startTime).Milliseconds()}
 
 	return &ModuleOverviewResponse{
+		AINavigationMeta: AINavigationMeta{
+			CkbVersion:    "0.1.0",
+			SchemaVersion: 1,
+			Tool:          "getModuleOverview",
+			Resolved:      &ResolvedTarget{SymbolId: opts.Path, ResolvedFrom: "path", Confidence: 1.0},
+			Provenance:    prov,
+		},
 		Module: ModuleOverviewModule{
 			Name: opts.Name,
 			Path: modulePath,
@@ -380,7 +473,6 @@ func (e *Engine) GetModuleOverview(ctx context.Context, opts ModuleOverviewOptio
 			SymbolCount: 0,
 		},
 		RecentCommits: recent,
-		Provenance:    prov,
 	}, nil
 }
 

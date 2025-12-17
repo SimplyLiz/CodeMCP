@@ -1,5 +1,7 @@
 # CKB v5.1 Addendum: AI-Native Navigation Tools
 
+> **Note**: The current implementation in this repository provides a minimal subset of this addendum (response wrappers, basic navigation handlers, and verdict heuristics). Many advanced behaviors described here (full evidence ranking, multi-variant resolution, deep call graphs, and complete module analytics) are aspirational and will be delivered incrementally.
+
 > **Status**: Implementation-Ready
 > 
 > **Purpose**: AI-native navigation tools providing compressed, opinionated, agent-friendly answers.
