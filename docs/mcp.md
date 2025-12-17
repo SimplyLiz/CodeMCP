@@ -27,7 +27,7 @@ claude mcp list
 Tools are classified by performance budget to ensure predictable behavior.
 
 #### Cheap Tools
-`findSymbols` · `explainFile` · `listEntrypoints` · `explainPath` · `getSymbol` · `searchSymbols` · `explainSymbol`
+`searchSymbols` · `explainFile` · `listEntrypoints` · `explainPath` · `getSymbol` · `explainSymbol`
 
 | Constraint | Rule |
 |------------|------|
@@ -91,8 +91,7 @@ All temporal tools accept explicit `timeWindow` parameter to override.
 ### Discovery & Search
 | Tool | Budget | Purpose | Status |
 |------|--------|---------|--------|
-| [findSymbols](#findsymbols) | Cheap | Fast symbol discovery | v5.2 |
-| [searchSymbols](#searchsymbols) | Cheap | Search with filtering | v5.1 ✓ |
+| [searchSymbols](#searchsymbols) | Cheap | Fast symbol discovery with ranking | v5.2 ✓ |
 | [getSymbol](#getsymbol) | Cheap | Get symbol details | v5.1 ✓ |
 
 ### Flow & Runtime Orientation
@@ -140,38 +139,15 @@ All temporal tools accept explicit `timeWindow` parameter to override.
 
 ## Discovery & Search
 
-### findSymbols
-
-Fast, explicit symbol discovery without side effects.
-
-**Budget:** Cheap | **Status:** v5.2
-
-**Why it exists:** Avoids overloading `explainSymbol` as a search tool. Gives agents a cheap "list candidates" step.
-
-**Parameters:**
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| `query` | string | Yes | - | Search query |
-| `kinds` | string[] | No | all | Filter by symbol kinds |
-| `scope` | string | No | - | Module to search within |
-| `limit` | number | No | 50 | Max results |
-
-**Ranking signals:** `matchType` (exact/partial/fuzzy), `kind`, `scope`
-
-**Example:**
-```json
-{ "query": "auth", "kinds": ["function", "class"], "limit": 20 }
-```
-
-**Drilldowns:** `explainSymbol`, `getCallGraph`
-
----
-
 ### searchSymbols
 
-Search for symbols by name with optional filtering.
+Fast symbol discovery with v5.2 ranking signals.
 
-**Budget:** Cheap | **Status:** v5.1 ✓
+**Budget:** Cheap | **Status:** v5.2 ✓
+
+**Why it exists:** Primary tool for symbol discovery. Returns ranked candidates with auditable signals.
+
+> **Note:** The v5.2 spec defines `findSymbols` as a separate tool. Currently, `searchSymbols` provides the same functionality with v5.2 ranking signals. Use `searchSymbols` for all symbol discovery.
 
 **Parameters:**
 | Name | Type | Required | Default | Description |
@@ -181,10 +157,14 @@ Search for symbols by name with optional filtering.
 | `kinds` | string[] | No | - | Symbol kinds: `function`, `method`, `class`, `interface`, `variable`, `constant` |
 | `limit` | number | No | 20 | Maximum results |
 
+**Ranking signals:** `matchType` (exact/partial/fuzzy), `kind`, `scope`
+
 **Example:**
 ```json
 { "query": "Handler", "kinds": ["function", "method"], "limit": 50 }
 ```
+
+**Drilldowns:** `explainSymbol`, `getCallGraph`
 
 ---
 
@@ -588,12 +568,12 @@ Predefined exploration modes that configure verbosity, depth, and ranking:
 2. listKeyConcepts()     → Understand domain vocabulary
 3. getArchitectureMap()  → See module structure
 4. listEntrypoints()     → Find where execution starts
-5. findSymbols()         → Discover relevant code
+5. searchSymbols()       → Discover relevant code
 ```
 
 ### Investigating a Bug
 ```
-1. findSymbols("ErrorType")  → Find related code
+1. searchSymbols("ErrorType")  → Find related code
 2. traceUsage(symbolId)      → How is it reached?
 3. getCallGraph(symbolId)    → What does it call?
 4. recentlyRelevant()        → What changed recently?
@@ -601,7 +581,7 @@ Predefined exploration modes that configure verbosity, depth, and ranking:
 
 ### Before Making Changes
 ```
-1. findSymbols("Target")      → Find the symbol
+1. searchSymbols("Target")    → Find the symbol
 2. explainSymbol(symbolId)    → Understand it
 3. findReferences(symbolId)   → Find all usages
 4. analyzeImpact(symbolId)    → Assess risk
@@ -617,7 +597,7 @@ Predefined exploration modes that configure verbosity, depth, and ranking:
 
 ### Dead Code Detection
 ```
-1. findSymbols(query)        → Find candidates
+1. searchSymbols(query)      → Find candidates
 2. justifySymbol(symbolId)   → Get verdict
 3. explainFile(filePath)     → Understand context
 ```
@@ -628,7 +608,7 @@ Predefined exploration modes that configure verbosity, depth, and ranking:
 
 | Code | Description | Fix |
 |------|-------------|-----|
-| `SYMBOL_NOT_FOUND` | Invalid symbol ID | Use findSymbols() first |
+| `SYMBOL_NOT_FOUND` | Invalid symbol ID | Use searchSymbols() first |
 | `BACKEND_UNAVAILABLE` | Backend not running | Check getStatus() |
 | `INDEX_STALE` | SCIP needs refresh | Run scip-go |
 | `QUERY_TIMEOUT` | Query too slow | Add scope/limit |
@@ -657,7 +637,7 @@ Predefined exploration modes that configure verbosity, depth, and ranking:
 - `getStatus`, `doctor`
 
 ### v5.2 MVP (Phase 1)
-- `findSymbols` - Fast discovery
+- `searchSymbols` - Fast discovery with ranking
 - `explainFile` - File orientation
 - `traceUsage` - Causal paths
 

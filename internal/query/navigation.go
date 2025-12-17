@@ -1,6 +1,7 @@
 package query
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
@@ -770,6 +771,15 @@ func (e *Engine) ExplainFile(ctx context.Context, opts ExplainFileOptions) (*Exp
 		filePath = filepath.Join(e.repoRoot, filePath)
 	}
 
+	// Clean the path to resolve .. and other traversals
+	filePath = filepath.Clean(filePath)
+
+	// Security: verify path is within repo root
+	repoRootClean := filepath.Clean(e.repoRoot)
+	if !strings.HasPrefix(filePath, repoRootClean+string(filepath.Separator)) && filePath != repoRootClean {
+		return nil, fmt.Errorf("path outside repository: %s", opts.FilePath)
+	}
+
 	// Check if file exists
 	fileInfo, err := os.Stat(filePath)
 	if os.IsNotExist(err) {
@@ -825,12 +835,9 @@ func (e *Engine) ExplainFile(ctx context.Context, opts ExplainFileOptions) (*Exp
 						Visibility: sym.Visibility,
 					})
 
-					// Track exports (public symbols)
-					if sym.Visibility == "public" || sym.Visibility == "" {
-						// For Go, exported = starts with uppercase
-						if len(sym.Name) > 0 && sym.Name[0] >= 'A' && sym.Name[0] <= 'Z' {
-							exports = append(exports, sym.Name)
-						}
+					// Track exports (public symbols) - language-aware
+					if isExportedSymbol(sym.Name, sym.Visibility, language) {
+						exports = append(exports, sym.Name)
 					}
 				}
 			}
@@ -957,15 +964,15 @@ func classifyFileRole(path string) string {
 		return "config"
 	}
 
-	// Documentation
+	// Documentation - classify as unknown per v5.2 spec (not code)
 	if strings.HasSuffix(pathLower, ".md") || strings.HasSuffix(pathLower, ".txt") ||
 		strings.Contains(pathLower, "/docs/") {
-		return "docs"
+		return "unknown"
 	}
 
-	// Vendor/external
+	// Vendor/external - classify as unknown per v5.2 spec (external code)
 	if strings.Contains(pathLower, "/vendor/") || strings.Contains(pathLower, "/node_modules/") {
-		return "vendor"
+		return "unknown"
 	}
 
 	// Main entry points
@@ -1020,20 +1027,29 @@ func detectLanguage(path string) string {
 	}
 }
 
-// countFileLines counts the number of lines in a file.
+// countFileLines counts the number of lines in a file using buffered scanning.
 func countFileLines(path string) int {
-	content, err := os.ReadFile(path)
+	file, err := os.Open(path)
 	if err != nil {
 		return 0
 	}
-	return strings.Count(string(content), "\n") + 1
+	defer func() { _ = file.Close() }()
+
+	scanner := bufio.NewScanner(file)
+	lineCount := 0
+	for scanner.Scan() {
+		lineCount++
+	}
+	return lineCount
 }
 
 // computeExplainFileConfidence computes confidence based on available backends.
+// Per v5.2 spec:
+// - Full static analysis coverage: 1.0
+// - Partial static analysis: 0.89
+// - Heuristics only: 0.79
+// - Key backend missing: 0.69
 func computeExplainFileConfidence(basis []ConfidenceBasisItem) float64 {
-	// Start with max confidence
-	confidence := 1.0
-
 	scipAvailable := false
 	for _, b := range basis {
 		if b.Backend == "scip" && b.Status == "available" {
@@ -1042,11 +1058,13 @@ func computeExplainFileConfidence(basis []ConfidenceBasisItem) float64 {
 	}
 
 	if !scipAvailable {
-		// Cap at 0.69 if key backend missing
-		confidence = 0.69
+		// Key backend missing - cap at 0.69
+		return 0.69
 	}
 
-	return confidence
+	// SCIP available but we use heuristics for role detection
+	// This is partial static analysis, cap at 0.89
+	return 0.89
 }
 
 // buildFileOneLiner creates a one-line summary of the file.
@@ -1070,6 +1088,33 @@ func buildFileOneLiner(path, role string, symbolCount int, keySymbols []string) 
 			return fmt.Sprintf("%s defines %s and %d other symbols", fileName, keySymbols[0], symbolCount-1)
 		}
 		return fmt.Sprintf("%s contains %d symbols", fileName, symbolCount)
+	}
+}
+
+// isExportedSymbol determines if a symbol is exported based on language conventions.
+func isExportedSymbol(name, visibility, language string) bool {
+	// If visibility is explicitly set, use it
+	if visibility == "public" {
+		return true
+	}
+	if visibility == "private" || visibility == "protected" {
+		return false
+	}
+
+	// Language-specific inference when visibility is unknown
+	switch language {
+	case "go":
+		// Go: exported symbols start with uppercase
+		return len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z'
+	case "python":
+		// Python: private symbols start with _
+		return !strings.HasPrefix(name, "_")
+	case "javascript", "typescript":
+		// JS/TS: underscore prefix is conventionally private
+		return !strings.HasPrefix(name, "_")
+	default:
+		// For other languages, don't assume - visibility unknown
+		return false
 	}
 }
 
@@ -1228,6 +1273,17 @@ func (e *Engine) ListEntrypoints(ctx context.Context, opts ListEntrypointsOption
 	}
 	entrypoints = uniqueEntrypoints
 
+	// Apply moduleFilter if specified
+	if opts.ModuleFilter != "" {
+		filtered := []EntrypointV52{}
+		for _, ep := range entrypoints {
+			if ep.Location != nil && strings.HasPrefix(ep.Location.FileId, opts.ModuleFilter) {
+				filtered = append(filtered, ep)
+			}
+		}
+		entrypoints = filtered
+	}
+
 	// Apply ranking signals
 	for i := range entrypoints {
 		score := 0.0
@@ -1258,10 +1314,19 @@ func (e *Engine) ListEntrypoints(ctx context.Context, opts ListEntrypointsOption
 		})
 	}
 
-	// Sort by ranking score
+	// Sort by ranking score with deterministic tie-breaker (name, then symbolId)
 	sort.Slice(entrypoints, func(i, j int) bool {
-		return entrypoints[i].Ranking.Score > entrypoints[j].Ranking.Score
+		if entrypoints[i].Ranking.Score != entrypoints[j].Ranking.Score {
+			return entrypoints[i].Ranking.Score > entrypoints[j].Ranking.Score
+		}
+		if entrypoints[i].Name != entrypoints[j].Name {
+			return entrypoints[i].Name < entrypoints[j].Name
+		}
+		return entrypoints[i].SymbolId < entrypoints[j].SymbolId
 	})
+
+	// Track total count before limiting
+	totalFound := len(entrypoints)
 
 	// Apply limit
 	if len(entrypoints) > opts.Limit {
@@ -1284,7 +1349,7 @@ func (e *Engine) ListEntrypoints(ctx context.Context, opts ListEntrypointsOption
 			Tool:          "listEntrypoints",
 		},
 		Entrypoints:     entrypoints,
-		TotalCount:      len(entrypoints),
+		TotalCount:      totalFound,
 		Confidence:      confidence,
 		ConfidenceBasis: confidenceBasis,
 		Warnings:        warnings,
@@ -1307,8 +1372,8 @@ func (e *Engine) ListEntrypoints(ctx context.Context, opts ListEntrypointsOption
 				RelevanceScore: 0.9,
 			},
 			{
-				Label:          "Trace usage from entrypoint",
-				Query:          fmt.Sprintf("traceUsage --from=%s", entrypoints[0].SymbolId),
+				Label:          fmt.Sprintf("Call graph for %s", entrypoints[0].Name),
+				Query:          fmt.Sprintf("getCallGraph %s", entrypoints[0].SymbolId),
 				RelevanceScore: 0.85,
 			},
 		}
@@ -1352,6 +1417,17 @@ type PathNode struct {
 	Role     string        `json:"role"` // entrypoint, intermediate, target
 }
 
+// bfsCache holds per-request caches for BFS traversal
+type bfsCache struct {
+	callees map[string][]string          // symbolId -> list of callee IDs
+	symbols map[string]*symbolCacheEntry // symbolId -> symbol info
+}
+
+type symbolCacheEntry struct {
+	name     string
+	location *LocationInfo
+}
+
 // TraceUsage traces how a symbol is reached from system entrypoints.
 func (e *Engine) TraceUsage(ctx context.Context, opts TraceUsageOptions) (*TraceUsageResponse, error) {
 	startTime := time.Now()
@@ -1370,6 +1446,12 @@ func (e *Engine) TraceUsage(ctx context.Context, opts TraceUsageOptions) (*Trace
 	var limitations []string
 	paths := []UsagePath{}
 
+	// Initialize per-request cache
+	cache := &bfsCache{
+		callees: make(map[string][]string),
+		symbols: make(map[string]*symbolCacheEntry),
+	}
+
 	// Resolve target symbol
 	targetResp, err := e.GetSymbol(ctx, GetSymbolOptions{SymbolId: opts.SymbolId, RepoStateMode: "full"})
 	if err != nil {
@@ -1383,6 +1465,8 @@ func (e *Engine) TraceUsage(ctx context.Context, opts TraceUsageOptions) (*Trace
 		targetId = targetResp.Symbol.StableId
 		targetName = targetResp.Symbol.Name
 		targetLoc = targetResp.Symbol.Location
+		// Cache the target symbol
+		cache.symbols[targetId] = &symbolCacheEntry{name: targetName, location: targetLoc}
 	}
 
 	// Get entrypoints to use as start nodes
@@ -1405,9 +1489,9 @@ func (e *Engine) TraceUsage(ctx context.Context, opts TraceUsageOptions) (*Trace
 		if len(entrypoints) > 0 {
 			// Try to find paths from each entrypoint to the target
 			for _, ep := range entrypoints {
-				path := e.findPathBFS(ctx, ep.SymbolId, targetId, opts.MaxDepth)
+				path := e.findPathBFSCached(ctx, ep.SymbolId, targetId, opts.MaxDepth, cache)
 				if len(path) > 0 {
-					// Build path nodes
+					// Build path nodes - resolve names only for final path
 					nodes := make([]PathNode, len(path))
 					for i, nodeId := range path {
 						role := "intermediate"
@@ -1417,13 +1501,18 @@ func (e *Engine) TraceUsage(ctx context.Context, opts TraceUsageOptions) (*Trace
 							role = "target"
 						}
 
-						// Get symbol info for node
+						// Get symbol info from cache or resolve
 						nodeName := nodeId
 						var loc *LocationInfo
-						if symResp, err := e.GetSymbol(ctx, GetSymbolOptions{SymbolId: nodeId, RepoStateMode: "head"}); err == nil && symResp.Symbol != nil {
-							nodeName = symResp.Symbol.Name
-							if symResp.Symbol.Location != nil {
+						if cached, ok := cache.symbols[nodeId]; ok {
+							nodeName = cached.name
+							loc = cached.location
+						} else {
+							// Resolve and cache
+							if symResp, err := e.GetSymbol(ctx, GetSymbolOptions{SymbolId: nodeId, RepoStateMode: "head"}); err == nil && symResp.Symbol != nil {
+								nodeName = symResp.Symbol.Name
 								loc = symResp.Symbol.Location
+								cache.symbols[nodeId] = &symbolCacheEntry{name: nodeName, location: loc}
 							}
 						}
 
@@ -1589,8 +1678,8 @@ func (e *Engine) TraceUsage(ctx context.Context, opts TraceUsageOptions) (*Trace
 	return response, nil
 }
 
-// findPathBFS performs BFS to find a path from source to target.
-func (e *Engine) findPathBFS(ctx context.Context, sourceId, targetId string, maxDepth int) []string {
+// findPathBFSCached performs BFS to find a path from source to target with caching.
+func (e *Engine) findPathBFSCached(ctx context.Context, sourceId, targetId string, maxDepth int, cache *bfsCache) []string {
 	if sourceId == targetId {
 		return []string{sourceId}
 	}
@@ -1602,11 +1691,14 @@ func (e *Engine) findPathBFS(ctx context.Context, sourceId, targetId string, max
 		depth int
 	}
 
+	const maxVisitedNodes = 500 // Cap to prevent explosion
+	const maxCalleesPerNode = 30
+
 	visited := make(map[string]bool)
 	queue := []bfsNode{{id: sourceId, path: []string{sourceId}, depth: 0}}
 	visited[sourceId] = true
 
-	for len(queue) > 0 {
+	for len(queue) > 0 && len(visited) < maxVisitedNodes {
 		current := queue[0]
 		queue = queue[1:]
 
@@ -1614,37 +1706,49 @@ func (e *Engine) findPathBFS(ctx context.Context, sourceId, targetId string, max
 			continue
 		}
 
-		// Get callees of current node
-		if e.scipAdapter == nil {
-			continue
-		}
-
-		graph, err := e.scipAdapter.BuildCallGraph(current.id, scip.CallGraphOptions{
-			Direction: scip.DirectionCallees,
-			MaxDepth:  1,
-			MaxNodes:  50,
-		})
-
-		if err != nil || graph == nil {
-			continue
-		}
-
-		for _, callee := range graph.Callees {
-			if visited[callee.SymbolID] {
+		// Get callees - check cache first
+		callees, ok := cache.callees[current.id]
+		if !ok {
+			// Not in cache - fetch from SCIP
+			if e.scipAdapter == nil {
 				continue
 			}
-			visited[callee.SymbolID] = true
+
+			graph, err := e.scipAdapter.BuildCallGraph(current.id, scip.CallGraphOptions{
+				Direction: scip.DirectionCallees,
+				MaxDepth:  1,
+				MaxNodes:  maxCalleesPerNode,
+			})
+
+			if err != nil || graph == nil {
+				cache.callees[current.id] = []string{} // Cache empty result
+				continue
+			}
+
+			// Extract callee IDs and cache
+			callees = make([]string, 0, len(graph.Callees))
+			for _, callee := range graph.Callees {
+				callees = append(callees, callee.SymbolID)
+			}
+			cache.callees[current.id] = callees
+		}
+
+		for _, calleeId := range callees {
+			if visited[calleeId] {
+				continue
+			}
+			visited[calleeId] = true
 
 			newPath := make([]string, len(current.path)+1)
 			copy(newPath, current.path)
-			newPath[len(current.path)] = callee.SymbolID
+			newPath[len(current.path)] = calleeId
 
-			if callee.SymbolID == targetId {
+			if calleeId == targetId {
 				return newPath
 			}
 
 			queue = append(queue, bfsNode{
-				id:    callee.SymbolID,
+				id:    calleeId,
 				path:  newPath,
 				depth: current.depth + 1,
 			})
