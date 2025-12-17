@@ -53,12 +53,16 @@ func (s *MCPServer) writeError(id interface{}, code int, message string) error {
 	return s.writeMessage(NewErrorMessage(id, code, message, nil))
 }
 
-// writeErrorWithData writes an error response with additional data
+// writeErrorWithData writes an error response with additional data (kept for future use)
+var _ = (*MCPServer).writeErrorWithData
+
 func (s *MCPServer) writeErrorWithData(id interface{}, code int, message string, data interface{}) error {
 	return s.writeMessage(NewErrorMessage(id, code, message, data))
 }
 
-// writeResult writes a successful result response
+// writeResult writes a successful result response (kept for future use)
+var _ = (*MCPServer).writeResult
+
 func (s *MCPServer) writeResult(id interface{}, result interface{}) error {
 	return s.writeMessage(NewResultMessage(id, result))
 }

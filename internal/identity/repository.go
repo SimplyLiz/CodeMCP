@@ -365,7 +365,7 @@ func (r *SymbolRepository) List(filter SymbolFilter) ([]*SymbolMapping, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to list symbols: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var mappings []*SymbolMapping
 

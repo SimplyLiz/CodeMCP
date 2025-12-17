@@ -101,8 +101,8 @@ func (e *Engine) AnalyzeImpact(ctx context.Context, opts AnalyzeImpactOptions) (
 	var completeness CompletenessInfo
 
 	if e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
-		result, err := e.scipAdapter.GetSymbol(ctx, resolved.Symbol.StableId)
-		if err == nil && result != nil {
+		result, symbolErr := e.scipAdapter.GetSymbol(ctx, resolved.Symbol.StableId)
+		if symbolErr == nil && result != nil {
 			symbolInfo = &SymbolInfo{
 				StableId:      result.StableID,
 				Name:          result.Name,
@@ -156,8 +156,8 @@ func (e *Engine) AnalyzeImpact(ctx context.Context, opts AnalyzeImpactOptions) (
 			MaxResults:   500,
 			IncludeTests: opts.IncludeTests,
 		}
-		refsResult, err := e.scipAdapter.FindReferences(ctx, resolved.Symbol.StableId, refOpts)
-		if err == nil && refsResult != nil {
+		refsResult, refsErr := e.scipAdapter.FindReferences(ctx, resolved.Symbol.StableId, refOpts)
+		if refsErr == nil && refsResult != nil {
 			for _, ref := range refsResult.References {
 				impactRef := impact.Reference{
 					Kind: impact.ReferenceKind(ref.Kind),

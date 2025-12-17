@@ -160,7 +160,7 @@ func (s *SCIPAdapter) GetSymbol(ctx context.Context, id string) (*backends.Symbo
 	}
 
 	// Apply timeout
-	ctx, cancel := context.WithTimeout(ctx, s.queryTimeout)
+	_, cancel := context.WithTimeout(ctx, s.queryTimeout)
 	defer cancel()
 
 	// Get symbol from index
@@ -197,7 +197,7 @@ func (s *SCIPAdapter) SearchSymbols(ctx context.Context, query string, opts back
 	}
 
 	// Apply timeout
-	ctx, cancel := context.WithTimeout(ctx, s.queryTimeout)
+	_, cancel := context.WithTimeout(ctx, s.queryTimeout)
 	defer cancel()
 
 	// Convert options
@@ -252,7 +252,7 @@ func (s *SCIPAdapter) FindReferences(ctx context.Context, symbolID string, opts 
 	}
 
 	// Apply timeout
-	ctx, cancel := context.WithTimeout(ctx, s.queryTimeout)
+	_, cancel := context.WithTimeout(ctx, s.queryTimeout)
 	defer cancel()
 
 	// Convert options

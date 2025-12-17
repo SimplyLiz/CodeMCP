@@ -27,7 +27,7 @@ func setupTestDB(t *testing.T) (*storage.DB, string) {
 	// Open database
 	db, err := storage.Open(tmpDir, logger)
 	if err != nil {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 		t.Fatalf("failed to open database: %v", err)
 	}
 
@@ -36,9 +36,9 @@ func setupTestDB(t *testing.T) (*storage.DB, string) {
 
 func cleanupTestDB(db *storage.DB, tmpDir string) {
 	if db != nil {
-		db.Close()
+		_ = db.Close()
 	}
-	os.RemoveAll(tmpDir)
+	_ = os.RemoveAll(tmpDir)
 }
 
 func TestFingerprintComputation(t *testing.T) {

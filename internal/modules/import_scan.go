@@ -151,7 +151,7 @@ func (s *ImportScanner) ScanFile(filePath string, repoRoot string) ([]*ImportEdg
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var edges []*ImportEdge
 	scanner := bufio.NewScanner(file)

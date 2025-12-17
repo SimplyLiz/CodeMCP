@@ -118,7 +118,9 @@ func (s *LspSupervisor) getQueueSize(languageId string) int {
 	return len(queue)
 }
 
-// waitForSlot waits for a queue slot to become available
+// waitForSlot waits for a queue slot to become available (kept for future use)
+var _ = (*LspSupervisor).waitForSlot
+
 func (s *LspSupervisor) waitForSlot(languageId string, maxWaitMs int) bool {
 	s.queuesMu.RLock()
 	queue, exists := s.queues[languageId]

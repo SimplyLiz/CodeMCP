@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"ckb/internal/errors"
+
 	scippb "github.com/sourcegraph/scip/bindings/go/scip"
 	"google.golang.org/protobuf/proto"
 )
@@ -209,7 +210,7 @@ func convertOccurrence(occ *scippb.Occurrence) *Occurrence {
 	return &Occurrence{
 		Range:                 occ.Range,
 		Symbol:                occ.Symbol,
-		SymbolRoles:           int32(occ.SymbolRoles),
+		SymbolRoles:           occ.SymbolRoles,
 		OverrideDocumentation: occ.OverrideDocumentation,
 		SyntaxKind:            int32(occ.SyntaxKind),
 		Diagnostics:           diagnostics,

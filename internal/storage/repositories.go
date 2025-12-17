@@ -236,7 +236,7 @@ func (r *SymbolRepository) ListByState(state string, limit int) ([]*SymbolMappin
 	if err != nil {
 		return nil, fmt.Errorf("failed to list symbol mappings: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return r.scanSymbolMappings(rows)
 }
@@ -343,7 +343,7 @@ func (r *AliasRepository) GetByOldStableID(oldStableID string) ([]*SymbolAlias, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get symbol aliases: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return r.scanSymbolAliases(rows)
 }
@@ -470,7 +470,7 @@ func (r *ModuleRepository) ListAll() ([]*Module, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to list modules: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return r.scanModules(rows)
 }
@@ -561,7 +561,7 @@ func (r *DependencyRepository) GetByFromModule(fromModule string) ([]*Dependency
 	if err != nil {
 		return nil, fmt.Errorf("failed to get dependencies: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return r.scanDependencyEdges(rows)
 }
@@ -577,7 +577,7 @@ func (r *DependencyRepository) GetByToModule(toModule string) ([]*DependencyEdge
 	if err != nil {
 		return nil, fmt.Errorf("failed to get reverse dependencies: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return r.scanDependencyEdges(rows)
 }

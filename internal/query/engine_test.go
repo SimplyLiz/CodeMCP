@@ -23,9 +23,9 @@ func testEngine(t *testing.T) (*Engine, func()) {
 
 	// Create .ckb directory
 	ckbDir := filepath.Join(tmpDir, ".ckb")
-	if err := os.MkdirAll(ckbDir, 0755); err != nil {
-		os.RemoveAll(tmpDir)
-		t.Fatalf("failed to create .ckb dir: %v", err)
+	if mkdirErr := os.MkdirAll(ckbDir, 0755); mkdirErr != nil {
+		_ = os.RemoveAll(tmpDir)
+		t.Fatalf("failed to create .ckb dir: %v", mkdirErr)
 	}
 
 	// Create test logger (silent)
@@ -37,7 +37,7 @@ func testEngine(t *testing.T) (*Engine, func()) {
 	// Create test database
 	db, err := storage.Open(tmpDir, logger)
 	if err != nil {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 		t.Fatalf("failed to create test db: %v", err)
 	}
 
@@ -48,14 +48,14 @@ func testEngine(t *testing.T) (*Engine, func()) {
 	// Create engine
 	engine, err := NewEngine(tmpDir, db, logger, cfg)
 	if err != nil {
-		db.Close()
-		os.RemoveAll(tmpDir)
+		_ = db.Close()
+		_ = os.RemoveAll(tmpDir)
 		t.Fatalf("failed to create engine: %v", err)
 	}
 
 	cleanup := func() {
-		db.Close()
-		os.RemoveAll(tmpDir)
+		_ = db.Close()
+		_ = os.RemoveAll(tmpDir)
 	}
 
 	return engine, cleanup

@@ -24,7 +24,9 @@ func DefaultLimits() *ArchitectureLimits {
 	}
 }
 
-// checkLimits validates that the file count is within acceptable limits
+// checkLimits validates that the file count is within acceptable limits (kept for future use)
+var _ = (*ArchitectureLimits).checkLimits
+
 func (l *ArchitectureLimits) checkLimits(fileCount int) error {
 	if fileCount > l.MaxFilesScanned {
 		return fmt.Errorf("file count %d exceeds maximum limit %d", fileCount, l.MaxFilesScanned)

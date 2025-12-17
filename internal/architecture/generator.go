@@ -109,7 +109,7 @@ func (g *ArchitectureGenerator) Generate(ctx context.Context, repoStateId string
 	})
 
 	// Check module count limit
-	if err := g.limits.checkModuleCount(len(detectionResult.Modules)); err != nil {
+	if limitErr := g.limits.checkModuleCount(len(detectionResult.Modules)); limitErr != nil {
 		g.logger.Warn("Module count exceeds limit, truncating", map[string]interface{}{
 			"detected": len(detectionResult.Modules),
 			"limit":    g.limits.MaxModules,

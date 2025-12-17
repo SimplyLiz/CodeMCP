@@ -123,7 +123,9 @@ func (r *Response) SetIndexFreshness(stale bool, lastCommit, headCommit string) 
 	}
 }
 
-// measureDuration is a helper to measure execution time
+// measureDuration is a helper to measure execution time (kept for future use)
+var _ = measureDuration
+
 func measureDuration(start time.Time) int64 {
 	return time.Since(start).Milliseconds()
 }
