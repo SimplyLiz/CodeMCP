@@ -95,7 +95,19 @@ curl http://localhost:8080/architecture
 ./ckb mcp
 ```
 
-Configure in Claude Code's MCP settings:
+Configure in Claude Code using the CLI:
+```bash
+# Add to current project (creates .mcp.json)
+claude mcp add --transport stdio ckb --scope project -- /path/to/ckb mcp
+
+# Or add globally for all projects
+claude mcp add --transport stdio ckb --scope user -- /path/to/ckb mcp
+
+# Verify configuration
+claude mcp list
+```
+
+Or manually add to your MCP config:
 ```json
 {
   "mcpServers": {
@@ -182,6 +194,11 @@ CKB configuration is stored in `.ckb/config.json`:
 | `getArchitecture` | Get codebase architecture overview |
 | `analyzeImpact` | Analyze impact of changing a symbol |
 | `getStatus` | Get CKB system status |
+| `doctor` | Run diagnostic checks |
+| `explainSymbol` | AI-friendly symbol overview with usage and history |
+| `justifySymbol` | Keep/investigate/remove verdict for a symbol |
+| `getCallGraph` | Caller/callee relationships for a symbol |
+| `getModuleOverview` | High-level module statistics and activity |
 
 ## Development
 

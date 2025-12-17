@@ -187,11 +187,145 @@ Run diagnostic checks.
 }
 ```
 
+---
+
+## AI Navigation Tools
+
+These tools are designed specifically for AI assistants to navigate and understand codebases.
+
+### explainSymbol
+
+Get an AI-friendly explanation of a symbol including usage statistics, git history, and a summary.
+
+**Parameters:**
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `symbolId` | string | Yes | Stable symbol ID |
+
+**Example:**
+```json
+{
+  "tool": "explainSymbol",
+  "arguments": {
+    "symbolId": "ckb:repo:sym:abc123"
+  }
+}
+```
+
+**Response includes:**
+- Symbol metadata (name, kind, signature, location)
+- Usage statistics (caller count, reference count)
+- Git history (creation date, last modified, author)
+- AI-generated summary
+
+---
+
+### justifySymbol
+
+Get a keep/investigate/remove verdict for a symbol based on usage analysis.
+
+**Parameters:**
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `symbolId` | string | Yes | Stable symbol ID |
+
+**Example:**
+```json
+{
+  "tool": "justifySymbol",
+  "arguments": {
+    "symbolId": "ckb:repo:sym:abc123"
+  }
+}
+```
+
+**Response includes:**
+- Verdict: `keep`, `investigate`, or `remove`
+- Confidence score (0-1)
+- Reasoning explanation
+- List of callers
+
+---
+
+### getCallGraph
+
+Get a lightweight call graph showing callers and/or callees of a symbol.
+
+**Parameters:**
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `symbolId` | string | Yes | Root symbol ID |
+| `direction` | string | No | `callers`, `callees`, or `both` (default: `both`) |
+| `depth` | number | No | Max traversal depth 1-4 (default: 1) |
+
+**Example:**
+```json
+{
+  "tool": "getCallGraph",
+  "arguments": {
+    "symbolId": "ckb:repo:sym:abc123",
+    "direction": "callers",
+    "depth": 2
+  }
+}
+```
+
+**Response includes:**
+- Root node with symbol info
+- Nodes array with caller/callee symbols
+- Edges array showing relationships
+
+---
+
+### getModuleOverview
+
+Get a high-level overview of a module including file count, symbol count, and recent activity.
+
+**Parameters:**
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `path` | string | No | Path to module directory |
+| `name` | string | No | Friendly name for the module |
+
+**Example:**
+```json
+{
+  "tool": "getModuleOverview",
+  "arguments": {
+    "path": "internal/query",
+    "name": "Query Engine"
+  }
+}
+```
+
+**Response includes:**
+- Module metadata (path, name)
+- File and line counts
+- Recent git activity (commits, active files)
+- Entry points (exported symbols)
+
+---
+
+## Integration with Claude Code
+
+### Quick Setup (Recommended)
+
+Use the Claude Code CLI to add CKB:
+
+```bash
+# Add to current project (creates .mcp.json)
+claude mcp add --transport stdio ckb --scope project -- /path/to/ckb mcp
+
+# Or add globally for all projects
+claude mcp add --transport stdio ckb --scope user -- /path/to/ckb mcp
+
+# Verify it's configured
+claude mcp list
+```
+
 ## Integration with Claude Desktop
 
-### Configuration
-
-Add CKB to your Claude Desktop MCP settings:
+For Claude Desktop (not Claude Code), add CKB to your MCP settings:
 
 **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
 
