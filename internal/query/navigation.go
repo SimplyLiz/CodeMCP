@@ -1799,3 +1799,574 @@ func isTestFilePath(path string) bool {
 		strings.Contains(pathLower, "/test/") ||
 		strings.Contains(pathLower, "/tests/")
 }
+
+// SummarizeDiffOptions controls summarizeDiff behavior.
+// Exactly one selector must be provided: CommitRange, Commit, or TimeWindow.
+type SummarizeDiffOptions struct {
+	CommitRange *CommitRangeSelector `json:"commitRange,omitempty"`
+	Commit      string               `json:"commit,omitempty"`
+	TimeWindow  *TimeWindowSelector  `json:"timeWindow,omitempty"`
+}
+
+// CommitRangeSelector specifies a base..head range.
+type CommitRangeSelector struct {
+	Base string `json:"base"`
+	Head string `json:"head"`
+}
+
+// TimeWindowSelector specifies a time range.
+type TimeWindowSelector struct {
+	Start string `json:"start"` // ISO8601
+	End   string `json:"end"`   // ISO8601
+}
+
+// SummarizeDiffResponse provides a compressed summary of changes.
+type SummarizeDiffResponse struct {
+	AINavigationMeta
+	Selector        DiffSelector          `json:"selector"`
+	ChangedFiles    []DiffFileChange      `json:"changedFiles"`
+	SymbolsAffected []DiffSymbolAffected  `json:"symbolsAffected"`
+	RiskSignals     []DiffRiskSignal      `json:"riskSignals"`
+	SuggestedTests  []SuggestedTest       `json:"suggestedTests,omitempty"`
+	Summary         DiffSummaryText       `json:"summary"`
+	Commits         []DiffCommitInfo      `json:"commits,omitempty"`
+	Confidence      float64               `json:"confidence"`
+	ConfidenceBasis []ConfidenceBasisItem `json:"confidenceBasis"`
+	Limitations     []string              `json:"limitations,omitempty"`
+}
+
+// DiffSelector records which selector was used.
+type DiffSelector struct {
+	Type  string `json:"type"` // commitRange, commit, timeWindow
+	Value string `json:"value"`
+}
+
+// DiffFileChange represents a changed file.
+type DiffFileChange struct {
+	FilePath   string `json:"filePath"`
+	ChangeType string `json:"changeType"` // added, modified, deleted, renamed
+	Additions  int    `json:"additions"`
+	Deletions  int    `json:"deletions"`
+	OldPath    string `json:"oldPath,omitempty"` // if renamed
+	Language   string `json:"language,omitempty"`
+	Role       string `json:"role,omitempty"` // core, test, config, unknown
+	RiskLevel  string `json:"riskLevel"`      // low, medium, high
+}
+
+// DiffSymbolAffected represents a symbol affected by the changes.
+type DiffSymbolAffected struct {
+	SymbolId     string `json:"symbolId,omitempty"`
+	Name         string `json:"name"`
+	Kind         string `json:"kind"`
+	FilePath     string `json:"filePath"`
+	ChangeType   string `json:"changeType"` // added, modified, deleted
+	IsPublicAPI  bool   `json:"isPublicApi"`
+	IsEntrypoint bool   `json:"isEntrypoint"`
+}
+
+// DiffRiskSignal represents a risk indicator.
+type DiffRiskSignal struct {
+	Type        string  `json:"type"`     // api-change, signature-change, breaking-change, high-churn, test-gap
+	Severity    string  `json:"severity"` // low, medium, high
+	FilePath    string  `json:"filePath"`
+	Description string  `json:"description"`
+	Confidence  float64 `json:"confidence"`
+}
+
+// SuggestedTest represents a suggested test to run.
+type SuggestedTest struct {
+	TestPath string `json:"testPath"`
+	Reason   string `json:"reason"`
+	Priority string `json:"priority"` // high, medium, low
+}
+
+// DiffSummaryText provides a human-readable summary.
+type DiffSummaryText struct {
+	OneLiner     string   `json:"oneLiner"`
+	KeyChanges   []string `json:"keyChanges"`
+	RiskOverview string   `json:"riskOverview,omitempty"`
+}
+
+// DiffCommitInfo represents a commit included in the diff.
+type DiffCommitInfo struct {
+	Hash      string `json:"hash"`
+	Message   string `json:"message"`
+	Author    string `json:"author"`
+	Timestamp string `json:"timestamp"`
+}
+
+// SummarizeDiff compresses diffs into "what changed, what might break".
+func (e *Engine) SummarizeDiff(ctx context.Context, opts SummarizeDiffOptions) (*SummarizeDiffResponse, error) {
+	startTime := time.Now()
+
+	// Validate: exactly one selector must be provided
+	selectorCount := 0
+	if opts.CommitRange != nil {
+		selectorCount++
+	}
+	if opts.Commit != "" {
+		selectorCount++
+	}
+	if opts.TimeWindow != nil {
+		selectorCount++
+	}
+
+	if selectorCount == 0 {
+		// Default: last 30 days
+		thirtyDaysAgo := time.Now().AddDate(0, 0, -30).Format(time.RFC3339)
+		opts.TimeWindow = &TimeWindowSelector{
+			Start: thirtyDaysAgo,
+			End:   time.Now().Format(time.RFC3339),
+		}
+	} else if selectorCount > 1 {
+		return nil, fmt.Errorf("exactly one selector required: commitRange, commit, or timeWindow")
+	}
+
+	var confidenceBasis []ConfidenceBasisItem
+	var limitations []string
+	changedFiles := []DiffFileChange{}
+	symbolsAffected := []DiffSymbolAffected{}
+	riskSignals := []DiffRiskSignal{}
+	suggestedTests := []SuggestedTest{}
+	commits := []DiffCommitInfo{}
+	var selector DiffSelector
+
+	// Check git backend
+	if e.gitAdapter == nil || !e.gitAdapter.IsAvailable() {
+		return nil, fmt.Errorf("git backend unavailable; summarizeDiff requires git")
+	}
+	confidenceBasis = append(confidenceBasis, ConfidenceBasisItem{
+		Backend: "git",
+		Status:  "available",
+	})
+
+	// Get diff based on selector type
+	var diffStats []git.DiffStats
+	var base, head string
+	var err error
+
+	if opts.CommitRange != nil {
+		selector = DiffSelector{Type: "commitRange", Value: opts.CommitRange.Base + ".." + opts.CommitRange.Head}
+		base = opts.CommitRange.Base
+		head = opts.CommitRange.Head
+		diffStats, err = e.gitAdapter.GetCommitRangeDiff(base, head)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get commit range diff: %w", err)
+		}
+
+		// Get commits in range
+		commitsInRange, _ := e.gitAdapter.GetRecentCommits(100)
+		for _, c := range commitsInRange {
+			commits = append(commits, DiffCommitInfo{
+				Hash:      c.Hash,
+				Message:   c.Message,
+				Author:    c.Author,
+				Timestamp: c.Timestamp,
+			})
+		}
+	} else if opts.Commit != "" {
+		selector = DiffSelector{Type: "commit", Value: opts.Commit}
+		diffStats, err = e.gitAdapter.GetCommitDiff(opts.Commit)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get commit diff: %w", err)
+		}
+		// Single commit
+		commits = append(commits, DiffCommitInfo{Hash: opts.Commit})
+	} else if opts.TimeWindow != nil {
+		selector = DiffSelector{Type: "timeWindow", Value: opts.TimeWindow.Start + " to " + opts.TimeWindow.End}
+		// Get commits in time window
+		commitList, err := e.gitAdapter.GetCommitsSinceDate(opts.TimeWindow.Start, 1000)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get commits in time window: %w", err)
+		}
+		if len(commitList) == 0 {
+			// No commits in range
+			return &SummarizeDiffResponse{
+				AINavigationMeta: AINavigationMeta{
+					CkbVersion:    "5.2",
+					SchemaVersion: 1,
+					Tool:          "summarizeDiff",
+				},
+				Selector:        selector,
+				ChangedFiles:    []DiffFileChange{},
+				SymbolsAffected: []DiffSymbolAffected{},
+				RiskSignals:     []DiffRiskSignal{},
+				Summary: DiffSummaryText{
+					OneLiner:   "No commits found in the specified time window",
+					KeyChanges: []string{},
+				},
+				Confidence:      1.0,
+				ConfidenceBasis: confidenceBasis,
+			}, nil
+		}
+
+		for _, c := range commitList {
+			commits = append(commits, DiffCommitInfo{
+				Hash:      c.Hash,
+				Message:   c.Message,
+				Author:    c.Author,
+				Timestamp: c.Timestamp,
+			})
+		}
+
+		// Get diff from oldest to newest commit
+		head = commitList[0].Hash
+		base = commitList[len(commitList)-1].Hash + "^"
+		diffStats, err = e.gitAdapter.GetCommitRangeDiff(base, head)
+		if err != nil {
+			// Try without the ^ suffix (first commit case)
+			base = commitList[len(commitList)-1].Hash
+			diffStats, err = e.gitAdapter.GetCommitRangeDiff(base, head)
+			if err != nil {
+				limitations = append(limitations, "Could not compute full diff for time window")
+			}
+		}
+	}
+
+	// Cap files analyzed
+	const maxFiles = 50
+	if len(diffStats) > maxFiles {
+		limitations = append(limitations, fmt.Sprintf("Truncated to %d files (total: %d)", maxFiles, len(diffStats)))
+		diffStats = diffStats[:maxFiles]
+	}
+
+	// Process changed files
+	for _, stat := range diffStats {
+		changeType := "modified"
+		if stat.IsNew {
+			changeType = "added"
+		} else if stat.IsDeleted {
+			changeType = "deleted"
+		} else if stat.IsRenamed {
+			changeType = "renamed"
+		}
+
+		language := detectLanguage(stat.FilePath)
+		role := classifyFileRole(stat.FilePath)
+		riskLevel := classifyFileRiskLevel(stat, role)
+
+		changedFiles = append(changedFiles, DiffFileChange{
+			FilePath:   stat.FilePath,
+			ChangeType: changeType,
+			Additions:  stat.Additions,
+			Deletions:  stat.Deletions,
+			OldPath:    stat.OldPath,
+			Language:   language,
+			Role:       role,
+			RiskLevel:  riskLevel,
+		})
+
+		// Generate risk signals
+		if stat.Additions+stat.Deletions > 200 {
+			riskSignals = append(riskSignals, DiffRiskSignal{
+				Type:        "high-churn",
+				Severity:    "medium",
+				FilePath:    stat.FilePath,
+				Description: fmt.Sprintf("Large change: +%d/-%d lines", stat.Additions, stat.Deletions),
+				Confidence:  0.9,
+			})
+		}
+
+		// Suggest tests for changed files
+		if role == "core" || role == "entrypoint" {
+			testPath := suggestTestPath(stat.FilePath, language)
+			if testPath != "" {
+				suggestedTests = append(suggestedTests, SuggestedTest{
+					TestPath: testPath,
+					Reason:   fmt.Sprintf("Tests for %s", stat.FilePath),
+					Priority: "high",
+				})
+			}
+		}
+	}
+
+	// Detect symbols affected using SCIP if available
+	if e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
+		confidenceBasis = append(confidenceBasis, ConfidenceBasisItem{
+			Backend: "scip",
+			Status:  "available",
+		})
+
+		// For each changed file, find symbols defined there
+		for _, file := range changedFiles {
+			if file.ChangeType == "deleted" {
+				continue
+			}
+
+			searchResult, err := e.scipAdapter.SearchSymbols(ctx, "", backends.SearchOptions{
+				MaxResults: 30,
+				Scope:      []string{file.FilePath},
+			})
+
+			if err == nil && searchResult != nil {
+				for _, sym := range searchResult.Symbols {
+					if sym.Location.Path == file.FilePath {
+						isPublicAPI := sym.Visibility == "public" || isExportedSymbol(sym.Name, sym.Visibility, file.Language)
+						symbolsAffected = append(symbolsAffected, DiffSymbolAffected{
+							SymbolId:    sym.StableID,
+							Name:        sym.Name,
+							Kind:        sym.Kind,
+							FilePath:    file.FilePath,
+							ChangeType:  file.ChangeType,
+							IsPublicAPI: isPublicAPI,
+						})
+
+						// Generate API change risk signal for public symbols
+						if isPublicAPI && file.ChangeType == "modified" {
+							riskSignals = append(riskSignals, DiffRiskSignal{
+								Type:        "api-change",
+								Severity:    "high",
+								FilePath:    file.FilePath,
+								Description: fmt.Sprintf("Public symbol %s was modified", sym.Name),
+								Confidence:  0.85,
+							})
+						}
+					}
+				}
+			}
+		}
+	} else {
+		confidenceBasis = append(confidenceBasis, ConfidenceBasisItem{
+			Backend: "scip",
+			Status:  "missing",
+		})
+		limitations = append(limitations, "SCIP index unavailable; symbol-level analysis limited")
+	}
+
+	// Cap symbols and signals
+	if len(symbolsAffected) > 30 {
+		symbolsAffected = symbolsAffected[:30]
+		limitations = append(limitations, "Truncated symbol list to 30")
+	}
+	if len(riskSignals) > 20 {
+		riskSignals = riskSignals[:20]
+	}
+
+	// Deduplicate suggested tests
+	testPathsSeen := make(map[string]bool)
+	uniqueTests := []SuggestedTest{}
+	for _, t := range suggestedTests {
+		if !testPathsSeen[t.TestPath] {
+			testPathsSeen[t.TestPath] = true
+			uniqueTests = append(uniqueTests, t)
+		}
+	}
+	suggestedTests = uniqueTests
+	if len(suggestedTests) > 10 {
+		suggestedTests = suggestedTests[:10]
+	}
+
+	// Build summary
+	summary := buildDiffSummary(changedFiles, symbolsAffected, riskSignals, commits)
+
+	// Compute confidence
+	confidence := computeDiffConfidence(confidenceBasis, limitations)
+
+	// Build response
+	response := &SummarizeDiffResponse{
+		AINavigationMeta: AINavigationMeta{
+			CkbVersion:    "5.2",
+			SchemaVersion: 1,
+			Tool:          "summarizeDiff",
+		},
+		Selector:        selector,
+		ChangedFiles:    changedFiles,
+		SymbolsAffected: symbolsAffected,
+		RiskSignals:     riskSignals,
+		SuggestedTests:  suggestedTests,
+		Summary:         summary,
+		Commits:         commits,
+		Confidence:      confidence,
+		ConfidenceBasis: confidenceBasis,
+		Limitations:     limitations,
+	}
+
+	// Add provenance
+	repoState, _ := e.GetRepoState(ctx, "head")
+	response.Provenance = &Provenance{
+		RepoStateId:     repoState.RepoStateId,
+		RepoStateDirty:  repoState.Dirty,
+		QueryDurationMs: time.Since(startTime).Milliseconds(),
+	}
+
+	// Add drilldowns
+	response.Drilldowns = []output.Drilldown{
+		{
+			Label:          "View architecture",
+			Query:          "getArchitecture",
+			RelevanceScore: 0.7,
+		},
+	}
+	if len(changedFiles) > 0 {
+		response.Drilldowns = append(response.Drilldowns, output.Drilldown{
+			Label:          fmt.Sprintf("Explain %s", filepath.Base(changedFiles[0].FilePath)),
+			Query:          fmt.Sprintf("explainFile %s", changedFiles[0].FilePath),
+			RelevanceScore: 0.85,
+		})
+	}
+	if len(symbolsAffected) > 0 {
+		response.Drilldowns = append(response.Drilldowns, output.Drilldown{
+			Label:          fmt.Sprintf("Explore %s", symbolsAffected[0].Name),
+			Query:          fmt.Sprintf("explainSymbol %s", symbolsAffected[0].SymbolId),
+			RelevanceScore: 0.8,
+		})
+	}
+
+	return response, nil
+}
+
+// classifyFileRiskLevel determines the risk level of a file change.
+func classifyFileRiskLevel(stat git.DiffStats, role string) string {
+	totalChanges := stat.Additions + stat.Deletions
+
+	// Deleted files are always high risk
+	if stat.IsDeleted {
+		return "high"
+	}
+
+	// New files are generally low risk
+	if stat.IsNew {
+		return "low"
+	}
+
+	// Core files with large changes are high risk
+	if role == "core" || role == "entrypoint" {
+		if totalChanges > 100 {
+			return "high"
+		}
+		if totalChanges > 30 {
+			return "medium"
+		}
+	}
+
+	// Config changes can have wide impact
+	if role == "config" {
+		return "medium"
+	}
+
+	// Test changes are lower risk
+	if role == "test" {
+		return "low"
+	}
+
+	if totalChanges > 200 {
+		return "high"
+	}
+	if totalChanges > 50 {
+		return "medium"
+	}
+
+	return "low"
+}
+
+// suggestTestPath suggests a test file path for a source file.
+func suggestTestPath(filePath, language string) string {
+	ext := filepath.Ext(filePath)
+	base := strings.TrimSuffix(filePath, ext)
+
+	switch language {
+	case "go":
+		return base + "_test.go"
+	case "typescript", "javascript":
+		return base + ".test" + ext
+	case "python":
+		dir := filepath.Dir(filePath)
+		name := filepath.Base(base)
+		return filepath.Join(dir, "test_"+name+".py")
+	default:
+		return ""
+	}
+}
+
+// buildDiffSummary creates a human-readable summary of the diff.
+func buildDiffSummary(files []DiffFileChange, symbols []DiffSymbolAffected, risks []DiffRiskSignal, commits []DiffCommitInfo) DiffSummaryText {
+	// Count changes by type
+	added, modified, deleted := 0, 0, 0
+	for _, f := range files {
+		switch f.ChangeType {
+		case "added":
+			added++
+		case "modified":
+			modified++
+		case "deleted":
+			deleted++
+		}
+	}
+
+	// Build one-liner
+	parts := []string{}
+	if added > 0 {
+		parts = append(parts, fmt.Sprintf("%d added", added))
+	}
+	if modified > 0 {
+		parts = append(parts, fmt.Sprintf("%d modified", modified))
+	}
+	if deleted > 0 {
+		parts = append(parts, fmt.Sprintf("%d deleted", deleted))
+	}
+
+	oneLiner := fmt.Sprintf("%d files changed", len(files))
+	if len(parts) > 0 {
+		oneLiner = strings.Join(parts, ", ")
+	}
+	if len(commits) > 0 {
+		oneLiner = fmt.Sprintf("%s across %d commits", oneLiner, len(commits))
+	}
+
+	// Key changes
+	keyChanges := []string{}
+	for i, f := range files {
+		if i >= 5 {
+			break
+		}
+		keyChanges = append(keyChanges, fmt.Sprintf("%s (%s)", filepath.Base(f.FilePath), f.ChangeType))
+	}
+
+	// Risk overview
+	riskOverview := ""
+	highRisks := 0
+	for _, r := range risks {
+		if r.Severity == "high" {
+			highRisks++
+		}
+	}
+	if highRisks > 0 {
+		riskOverview = fmt.Sprintf("%d high-risk signals detected", highRisks)
+	} else if len(risks) > 0 {
+		riskOverview = fmt.Sprintf("%d risk signals detected (no high severity)", len(risks))
+	}
+
+	return DiffSummaryText{
+		OneLiner:     oneLiner,
+		KeyChanges:   keyChanges,
+		RiskOverview: riskOverview,
+	}
+}
+
+// computeDiffConfidence computes confidence for summarizeDiff.
+func computeDiffConfidence(basis []ConfidenceBasisItem, limitations []string) float64 {
+	gitAvailable := false
+	scipAvailable := false
+	for _, b := range basis {
+		if b.Backend == "git" && b.Status == "available" {
+			gitAvailable = true
+		}
+		if b.Backend == "scip" && b.Status == "available" {
+			scipAvailable = true
+		}
+	}
+
+	if !gitAvailable {
+		return 0.39 // Git is essential
+	}
+
+	if scipAvailable && len(limitations) == 0 {
+		return 0.89 // Partial static analysis
+	}
+
+	if scipAvailable {
+		return 0.79 // With limitations
+	}
+
+	return 0.69 // Git only
+}

@@ -277,6 +277,49 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				"required": []string{"symbolId"},
 			},
 		},
+		{
+			Name:        "summarizeDiff",
+			Description: "Compress diffs into 'what changed, what might break'. Supports commit ranges, single commits, or time windows. Default: last 30 days.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"commitRange": map[string]interface{}{
+						"type":        "object",
+						"description": "Commit range selector (base..head)",
+						"properties": map[string]interface{}{
+							"base": map[string]interface{}{
+								"type":        "string",
+								"description": "Base commit hash or ref",
+							},
+							"head": map[string]interface{}{
+								"type":        "string",
+								"description": "Head commit hash or ref",
+							},
+						},
+						"required": []string{"base", "head"},
+					},
+					"commit": map[string]interface{}{
+						"type":        "string",
+						"description": "Single commit hash to analyze",
+					},
+					"timeWindow": map[string]interface{}{
+						"type":        "object",
+						"description": "Time window selector",
+						"properties": map[string]interface{}{
+							"start": map[string]interface{}{
+								"type":        "string",
+								"description": "Start date (ISO8601)",
+							},
+							"end": map[string]interface{}{
+								"type":        "string",
+								"description": "End date (ISO8601)",
+							},
+						},
+						"required": []string{"start"},
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -296,4 +339,5 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["explainFile"] = s.toolExplainFile
 	s.tools["listEntrypoints"] = s.toolListEntrypoints
 	s.tools["traceUsage"] = s.toolTraceUsage
+	s.tools["summarizeDiff"] = s.toolSummarizeDiff
 }

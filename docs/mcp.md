@@ -110,7 +110,7 @@ All temporal tools accept explicit `timeWindow` parameter to override.
 ### Change Awareness
 | Tool | Budget | Purpose | Status |
 |------|--------|---------|--------|
-| [summarizeDiff](#summarizediff) | Heavy | Compress diffs into intent | v5.2 |
+| [summarizeDiff](#summarizediff) | Heavy | Compress diffs into intent | v5.2 ✓ |
 
 ### System-Level Orientation
 | Tool | Budget | Purpose | Status |
@@ -305,22 +305,43 @@ Explain why a path exists and what role it plays.
 
 Compress diffs into "what changed, what might break."
 
-**Budget:** Heavy | **Status:** v5.2
+**Budget:** Heavy | **Status:** v5.2 ✓
 
-**Input (exactly one required):**
-```typescript
-commitRange?: { base: string; head: string }
-prId?: string
-commit?: string
-timeWindow?: { start: ISO8601; end: ISO8601 }
-```
+**Parameters:**
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `commitRange` | object | No* | - | `{ base: string, head: string }` |
+| `commit` | string | No* | - | Single commit hash |
+| `timeWindow` | object | No* | - | `{ start: ISO8601, end?: ISO8601 }` |
+
+> *Exactly one selector required. If none provided, defaults to last 30 days.
 
 **Output includes:**
-- Files/symbols touched
-- Behavior-relevant changes
-- Risk signals (API change, signature change)
+- Changed files with risk levels (low/medium/high)
+- Symbols affected with public API flags
+- Risk signals (api-change, high-churn, signature-change)
 - Suggested tests to run
-- Migration steps (procedural only)
+- Commit history summary
+
+**Risk signal types:**
+| Type | Severity | Trigger |
+|------|----------|---------|
+| `api-change` | high | Public symbol modified |
+| `high-churn` | medium | Large change (>200 lines) |
+| `signature-change` | high | Function signature changed |
+| `breaking-change` | high | Deleted public API |
+
+**Example:**
+```json
+// Analyze last commit
+{ "commit": "abc123" }
+
+// Analyze commit range
+{ "commitRange": { "base": "main", "head": "feature-branch" } }
+
+// Analyze last 7 days
+{ "timeWindow": { "start": "2024-01-01T00:00:00Z" } }
+```
 
 **Allowed vs Not Allowed:**
 | Allowed | Not allowed |
@@ -330,7 +351,7 @@ timeWindow?: { start: ISO8601; end: ISO8601 }
 | Suggested drilldowns | Style enforcement |
 | Suggested tests | Rewrites or code suggestions |
 
-**Default time window:** 30 days if no selector specified.
+**Drilldowns:** `explainFile`, `explainSymbol`, `getArchitecture`
 
 ---
 
@@ -636,14 +657,14 @@ Predefined exploration modes that configure verbosity, depth, and ranking:
 - `getCallGraph`, `getModuleOverview`, `analyzeImpact`
 - `getStatus`, `doctor`
 
-### v5.2 MVP (Phase 1)
-- `searchSymbols` - Fast discovery with ranking
-- `explainFile` - File orientation
-- `traceUsage` - Causal paths
+### v5.2 MVP (Phase 1) ✓
+- `searchSymbols` - Fast discovery with ranking ✓
+- `explainFile` - File orientation ✓
+- `traceUsage` - Causal paths ✓
+- `listEntrypoints` - System entrypoints ✓
 
-### v5.2.1 (Phase 2)
-- `listEntrypoints`
-- `summarizeDiff`
+### v5.2.1 (Phase 2) ✓
+- `summarizeDiff` - Change awareness ✓
 
 ### v5.2.2 (Phase 3)
 - `getHotspots`

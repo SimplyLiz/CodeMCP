@@ -312,6 +312,147 @@ func (g *GitAdapter) GetDiffSummary() (map[string]interface{}, error) {
 	}, nil
 }
 
+// GetCommitRangeDiff returns the diff between two commits (base..head)
+func (g *GitAdapter) GetCommitRangeDiff(base, head string) ([]DiffStats, error) {
+	if base == "" || head == "" {
+		return nil, errors.NewCkbError(
+			errors.InternalError,
+			"Both base and head commits are required",
+			nil,
+			nil,
+			nil,
+		)
+	}
+
+	g.logger.Debug("Getting commit range diff", map[string]interface{}{
+		"base": base,
+		"head": head,
+	})
+
+	// Get numstat for the commit range
+	lines, err := g.executeGitCommandLines("diff", "--numstat", base, head)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(lines) == 0 {
+		return []DiffStats{}, nil
+	}
+
+	stats, err := g.parseDiffStats(lines)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get status info for the commit range
+	statusLines, err := g.executeGitCommandLines("diff", "--name-status", base, head)
+	if err != nil {
+		return stats, nil //nolint:nilerr // status info is supplementary
+	}
+
+	// Build status map
+	statusMap := make(map[string]string)
+	for _, line := range statusLines {
+		parts := strings.Fields(line)
+		if len(parts) < 2 {
+			continue
+		}
+		status := parts[0]
+		filePath := strings.Join(parts[1:], " ")
+		if strings.Contains(filePath, " => ") {
+			renameParts := strings.SplitN(filePath, " => ", 2)
+			if len(renameParts) == 2 {
+				filePath = strings.TrimSpace(renameParts[1])
+			}
+		}
+		statusMap[filePath] = status
+	}
+
+	// Enrich stats
+	for i := range stats {
+		status, ok := statusMap[stats[i].FilePath]
+		if !ok {
+			continue
+		}
+		switch status[0] {
+		case 'A':
+			stats[i].IsNew = true
+		case 'D':
+			stats[i].IsDeleted = true
+		case 'R':
+			stats[i].IsRenamed = true
+		}
+	}
+
+	return stats, nil
+}
+
+// GetCommitsSinceDate returns commits since a specific date
+func (g *GitAdapter) GetCommitsSinceDate(since string, limit int) ([]CommitInfo, error) {
+	if since == "" {
+		return nil, errors.NewCkbError(
+			errors.InternalError,
+			"Since date is required",
+			nil,
+			nil,
+			nil,
+		)
+	}
+
+	if limit <= 0 {
+		limit = 100 // Default cap
+	}
+
+	g.logger.Debug("Getting commits since date", map[string]interface{}{
+		"since": since,
+		"limit": limit,
+	})
+
+	args := []string{
+		"log",
+		"--format=%H|%an|%aI|%s",
+		"--since=" + since,
+		"-n", strconv.Itoa(limit),
+	}
+
+	lines, err := g.executeGitCommandLines(args...)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(lines) == 0 {
+		return []CommitInfo{}, nil
+	}
+
+	// Parse commits
+	commits := make([]CommitInfo, 0, len(lines))
+	for _, line := range lines {
+		parts := strings.SplitN(line, "|", 4)
+		if len(parts) != 4 {
+			continue
+		}
+
+		commits = append(commits, CommitInfo{
+			Hash:      parts[0],
+			Author:    parts[1],
+			Timestamp: parts[2],
+			Message:   parts[3],
+		})
+	}
+
+	return commits, nil
+}
+
+// GetFileDiffContent returns the actual diff content for a commit range
+func (g *GitAdapter) GetFileDiffContent(base, head, filePath string) (string, error) {
+	args := []string{"diff", base, head, "--", filePath}
+	output, err := g.executeGitCommand(args...)
+	if err != nil {
+		return "", err
+	}
+	return output, nil
+}
+
 // GetCommitDiff returns the diff for a specific commit
 func (g *GitAdapter) GetCommitDiff(commitHash string) ([]DiffStats, error) {
 	if commitHash == "" {

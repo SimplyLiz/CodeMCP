@@ -1020,3 +1020,180 @@ func (s *MCPServer) toolTraceUsage(params map[string]interface{}) (interface{}, 
 
 	return string(jsonBytesTrace), nil
 }
+
+// toolSummarizeDiff handles the summarizeDiff tool call
+func (s *MCPServer) toolSummarizeDiff(params map[string]interface{}) (interface{}, error) {
+	ctx := context.Background()
+
+	opts := query.SummarizeDiffOptions{}
+
+	// Parse commitRange if provided
+	if commitRange, ok := params["commitRange"].(map[string]interface{}); ok {
+		base, _ := commitRange["base"].(string)
+		head, _ := commitRange["head"].(string)
+		if base != "" && head != "" {
+			opts.CommitRange = &query.CommitRangeSelector{
+				Base: base,
+				Head: head,
+			}
+		}
+	}
+
+	// Parse commit if provided
+	if commit, ok := params["commit"].(string); ok && commit != "" {
+		opts.Commit = commit
+	}
+
+	// Parse timeWindow if provided
+	if timeWindow, ok := params["timeWindow"].(map[string]interface{}); ok {
+		start, _ := timeWindow["start"].(string)
+		end, _ := timeWindow["end"].(string)
+		if start != "" {
+			opts.TimeWindow = &query.TimeWindowSelector{
+				Start: start,
+				End:   end,
+			}
+		}
+	}
+
+	resp, err := s.engine.SummarizeDiff(ctx, opts)
+	if err != nil {
+		return nil, fmt.Errorf("summarizeDiff failed: %w", err)
+	}
+
+	// Build changed files response
+	changedFiles := make([]map[string]interface{}, 0, len(resp.ChangedFiles))
+	for _, f := range resp.ChangedFiles {
+		fileInfo := map[string]interface{}{
+			"filePath":   f.FilePath,
+			"changeType": f.ChangeType,
+			"additions":  f.Additions,
+			"deletions":  f.Deletions,
+			"riskLevel":  f.RiskLevel,
+		}
+		if f.OldPath != "" {
+			fileInfo["oldPath"] = f.OldPath
+		}
+		if f.Language != "" {
+			fileInfo["language"] = f.Language
+		}
+		if f.Role != "" {
+			fileInfo["role"] = f.Role
+		}
+		changedFiles = append(changedFiles, fileInfo)
+	}
+
+	// Build symbols affected response
+	symbolsAffected := make([]map[string]interface{}, 0, len(resp.SymbolsAffected))
+	for _, sym := range resp.SymbolsAffected {
+		symInfo := map[string]interface{}{
+			"name":        sym.Name,
+			"kind":        sym.Kind,
+			"filePath":    sym.FilePath,
+			"changeType":  sym.ChangeType,
+			"isPublicApi": sym.IsPublicAPI,
+		}
+		if sym.SymbolId != "" {
+			symInfo["symbolId"] = sym.SymbolId
+		}
+		if sym.IsEntrypoint {
+			symInfo["isEntrypoint"] = true
+		}
+		symbolsAffected = append(symbolsAffected, symInfo)
+	}
+
+	// Build risk signals response
+	riskSignals := make([]map[string]interface{}, 0, len(resp.RiskSignals))
+	for _, r := range resp.RiskSignals {
+		riskSignals = append(riskSignals, map[string]interface{}{
+			"type":        r.Type,
+			"severity":    r.Severity,
+			"filePath":    r.FilePath,
+			"description": r.Description,
+			"confidence":  r.Confidence,
+		})
+	}
+
+	// Build suggested tests response
+	suggestedTests := make([]map[string]interface{}, 0, len(resp.SuggestedTests))
+	for _, t := range resp.SuggestedTests {
+		suggestedTests = append(suggestedTests, map[string]interface{}{
+			"testPath": t.TestPath,
+			"reason":   t.Reason,
+			"priority": t.Priority,
+		})
+	}
+
+	// Build commits response
+	commits := make([]map[string]interface{}, 0, len(resp.Commits))
+	for _, c := range resp.Commits {
+		commitInfo := map[string]interface{}{
+			"hash": c.Hash,
+		}
+		if c.Message != "" {
+			commitInfo["message"] = c.Message
+		}
+		if c.Author != "" {
+			commitInfo["author"] = c.Author
+		}
+		if c.Timestamp != "" {
+			commitInfo["timestamp"] = c.Timestamp
+		}
+		commits = append(commits, commitInfo)
+	}
+
+	result := map[string]interface{}{
+		"meta": map[string]interface{}{
+			"ckbVersion":    resp.CkbVersion,
+			"schemaVersion": resp.SchemaVersion,
+			"tool":          resp.Tool,
+		},
+		"selector": map[string]interface{}{
+			"type":  resp.Selector.Type,
+			"value": resp.Selector.Value,
+		},
+		"changedFiles":    changedFiles,
+		"symbolsAffected": symbolsAffected,
+		"riskSignals":     riskSignals,
+		"suggestedTests":  suggestedTests,
+		"summary": map[string]interface{}{
+			"oneLiner":     resp.Summary.OneLiner,
+			"keyChanges":   resp.Summary.KeyChanges,
+			"riskOverview": resp.Summary.RiskOverview,
+		},
+		"commits":         commits,
+		"confidence":      resp.Confidence,
+		"confidenceBasis": resp.ConfidenceBasis,
+	}
+
+	if len(resp.Limitations) > 0 {
+		result["limitations"] = resp.Limitations
+	}
+
+	if resp.Provenance != nil {
+		result["provenance"] = map[string]interface{}{
+			"repoStateId":     resp.Provenance.RepoStateId,
+			"repoStateDirty":  resp.Provenance.RepoStateDirty,
+			"queryDurationMs": resp.Provenance.QueryDurationMs,
+		}
+	}
+
+	if len(resp.Drilldowns) > 0 {
+		drilldowns := make([]map[string]interface{}, 0, len(resp.Drilldowns))
+		for _, d := range resp.Drilldowns {
+			drilldowns = append(drilldowns, map[string]interface{}{
+				"label":          d.Label,
+				"query":          d.Query,
+				"relevanceScore": d.RelevanceScore,
+			})
+		}
+		result["drilldowns"] = drilldowns
+	}
+
+	jsonBytesDiff, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	return string(jsonBytesDiff), nil
+}
