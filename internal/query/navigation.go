@@ -721,10 +721,10 @@ type ExplainFileFacts struct {
 	Role       string                `json:"role"` // core, glue, test, config, unknown
 	Language   string                `json:"language,omitempty"`
 	LineCount  int                   `json:"lineCount"`
-	Symbols    []ExplainFileSymbol   `json:"symbols"`    // Top defined symbols (max 15)
-	Imports    []string              `json:"imports"`    // Key imports
-	Exports    []string              `json:"exports"`    // Key exports/public symbols
-	Hotspots   []ExplainFileHotspot  `json:"hotspots"`   // Local hotspots
+	Symbols    []ExplainFileSymbol   `json:"symbols"`  // Top defined symbols (max 15)
+	Imports    []string              `json:"imports"`  // Key imports
+	Exports    []string              `json:"exports"`  // Key exports/public symbols
+	Hotspots   []ExplainFileHotspot  `json:"hotspots"` // Local hotspots
 	Confidence float64               `json:"confidence"`
 	Basis      []ConfidenceBasisItem `json:"confidenceBasis"`
 }
@@ -1315,4 +1315,383 @@ func (e *Engine) ListEntrypoints(ctx context.Context, opts ListEntrypointsOption
 	}
 
 	return response, nil
+}
+
+// TraceUsageOptions controls traceUsage behavior.
+type TraceUsageOptions struct {
+	SymbolId string // Target symbol to trace to
+	MaxPaths int    // Maximum paths to return (default 10)
+	MaxDepth int    // Maximum path depth (default 5)
+}
+
+// TraceUsageResponse provides paths from entrypoints to a target symbol.
+type TraceUsageResponse struct {
+	AINavigationMeta
+	TargetSymbol    string                `json:"targetSymbol"`
+	Paths           []UsagePath           `json:"paths"`
+	TotalPathsFound int                   `json:"totalPathsFound"`
+	Confidence      float64               `json:"confidence"`
+	ConfidenceBasis []ConfidenceBasisItem `json:"confidenceBasis"`
+	Limitations     []string              `json:"limitations,omitempty"`
+}
+
+// UsagePath represents a path from an entrypoint to the target.
+type UsagePath struct {
+	PathType   string      `json:"pathType"` // api, cli, job, event, test, unknown
+	Nodes      []PathNode  `json:"nodes"`
+	Confidence float64     `json:"confidence"`
+	Ranking    *RankingV52 `json:"ranking"`
+}
+
+// PathNode represents a node in a usage path.
+type PathNode struct {
+	SymbolId string        `json:"symbolId"`
+	Name     string        `json:"name"`
+	Kind     string        `json:"kind,omitempty"`
+	Location *LocationInfo `json:"location,omitempty"`
+	Role     string        `json:"role"` // entrypoint, intermediate, target
+}
+
+// TraceUsage traces how a symbol is reached from system entrypoints.
+func (e *Engine) TraceUsage(ctx context.Context, opts TraceUsageOptions) (*TraceUsageResponse, error) {
+	startTime := time.Now()
+
+	if opts.MaxPaths <= 0 {
+		opts.MaxPaths = 10
+	}
+	if opts.MaxDepth <= 0 {
+		opts.MaxDepth = 5
+	}
+	if opts.MaxDepth > 5 {
+		opts.MaxDepth = 5 // Heavy tool cap
+	}
+
+	var confidenceBasis []ConfidenceBasisItem
+	var limitations []string
+	paths := []UsagePath{}
+
+	// Resolve target symbol
+	targetResp, err := e.GetSymbol(ctx, GetSymbolOptions{SymbolId: opts.SymbolId, RepoStateMode: "full"})
+	if err != nil {
+		return nil, err
+	}
+
+	targetId := opts.SymbolId
+	targetName := opts.SymbolId
+	var targetLoc *LocationInfo
+	if targetResp.Symbol != nil {
+		targetId = targetResp.Symbol.StableId
+		targetName = targetResp.Symbol.Name
+		targetLoc = targetResp.Symbol.Location
+	}
+
+	// Get entrypoints to use as start nodes
+	entrypointsResp, err := e.ListEntrypoints(ctx, ListEntrypointsOptions{Limit: 50})
+	if err != nil {
+		limitations = append(limitations, "Entrypoint detection failed")
+	}
+
+	var entrypoints []EntrypointV52
+	if entrypointsResp != nil && len(entrypointsResp.Entrypoints) > 0 {
+		entrypoints = entrypointsResp.Entrypoints
+	}
+
+	if e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
+		confidenceBasis = append(confidenceBasis, ConfidenceBasisItem{
+			Backend: "scip",
+			Status:  "available",
+		})
+
+		if len(entrypoints) > 0 {
+			// Try to find paths from each entrypoint to the target
+			for _, ep := range entrypoints {
+				path := e.findPathBFS(ctx, ep.SymbolId, targetId, opts.MaxDepth)
+				if len(path) > 0 {
+					// Build path nodes
+					nodes := make([]PathNode, len(path))
+					for i, nodeId := range path {
+						role := "intermediate"
+						if i == 0 {
+							role = "entrypoint"
+						} else if i == len(path)-1 {
+							role = "target"
+						}
+
+						// Get symbol info for node
+						nodeName := nodeId
+						var loc *LocationInfo
+						if symResp, err := e.GetSymbol(ctx, GetSymbolOptions{SymbolId: nodeId, RepoStateMode: "head"}); err == nil && symResp.Symbol != nil {
+							nodeName = symResp.Symbol.Name
+							if symResp.Symbol.Location != nil {
+								loc = symResp.Symbol.Location
+							}
+						}
+
+						nodes[i] = PathNode{
+							SymbolId: nodeId,
+							Name:     nodeName,
+							Role:     role,
+							Location: loc,
+						}
+					}
+
+					// Determine path type from entrypoint type
+					pathType := ep.Type
+					if pathType == "" {
+						pathType = "unknown"
+					}
+
+					pathConfidence := 0.89 // Static analysis with partial coverage
+					usagePath := UsagePath{
+						PathType:   pathType,
+						Nodes:      nodes,
+						Confidence: pathConfidence,
+						Ranking: NewRankingV52(computePathScore(pathType, len(nodes), pathConfidence), map[string]interface{}{
+							"pathType":   pathType,
+							"pathLength": len(nodes),
+							"confidence": pathConfidence,
+						}),
+					}
+
+					paths = append(paths, usagePath)
+
+					// Check limit
+					if len(paths) >= opts.MaxPaths {
+						break
+					}
+				}
+			}
+		}
+
+		// Fallback: if no paths from entrypoints, use direct callers
+		if len(paths) == 0 {
+			limitations = append(limitations, "Entrypoint set unavailable; showing nearest callers")
+
+			// Get callers and build short paths from them
+			graph, err := e.scipAdapter.BuildCallGraph(targetId, scip.CallGraphOptions{
+				Direction: scip.DirectionCallers,
+				MaxDepth:  2,
+				MaxNodes:  20,
+			})
+
+			if err == nil && graph != nil {
+				for _, caller := range graph.Callers {
+					var callerLoc *LocationInfo
+					if caller.Location != nil {
+						callerLoc = &LocationInfo{
+							FileId:      caller.Location.FileId,
+							StartLine:   caller.Location.StartLine + 1,
+							StartColumn: caller.Location.StartColumn + 1,
+						}
+					}
+
+					// Check if caller is a test
+					pathType := "unknown"
+					if caller.Location != nil && isTestFilePath(caller.Location.FileId) {
+						pathType = "test"
+					}
+
+					pathConfidence := 0.69 // Fallback mode
+					usagePath := UsagePath{
+						PathType: pathType,
+						Nodes: []PathNode{
+							{
+								SymbolId: caller.SymbolID,
+								Name:     caller.Name,
+								Role:     "entrypoint",
+								Location: callerLoc,
+							},
+							{
+								SymbolId: targetId,
+								Name:     targetName,
+								Role:     "target",
+								Location: targetLoc,
+							},
+						},
+						Confidence: pathConfidence,
+						Ranking: NewRankingV52(computePathScore(pathType, 2, pathConfidence), map[string]interface{}{
+							"pathType":   pathType,
+							"pathLength": 2,
+							"confidence": pathConfidence,
+						}),
+					}
+
+					paths = append(paths, usagePath)
+
+					if len(paths) >= opts.MaxPaths {
+						break
+					}
+				}
+			}
+		}
+	} else {
+		confidenceBasis = append(confidenceBasis, ConfidenceBasisItem{
+			Backend: "scip",
+			Status:  "missing",
+		})
+		limitations = append(limitations, "SCIP index unavailable; path tracing requires static analysis")
+	}
+
+	// Sort paths by ranking score
+	sort.Slice(paths, func(i, j int) bool {
+		return paths[i].Ranking.Score > paths[j].Ranking.Score
+	})
+
+	// Compute overall confidence
+	confidence := 0.39 // Default: speculative
+	for _, b := range confidenceBasis {
+		if b.Backend == "scip" && b.Status == "available" {
+			confidence = 0.89
+			if len(limitations) > 0 {
+				confidence = 0.69 // Degraded due to limitations
+			}
+		}
+	}
+
+	// Build response
+	response := &TraceUsageResponse{
+		AINavigationMeta: AINavigationMeta{
+			CkbVersion:    "5.2",
+			SchemaVersion: 1,
+			Tool:          "traceUsage",
+			Resolved:      &ResolvedTarget{SymbolId: targetId, ResolvedFrom: "id", Confidence: 1.0},
+		},
+		TargetSymbol:    targetId,
+		Paths:           paths,
+		TotalPathsFound: len(paths),
+		Confidence:      confidence,
+		ConfidenceBasis: confidenceBasis,
+		Limitations:     limitations,
+	}
+
+	// Add provenance
+	repoState, _ := e.GetRepoState(ctx, "head")
+	response.Provenance = &Provenance{
+		RepoStateId:     repoState.RepoStateId,
+		RepoStateDirty:  repoState.Dirty,
+		QueryDurationMs: time.Since(startTime).Milliseconds(),
+	}
+
+	// Add drilldowns
+	response.Drilldowns = []output.Drilldown{
+		{
+			Label:          fmt.Sprintf("Call graph for %s", targetName),
+			Query:          fmt.Sprintf("getCallGraph %s", targetId),
+			RelevanceScore: 0.9,
+		},
+		{
+			Label:          fmt.Sprintf("Explain %s", targetName),
+			Query:          fmt.Sprintf("explainSymbol %s", targetId),
+			RelevanceScore: 0.85,
+		},
+	}
+
+	return response, nil
+}
+
+// findPathBFS performs BFS to find a path from source to target.
+func (e *Engine) findPathBFS(ctx context.Context, sourceId, targetId string, maxDepth int) []string {
+	if sourceId == targetId {
+		return []string{sourceId}
+	}
+
+	// BFS state
+	type bfsNode struct {
+		id    string
+		path  []string
+		depth int
+	}
+
+	visited := make(map[string]bool)
+	queue := []bfsNode{{id: sourceId, path: []string{sourceId}, depth: 0}}
+	visited[sourceId] = true
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		if current.depth >= maxDepth {
+			continue
+		}
+
+		// Get callees of current node
+		if e.scipAdapter == nil {
+			continue
+		}
+
+		graph, err := e.scipAdapter.BuildCallGraph(current.id, scip.CallGraphOptions{
+			Direction: scip.DirectionCallees,
+			MaxDepth:  1,
+			MaxNodes:  50,
+		})
+
+		if err != nil || graph == nil {
+			continue
+		}
+
+		for _, callee := range graph.Callees {
+			if visited[callee.SymbolID] {
+				continue
+			}
+			visited[callee.SymbolID] = true
+
+			newPath := make([]string, len(current.path)+1)
+			copy(newPath, current.path)
+			newPath[len(current.path)] = callee.SymbolID
+
+			if callee.SymbolID == targetId {
+				return newPath
+			}
+
+			queue = append(queue, bfsNode{
+				id:    callee.SymbolID,
+				path:  newPath,
+				depth: current.depth + 1,
+			})
+		}
+	}
+
+	return nil // No path found
+}
+
+// computePathScore calculates a ranking score for a usage path.
+func computePathScore(pathType string, pathLength int, confidence float64) float64 {
+	score := 0.0
+
+	// Score by path type
+	switch pathType {
+	case "cli":
+		score += 100
+	case "api":
+		score += 80
+	case "job":
+		score += 60
+	case "event":
+		score += 50
+	case "test":
+		score += 40
+	default:
+		score += 20
+	}
+
+	// Prefer shorter paths (penalize longer ones)
+	score -= float64(pathLength-1) * 5
+
+	// Factor in confidence
+	score *= confidence
+
+	if score < 0 {
+		score = 0
+	}
+
+	return score
+}
+
+// isTestFilePath checks if a path is a test file.
+func isTestFilePath(path string) bool {
+	pathLower := strings.ToLower(path)
+	return strings.Contains(pathLower, "_test.") ||
+		strings.Contains(pathLower, ".test.") ||
+		strings.Contains(pathLower, "/test/") ||
+		strings.Contains(pathLower, "/tests/")
 }

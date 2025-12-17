@@ -253,6 +253,30 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		{
+			Name:        "traceUsage",
+			Description: "Trace how a symbol is reached from system entrypoints. Returns causal paths, not just neighbors.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"symbolId": map[string]interface{}{
+						"type":        "string",
+						"description": "The target symbol ID to trace usage for",
+					},
+					"maxPaths": map[string]interface{}{
+						"type":        "number",
+						"default":     10,
+						"description": "Maximum number of paths to return",
+					},
+					"maxDepth": map[string]interface{}{
+						"type":        "number",
+						"default":     5,
+						"description": "Maximum path depth to traverse (1-5)",
+					},
+				},
+				"required": []string{"symbolId"},
+			},
+		},
 	}
 }
 
@@ -271,4 +295,5 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["getModuleOverview"] = s.toolGetModuleOverview
 	s.tools["explainFile"] = s.toolExplainFile
 	s.tools["listEntrypoints"] = s.toolListEntrypoints
+	s.tools["traceUsage"] = s.toolTraceUsage
 }

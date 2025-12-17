@@ -892,3 +892,128 @@ func (s *MCPServer) toolListEntrypoints(params map[string]interface{}) (interfac
 
 	return string(jsonBytes), nil
 }
+
+// toolTraceUsage implements the traceUsage tool
+func (s *MCPServer) toolTraceUsage(params map[string]interface{}) (interface{}, error) {
+	symbolId, ok := params["symbolId"].(string)
+	if !ok {
+		return nil, fmt.Errorf("symbolId is required")
+	}
+
+	maxPaths := 10
+	if maxPathsVal, ok := params["maxPaths"].(float64); ok {
+		maxPaths = int(maxPathsVal)
+	}
+
+	maxDepth := 5
+	if maxDepthVal, ok := params["maxDepth"].(float64); ok {
+		maxDepth = int(maxDepthVal)
+	}
+
+	s.logger.Debug("Executing traceUsage", map[string]interface{}{
+		"symbolId": symbolId,
+		"maxPaths": maxPaths,
+		"maxDepth": maxDepth,
+	})
+
+	ctx := context.Background()
+	resp, err := s.engine.TraceUsage(ctx, query.TraceUsageOptions{
+		SymbolId: symbolId,
+		MaxPaths: maxPaths,
+		MaxDepth: maxDepth,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("traceUsage failed: %w", err)
+	}
+
+	// Build paths response
+	paths := make([]map[string]interface{}, 0, len(resp.Paths))
+	for _, p := range resp.Paths {
+		nodes := make([]map[string]interface{}, 0, len(p.Nodes))
+		for _, n := range p.Nodes {
+			nodeInfo := map[string]interface{}{
+				"symbolId": n.SymbolId,
+				"name":     n.Name,
+				"role":     n.Role,
+			}
+			if n.Kind != "" {
+				nodeInfo["kind"] = n.Kind
+			}
+			if n.Location != nil {
+				nodeInfo["location"] = map[string]interface{}{
+					"fileId":    n.Location.FileId,
+					"startLine": n.Location.StartLine,
+				}
+			}
+			nodes = append(nodes, nodeInfo)
+		}
+
+		pathInfo := map[string]interface{}{
+			"pathType":   p.PathType,
+			"nodes":      nodes,
+			"confidence": p.Confidence,
+		}
+
+		if p.Ranking != nil {
+			pathInfo["ranking"] = map[string]interface{}{
+				"score":         p.Ranking.Score,
+				"signals":       p.Ranking.Signals,
+				"policyVersion": p.Ranking.PolicyVersion,
+			}
+		}
+
+		paths = append(paths, pathInfo)
+	}
+
+	result := map[string]interface{}{
+		"meta": map[string]interface{}{
+			"ckbVersion":    resp.CkbVersion,
+			"schemaVersion": resp.SchemaVersion,
+			"tool":          resp.Tool,
+		},
+		"targetSymbol":    resp.TargetSymbol,
+		"paths":           paths,
+		"totalPathsFound": resp.TotalPathsFound,
+		"confidence":      resp.Confidence,
+		"confidenceBasis": resp.ConfidenceBasis,
+	}
+
+	if len(resp.Limitations) > 0 {
+		result["limitations"] = resp.Limitations
+	}
+
+	if resp.Resolved != nil {
+		result["resolved"] = map[string]interface{}{
+			"symbolId":     resp.Resolved.SymbolId,
+			"resolvedFrom": resp.Resolved.ResolvedFrom,
+			"confidence":   resp.Resolved.Confidence,
+		}
+	}
+
+	if resp.Provenance != nil {
+		result["provenance"] = map[string]interface{}{
+			"repoStateId":     resp.Provenance.RepoStateId,
+			"repoStateDirty":  resp.Provenance.RepoStateDirty,
+			"queryDurationMs": resp.Provenance.QueryDurationMs,
+		}
+	}
+
+	if len(resp.Drilldowns) > 0 {
+		drilldowns := make([]map[string]interface{}, 0, len(resp.Drilldowns))
+		for _, d := range resp.Drilldowns {
+			drilldowns = append(drilldowns, map[string]interface{}{
+				"label":          d.Label,
+				"query":          d.Query,
+				"relevanceScore": d.RelevanceScore,
+			})
+		}
+		result["drilldowns"] = drilldowns
+	}
+
+	jsonBytesTrace, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	return string(jsonBytesTrace), nil
+}
