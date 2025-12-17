@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"ckb/internal/backends"
 	"ckb/internal/backends/git"
@@ -2662,4 +2663,981 @@ func classifyHotspotRisk(churn git.ChurnMetrics, role string) string {
 	}
 
 	return "low"
+}
+
+// ExplainPathOptions controls explainPath behavior.
+type ExplainPathOptions struct {
+	FilePath    string `json:"filePath"`
+	ContextHint string `json:"contextHint,omitempty"` // e.g., "from traceUsage"
+}
+
+// ExplainPathResponse explains why a path exists and what role it plays.
+type ExplainPathResponse struct {
+	AINavigationMeta
+	FilePath            string                `json:"filePath"`
+	Role                string                `json:"role"` // core, glue, legacy, test-only, config, unknown
+	RoleExplanation     string                `json:"roleExplanation"`
+	ClassificationBasis []ClassificationBasis `json:"classificationBasis"`
+	RelatedPaths        []RelatedPath         `json:"relatedPaths,omitempty"`
+	Confidence          float64               `json:"confidence"`
+	ConfidenceBasis     []ConfidenceBasisItem `json:"confidenceBasis"`
+	Limitations         []string              `json:"limitations,omitempty"`
+}
+
+// ClassificationBasis explains how a role was determined.
+type ClassificationBasis struct {
+	Type       string  `json:"type"` // naming, location, usage, history
+	Signal     string  `json:"signal"`
+	Confidence float64 `json:"confidence"`
+}
+
+// RelatedPath represents a path related to the explained one.
+type RelatedPath struct {
+	Path     string `json:"path"`
+	Relation string `json:"relation"` // test-for, config-for, imports, imported-by
+}
+
+// ExplainPath explains why a path exists and what role it plays.
+func (e *Engine) ExplainPath(ctx context.Context, opts ExplainPathOptions) (*ExplainPathResponse, error) {
+	startTime := time.Now()
+
+	if opts.FilePath == "" {
+		return nil, fmt.Errorf("filePath is required")
+	}
+
+	// Clean and validate path
+	filePath := filepath.Clean(opts.FilePath)
+	if !filepath.IsAbs(filePath) {
+		filePath = filepath.Join(e.repoRoot, filePath)
+	}
+
+	// Security: verify path is within repo root
+	repoRootClean := filepath.Clean(e.repoRoot)
+	if !strings.HasPrefix(filePath, repoRootClean+string(filepath.Separator)) && filePath != repoRootClean {
+		return nil, fmt.Errorf("path outside repository: %s", opts.FilePath)
+	}
+
+	var confidenceBasis []ConfidenceBasisItem
+	var limitations []string
+	var classificationBasis []ClassificationBasis
+
+	// Get relative path for analysis
+	relPath, _ := filepath.Rel(e.repoRoot, filePath)
+	if relPath == "" {
+		relPath = opts.FilePath
+	}
+
+	// Classify the file role using multiple signals
+	role, explanation, basis := classifyPathRole(relPath)
+	classificationBasis = basis
+
+	// Add naming-based confidence
+	confidenceBasis = append(confidenceBasis, ConfidenceBasisItem{
+		Backend: "naming",
+		Status:  "available",
+	})
+
+	// Check if file exists
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		limitations = append(limitations, "File does not exist; classification based on path only")
+	}
+
+	// Find related paths
+	relatedPaths := findRelatedPaths(relPath, e.repoRoot)
+
+	// Add location-based confidence
+	confidenceBasis = append(confidenceBasis, ConfidenceBasisItem{
+		Backend:   "location",
+		Status:    "available",
+		Heuristic: "path-pattern-matching",
+	})
+
+	// Compute confidence based on classification basis
+	confidence := computePathConfidence(classificationBasis)
+	if len(limitations) > 0 {
+		confidence *= 0.8
+	}
+
+	// Build response
+	response := &ExplainPathResponse{
+		AINavigationMeta: AINavigationMeta{
+			CkbVersion:    "5.2",
+			SchemaVersion: 1,
+			Tool:          "explainPath",
+		},
+		FilePath:            relPath,
+		Role:                role,
+		RoleExplanation:     explanation,
+		ClassificationBasis: classificationBasis,
+		RelatedPaths:        relatedPaths,
+		Confidence:          confidence,
+		ConfidenceBasis:     confidenceBasis,
+		Limitations:         limitations,
+	}
+
+	// Add standard limitation
+	if len(limitations) == 0 {
+		limitations = append(limitations, "Intent inferred from static signals; actual purpose may differ")
+		response.Limitations = limitations
+	}
+
+	// Add provenance
+	repoState, _ := e.GetRepoState(ctx, "head")
+	response.Provenance = &Provenance{
+		RepoStateId:     repoState.RepoStateId,
+		RepoStateDirty:  repoState.Dirty,
+		QueryDurationMs: time.Since(startTime).Milliseconds(),
+	}
+
+	// Add drilldowns
+	response.Drilldowns = []output.Drilldown{
+		{
+			Label:          "Explain file contents",
+			Query:          fmt.Sprintf("explainFile %s", relPath),
+			RelevanceScore: 0.9,
+		},
+	}
+
+	return response, nil
+}
+
+// classifyPathRole classifies a file path and returns role, explanation, and basis.
+func classifyPathRole(path string) (string, string, []ClassificationBasis) {
+	pathLower := strings.ToLower(path)
+	var basis []ClassificationBasis
+
+	// Test files
+	if strings.Contains(pathLower, "_test.") || strings.Contains(pathLower, ".test.") ||
+		strings.Contains(pathLower, "/test/") || strings.Contains(pathLower, "/tests/") ||
+		strings.Contains(pathLower, "/__tests__/") || strings.HasPrefix(pathLower, "test_") {
+		basis = append(basis, ClassificationBasis{
+			Type:       "naming",
+			Signal:     "test file pattern",
+			Confidence: 0.95,
+		})
+		return "test-only", "Test file based on naming convention", basis
+	}
+
+	// Config files
+	configPatterns := []string{
+		"config", ".json", ".yaml", ".yml", ".toml", ".ini", ".env",
+		"dockerfile", "makefile", ".mod", ".sum", "package.json",
+		"tsconfig", "webpack", "babel", ".eslint", ".prettier",
+	}
+	for _, pattern := range configPatterns {
+		if strings.Contains(pathLower, pattern) {
+			basis = append(basis, ClassificationBasis{
+				Type:       "naming",
+				Signal:     fmt.Sprintf("config pattern: %s", pattern),
+				Confidence: 0.85,
+			})
+			return "config", "Configuration file based on naming pattern", basis
+		}
+	}
+
+	// Documentation
+	if strings.HasSuffix(pathLower, ".md") || strings.HasSuffix(pathLower, ".txt") ||
+		strings.HasSuffix(pathLower, ".rst") || strings.Contains(pathLower, "/docs/") {
+		basis = append(basis, ClassificationBasis{
+			Type:       "naming",
+			Signal:     "documentation pattern",
+			Confidence: 0.9,
+		})
+		return "unknown", "Documentation file (not code)", basis
+	}
+
+	// Vendor/external
+	if strings.Contains(pathLower, "/vendor/") || strings.Contains(pathLower, "/node_modules/") ||
+		strings.Contains(pathLower, "/third_party/") {
+		basis = append(basis, ClassificationBasis{
+			Type:       "location",
+			Signal:     "vendor directory",
+			Confidence: 0.95,
+		})
+		return "unknown", "External/vendored code", basis
+	}
+
+	// Glue/integration files
+	gluePatterns := []string{
+		"adapter", "bridge", "facade", "wrapper", "middleware",
+		"handler", "controller", "router", "routes",
+	}
+	for _, pattern := range gluePatterns {
+		if strings.Contains(pathLower, pattern) {
+			basis = append(basis, ClassificationBasis{
+				Type:       "naming",
+				Signal:     fmt.Sprintf("glue pattern: %s", pattern),
+				Confidence: 0.75,
+			})
+			return "glue", "Integration/glue code based on naming pattern", basis
+		}
+	}
+
+	// Legacy indicators
+	legacyPatterns := []string{"legacy", "deprecated", "old", "v1", "compat"}
+	for _, pattern := range legacyPatterns {
+		if strings.Contains(pathLower, pattern) {
+			basis = append(basis, ClassificationBasis{
+				Type:       "naming",
+				Signal:     fmt.Sprintf("legacy pattern: %s", pattern),
+				Confidence: 0.7,
+			})
+			return "legacy", "Potentially legacy code based on naming", basis
+		}
+	}
+
+	// Entry points
+	if strings.Contains(pathLower, "/cmd/") || strings.HasSuffix(pathLower, "main.go") ||
+		strings.HasSuffix(pathLower, "index.ts") || strings.HasSuffix(pathLower, "index.js") ||
+		strings.Contains(pathLower, "__main__") {
+		basis = append(basis, ClassificationBasis{
+			Type:       "location",
+			Signal:     "entry point location",
+			Confidence: 0.85,
+		})
+		return "core", "Entry point / main module", basis
+	}
+
+	// Core business logic locations
+	corePatterns := []string{"/internal/", "/src/", "/lib/", "/pkg/", "/core/", "/domain/", "/services/"}
+	for _, pattern := range corePatterns {
+		if strings.Contains(pathLower, pattern) {
+			basis = append(basis, ClassificationBasis{
+				Type:       "location",
+				Signal:     fmt.Sprintf("core location: %s", pattern),
+				Confidence: 0.7,
+			})
+			return "core", "Core business logic based on location", basis
+		}
+	}
+
+	// Default: unknown with low confidence
+	basis = append(basis, ClassificationBasis{
+		Type:       "naming",
+		Signal:     "no strong pattern match",
+		Confidence: 0.5,
+	})
+	return "unknown", "Could not determine role from path alone", basis
+}
+
+// findRelatedPaths finds paths related to the given path.
+func findRelatedPaths(path, repoRoot string) []RelatedPath {
+	var related []RelatedPath
+	ext := filepath.Ext(path)
+	base := strings.TrimSuffix(path, ext)
+	dir := filepath.Dir(path)
+
+	// Look for test file
+	testPatterns := []string{
+		base + "_test" + ext,
+		base + ".test" + ext,
+		filepath.Join(dir, "test_"+filepath.Base(base)+ext),
+	}
+	for _, testPath := range testPatterns {
+		fullPath := filepath.Join(repoRoot, testPath)
+		if _, err := os.Stat(fullPath); err == nil {
+			related = append(related, RelatedPath{
+				Path:     testPath,
+				Relation: "test-for",
+			})
+			break
+		}
+	}
+
+	// Look for config file
+	configPatterns := []string{
+		filepath.Join(dir, "config.json"),
+		filepath.Join(dir, "config.yaml"),
+		filepath.Join(dir, filepath.Base(base)+".config"+ext),
+	}
+	for _, configPath := range configPatterns {
+		fullPath := filepath.Join(repoRoot, configPath)
+		if _, err := os.Stat(fullPath); err == nil {
+			related = append(related, RelatedPath{
+				Path:     configPath,
+				Relation: "config-for",
+			})
+			break
+		}
+	}
+
+	return related
+}
+
+// computePathConfidence computes confidence from classification basis.
+func computePathConfidence(basis []ClassificationBasis) float64 {
+	if len(basis) == 0 {
+		return 0.5
+	}
+
+	// Use the highest confidence from the basis
+	maxConf := 0.0
+	for _, b := range basis {
+		if b.Confidence > maxConf {
+			maxConf = b.Confidence
+		}
+	}
+
+	// Cap at 0.79 since this is heuristic-only
+	if maxConf > 0.79 {
+		maxConf = 0.79
+	}
+
+	return maxConf
+}
+
+// ListKeyConceptsOptions controls listKeyConcepts behavior.
+type ListKeyConceptsOptions struct {
+	Limit int `json:"limit,omitempty"` // Max concepts (default 12, max 12)
+}
+
+// ListKeyConceptsResponse provides main ideas/concepts in the codebase.
+type ListKeyConceptsResponse struct {
+	AINavigationMeta
+	Concepts        []ConceptV52          `json:"concepts"`
+	TotalFound      int                   `json:"totalFound"`
+	Confidence      float64               `json:"confidence"`
+	ConfidenceBasis []ConfidenceBasisItem `json:"confidenceBasis"`
+	Limitations     []string              `json:"limitations,omitempty"`
+}
+
+// ConceptV52 represents a key concept in the codebase.
+type ConceptV52 struct {
+	Name        string      `json:"name"`
+	Category    string      `json:"category"` // domain, technical, pattern
+	Occurrences int         `json:"occurrences"`
+	Files       []string    `json:"files,omitempty"`
+	Symbols     []string    `json:"symbols,omitempty"` // Sample symbol IDs
+	Description string      `json:"description,omitempty"`
+	Ranking     *RankingV52 `json:"ranking"`
+}
+
+// ListKeyConcepts discovers main ideas/concepts in the codebase through semantic clustering.
+func (e *Engine) ListKeyConcepts(ctx context.Context, opts ListKeyConceptsOptions) (*ListKeyConceptsResponse, error) {
+	startTime := time.Now()
+
+	if opts.Limit <= 0 {
+		opts.Limit = 12
+	}
+	if opts.Limit > 12 {
+		opts.Limit = 12 // Hard cap per v5.2 spec
+	}
+
+	var confidenceBasis []ConfidenceBasisItem
+	var limitations []string
+	concepts := []ConceptV52{}
+
+	// Concept extraction strategy:
+	// 1. Extract from package/module names
+	// 2. Extract from type/struct names
+	// 3. Extract from common prefixes in symbols
+	// 4. Rank by frequency and spread
+
+	conceptCounts := make(map[string]*conceptData)
+
+	// Get symbols from SCIP if available
+	if e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
+		confidenceBasis = append(confidenceBasis, ConfidenceBasisItem{
+			Backend: "scip",
+			Status:  "available",
+		})
+
+		// Search for various symbol types to extract concepts
+		searchTerms := []string{"", "Handler", "Service", "Manager", "Client", "Server", "Config", "Error"}
+		for _, term := range searchTerms {
+			results, _ := e.scipAdapter.SearchSymbols(ctx, term, backends.SearchOptions{
+				MaxResults: 100,
+				Kind:       []string{"class", "interface", "struct", "type"},
+			})
+
+			if results != nil {
+				for _, sym := range results.Symbols {
+					// Extract concept from symbol name
+					conceptName := extractConcept(sym.Name)
+					if conceptName == "" {
+						continue
+					}
+
+					if _, exists := conceptCounts[conceptName]; !exists {
+						conceptCounts[conceptName] = &conceptData{
+							files:   make(map[string]bool),
+							symbols: []string{},
+						}
+					}
+
+					cd := conceptCounts[conceptName]
+					cd.count++
+					cd.files[sym.Location.Path] = true
+					if len(cd.symbols) < 3 {
+						cd.symbols = append(cd.symbols, sym.StableID)
+					}
+				}
+			}
+		}
+
+		// Also extract from function/method names
+		funcResults, _ := e.scipAdapter.SearchSymbols(ctx, "", backends.SearchOptions{
+			MaxResults: 200,
+			Kind:       []string{"function", "method"},
+		})
+
+		if funcResults != nil {
+			for _, sym := range funcResults.Symbols {
+				conceptName := extractConcept(sym.Name)
+				if conceptName == "" {
+					continue
+				}
+
+				if _, exists := conceptCounts[conceptName]; !exists {
+					conceptCounts[conceptName] = &conceptData{
+						files:   make(map[string]bool),
+						symbols: []string{},
+					}
+				}
+
+				cd := conceptCounts[conceptName]
+				cd.count++
+				cd.files[sym.Location.Path] = true
+			}
+		}
+	} else {
+		confidenceBasis = append(confidenceBasis, ConfidenceBasisItem{
+			Backend: "scip",
+			Status:  "missing",
+		})
+		limitations = append(limitations, "SCIP index unavailable; concept extraction limited")
+
+		// Fallback: extract from file/directory names
+		_ = filepath.WalkDir(e.repoRoot, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err // Return error to allow WalkDir to handle permission issues
+			}
+			if d.IsDir() {
+				// Skip hidden and vendor directories
+				if strings.HasPrefix(d.Name(), ".") || d.Name() == "vendor" || d.Name() == "node_modules" {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+
+			// Extract concept from file name
+			ext := filepath.Ext(path)
+			if ext != ".go" && ext != ".ts" && ext != ".js" && ext != ".py" {
+				return nil
+			}
+
+			name := strings.TrimSuffix(filepath.Base(path), ext)
+			name = strings.TrimSuffix(name, "_test")
+			name = strings.TrimSuffix(name, ".test")
+
+			conceptName := extractConcept(name)
+			if conceptName == "" {
+				return nil
+			}
+
+			relPath, _ := filepath.Rel(e.repoRoot, path)
+
+			if _, exists := conceptCounts[conceptName]; !exists {
+				conceptCounts[conceptName] = &conceptData{
+					files:   make(map[string]bool),
+					symbols: []string{},
+				}
+			}
+
+			cd := conceptCounts[conceptName]
+			cd.count++
+			cd.files[relPath] = true
+
+			return nil
+		})
+	}
+
+	// Convert to concepts and rank
+	for name, data := range conceptCounts {
+		// Skip if too few occurrences or single file
+		if data.count < 2 || len(data.files) < 1 {
+			continue
+		}
+
+		files := make([]string, 0, len(data.files))
+		for f := range data.files {
+			files = append(files, f)
+			if len(files) >= 5 {
+				break
+			}
+		}
+
+		category := categorizeConceptV52(name)
+		description := generateConceptDescription(name, category, data.count, len(data.files))
+
+		// Score based on occurrence count and file spread
+		score := float64(data.count) * float64(len(data.files))
+
+		concepts = append(concepts, ConceptV52{
+			Name:        name,
+			Category:    category,
+			Occurrences: data.count,
+			Files:       files,
+			Symbols:     data.symbols,
+			Description: description,
+			Ranking: NewRankingV52(score, map[string]interface{}{
+				"occurrences": data.count,
+				"fileSpread":  len(data.files),
+			}),
+		})
+	}
+
+	// Sort by ranking score with deterministic tie-breaker
+	sort.Slice(concepts, func(i, j int) bool {
+		if concepts[i].Ranking.Score != concepts[j].Ranking.Score {
+			return concepts[i].Ranking.Score > concepts[j].Ranking.Score
+		}
+		return concepts[i].Name < concepts[j].Name
+	})
+
+	// Track total before limiting
+	totalFound := len(concepts)
+
+	// Apply limit
+	if len(concepts) > opts.Limit {
+		concepts = concepts[:opts.Limit]
+	}
+
+	// Compute confidence
+	confidence := 0.69 // Heuristic extraction
+	for _, b := range confidenceBasis {
+		if b.Backend == "scip" && b.Status == "available" {
+			confidence = 0.79
+		}
+	}
+
+	// Build response
+	response := &ListKeyConceptsResponse{
+		AINavigationMeta: AINavigationMeta{
+			CkbVersion:    "5.2",
+			SchemaVersion: 1,
+			Tool:          "listKeyConcepts",
+		},
+		Concepts:        concepts,
+		TotalFound:      totalFound,
+		Confidence:      confidence,
+		ConfidenceBasis: confidenceBasis,
+		Limitations:     limitations,
+	}
+
+	// Add provenance
+	repoState, _ := e.GetRepoState(ctx, "head")
+	response.Provenance = &Provenance{
+		RepoStateId:     repoState.RepoStateId,
+		RepoStateDirty:  repoState.Dirty,
+		QueryDurationMs: time.Since(startTime).Milliseconds(),
+	}
+
+	// Add drilldowns
+	if len(concepts) > 0 {
+		response.Drilldowns = []output.Drilldown{
+			{
+				Label:          "View architecture",
+				Query:          "getArchitecture",
+				RelevanceScore: 0.85,
+			},
+		}
+		if len(concepts[0].Symbols) > 0 {
+			response.Drilldowns = append(response.Drilldowns, output.Drilldown{
+				Label:          fmt.Sprintf("Explore %s", concepts[0].Name),
+				Query:          fmt.Sprintf("explainSymbol %s", concepts[0].Symbols[0]),
+				RelevanceScore: 0.8,
+			})
+		}
+	}
+
+	return response, nil
+}
+
+// conceptData holds intermediate concept data during extraction.
+type conceptData struct {
+	count   int
+	files   map[string]bool
+	symbols []string
+}
+
+// extractConcept extracts a concept name from a symbol or file name.
+func extractConcept(name string) string {
+	// Skip common non-concept names
+	skipNames := map[string]bool{
+		"main": true, "init": true, "new": true, "get": true, "set": true,
+		"run": true, "start": true, "stop": true, "close": true, "open": true,
+		"read": true, "write": true, "do": true, "make": true, "create": true,
+		"delete": true, "update": true, "list": true, "find": true, "err": true,
+		"error": true, "test": true, "mock": true, "stub": true,
+	}
+
+	if skipNames[strings.ToLower(name)] {
+		return ""
+	}
+
+	// Split camelCase/PascalCase
+	words := splitCamelCase(name)
+	if len(words) == 0 {
+		return ""
+	}
+
+	// Return the most significant word (usually the last non-suffix)
+	suffixes := map[string]bool{
+		"handler": true, "service": true, "manager": true, "client": true,
+		"server": true, "config": true, "error": true, "impl": true,
+		"factory": true, "builder": true, "provider": true, "adapter": true,
+	}
+
+	// Find concept word (skip common suffixes)
+	for i := len(words) - 1; i >= 0; i-- {
+		word := strings.ToLower(words[i])
+		if !suffixes[word] && len(word) > 2 {
+			return titleCase(word)
+		}
+	}
+
+	// If all words are suffixes, use the first one
+	if len(words) > 0 && len(words[0]) > 2 {
+		return titleCase(strings.ToLower(words[0]))
+	}
+
+	return ""
+}
+
+// titleCase returns the string with the first letter capitalized.
+func titleCase(s string) string {
+	if len(s) == 0 {
+		return s
+	}
+	r := []rune(s)
+	r[0] = unicode.ToUpper(r[0])
+	return string(r)
+}
+
+// splitCamelCase splits a camelCase or PascalCase string into words.
+func splitCamelCase(s string) []string {
+	var words []string
+	var current strings.Builder
+
+	for i, r := range s {
+		if i > 0 && (r >= 'A' && r <= 'Z') {
+			if current.Len() > 0 {
+				words = append(words, current.String())
+				current.Reset()
+			}
+		}
+		current.WriteRune(r)
+	}
+
+	if current.Len() > 0 {
+		words = append(words, current.String())
+	}
+
+	return words
+}
+
+// categorizeConceptV52 categorizes a concept as domain, technical, or pattern.
+func categorizeConceptV52(name string) string {
+	nameLower := strings.ToLower(name)
+
+	// Technical patterns
+	technicalTerms := map[string]bool{
+		"cache": true, "queue": true, "pool": true, "buffer": true,
+		"socket": true, "stream": true, "worker": true, "channel": true,
+		"mutex": true, "lock": true, "sync": true, "async": true,
+		"http": true, "grpc": true, "rest": true, "api": true,
+		"database": true, "query": true, "index": true, "schema": true,
+	}
+
+	if technicalTerms[nameLower] {
+		return "technical"
+	}
+
+	// Pattern names
+	patternTerms := map[string]bool{
+		"factory": true, "builder": true, "singleton": true, "adapter": true,
+		"observer": true, "strategy": true, "decorator": true, "facade": true,
+		"proxy": true, "bridge": true, "composite": true, "visitor": true,
+	}
+
+	if patternTerms[nameLower] {
+		return "pattern"
+	}
+
+	// Default to domain
+	return "domain"
+}
+
+// generateConceptDescription generates a description for a concept.
+func generateConceptDescription(name, category string, occurrences, fileCount int) string {
+	switch category {
+	case "technical":
+		return fmt.Sprintf("Technical concept '%s' found in %d files", name, fileCount)
+	case "pattern":
+		return fmt.Sprintf("Design pattern '%s' used across %d files", name, fileCount)
+	default:
+		return fmt.Sprintf("Domain concept '%s' with %d occurrences in %d files", name, occurrences, fileCount)
+	}
+}
+
+// RecentlyRelevantOptions controls recentlyRelevant behavior.
+type RecentlyRelevantOptions struct {
+	TimeWindow   *TimeWindowSelector `json:"timeWindow,omitempty"`
+	ModuleFilter string              `json:"moduleFilter,omitempty"`
+	Limit        int                 `json:"limit,omitempty"` // Max results (default 20)
+}
+
+// RecentlyRelevantResponse provides recently active files/symbols.
+type RecentlyRelevantResponse struct {
+	AINavigationMeta
+	Items           []RecentItem          `json:"items"`
+	TotalCount      int                   `json:"totalCount"`
+	TimeWindow      string                `json:"timeWindow"`
+	Confidence      float64               `json:"confidence"`
+	ConfidenceBasis []ConfidenceBasisItem `json:"confidenceBasis"`
+	Limitations     []string              `json:"limitations,omitempty"`
+}
+
+// RecentItem represents a recently relevant file or symbol.
+type RecentItem struct {
+	Type         string      `json:"type"` // file, symbol
+	Path         string      `json:"path,omitempty"`
+	SymbolId     string      `json:"symbolId,omitempty"`
+	Name         string      `json:"name"`
+	LastModified string      `json:"lastModified"`
+	ChangeCount  int         `json:"changeCount"`
+	Authors      []string    `json:"authors,omitempty"`
+	Ranking      *RankingV52 `json:"ranking"`
+}
+
+// RecentlyRelevant finds what matters now - files/symbols with recent activity.
+func (e *Engine) RecentlyRelevant(ctx context.Context, opts RecentlyRelevantOptions) (*RecentlyRelevantResponse, error) {
+	startTime := time.Now()
+
+	if opts.Limit <= 0 {
+		opts.Limit = 20
+	}
+
+	var confidenceBasis []ConfidenceBasisItem
+	var limitations []string
+	items := []RecentItem{}
+
+	// Determine time window
+	var timeWindowStr string
+	var since string
+	if opts.TimeWindow != nil && opts.TimeWindow.Start != "" {
+		since = opts.TimeWindow.Start
+		timeWindowStr = opts.TimeWindow.Start
+		if opts.TimeWindow.End != "" {
+			timeWindowStr += " to " + opts.TimeWindow.End
+		}
+	} else {
+		// Default: 7 days
+		since = time.Now().AddDate(0, 0, -7).Format("2006-01-02")
+		timeWindowStr = "last 7 days"
+	}
+
+	// Check git backend
+	if e.gitAdapter == nil || !e.gitAdapter.IsAvailable() {
+		return nil, fmt.Errorf("git backend unavailable; recentlyRelevant requires git")
+	}
+	confidenceBasis = append(confidenceBasis, ConfidenceBasisItem{
+		Backend: "git",
+		Status:  "available",
+	})
+
+	// Get commits in time window
+	commits, err := e.gitAdapter.GetCommitsSinceDate(since, 500)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get commits: %w", err)
+	}
+
+	// Aggregate file changes
+	fileChanges := make(map[string]*recentFileData)
+	for _, commit := range commits {
+		// Get files changed in this commit
+		diffStats, err := e.gitAdapter.GetCommitDiff(commit.Hash)
+		if err != nil {
+			continue
+		}
+
+		for _, stat := range diffStats {
+			filePath := stat.FilePath
+
+			// Apply module filter if specified
+			if opts.ModuleFilter != "" && !strings.HasPrefix(filePath, opts.ModuleFilter) {
+				continue
+			}
+
+			if _, exists := fileChanges[filePath]; !exists {
+				fileChanges[filePath] = &recentFileData{
+					authors:      make(map[string]bool),
+					lastModified: commit.Timestamp,
+				}
+			}
+
+			fd := fileChanges[filePath]
+			fd.changeCount++
+			fd.authors[commit.Author] = true
+
+			// Update last modified if more recent
+			if commit.Timestamp > fd.lastModified {
+				fd.lastModified = commit.Timestamp
+			}
+		}
+	}
+
+	// Convert to items
+	for path, data := range fileChanges {
+		authors := make([]string, 0, len(data.authors))
+		for a := range data.authors {
+			authors = append(authors, a)
+			if len(authors) >= 3 {
+				break
+			}
+		}
+
+		// Calculate score based on recency and change frequency
+		recencyScore := computeRecencyScore(data.lastModified)
+		changeScore := float64(data.changeCount)
+		authorScore := float64(len(data.authors)) * 0.5
+		score := (recencyScore * 10) + changeScore + authorScore
+
+		items = append(items, RecentItem{
+			Type:         "file",
+			Path:         path,
+			Name:         filepath.Base(path),
+			LastModified: data.lastModified,
+			ChangeCount:  data.changeCount,
+			Authors:      authors,
+			Ranking: NewRankingV52(score, map[string]interface{}{
+				"recency":     recencyScore,
+				"changeCount": data.changeCount,
+				"authorCount": len(data.authors),
+			}),
+		})
+	}
+
+	// Sort by ranking score with deterministic tie-breaker
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Ranking.Score != items[j].Ranking.Score {
+			return items[i].Ranking.Score > items[j].Ranking.Score
+		}
+		return items[i].Path < items[j].Path
+	})
+
+	// Track total before limiting
+	totalCount := len(items)
+
+	// Apply limit
+	if len(items) > opts.Limit {
+		items = items[:opts.Limit]
+	}
+
+	// Add SCIP status
+	if e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
+		confidenceBasis = append(confidenceBasis, ConfidenceBasisItem{
+			Backend: "scip",
+			Status:  "available",
+		})
+	} else {
+		confidenceBasis = append(confidenceBasis, ConfidenceBasisItem{
+			Backend: "scip",
+			Status:  "missing",
+		})
+		limitations = append(limitations, "SCIP unavailable; symbol-level relevance not included")
+	}
+
+	// Compute confidence
+	confidence := 0.89 // Git activity is reliable
+	if len(limitations) > 0 {
+		confidence = 0.79
+	}
+
+	// Build response
+	response := &RecentlyRelevantResponse{
+		AINavigationMeta: AINavigationMeta{
+			CkbVersion:    "5.2",
+			SchemaVersion: 1,
+			Tool:          "recentlyRelevant",
+		},
+		Items:           items,
+		TotalCount:      totalCount,
+		TimeWindow:      timeWindowStr,
+		Confidence:      confidence,
+		ConfidenceBasis: confidenceBasis,
+		Limitations:     limitations,
+	}
+
+	// Add provenance
+	repoState, _ := e.GetRepoState(ctx, "head")
+	response.Provenance = &Provenance{
+		RepoStateId:     repoState.RepoStateId,
+		RepoStateDirty:  repoState.Dirty,
+		QueryDurationMs: time.Since(startTime).Milliseconds(),
+	}
+
+	// Add drilldowns
+	if len(items) > 0 {
+		response.Drilldowns = []output.Drilldown{
+			{
+				Label:          fmt.Sprintf("Explain %s", items[0].Name),
+				Query:          fmt.Sprintf("explainFile %s", items[0].Path),
+				RelevanceScore: 0.9,
+			},
+			{
+				Label:          "View hotspots",
+				Query:          "getHotspots",
+				RelevanceScore: 0.85,
+			},
+			{
+				Label:          "Summarize changes",
+				Query:          "summarizeDiff",
+				RelevanceScore: 0.8,
+			},
+		}
+	}
+
+	return response, nil
+}
+
+// recentFileData holds intermediate data for recently changed files.
+type recentFileData struct {
+	changeCount  int
+	authors      map[string]bool
+	lastModified string
+}
+
+// computeRecencyScore computes a score based on how recent a timestamp is.
+func computeRecencyScore(timestamp string) float64 {
+	if timestamp == "" {
+		return 0
+	}
+
+	t, err := time.Parse(time.RFC3339, timestamp)
+	if err != nil {
+		// Try alternate format
+		t, err = time.Parse("2006-01-02T15:04:05-07:00", timestamp)
+		if err != nil {
+			return 0
+		}
+	}
+
+	daysSince := time.Since(t).Hours() / 24
+
+	switch {
+	case daysSince <= 1:
+		return 10.0
+	case daysSince <= 3:
+		return 8.0
+	case daysSince <= 7:
+		return 6.0
+	case daysSince <= 14:
+		return 4.0
+	case daysSince <= 30:
+		return 2.0
+	default:
+		return 1.0
+	}
 }

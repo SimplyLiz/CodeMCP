@@ -1330,3 +1330,280 @@ func (s *MCPServer) toolGetHotspots(params map[string]interface{}) (interface{},
 
 	return string(jsonBytesHotspots), nil
 }
+
+// toolExplainPath handles the explainPath tool call
+func (s *MCPServer) toolExplainPath(params map[string]interface{}) (interface{}, error) {
+	ctx := context.Background()
+
+	filePath, ok := params["filePath"].(string)
+	if !ok || filePath == "" {
+		return nil, fmt.Errorf("missing or invalid 'filePath' parameter")
+	}
+
+	opts := query.ExplainPathOptions{
+		FilePath: filePath,
+	}
+
+	if contextHint, ok := params["contextHint"].(string); ok {
+		opts.ContextHint = contextHint
+	}
+
+	resp, err := s.engine.ExplainPath(ctx, opts)
+	if err != nil {
+		return nil, fmt.Errorf("explainPath failed: %w", err)
+	}
+
+	// Build classification basis response
+	classificationBasis := make([]map[string]interface{}, 0, len(resp.ClassificationBasis))
+	for _, b := range resp.ClassificationBasis {
+		classificationBasis = append(classificationBasis, map[string]interface{}{
+			"type":       b.Type,
+			"signal":     b.Signal,
+			"confidence": b.Confidence,
+		})
+	}
+
+	// Build related paths response
+	relatedPaths := make([]map[string]interface{}, 0, len(resp.RelatedPaths))
+	for _, r := range resp.RelatedPaths {
+		relatedPaths = append(relatedPaths, map[string]interface{}{
+			"path":     r.Path,
+			"relation": r.Relation,
+		})
+	}
+
+	result := map[string]interface{}{
+		"meta": map[string]interface{}{
+			"ckbVersion":    resp.CkbVersion,
+			"schemaVersion": resp.SchemaVersion,
+			"tool":          resp.Tool,
+		},
+		"filePath":            resp.FilePath,
+		"role":                resp.Role,
+		"roleExplanation":     resp.RoleExplanation,
+		"classificationBasis": classificationBasis,
+		"relatedPaths":        relatedPaths,
+		"confidence":          resp.Confidence,
+		"confidenceBasis":     resp.ConfidenceBasis,
+	}
+
+	if len(resp.Limitations) > 0 {
+		result["limitations"] = resp.Limitations
+	}
+
+	if resp.Provenance != nil {
+		result["provenance"] = map[string]interface{}{
+			"repoStateId":     resp.Provenance.RepoStateId,
+			"repoStateDirty":  resp.Provenance.RepoStateDirty,
+			"queryDurationMs": resp.Provenance.QueryDurationMs,
+		}
+	}
+
+	if len(resp.Drilldowns) > 0 {
+		drilldowns := make([]map[string]interface{}, 0, len(resp.Drilldowns))
+		for _, d := range resp.Drilldowns {
+			drilldowns = append(drilldowns, map[string]interface{}{
+				"label":          d.Label,
+				"query":          d.Query,
+				"relevanceScore": d.RelevanceScore,
+			})
+		}
+		result["drilldowns"] = drilldowns
+	}
+
+	jsonBytesPath, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	return string(jsonBytesPath), nil
+}
+
+// toolListKeyConcepts handles the listKeyConcepts tool call
+func (s *MCPServer) toolListKeyConcepts(params map[string]interface{}) (interface{}, error) {
+	ctx := context.Background()
+
+	limit := 12
+	if limitVal, ok := params["limit"].(float64); ok {
+		limit = int(limitVal)
+	}
+
+	resp, err := s.engine.ListKeyConcepts(ctx, query.ListKeyConceptsOptions{Limit: limit})
+	if err != nil {
+		return nil, fmt.Errorf("listKeyConcepts failed: %w", err)
+	}
+
+	// Build concepts response
+	concepts := make([]map[string]interface{}, 0, len(resp.Concepts))
+	for _, c := range resp.Concepts {
+		conceptInfo := map[string]interface{}{
+			"name":        c.Name,
+			"category":    c.Category,
+			"occurrences": c.Occurrences,
+			"description": c.Description,
+		}
+		if len(c.Files) > 0 {
+			conceptInfo["files"] = c.Files
+		}
+		if len(c.Symbols) > 0 {
+			conceptInfo["symbols"] = c.Symbols
+		}
+		if c.Ranking != nil {
+			conceptInfo["ranking"] = map[string]interface{}{
+				"score":         c.Ranking.Score,
+				"signals":       c.Ranking.Signals,
+				"policyVersion": c.Ranking.PolicyVersion,
+			}
+		}
+		concepts = append(concepts, conceptInfo)
+	}
+
+	result := map[string]interface{}{
+		"meta": map[string]interface{}{
+			"ckbVersion":    resp.CkbVersion,
+			"schemaVersion": resp.SchemaVersion,
+			"tool":          resp.Tool,
+		},
+		"concepts":        concepts,
+		"totalFound":      resp.TotalFound,
+		"confidence":      resp.Confidence,
+		"confidenceBasis": resp.ConfidenceBasis,
+	}
+
+	if len(resp.Limitations) > 0 {
+		result["limitations"] = resp.Limitations
+	}
+
+	if resp.Provenance != nil {
+		result["provenance"] = map[string]interface{}{
+			"repoStateId":     resp.Provenance.RepoStateId,
+			"repoStateDirty":  resp.Provenance.RepoStateDirty,
+			"queryDurationMs": resp.Provenance.QueryDurationMs,
+		}
+	}
+
+	if len(resp.Drilldowns) > 0 {
+		drilldowns := make([]map[string]interface{}, 0, len(resp.Drilldowns))
+		for _, d := range resp.Drilldowns {
+			drilldowns = append(drilldowns, map[string]interface{}{
+				"label":          d.Label,
+				"query":          d.Query,
+				"relevanceScore": d.RelevanceScore,
+			})
+		}
+		result["drilldowns"] = drilldowns
+	}
+
+	jsonBytesConcepts, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	return string(jsonBytesConcepts), nil
+}
+
+// toolRecentlyRelevant handles the recentlyRelevant tool call
+func (s *MCPServer) toolRecentlyRelevant(params map[string]interface{}) (interface{}, error) {
+	ctx := context.Background()
+
+	opts := query.RecentlyRelevantOptions{}
+
+	// Parse timeWindow if provided
+	if timeWindow, ok := params["timeWindow"].(map[string]interface{}); ok {
+		start, _ := timeWindow["start"].(string)
+		end, _ := timeWindow["end"].(string)
+		if start != "" {
+			opts.TimeWindow = &query.TimeWindowSelector{
+				Start: start,
+				End:   end,
+			}
+		}
+	}
+
+	// Parse moduleFilter if provided
+	if moduleFilter, ok := params["moduleFilter"].(string); ok {
+		opts.ModuleFilter = moduleFilter
+	}
+
+	// Parse limit if provided
+	if limit, ok := params["limit"].(float64); ok {
+		opts.Limit = int(limit)
+	}
+
+	resp, err := s.engine.RecentlyRelevant(ctx, opts)
+	if err != nil {
+		return nil, fmt.Errorf("recentlyRelevant failed: %w", err)
+	}
+
+	// Build items response
+	items := make([]map[string]interface{}, 0, len(resp.Items))
+	for _, item := range resp.Items {
+		itemInfo := map[string]interface{}{
+			"type":         item.Type,
+			"name":         item.Name,
+			"changeCount":  item.ChangeCount,
+			"lastModified": item.LastModified,
+		}
+		if item.Path != "" {
+			itemInfo["path"] = item.Path
+		}
+		if item.SymbolId != "" {
+			itemInfo["symbolId"] = item.SymbolId
+		}
+		if len(item.Authors) > 0 {
+			itemInfo["authors"] = item.Authors
+		}
+		if item.Ranking != nil {
+			itemInfo["ranking"] = map[string]interface{}{
+				"score":         item.Ranking.Score,
+				"signals":       item.Ranking.Signals,
+				"policyVersion": item.Ranking.PolicyVersion,
+			}
+		}
+		items = append(items, itemInfo)
+	}
+
+	result := map[string]interface{}{
+		"meta": map[string]interface{}{
+			"ckbVersion":    resp.CkbVersion,
+			"schemaVersion": resp.SchemaVersion,
+			"tool":          resp.Tool,
+		},
+		"items":           items,
+		"totalCount":      resp.TotalCount,
+		"timeWindow":      resp.TimeWindow,
+		"confidence":      resp.Confidence,
+		"confidenceBasis": resp.ConfidenceBasis,
+	}
+
+	if len(resp.Limitations) > 0 {
+		result["limitations"] = resp.Limitations
+	}
+
+	if resp.Provenance != nil {
+		result["provenance"] = map[string]interface{}{
+			"repoStateId":     resp.Provenance.RepoStateId,
+			"repoStateDirty":  resp.Provenance.RepoStateDirty,
+			"queryDurationMs": resp.Provenance.QueryDurationMs,
+		}
+	}
+
+	if len(resp.Drilldowns) > 0 {
+		drilldowns := make([]map[string]interface{}, 0, len(resp.Drilldowns))
+		for _, d := range resp.Drilldowns {
+			drilldowns = append(drilldowns, map[string]interface{}{
+				"label":          d.Label,
+				"query":          d.Query,
+				"relevanceScore": d.RelevanceScore,
+			})
+		}
+		result["drilldowns"] = drilldowns
+	}
+
+	jsonBytesRecent, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	return string(jsonBytesRecent), nil
+}

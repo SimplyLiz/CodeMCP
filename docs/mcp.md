@@ -97,15 +97,15 @@ All temporal tools accept explicit `timeWindow` parameter to override.
 ### Flow & Runtime Orientation
 | Tool | Budget | Purpose | Status |
 |------|--------|---------|--------|
-| [traceUsage](#traceusage) | Heavy | Show how something is reached | v5.2 |
-| [listEntrypoints](#listentrypoints) | Cheap | List system entrypoints | v5.2 |
+| [traceUsage](#traceusage) | Heavy | Show how something is reached | v5.2 ✓ |
+| [listEntrypoints](#listentrypoints) | Cheap | List system entrypoints | v5.2 ✓ |
 | [getCallGraph](#getcallgraph) | Heavy | Caller/callee graph | v5.1 ✓ |
 
 ### File-Level Navigation
 | Tool | Budget | Purpose | Status |
 |------|--------|---------|--------|
-| [explainFile](#explainfile) | Cheap | File orientation | v5.2 |
-| [explainPath](#explainpath) | Cheap | Path role explanation | v5.2 |
+| [explainFile](#explainfile) | Cheap | File orientation | v5.2 ✓ |
+| [explainPath](#explainpath) | Cheap | Path role explanation | v5.2 ✓ |
 
 ### Change Awareness
 | Tool | Budget | Purpose | Status |
@@ -117,8 +117,8 @@ All temporal tools accept explicit `timeWindow` parameter to override.
 |------|--------|---------|--------|
 | [getArchitecture](#getarchitecture) | Heavy | Architectural overview | v5.2 ✓ |
 | [getHotspots](#gethotspots) | Heavy | Highlight volatile areas | v5.2 ✓ |
-| [listKeyConcepts](#listkeyconcepts) | Heavy | Main codebase concepts | v5.2 |
-| [recentlyRelevant](#recentlyrelevant) | Heavy | What matters now? | v5.2 |
+| [listKeyConcepts](#listkeyconcepts) | Heavy | Main codebase concepts | v5.2 ✓ |
+| [recentlyRelevant](#recentlyrelevant) | Heavy | What matters now? | v5.2 ✓ |
 | [getModuleOverview](#getmoduleoverview) | Heavy | Module statistics | v5.1 ✓ |
 
 ### Symbol Analysis
@@ -188,7 +188,7 @@ Get detailed metadata for a symbol by stable ID.
 
 Show how something is reached, not just who calls whom.
 
-**Budget:** Heavy | **Status:** v5.2
+**Budget:** Heavy | **Status:** v5.2 ✓
 
 **Why it exists:** Call graphs are structural. Agents need causal paths: Route → controller → service → DB.
 
@@ -221,7 +221,7 @@ Show how something is reached, not just who calls whom.
 
 Explicit list of system entrypoints.
 
-**Budget:** Cheap | **Status:** v5.2
+**Budget:** Cheap | **Status:** v5.2 ✓
 
 **Parameters:**
 | Name | Type | Required | Default | Description |
@@ -260,7 +260,7 @@ Get caller/callee relationships for a symbol.
 
 Lightweight orientation when a file is the starting point.
 
-**Budget:** Cheap | **Status:** v5.2
+**Budget:** Cheap | **Status:** v5.2 ✓
 
 **Why it exists:** Too big for `explainSymbol`, too small for `getModuleOverview`.
 
@@ -283,7 +283,7 @@ Lightweight orientation when a file is the starting point.
 
 Explain why a path exists and what role it plays.
 
-**Budget:** Cheap | **Status:** v5.2
+**Budget:** Cheap | **Status:** v5.2 ✓
 
 **Parameters:**
 | Name | Type | Required | Description |
@@ -428,7 +428,7 @@ Highlight areas that deserve attention based on churn, coupling, and recency.
 
 What are the main ideas in this codebase?
 
-**Budget:** Heavy | **Status:** v5.2
+**Budget:** Heavy | **Status:** v5.2 ✓
 
 **Why it exists:** Not architecture—semantic clustering. Helps onboarding agents understand domain vocabulary.
 
@@ -458,7 +458,7 @@ What are the main ideas in this codebase?
 
 What should I care about now?
 
-**Budget:** Heavy | **Status:** v5.2
+**Budget:** Heavy | **Status:** v5.2 ✓
 
 **Parameters:**
 | Name | Type | Required | Default | Description |

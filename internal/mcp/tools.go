@@ -352,6 +352,70 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		{
+			Name:        "explainPath",
+			Description: "Explain why a path exists and what role it plays. Returns role classification (core, glue, legacy, test-only, config, unknown) with reasoning.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"filePath": map[string]interface{}{
+						"type":        "string",
+						"description": "Path to explain (relative or absolute)",
+					},
+					"contextHint": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional context hint (e.g., 'from traceUsage')",
+					},
+				},
+				"required": []string{"filePath"},
+			},
+		},
+		{
+			Name:        "listKeyConcepts",
+			Description: "Discover main ideas/concepts in the codebase through semantic clustering. Helps understand domain vocabulary.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"limit": map[string]interface{}{
+						"type":        "number",
+						"default":     12,
+						"description": "Maximum number of concepts to return (max 12)",
+					},
+				},
+			},
+		},
+		{
+			Name:        "recentlyRelevant",
+			Description: "Find what matters now - files/symbols with recent activity that may need attention.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"timeWindow": map[string]interface{}{
+						"type":        "object",
+						"description": "Time period to analyze (default: 7 days)",
+						"properties": map[string]interface{}{
+							"start": map[string]interface{}{
+								"type":        "string",
+								"description": "Start date (ISO8601 or YYYY-MM-DD)",
+							},
+							"end": map[string]interface{}{
+								"type":        "string",
+								"description": "End date (ISO8601 or YYYY-MM-DD)",
+							},
+						},
+					},
+					"moduleFilter": map[string]interface{}{
+						"type":        "string",
+						"description": "Module path to focus on",
+					},
+					"limit": map[string]interface{}{
+						"type":        "number",
+						"default":     20,
+						"description": "Maximum results to return",
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -373,4 +437,7 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["traceUsage"] = s.toolTraceUsage
 	s.tools["summarizeDiff"] = s.toolSummarizeDiff
 	s.tools["getHotspots"] = s.toolGetHotspots
+	s.tools["explainPath"] = s.toolExplainPath
+	s.tools["listKeyConcepts"] = s.toolListKeyConcepts
+	s.tools["recentlyRelevant"] = s.toolRecentlyRelevant
 }
