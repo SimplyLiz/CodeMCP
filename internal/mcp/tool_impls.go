@@ -263,6 +263,15 @@ func (s *MCPServer) toolSearchSymbols(params map[string]interface{}) (interface{
 			}
 		}
 
+		// Add v5.2 ranking signals
+		if sym.Ranking != nil {
+			symbolInfo["ranking"] = map[string]interface{}{
+				"score":         sym.Ranking.Score,
+				"signals":       sym.Ranking.Signals,
+				"policyVersion": sym.Ranking.PolicyVersion,
+			}
+		}
+
 		symbols = append(symbols, symbolInfo)
 	}
 
@@ -679,4 +688,335 @@ func (s *MCPServer) toolGetModuleOverview(params map[string]interface{}) (interf
 	}
 
 	return string(jsonBytes), nil
+}
+
+// toolExplainFile implements the explainFile tool
+func (s *MCPServer) toolExplainFile(params map[string]interface{}) (interface{}, error) {
+	filePath, ok := params["filePath"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid 'filePath' parameter")
+	}
+
+	s.logger.Debug("Executing explainFile", map[string]interface{}{
+		"filePath": filePath,
+	})
+
+	ctx := context.Background()
+	resp, err := s.engine.ExplainFile(ctx, query.ExplainFileOptions{
+		FilePath: filePath,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("explainFile failed: %w", err)
+	}
+
+	// Build symbols list
+	symbols := make([]map[string]interface{}, 0, len(resp.Facts.Symbols))
+	for _, sym := range resp.Facts.Symbols {
+		symInfo := map[string]interface{}{
+			"stableId": sym.StableId,
+			"name":     sym.Name,
+			"kind":     sym.Kind,
+			"line":     sym.Line,
+		}
+		if sym.Visibility != "" {
+			symInfo["visibility"] = sym.Visibility
+		}
+		symbols = append(symbols, symInfo)
+	}
+
+	// Build confidence basis
+	basis := make([]map[string]interface{}, 0, len(resp.Facts.Basis))
+	for _, b := range resp.Facts.Basis {
+		basisInfo := map[string]interface{}{
+			"backend": b.Backend,
+			"status":  b.Status,
+		}
+		if b.Heuristic != "" {
+			basisInfo["heuristic"] = b.Heuristic
+		}
+		basis = append(basis, basisInfo)
+	}
+
+	// Build facts map
+	facts := map[string]interface{}{
+		"path":            resp.Facts.Path,
+		"role":            resp.Facts.Role,
+		"language":        resp.Facts.Language,
+		"lineCount":       resp.Facts.LineCount,
+		"confidence":      resp.Facts.Confidence,
+		"symbols":         symbols,
+		"confidenceBasis": basis,
+	}
+
+	// Add exports and imports if present
+	if len(resp.Facts.Exports) > 0 {
+		facts["exports"] = resp.Facts.Exports
+	}
+	if len(resp.Facts.Imports) > 0 {
+		facts["imports"] = resp.Facts.Imports
+	}
+
+	// Build response map
+	result := map[string]interface{}{
+		"meta": map[string]interface{}{
+			"ckbVersion":    resp.CkbVersion,
+			"schemaVersion": resp.SchemaVersion,
+			"tool":          resp.Tool,
+		},
+		"facts": facts,
+		"summary": map[string]interface{}{
+			"oneLiner":   resp.Summary.OneLiner,
+			"keySymbols": resp.Summary.KeySymbols,
+		},
+	}
+
+	// Add provenance
+	if resp.Provenance != nil {
+		result["provenance"] = map[string]interface{}{
+			"repoStateId":     resp.Provenance.RepoStateId,
+			"repoStateDirty":  resp.Provenance.RepoStateDirty,
+			"queryDurationMs": resp.Provenance.QueryDurationMs,
+		}
+	}
+
+	// Add drilldowns
+	if len(resp.Drilldowns) > 0 {
+		drilldowns := make([]map[string]interface{}, 0, len(resp.Drilldowns))
+		for _, d := range resp.Drilldowns {
+			drilldowns = append(drilldowns, map[string]interface{}{
+				"label":          d.Label,
+				"query":          d.Query,
+				"relevanceScore": d.RelevanceScore,
+			})
+		}
+		result["drilldowns"] = drilldowns
+	}
+
+	jsonBytes, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// toolListEntrypoints implements the listEntrypoints tool
+func (s *MCPServer) toolListEntrypoints(params map[string]interface{}) (interface{}, error) {
+	moduleFilter, _ := params["moduleFilter"].(string)
+
+	limit := 30
+	if limitVal, ok := params["limit"].(float64); ok {
+		limit = int(limitVal)
+	}
+
+	s.logger.Debug("Executing listEntrypoints", map[string]interface{}{
+		"moduleFilter": moduleFilter,
+		"limit":        limit,
+	})
+
+	ctx := context.Background()
+	resp, err := s.engine.ListEntrypoints(ctx, query.ListEntrypointsOptions{
+		ModuleFilter: moduleFilter,
+		Limit:        limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("listEntrypoints failed: %w", err)
+	}
+
+	// Build response map
+	entrypoints := make([]map[string]interface{}, 0, len(resp.Entrypoints))
+	for _, ep := range resp.Entrypoints {
+		epInfo := map[string]interface{}{
+			"symbolId":       ep.SymbolId,
+			"name":           ep.Name,
+			"type":           ep.Type,
+			"detectionBasis": ep.DetectionBasis,
+			"fanOut":         ep.FanOut,
+		}
+
+		if ep.Location != nil {
+			epInfo["location"] = map[string]interface{}{
+				"fileId":    ep.Location.FileId,
+				"startLine": ep.Location.StartLine,
+			}
+		}
+
+		if ep.Ranking != nil {
+			epInfo["ranking"] = map[string]interface{}{
+				"score":         ep.Ranking.Score,
+				"signals":       ep.Ranking.Signals,
+				"policyVersion": ep.Ranking.PolicyVersion,
+			}
+		}
+
+		entrypoints = append(entrypoints, epInfo)
+	}
+
+	result := map[string]interface{}{
+		"meta": map[string]interface{}{
+			"ckbVersion":    resp.CkbVersion,
+			"schemaVersion": resp.SchemaVersion,
+			"tool":          resp.Tool,
+		},
+		"entrypoints":     entrypoints,
+		"totalCount":      resp.TotalCount,
+		"confidence":      resp.Confidence,
+		"confidenceBasis": resp.ConfidenceBasis,
+	}
+
+	if len(resp.Warnings) > 0 {
+		result["warnings"] = resp.Warnings
+	}
+
+	if resp.Provenance != nil {
+		result["provenance"] = map[string]interface{}{
+			"repoStateId":     resp.Provenance.RepoStateId,
+			"repoStateDirty":  resp.Provenance.RepoStateDirty,
+			"queryDurationMs": resp.Provenance.QueryDurationMs,
+		}
+	}
+
+	if len(resp.Drilldowns) > 0 {
+		drilldowns := make([]map[string]interface{}, 0, len(resp.Drilldowns))
+		for _, d := range resp.Drilldowns {
+			drilldowns = append(drilldowns, map[string]interface{}{
+				"label":          d.Label,
+				"query":          d.Query,
+				"relevanceScore": d.RelevanceScore,
+			})
+		}
+		result["drilldowns"] = drilldowns
+	}
+
+	jsonBytes, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// toolTraceUsage implements the traceUsage tool
+func (s *MCPServer) toolTraceUsage(params map[string]interface{}) (interface{}, error) {
+	symbolId, ok := params["symbolId"].(string)
+	if !ok {
+		return nil, fmt.Errorf("symbolId is required")
+	}
+
+	maxPaths := 10
+	if maxPathsVal, ok := params["maxPaths"].(float64); ok {
+		maxPaths = int(maxPathsVal)
+	}
+
+	maxDepth := 5
+	if maxDepthVal, ok := params["maxDepth"].(float64); ok {
+		maxDepth = int(maxDepthVal)
+	}
+
+	s.logger.Debug("Executing traceUsage", map[string]interface{}{
+		"symbolId": symbolId,
+		"maxPaths": maxPaths,
+		"maxDepth": maxDepth,
+	})
+
+	ctx := context.Background()
+	resp, err := s.engine.TraceUsage(ctx, query.TraceUsageOptions{
+		SymbolId: symbolId,
+		MaxPaths: maxPaths,
+		MaxDepth: maxDepth,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("traceUsage failed: %w", err)
+	}
+
+	// Build paths response
+	paths := make([]map[string]interface{}, 0, len(resp.Paths))
+	for _, p := range resp.Paths {
+		nodes := make([]map[string]interface{}, 0, len(p.Nodes))
+		for _, n := range p.Nodes {
+			nodeInfo := map[string]interface{}{
+				"symbolId": n.SymbolId,
+				"name":     n.Name,
+				"role":     n.Role,
+			}
+			if n.Kind != "" {
+				nodeInfo["kind"] = n.Kind
+			}
+			if n.Location != nil {
+				nodeInfo["location"] = map[string]interface{}{
+					"fileId":    n.Location.FileId,
+					"startLine": n.Location.StartLine,
+				}
+			}
+			nodes = append(nodes, nodeInfo)
+		}
+
+		pathInfo := map[string]interface{}{
+			"pathType":   p.PathType,
+			"nodes":      nodes,
+			"confidence": p.Confidence,
+		}
+
+		if p.Ranking != nil {
+			pathInfo["ranking"] = map[string]interface{}{
+				"score":         p.Ranking.Score,
+				"signals":       p.Ranking.Signals,
+				"policyVersion": p.Ranking.PolicyVersion,
+			}
+		}
+
+		paths = append(paths, pathInfo)
+	}
+
+	result := map[string]interface{}{
+		"meta": map[string]interface{}{
+			"ckbVersion":    resp.CkbVersion,
+			"schemaVersion": resp.SchemaVersion,
+			"tool":          resp.Tool,
+		},
+		"targetSymbol":    resp.TargetSymbol,
+		"paths":           paths,
+		"totalPathsFound": resp.TotalPathsFound,
+		"confidence":      resp.Confidence,
+		"confidenceBasis": resp.ConfidenceBasis,
+	}
+
+	if len(resp.Limitations) > 0 {
+		result["limitations"] = resp.Limitations
+	}
+
+	if resp.Resolved != nil {
+		result["resolved"] = map[string]interface{}{
+			"symbolId":     resp.Resolved.SymbolId,
+			"resolvedFrom": resp.Resolved.ResolvedFrom,
+			"confidence":   resp.Resolved.Confidence,
+		}
+	}
+
+	if resp.Provenance != nil {
+		result["provenance"] = map[string]interface{}{
+			"repoStateId":     resp.Provenance.RepoStateId,
+			"repoStateDirty":  resp.Provenance.RepoStateDirty,
+			"queryDurationMs": resp.Provenance.QueryDurationMs,
+		}
+	}
+
+	if len(resp.Drilldowns) > 0 {
+		drilldowns := make([]map[string]interface{}, 0, len(resp.Drilldowns))
+		for _, d := range resp.Drilldowns {
+			drilldowns = append(drilldowns, map[string]interface{}{
+				"label":          d.Label,
+				"query":          d.Query,
+				"relevanceScore": d.RelevanceScore,
+			})
+		}
+		result["drilldowns"] = drilldowns
+	}
+
+	jsonBytesTrace, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	return string(jsonBytesTrace), nil
 }
