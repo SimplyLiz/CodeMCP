@@ -709,27 +709,7 @@ func (s *MCPServer) toolExplainFile(params map[string]interface{}) (interface{},
 		return nil, fmt.Errorf("explainFile failed: %w", err)
 	}
 
-	// Build response map
-	result := map[string]interface{}{
-		"meta": map[string]interface{}{
-			"ckbVersion":    resp.CkbVersion,
-			"schemaVersion": resp.SchemaVersion,
-			"tool":          resp.Tool,
-		},
-		"facts": map[string]interface{}{
-			"path":       resp.Facts.Path,
-			"role":       resp.Facts.Role,
-			"language":   resp.Facts.Language,
-			"lineCount":  resp.Facts.LineCount,
-			"confidence": resp.Facts.Confidence,
-		},
-		"summary": map[string]interface{}{
-			"oneLiner":   resp.Summary.OneLiner,
-			"keySymbols": resp.Summary.KeySymbols,
-		},
-	}
-
-	// Add symbols
+	// Build symbols list
 	symbols := make([]map[string]interface{}, 0, len(resp.Facts.Symbols))
 	for _, sym := range resp.Facts.Symbols {
 		symInfo := map[string]interface{}{
@@ -743,17 +723,8 @@ func (s *MCPServer) toolExplainFile(params map[string]interface{}) (interface{},
 		}
 		symbols = append(symbols, symInfo)
 	}
-	result["facts"].(map[string]interface{})["symbols"] = symbols
 
-	// Add exports and imports
-	if len(resp.Facts.Exports) > 0 {
-		result["facts"].(map[string]interface{})["exports"] = resp.Facts.Exports
-	}
-	if len(resp.Facts.Imports) > 0 {
-		result["facts"].(map[string]interface{})["imports"] = resp.Facts.Imports
-	}
-
-	// Add confidence basis
+	// Build confidence basis
 	basis := make([]map[string]interface{}, 0, len(resp.Facts.Basis))
 	for _, b := range resp.Facts.Basis {
 		basisInfo := map[string]interface{}{
@@ -765,7 +736,39 @@ func (s *MCPServer) toolExplainFile(params map[string]interface{}) (interface{},
 		}
 		basis = append(basis, basisInfo)
 	}
-	result["facts"].(map[string]interface{})["confidenceBasis"] = basis
+
+	// Build facts map
+	facts := map[string]interface{}{
+		"path":            resp.Facts.Path,
+		"role":            resp.Facts.Role,
+		"language":        resp.Facts.Language,
+		"lineCount":       resp.Facts.LineCount,
+		"confidence":      resp.Facts.Confidence,
+		"symbols":         symbols,
+		"confidenceBasis": basis,
+	}
+
+	// Add exports and imports if present
+	if len(resp.Facts.Exports) > 0 {
+		facts["exports"] = resp.Facts.Exports
+	}
+	if len(resp.Facts.Imports) > 0 {
+		facts["imports"] = resp.Facts.Imports
+	}
+
+	// Build response map
+	result := map[string]interface{}{
+		"meta": map[string]interface{}{
+			"ckbVersion":    resp.CkbVersion,
+			"schemaVersion": resp.SchemaVersion,
+			"tool":          resp.Tool,
+		},
+		"facts": facts,
+		"summary": map[string]interface{}{
+			"oneLiner":   resp.Summary.OneLiner,
+			"keySymbols": resp.Summary.KeySymbols,
+		},
+	}
 
 	// Add provenance
 	if resp.Provenance != nil {
