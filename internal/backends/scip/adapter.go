@@ -425,3 +425,57 @@ func (s *SCIPAdapter) Close() error {
 	s.logger.Info("SCIP adapter closed", nil)
 	return nil
 }
+
+// BuildCallGraph builds a call graph for a symbol using the SCIP index
+func (s *SCIPAdapter) BuildCallGraph(symbolId string, opts CallGraphOptions) (*CallGraph, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.index == nil {
+		return nil, errors.NewCkbError(
+			errors.IndexMissing,
+			"SCIP index not loaded",
+			nil,
+			errors.GetSuggestedFixes(errors.IndexMissing),
+			nil,
+		)
+	}
+
+	return s.index.BuildCallGraph(symbolId, opts)
+}
+
+// GetCallerCount returns the number of callers for a symbol
+func (s *SCIPAdapter) GetCallerCount(symbolId string) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.index == nil {
+		return 0
+	}
+
+	return s.index.GetCallerCount(symbolId)
+}
+
+// GetCalleeCount returns the number of callees for a symbol
+func (s *SCIPAdapter) GetCalleeCount(symbolId string) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.index == nil {
+		return 0
+	}
+
+	return s.index.GetCalleeCount(symbolId)
+}
+
+// CountSymbolsByPath counts the number of symbols in documents matching a path prefix
+func (s *SCIPAdapter) CountSymbolsByPath(pathPrefix string) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.index == nil {
+		return 0
+	}
+
+	return s.index.CountSymbolsByPath(pathPrefix)
+}

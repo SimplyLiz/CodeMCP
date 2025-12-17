@@ -122,6 +122,11 @@ func detectExplicitModules(repoRoot string, explicitRoots []string, stateId stri
 		// Try to detect manifest in this directory
 		manifest, language := detectManifestInDir(absPath)
 
+		// If no manifest found, detect language from file extensions
+		if language == LanguageUnknown {
+			language = detectLanguageFromFiles(absPath)
+		}
+
 		// Generate module ID
 		moduleID := generateModuleID(repoRoot, root)
 
@@ -136,10 +141,59 @@ func detectExplicitModules(repoRoot string, explicitRoots []string, stateId stri
 			"name":         name,
 			"rootPath":     root,
 			"manifestType": manifest,
+			"language":     language,
 		})
 	}
 
 	return modules, nil
+}
+
+// detectLanguageFromFiles scans a directory for source files and infers the language
+func detectLanguageFromFiles(dir string) string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return LanguageUnknown
+	}
+
+	langCounts := make(map[string]int)
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		switch ext {
+		case ".go":
+			langCounts[LanguageGo]++
+		case ".ts", ".tsx":
+			langCounts[LanguageTypeScript]++
+		case ".js", ".jsx":
+			langCounts[LanguageJavaScript]++
+		case ".dart":
+			langCounts[LanguageDart]++
+		case ".py":
+			langCounts[LanguagePython]++
+		case ".rs":
+			langCounts[LanguageRust]++
+		case ".java":
+			langCounts[LanguageJava]++
+		case ".kt", ".kts":
+			langCounts[LanguageKotlin]++
+		}
+	}
+
+	// Return the language with the most files
+	maxCount := 0
+	bestLang := LanguageUnknown
+	for lang, count := range langCounts {
+		if count > maxCount {
+			maxCount = count
+			bestLang = lang
+		}
+	}
+
+	return bestLang
 }
 
 // detectManifestModules walks the repository and finds all manifest files

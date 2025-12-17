@@ -60,8 +60,11 @@ var builtinPatterns = map[string]*LanguagePattern{
 		Extensions: []string{".go"},
 		Language:   LanguageGo,
 		Patterns: []*regexp.Regexp{
-			regexp.MustCompile(`import\s+['"]([^'"]+)['"]`),
-			regexp.MustCompile(`import\s+\(\s*[^)]*['"]([^'"]+)['"]`),
+			// Single line: import "path"
+			regexp.MustCompile(`^\s*import\s+"([^"]+)"`),
+			// Multi-line block: lines that are just whitespace + optional alias + "path"
+			// e.g., "fmt" or alias "pkg/path" or . "pkg"
+			regexp.MustCompile(`^\s*(?:\w+\s+)?"([^"]+)"\s*$`),
 		},
 	},
 	LanguagePython: {

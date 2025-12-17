@@ -1,12 +1,33 @@
 package architecture
 
 import (
+	"bufio"
+	"os"
 	"path/filepath"
 	"strings"
 
 	"ckb/internal/modules"
 	"ckb/internal/paths"
 )
+
+// getGoModulePath reads the module path from go.mod in the repo root
+func getGoModulePath(repoRoot string) string {
+	goModPath := filepath.Join(repoRoot, "go.mod")
+	file, err := os.Open(goModPath)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "module ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "module "))
+		}
+	}
+	return ""
+}
 
 // BuildDependencyGraph creates edges between modules based on imports
 func (g *ArchitectureGenerator) BuildDependencyGraph(
@@ -88,20 +109,51 @@ func (g *ArchitectureGenerator) classifyImport(
 ) (string, modules.ImportEdgeKind) {
 	importPath := importEdge.To
 
-	// Check for stdlib imports
+	// For Go: use go.mod module path to classify imports
+	// - Contains dot (.) → external dependency
+	// - Starts with module path (e.g., "ckb/") → local workspace
+	// - Otherwise → stdlib
+	if fromModule.Language == modules.LanguageGo {
+		goModPath := getGoModulePath(g.repoRoot)
+
+		// External: contains a domain (has dot)
+		if strings.Contains(importPath, ".") {
+			externalModuleId := "external:" + extractPackageName(importPath)
+			return externalModuleId, modules.ExternalDependency
+		}
+
+		// Local workspace: starts with our module path
+		if goModPath != "" && strings.HasPrefix(importPath, goModPath+"/") {
+			// Try to match to a specific module
+			for _, mod := range allModules {
+				if mod.ID == fromModule.ID {
+					continue
+				}
+				if strings.HasSuffix(importPath, "/"+mod.RootPath) ||
+					strings.HasSuffix(importPath, mod.RootPath) {
+					return mod.ID, modules.WorkspacePackage
+				}
+			}
+			// Local but not matching a specific module
+			return "", modules.Unknown
+		}
+
+		// No dot and not local → stdlib
+		return "", modules.Stdlib
+	}
+
+	// Non-Go languages: use existing logic
 	if isStdlibImport(importPath, fromModule.Language) {
 		return "", modules.Stdlib
 	}
 
 	// Check for relative imports (./foo, ../bar)
 	if strings.HasPrefix(importPath, "./") || strings.HasPrefix(importPath, "../") {
-		// Resolve relative path
 		fromFilePath := importEdge.From
 		fromDir := filepath.Dir(fromFilePath)
 		resolvedPath := filepath.Join(fromDir, importPath)
 		resolvedPath = paths.NormalizePath(resolvedPath)
 
-		// Find which module this resolves to
 		targetModule := findModuleForPath(resolvedPath, allModules)
 		if targetModule != nil {
 			if targetModule.ID == fromModule.ID {
@@ -112,37 +164,31 @@ func (g *ArchitectureGenerator) classifyImport(
 		return "", modules.Unknown
 	}
 
-	// Check for workspace packages (imports within the monorepo)
+	// Check for workspace packages
 	for _, mod := range allModules {
 		if mod.ID == fromModule.ID {
 			continue
 		}
-
-		// Check if import matches module name or is a subpath
 		if strings.HasPrefix(importPath, mod.Name) {
 			return mod.ID, modules.WorkspacePackage
 		}
 	}
 
 	// Default to external dependency
-	// Create a synthetic module ID for external dependencies
 	externalModuleId := "external:" + extractPackageName(importPath)
 	return externalModuleId, modules.ExternalDependency
 }
 
-// isStdlibImport checks if an import is from the standard library
+// isStdlibImport checks if an import is from the standard library (non-Go languages)
+// Note: Go stdlib detection is handled in classifyImport using go.mod module path
 func isStdlibImport(importPath string, language string) bool {
 	switch language {
 	case modules.LanguageDart:
 		return strings.HasPrefix(importPath, "dart:")
-	case modules.LanguageGo:
-		// Go stdlib packages don't have dots in them
-		return !strings.Contains(importPath, ".")
 	case modules.LanguageTypeScript, modules.LanguageJavaScript:
-		// Node.js built-in modules
 		return strings.HasPrefix(importPath, "node:")
 	case modules.LanguagePython:
-		// Common Python stdlib modules
+		// Best-effort heuristic for common Python stdlib modules
 		stdlibModules := map[string]bool{
 			"os": true, "sys": true, "json": true, "re": true,
 			"datetime": true, "collections": true, "itertools": true,
