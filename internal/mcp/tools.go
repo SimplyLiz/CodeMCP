@@ -720,6 +720,311 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		// v6.2 Federation tools
+		{
+			Name:        "listFederations",
+			Description: "List all federations (cross-repo collections) available in CKB. A federation is a named collection of repositories that can be queried together.",
+			InputSchema: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+		},
+		{
+			Name:        "federationStatus",
+			Description: "Get detailed status of a federation including repos, compatibility checks, and sync state.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"federation": map[string]interface{}{
+						"type":        "string",
+						"description": "Name of the federation to get status for",
+					},
+				},
+				"required": []string{"federation"},
+			},
+		},
+		{
+			Name:        "federationRepos",
+			Description: "List repositories in a federation with their paths, tags, and compatibility status.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"federation": map[string]interface{}{
+						"type":        "string",
+						"description": "Name of the federation",
+					},
+					"includeCompatibility": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Include schema compatibility status for each repo",
+					},
+				},
+				"required": []string{"federation"},
+			},
+		},
+		{
+			Name:        "federationSearchModules",
+			Description: "Search for modules across all repositories in a federation. Use for cross-repo architectural analysis.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"federation": map[string]interface{}{
+						"type":        "string",
+						"description": "Name of the federation to search",
+					},
+					"query": map[string]interface{}{
+						"type":        "string",
+						"description": "Search query (FTS)",
+					},
+					"repos": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Optional list of repo IDs to filter to",
+					},
+					"tags": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Optional tags to filter modules",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"default":     50,
+						"description": "Maximum results to return",
+					},
+				},
+				"required": []string{"federation"},
+			},
+		},
+		{
+			Name:        "federationSearchOwnership",
+			Description: "Search for ownership across all repositories in a federation. Find who owns code matching a path pattern.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"federation": map[string]interface{}{
+						"type":        "string",
+						"description": "Name of the federation to search",
+					},
+					"path": map[string]interface{}{
+						"type":        "string",
+						"description": "Path glob pattern (e.g., '**/auth/**')",
+					},
+					"repos": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Optional list of repo IDs to filter to",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"default":     50,
+						"description": "Maximum results to return",
+					},
+				},
+				"required": []string{"federation"},
+			},
+		},
+		{
+			Name:        "federationGetHotspots",
+			Description: "Get merged hotspots across all repositories in a federation. Returns the most volatile code areas across the organization.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"federation": map[string]interface{}{
+						"type":        "string",
+						"description": "Name of the federation",
+					},
+					"repos": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Optional list of repo IDs to filter to",
+					},
+					"top": map[string]interface{}{
+						"type":        "integer",
+						"default":     20,
+						"description": "Number of top hotspots to return",
+					},
+					"minScore": map[string]interface{}{
+						"type":        "number",
+						"default":     0.3,
+						"description": "Minimum score threshold (0-1)",
+					},
+				},
+				"required": []string{"federation"},
+			},
+		},
+		{
+			Name:        "federationSearchDecisions",
+			Description: "Search for architectural decisions (ADRs) across all repositories in a federation.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"federation": map[string]interface{}{
+						"type":        "string",
+						"description": "Name of the federation to search",
+					},
+					"query": map[string]interface{}{
+						"type":        "string",
+						"description": "Search query (FTS)",
+					},
+					"status": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+							"enum": []string{"proposed", "accepted", "deprecated", "superseded"},
+						},
+						"description": "Filter by decision status",
+					},
+					"repos": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Optional list of repo IDs to filter to",
+					},
+					"module": map[string]interface{}{
+						"type":        "string",
+						"description": "Filter by affected module",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"default":     50,
+						"description": "Maximum results to return",
+					},
+				},
+				"required": []string{"federation"},
+			},
+		},
+		{
+			Name:        "federationSync",
+			Description: "Sync federation index from repository data. This reads modules, ownership, hotspots, and decisions from each repository and stores summaries for cross-repo queries.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"federation": map[string]interface{}{
+						"type":        "string",
+						"description": "Name of the federation to sync",
+					},
+					"force": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Force sync even if data is fresh",
+					},
+					"dryRun": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Preview what would be synced without making changes",
+					},
+					"repos": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Optional list of repo IDs to sync (default: all)",
+					},
+				},
+				"required": []string{"federation"},
+			},
+		},
+		// v6.2.1 Daemon tools
+		{
+			Name:        "daemonStatus",
+			Description: "Get CKB daemon status including health, uptime, and component states. Returns information about the always-on daemon service.",
+			InputSchema: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+		},
+		{
+			Name:        "listSchedules",
+			Description: "List scheduled tasks in the daemon. Shows automated refresh schedules, federation syncs, and other recurring tasks.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"taskType": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"refresh", "federation_sync", "cleanup", "health_check"},
+						"description": "Filter by task type",
+					},
+					"enabled": map[string]interface{}{
+						"type":        "boolean",
+						"description": "Filter by enabled status",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"default":     20,
+						"description": "Maximum schedules to return",
+					},
+				},
+			},
+		},
+		{
+			Name:        "runSchedule",
+			Description: "Immediately run a scheduled task. Useful for testing schedules or triggering updates manually.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"scheduleId": map[string]interface{}{
+						"type":        "string",
+						"description": "ID of the schedule to run",
+					},
+				},
+				"required": []string{"scheduleId"},
+			},
+		},
+		{
+			Name:        "listWebhooks",
+			Description: "List configured webhooks for CKB event notifications. Shows endpoints, events subscribed, and delivery status.",
+			InputSchema: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+		},
+		{
+			Name:        "testWebhook",
+			Description: "Send a test event to a webhook endpoint. Useful for verifying webhook configuration.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"webhookId": map[string]interface{}{
+						"type":        "string",
+						"description": "ID of the webhook to test",
+					},
+				},
+				"required": []string{"webhookId"},
+			},
+		},
+		{
+			Name:        "webhookDeliveries",
+			Description: "Get delivery history for a webhook. Shows recent delivery attempts, successes, and failures.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"webhookId": map[string]interface{}{
+						"type":        "string",
+						"description": "ID of the webhook",
+					},
+					"status": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"queued", "pending", "delivered", "failed", "dead"},
+						"description": "Filter by delivery status",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"default":     20,
+						"description": "Maximum deliveries to return",
+					},
+				},
+				"required": []string{"webhookId"},
+			},
+		},
 	}
 }
 
@@ -758,4 +1063,20 @@ func (s *MCPServer) RegisterTools() {
 	// v6.1 CI/CD tools
 	s.tools["summarizePr"] = s.toolSummarizePr
 	s.tools["getOwnershipDrift"] = s.toolGetOwnershipDrift
+	// v6.2 Federation tools
+	s.tools["listFederations"] = s.toolListFederations
+	s.tools["federationStatus"] = s.toolFederationStatus
+	s.tools["federationRepos"] = s.toolFederationRepos
+	s.tools["federationSearchModules"] = s.toolFederationSearchModules
+	s.tools["federationSearchOwnership"] = s.toolFederationSearchOwnership
+	s.tools["federationGetHotspots"] = s.toolFederationGetHotspots
+	s.tools["federationSearchDecisions"] = s.toolFederationSearchDecisions
+	s.tools["federationSync"] = s.toolFederationSync
+	// v6.2.1 Daemon tools
+	s.tools["daemonStatus"] = s.toolDaemonStatus
+	s.tools["listSchedules"] = s.toolListSchedules
+	s.tools["runSchedule"] = s.toolRunSchedule
+	s.tools["listWebhooks"] = s.toolListWebhooks
+	s.tools["testWebhook"] = s.toolTestWebhook
+	s.tools["webhookDeliveries"] = s.toolWebhookDeliveries
 }

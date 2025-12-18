@@ -33,27 +33,28 @@ jobs:
           # curl -sSL https://github.com/yourorg/ckb/releases/latest/download/ckb-linux-amd64 -o /usr/local/bin/ckb
           # chmod +x /usr/local/bin/ckb
 
-      - name: Initialize CKB
+      - name: Initialize CKB and Start Server
         run: |
           ckb init
           ckb doctor --fix
+          ckb serve --port 8080 &
+          sleep 2  # Wait for server to start
 
       - name: Run PR Summary
         id: pr-summary
         run: |
           # Get PR summary comparing base branch to HEAD
-          SUMMARY=$(ckb mcp --json '{
-            "tool": "summarizePr",
-            "params": {
+          SUMMARY=$(curl -s -X POST http://localhost:8080/pr/summary \
+            -H "Content-Type: application/json" \
+            -d '{
               "baseBranch": "${{ github.base_ref }}",
               "headBranch": "HEAD"
-            }
-          }')
+            }')
 
           # Extract key metrics
-          TOTAL_FILES=$(echo "$SUMMARY" | jq -r '.summary.totalFiles')
-          RISK_LEVEL=$(echo "$SUMMARY" | jq -r '.riskAssessment.level')
-          HOTSPOTS=$(echo "$SUMMARY" | jq -r '.summary.hotspotsTouched')
+          TOTAL_FILES=$(echo "$SUMMARY" | jq -r '.summary.totalFiles // 0')
+          RISK_LEVEL=$(echo "$SUMMARY" | jq -r '.riskAssessment.level // "unknown"')
+          HOTSPOTS=$(echo "$SUMMARY" | jq -r '.summary.hotspotsTouched // 0')
 
           echo "total_files=$TOTAL_FILES" >> $GITHUB_OUTPUT
           echo "risk_level=$RISK_LEVEL" >> $GITHUB_OUTPUT
@@ -66,15 +67,9 @@ jobs:
         id: drift
         run: |
           # Check if PR touches files with ownership drift
-          DRIFT=$(ckb mcp --json '{
-            "tool": "getOwnershipDrift",
-            "params": {
-              "threshold": 0.5,
-              "limit": 5
-            }
-          }')
+          DRIFT=$(curl -s "http://localhost:8080/ownership/drift?threshold=0.5&limit=5")
 
-          DRIFT_COUNT=$(echo "$DRIFT" | jq -r '.summary.filesWithDrift')
+          DRIFT_COUNT=$(echo "$DRIFT" | jq -r '.summary.filesWithDrift // 0')
           echo "drift_count=$DRIFT_COUNT" >> $GITHUB_OUTPUT
 
       - name: Post PR Comment

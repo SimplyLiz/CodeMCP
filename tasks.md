@@ -1015,6 +1015,281 @@ Note: Phases 2 and 3 can run in parallel after Phase 1 completes.
 
 ---
 
-*Document version: 1.0*
-*Based on: CKB v6.0-draft-2 specification*
+## v6.2 — Federation
+
+*Cross-repository queries and unified visibility*
+
+### Phase 1: Foundation
+
+- [x] **1.1** Add federation path helpers to `internal/paths/paths.go`
+  - `GetFederationDir(name)` — `~/.ckb/federation/<name>/`
+  - `GetFederationConfigPath(name)` — `~/.ckb/federation/<name>/config.toml`
+  - `GetFederationIndexPath(name)` — `~/.ckb/federation/<name>/index.db`
+  - `EnsureFederationDir(name)` — Create if not exists
+  - `ListFederations()` — List all federation names
+
+- [x] **1.2** Add dependencies to `go.mod`
+  - `github.com/google/uuid` — Repo UUID generation
+  - `github.com/BurntSushi/toml` — TOML config parsing
+
+### Phase 2: Federation Core
+
+- [x] **2.1** Create `internal/federation/` package structure
+  - `federation.go` — Federation manager
+  - `config.go` — Parse config.toml
+  - `index.go` — Index DB management
+  - `repo_identity.go` — repoUid vs repoId
+  - `sync.go` — Sync repos to index
+  - `queries.go` — Federated query implementations
+  - `staleness.go` — Staleness propagation
+  - `schema_compat.go` — Schema version check (min v6)
+
+- [x] **2.2** Implement federation config (TOML)
+  ```toml
+  name = "platform"
+  created_at = "2024-12-19T00:00:00Z"
+
+  [[repos]]
+  repo_uid = "UUID"
+  repo_id = "api"
+  path = "/code/api-service"
+  tags = ["backend"]
+  ```
+
+- [x] **2.3** Implement federation index schema (`index.db`)
+  - `federation_repos` — Repo metadata
+  - `federated_modules` — Module summaries
+  - `federated_ownership` — Ownership summaries
+  - `federated_hotspots` — Hotspot top-N per repo
+  - `federated_decisions` — Decision metadata
+
+- [x] **2.4** Implement repo identity
+  - `repoUid` — Immutable UUID, generated on add
+  - `repoId` — Mutable alias, user-defined
+  - Rename tracking
+
+- [x] **2.5** Implement federation sync mechanism
+  - Read from each repo's `ckb.db`
+  - Write summaries to federation `index.db`
+  - Track staleness per repo
+
+### Phase 3: Federated Queries
+
+- [x] **3.1** Implement `federated.listRepos`
+- [x] **3.2** Implement `federated.searchModules` (FTS across repos)
+- [x] **3.3** Implement `federated.searchOwnership` (glob pattern match)
+- [x] **3.4** Implement `federated.getHotspots` (merged, re-ranked)
+- [x] **3.5** Implement `federated.searchDecisions` (FTS across repos)
+- [x] **3.6** Implement staleness propagation (weakest link)
+
+### Phase 4: CLI Commands
+
+- [x] **4.1** Add `ckb federation create <name>` command
+- [x] **4.2** Add `ckb federation delete <name>` command
+- [x] **4.3** Add `ckb federation list` command
+- [x] **4.4** Add `ckb federation status <name>` command
+- [x] **4.5** Add `ckb federation add <name> --repo-id=<id> --path=<path>` command
+- [x] **4.6** Add `ckb federation remove <name> <repo-id>` command
+- [x] **4.7** Add `ckb federation rename <name> <old-id> <new-id>` command
+- [x] **4.8** Add `ckb federation repos <name>` command
+- [x] **4.9** Add `ckb federation sync <name>` command
+
+### Phase 5: HTTP API
+
+- [x] **5.1** Add `GET /federations` endpoint
+- [x] **5.2** Add `GET /federations/:name/repos` endpoint
+- [x] **5.3** Add `GET /federations/:name/modules` endpoint
+- [x] **5.4** Add `GET /federations/:name/ownership` endpoint
+- [x] **5.5** Add `GET /federations/:name/hotspots` endpoint
+- [x] **5.6** Add `GET /federations/:name/decisions` endpoint
+- [x] **5.7** Add `POST /federations/:name/sync` endpoint
+
+### Phase 6: MCP Tools
+
+- [x] **6.1** Add `listFederations` MCP tool
+- [x] **6.2** Add `federationStatus` MCP tool
+- [x] **6.3** Add `federationRepos` MCP tool
+- [x] **6.4** Add `federationSearchModules` MCP tool
+- [x] **6.5** Add `federationSearchOwnership` MCP tool
+- [x] **6.6** Add `federationGetHotspots` MCP tool
+- [x] **6.7** Add `federationSearchDecisions` MCP tool
+- [x] **6.8** Add `federationSync` MCP tool
+
+### Phase 7: Testing
+
+- [ ] **7.1** Unit tests for federation config parsing
+- [ ] **7.2** Unit tests for federation index operations
+- [ ] **7.3** Integration tests for federated queries
+- [ ] **7.4** CLI command tests
+
+---
+
+## v6.2.1 — Daemon Mode
+
+*Always-on service for IDE/CI integration*
+
+### Phase 1: Core Infrastructure
+
+- [x] **1.1** Bump version to 6.2.1 in `internal/version/version.go`
+
+- [x] **1.2** Add daemon paths to `internal/paths/paths.go`
+  - `GetDaemonDir()` — `~/.ckb/daemon/`
+  - `GetDaemonPIDPath()` — `daemon.pid`
+  - `GetDaemonLogPath()` — `daemon.log`
+  - `GetDaemonDBPath()` — `daemon.db`
+  - `GetDaemonSocketPath()` — `daemon.sock`
+  - `EnsureDaemonDir()` — Create if not exists
+  - `GetDaemonInfo()` — Return all paths
+
+- [x] **1.3** Add daemon config to `internal/config/config.go`
+  - `DaemonConfig` struct with Port, Bind, LogLevel, LogFile
+  - `DaemonAuthConfig` for Bearer token auth
+  - `DaemonWatchConfig` for file watching settings
+  - `DaemonScheduleConfig` for scheduler settings
+  - Default values: Port 9120, Bind localhost
+
+### Phase 2: Daemon Core Package
+
+- [x] **2.1** Create `internal/daemon/daemon.go`
+  - `Daemon` struct with lifecycle management
+  - `New()`, `Start()`, `Stop()`, `Wait()` methods
+  - Signal handling (SIGINT, SIGTERM)
+  - `IsRunning()` and `StopRemote()` for CLI control
+  - Integration with scheduler, watcher, webhooks
+
+- [x] **2.2** Create `internal/daemon/pid.go`
+  - PID file management
+  - `Acquire()`, `Release()`, `IsRunning()` methods
+  - Stale PID detection via signal 0
+
+- [x] **2.3** Create `internal/daemon/server.go`
+  - HTTP server setup with mux
+  - Health endpoint (no auth): `GET /health`
+  - API endpoints with auth: `/api/v1/*`
+  - Response types: `APIResponse`, `APIError`, `APIMeta`
+
+- [x] **2.4** Create `internal/daemon/auth.go`
+  - Bearer token authentication middleware
+  - Token sources: config, env var, file
+  - `GenerateToken()` utility
+
+### Phase 3: Supporting Packages
+
+- [x] **3.1** Extend `internal/jobs/` with daemon job types
+  - `JobTypeFederationSync`
+  - `JobTypeWebhookDispatch`
+  - `JobTypeScheduledTask`
+  - Scope types for each job type
+
+- [x] **3.2** Create `internal/scheduler/` package
+  - `scheduler.go` — Scheduler runner with task handlers
+  - `parser.go` — Parse cron expressions and intervals ("every 4h")
+  - `types.go` — Schedule, ScheduleSummary, TaskType
+  - SQLite-backed persistence in `scheduler.db`
+
+- [x] **3.3** Create `internal/watcher/` package
+  - `watcher.go` — File system watcher for git changes
+  - `debouncer.go` — Debounce change events
+  - Polling-based for cross-platform compatibility
+  - Watch .git/HEAD and .git/index for changes
+
+- [x] **3.4** Create `internal/webhooks/` package
+  - `types.go` — Webhook, Delivery, DeadLetter types
+  - `manager.go` — Webhook manager with delivery queue
+  - Payload formats: JSON, Slack, PagerDuty, Discord
+  - HMAC-SHA256 signing
+  - Retry with exponential backoff
+  - Dead letter queue
+
+### Phase 4: CLI Commands
+
+- [x] **4.1** Create `cmd/ckb/daemon.go`
+  - `ckb daemon start [--port=9120] [--bind=localhost] [--foreground]`
+  - `ckb daemon stop`
+  - `ckb daemon restart`
+  - `ckb daemon status`
+  - `ckb daemon logs [--follow] [--lines=100]`
+  - Background process spawning with setsid
+
+### Phase 5: MCP Tools
+
+- [x] **5.1** Add daemon MCP tools to `internal/mcp/tools.go`
+  - `daemonStatus` — Daemon health and stats
+  - `listSchedules` — List scheduled tasks
+  - `runSchedule` — Run a scheduled task immediately
+  - `listWebhooks` — List configured webhooks
+  - `testWebhook` — Send test event to webhook
+  - `webhookDeliveries` — Get delivery history
+
+- [x] **5.2** Create `internal/mcp/tool_impls_daemon.go`
+  - Tool handler implementations
+
+### Phase 6: Testing
+
+- [ ] **6.1** Unit tests for scheduler parser
+- [ ] **6.2** Unit tests for webhook delivery
+- [ ] **6.3** Integration tests for daemon lifecycle
+- [ ] **6.4** CLI command tests
+
+---
+
+## v6.2.2 — Tree-sitter Complexity
+
+*Language-agnostic complexity metrics via tree-sitter*
+
+### Overview
+
+Add cyclomatic and cognitive complexity metrics for all supported languages using tree-sitter parsers. Currently complexity is only computed for Go via go/ast.
+
+### Phase 1: Tree-sitter Integration
+
+- [x] **1.1** Add tree-sitter dependencies to `go.mod`
+  - `github.com/smacker/go-tree-sitter`
+  - Language grammars: TypeScript, Python, Rust, Java, Kotlin
+
+- [x] **1.2** Create `internal/complexity/` package
+  - `treesitter.go` — Tree-sitter parser wrapper
+  - `analyzer.go` — Cyclomatic and cognitive complexity
+  - `types.go` — ComplexityResult, FileComplexity types
+
+- [x] **1.3** Implement language-specific complexity rules
+  | Language | Decision nodes |
+  |----------|---------------|
+  | TypeScript/JS | if, else, for, while, switch, case, catch, &&, \|\|, ?: |
+  | Python | if, elif, else, for, while, except, and, or, comprehensions |
+  | Rust | if, else, match, loop, while, for, &&, \|\| |
+  | Java/Kotlin | if, else, for, while, switch, case, catch, &&, \|\| |
+
+### Phase 2: Integration
+
+- [x] **2.1** Update `internal/hotspots/` to use tree-sitter complexity
+  - Created `internal/hotspots/complexity.go` integration layer
+  - Supports all languages via tree-sitter
+
+- [ ] **2.2** Add complexity to `getHotspots` response for all languages
+
+- [ ] **2.3** Add `getFileComplexity` MCP tool (optional)
+
+### Phase 3: Testing
+
+- [x] **3.1** Unit tests for each language parser
+  - Go, JavaScript, Python, Rust, Java tested
+  - Cognitive nesting penalty verified
+- [ ] **3.2** Benchmark complexity computation
+- [ ] **3.3** Validate against known complexity tools
+
+---
+
+## Scratched (Not Implementing)
+
+| Feature | Reason |
+|---------|--------|
+| Cross-repo dependencies | v6.3 |
+| Remote federation | v6.3+ |
+| Team dashboard | v6.3 |
+
+---
+
+*Document version: 1.3*
+*Based on: CKB v6.0-draft-2 + v6.2 specification + v6.2.1 daemon mode + v6.2.2 tree-sitter*
 *Created: December 2024*

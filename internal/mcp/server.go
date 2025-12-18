@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -13,6 +14,7 @@ import (
 type MCPServer struct {
 	stdin     io.Reader
 	stdout    io.Writer
+	scanner   *bufio.Scanner
 	logger    *logging.Logger
 	version   string
 	engine    *query.Engine
@@ -80,6 +82,7 @@ func (s *MCPServer) Start() error {
 // SetStdin sets the input stream (for testing)
 func (s *MCPServer) SetStdin(r io.Reader) {
 	s.stdin = r
+	s.scanner = nil // Reset scanner so it will be recreated with new reader
 }
 
 // SetStdout sets the output stream (for testing)

@@ -9,15 +9,19 @@ import (
 
 // readMessage reads a JSON-RPC message from the input stream
 func (s *MCPServer) readMessage() (*MCPMessage, error) {
-	scanner := bufio.NewScanner(s.stdin)
-	if !scanner.Scan() {
-		if err := scanner.Err(); err != nil {
+	// Lazily initialize the scanner on first use
+	if s.scanner == nil {
+		s.scanner = bufio.NewScanner(s.stdin)
+	}
+
+	if !s.scanner.Scan() {
+		if err := s.scanner.Err(); err != nil {
 			return nil, fmt.Errorf("error reading from stdin: %w", err)
 		}
 		return nil, io.EOF
 	}
 
-	line := scanner.Text()
+	line := s.scanner.Text()
 	s.logger.Debug("Received message", map[string]interface{}{
 		"raw": line,
 	})

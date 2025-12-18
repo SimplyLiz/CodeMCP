@@ -43,6 +43,10 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("/pr/summary", s.handleSummarizePR)           // GET/POST
 	s.router.HandleFunc("/ownership/drift", s.handleOwnershipDrift) // GET
 
+	// v6.2 Federation endpoints
+	s.router.HandleFunc("/federations", s.handleListFederations)    // GET
+	s.router.HandleFunc("/federations/", s.handleFederationRoutes)  // /federations/:name/*
+
 	// POST endpoints
 	s.router.HandleFunc("/doctor/fix", s.handleDoctorFix)
 	s.router.HandleFunc("/cache/warm", s.handleCacheWarm)
@@ -96,6 +100,14 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 			"POST /jobs/:id/cancel - Cancel job",
 			"GET/POST /pr/summary - Summarize PR changes with risk assessment",
 			"GET /ownership/drift - Detect ownership drift between CODEOWNERS and git-blame",
+			"GET /federations - List all federations",
+			"GET /federations/:name/status - Federation status",
+			"GET /federations/:name/repos - List repos in federation",
+			"GET /federations/:name/modules?q=... - Search modules across federation",
+			"GET /federations/:name/ownership?path=... - Search ownership across federation",
+			"GET /federations/:name/hotspots - Get hotspots across federation",
+			"GET /federations/:name/decisions?q=... - Search decisions across federation",
+			"POST /federations/:name/sync - Sync federation index",
 			"POST /doctor/fix - Get fix script",
 			"POST /cache/warm - Warm cache",
 			"POST /cache/clear - Clear cache",

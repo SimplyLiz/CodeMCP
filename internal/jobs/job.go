@@ -26,6 +26,9 @@ const (
 	JobTypeRefreshArchitecture JobType = "refresh_architecture"
 	JobTypeAnalyzeImpact       JobType = "analyze_impact"
 	JobTypeExport              JobType = "export"
+	JobTypeFederationSync      JobType = "federation_sync"
+	JobTypeWebhookDispatch     JobType = "webhook_dispatch"
+	JobTypeScheduledTask       JobType = "scheduled_task"
 )
 
 // Job represents a background task with its state and metadata.

@@ -2,6 +2,7 @@ package modules
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -368,12 +369,13 @@ func generateModuleID(repoRoot, modulePath string) string {
 	// Normalize path
 	normalizedPath := paths.NormalizePath(modulePath)
 
-	// Use a simple scheme: ckb:module:<hash>
+	// Use a simple scheme: ckb:mod:<hash>
 	// Hash the normalized path for uniqueness
+	// NOTE: Must match GenerateStableModuleID in declaration.go
 	hash := sha256.Sum256([]byte(normalizedPath))
-	hashStr := fmt.Sprintf("%x", hash[:8]) // Use first 8 bytes for shorter ID
+	hashStr := hex.EncodeToString(hash[:8]) // Use first 8 bytes for shorter ID
 
-	return fmt.Sprintf("ckb:module:%s", hashStr)
+	return fmt.Sprintf("ckb:mod:%s", hashStr)
 }
 
 // extractModuleName extracts the module name from manifest or path

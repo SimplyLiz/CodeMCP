@@ -12,34 +12,57 @@ import (
 
 // Writer generates ADR markdown files
 type Writer struct {
-	repoRoot   string
-	outputDir  string // relative to repoRoot
+	repoRoot        string
+	outputDir       string // relative to repoRoot, or absolute if useAbsolutePath is true
+	useAbsolutePath bool   // if true, outputDir is an absolute path
 }
 
-// NewWriter creates a new ADR writer
+// NewWriter creates a new ADR writer with a relative output directory
 func NewWriter(repoRoot, outputDir string) *Writer {
 	return &Writer{
-		repoRoot:  repoRoot,
-		outputDir: outputDir,
+		repoRoot:        repoRoot,
+		outputDir:       outputDir,
+		useAbsolutePath: false,
 	}
 }
 
-// CreateADR creates a new ADR file and returns the relative path
+// NewWriterWithAbsolutePath creates a new ADR writer with an absolute output directory
+// This is used for v6.0 global persistence paths (~/.ckb/repos/<hash>/decisions/)
+func NewWriterWithAbsolutePath(outputDir string) *Writer {
+	return &Writer{
+		repoRoot:        "",
+		outputDir:       outputDir,
+		useAbsolutePath: true,
+	}
+}
+
+// CreateADR creates a new ADR file and returns the file path
+// For absolute paths, returns the full path. For relative paths, returns path relative to repoRoot.
 func (w *Writer) CreateADR(adr *ArchitecturalDecision) (string, error) {
+	var fullDir, fullPath, returnPath string
+
+	if w.useAbsolutePath {
+		// For absolute paths, outputDir is already the full directory
+		fullDir = w.outputDir
+		filename := generateFilename(adr.ID, adr.Title)
+		fullPath = filepath.Join(fullDir, filename)
+		returnPath = fullPath // Return absolute path
+	} else {
+		// For relative paths, join with repoRoot
+		fullDir = filepath.Join(w.repoRoot, w.outputDir)
+		filename := generateFilename(adr.ID, adr.Title)
+		returnPath = filepath.Join(w.outputDir, filename)
+		fullPath = filepath.Join(w.repoRoot, returnPath)
+	}
+
 	// Ensure output directory exists
-	fullDir := filepath.Join(w.repoRoot, w.outputDir)
 	if err := os.MkdirAll(fullDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	// Generate filename
-	filename := generateFilename(adr.ID, adr.Title)
-	relPath := filepath.Join(w.outputDir, filename)
-	fullPath := filepath.Join(w.repoRoot, relPath)
-
 	// Check if file already exists
 	if _, err := os.Stat(fullPath); err == nil {
-		return "", fmt.Errorf("ADR file already exists: %s", relPath)
+		return "", fmt.Errorf("ADR file already exists: %s", returnPath)
 	}
 
 	// Generate content
@@ -53,8 +76,8 @@ func (w *Writer) CreateADR(adr *ArchitecturalDecision) (string, error) {
 		return "", fmt.Errorf("failed to write file: %w", err)
 	}
 
-	adr.FilePath = relPath
-	return relPath, nil
+	adr.FilePath = returnPath
+	return returnPath, nil
 }
 
 // UpdateADR updates an existing ADR file
@@ -63,7 +86,13 @@ func (w *Writer) UpdateADR(adr *ArchitecturalDecision) error {
 		return fmt.Errorf("ADR has no file path")
 	}
 
-	fullPath := filepath.Join(w.repoRoot, adr.FilePath)
+	var fullPath string
+	if w.useAbsolutePath || filepath.IsAbs(adr.FilePath) {
+		// For absolute paths, FilePath is already the full path
+		fullPath = adr.FilePath
+	} else {
+		fullPath = filepath.Join(w.repoRoot, adr.FilePath)
+	}
 
 	// Check if file exists
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
@@ -190,7 +219,12 @@ const adrTemplate = `# {{.ID}}: {{.Title}}
 
 // EnsureOutputDir ensures the output directory exists and returns its path
 func (w *Writer) EnsureOutputDir() (string, error) {
-	fullDir := filepath.Join(w.repoRoot, w.outputDir)
+	var fullDir string
+	if w.useAbsolutePath {
+		fullDir = w.outputDir
+	} else {
+		fullDir = filepath.Join(w.repoRoot, w.outputDir)
+	}
 	if err := os.MkdirAll(fullDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create directory: %w", err)
 	}

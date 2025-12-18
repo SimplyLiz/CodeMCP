@@ -87,3 +87,71 @@ func ParseExportScope(scopeJSON string) (*ExportScope, error) {
 
 	return &scope, nil
 }
+
+// FederationSyncScope defines the scope for federation sync jobs.
+type FederationSyncScope struct {
+	FederationName string `json:"federationName"`
+	Direction      string `json:"direction"` // "pull" or "push"
+	RepoID         string `json:"repoId,omitempty"`
+}
+
+// ParseFederationSyncScope parses the scope JSON for federation sync jobs.
+func ParseFederationSyncScope(scopeJSON string) (*FederationSyncScope, error) {
+	if scopeJSON == "" {
+		return nil, nil
+	}
+
+	var scope FederationSyncScope
+	if err := json.Unmarshal([]byte(scopeJSON), &scope); err != nil {
+		return nil, err
+	}
+
+	if scope.Direction == "" {
+		scope.Direction = "pull"
+	}
+
+	return &scope, nil
+}
+
+// WebhookDispatchScope defines the scope for webhook dispatch jobs.
+type WebhookDispatchScope struct {
+	WebhookID string `json:"webhookId"`
+	EventID   string `json:"eventId"`
+	EventType string `json:"eventType"`
+	Payload   string `json:"payload"` // JSON-encoded payload
+}
+
+// ParseWebhookDispatchScope parses the scope JSON for webhook dispatch jobs.
+func ParseWebhookDispatchScope(scopeJSON string) (*WebhookDispatchScope, error) {
+	if scopeJSON == "" {
+		return nil, nil
+	}
+
+	var scope WebhookDispatchScope
+	if err := json.Unmarshal([]byte(scopeJSON), &scope); err != nil {
+		return nil, err
+	}
+
+	return &scope, nil
+}
+
+// ScheduledTaskScope defines the scope for scheduled task jobs.
+type ScheduledTaskScope struct {
+	ScheduleID string `json:"scheduleId"`
+	TaskType   string `json:"taskType"`
+	Target     string `json:"target,omitempty"`
+}
+
+// ParseScheduledTaskScope parses the scope JSON for scheduled task jobs.
+func ParseScheduledTaskScope(scopeJSON string) (*ScheduledTaskScope, error) {
+	if scopeJSON == "" {
+		return nil, nil
+	}
+
+	var scope ScheduledTaskScope
+	if err := json.Unmarshal([]byte(scopeJSON), &scope); err != nil {
+		return nil, err
+	}
+
+	return &scope, nil
+}
