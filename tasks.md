@@ -1280,16 +1280,100 @@ Add cyclomatic and cognitive complexity metrics for all supported languages usin
 
 ---
 
+## v6.3 — Contract-Aware Impact Analysis
+
+*Cross-repo intelligence through explicit API boundaries*
+
+### Overview
+
+Adds the ability to detect API contracts (protobuf, OpenAPI) and understand cross-repo dependencies through evidence-based consumer detection.
+
+### Phase 1: Contract Detection
+
+- [x] **1.1** Create contract types in `internal/federation/contracts.go`
+  - ContractType (proto, openapi, graphql)
+  - Visibility (public, internal, unknown)
+  - EvidenceTier (declared, derived, heuristic)
+  - Contract, ContractEdge, ProtoImport types
+
+- [x] **1.2** Add contract tables to federation index schema
+  - `contracts` — Detected API contracts
+  - `contract_import_keys` — Import key resolution
+  - `contract_edges` — Dependency edges between contracts and consumers
+  - `proto_imports` — Proto file import relationships
+
+- [x] **1.3** Create `internal/federation/detector_proto.go`
+  - Protobuf file detection and parsing
+  - Package, service, import extraction
+  - Visibility classification based on path and package naming
+  - Generated code consumer detection
+  - buf.yaml dependency detection
+
+- [x] **1.4** Create `internal/federation/detector_openapi.go`
+  - OpenAPI/Swagger file detection
+  - Version, title, server extraction
+  - Visibility classification based on path and servers
+
+### Phase 2: Impact Analysis
+
+- [x] **2.1** Create `internal/federation/contract_impact.go`
+  - `AnalyzeContractImpact` — Full impact analysis with risk assessment
+  - `ListContracts` — List contracts with filtering
+  - `GetDependencies` — Get dependencies/consumers for a repo
+  - `GetContractStats` — Summary statistics
+  - `SuppressContractEdge` / `VerifyContractEdge` — Manual overrides
+
+- [x] **2.2** Implement risk assessment
+  - Risk factors: consumer count, public visibility, service definitions, versioning
+  - Risk levels: low, medium, high
+
+- [x] **2.3** Implement transitive analysis
+  - Follow proto import graphs across repos
+  - Depth-limited traversal (default: 3)
+
+### Phase 3: MCP Tools
+
+- [x] **3.1** Add contract MCP tools to `internal/mcp/tools.go`
+  - `listContracts` — List contracts in federation
+  - `analyzeContractImpact` — Analyze impact of changing a contract
+  - `getContractDependencies` — Get contract deps for a repo
+  - `suppressContractEdge` — Suppress false positive edge
+  - `verifyContractEdge` — Verify an edge
+  - `getContractStats` — Contract statistics
+
+- [x] **3.2** Create `internal/mcp/tool_impls_v63.go`
+  - Tool handler implementations
+
+### Phase 4: CLI Commands
+
+- [x] **4.1** Create `cmd/ckb/contracts.go`
+  - `ckb contracts list <federation>`
+  - `ckb contracts impact <federation> --repo=<id> --path=<path>`
+  - `ckb contracts deps <federation> --repo=<id>`
+  - `ckb contracts suppress <federation> --edge=<id>`
+  - `ckb contracts verify <federation> --edge=<id>`
+  - `ckb contracts stats <federation>`
+
+### Phase 5: Testing
+
+- [x] **5.1** Create `internal/federation/contracts_test.go`
+  - ProtoDetector tests
+  - ProtoVisibilityClassification tests
+  - OpenAPIDetector tests
+  - ComputeEdgeKey tests
+
+---
+
 ## Scratched (Not Implementing)
 
 | Feature | Reason |
 |---------|--------|
-| Cross-repo dependencies | v6.3 |
-| Remote federation | v6.3+ |
-| Team dashboard | v6.3 |
+| Remote federation (HTTPS) | Complexity; defer to v7+ |
+| Team dashboard | Out of scope for CLI tool |
+| Runtime telemetry (observed mode) | Limited value for most users |
 
 ---
 
-*Document version: 1.3*
-*Based on: CKB v6.0-draft-2 + v6.2 specification + v6.2.1 daemon mode + v6.2.2 tree-sitter*
+*Document version: 1.4*
+*Based on: CKB v6.0-draft-2 + v6.2 federation + v6.2.1 daemon mode + v6.2.2 tree-sitter + v6.3 contracts*
 *Created: December 2024*
