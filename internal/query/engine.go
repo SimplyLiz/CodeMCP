@@ -481,6 +481,39 @@ func (e *Engine) GetDB() *storage.DB {
 	return e.db
 }
 
+// ClearAllCache clears all cache entries (query, view, and negative caches).
+func (e *Engine) ClearAllCache() error {
+	if e.cache == nil {
+		return nil
+	}
+
+	var errs []error
+
+	if err := e.cache.InvalidateAllQueryCache(); err != nil {
+		errs = append(errs, fmt.Errorf("failed to clear query cache: %w", err))
+	}
+
+	if err := e.cache.InvalidateAllViewCache(); err != nil {
+		errs = append(errs, fmt.Errorf("failed to clear view cache: %w", err))
+	}
+
+	if err := e.cache.InvalidateAllNegativeCache(); err != nil {
+		errs = append(errs, fmt.Errorf("failed to clear negative cache: %w", err))
+	}
+
+	// Reset cache stats
+	e.cacheStatsMu.Lock()
+	e.cacheHits = 0
+	e.cacheMisses = 0
+	e.cacheStatsMu.Unlock()
+
+	if len(errs) > 0 {
+		return errs[0] // Return first error
+	}
+
+	return nil
+}
+
 // TelemetrySymbol represents a symbol for telemetry dead code analysis.
 type TelemetrySymbol struct {
 	ID   string

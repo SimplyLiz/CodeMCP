@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -788,17 +789,34 @@ func (s *Server) handleDoctorFix(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, response, http.StatusOK)
 }
 
-// handleCacheWarm warms the cache
+// handleCacheWarm warms the cache by preloading common queries
 func (s *Server) handleCacheWarm(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// For now, just return success - cache warming would be a longer operation
+	ctx := context.Background()
+	warmed := 0
+
+	// Warm by loading architecture overview
+	if _, err := s.engine.GetArchitecture(ctx, query.GetArchitectureOptions{}); err == nil {
+		warmed++
+	}
+
+	// Warm by loading status (includes backend health checks)
+	if _, err := s.engine.GetStatus(ctx); err == nil {
+		warmed++
+	}
+
+	// Warm by loading hotspots
+	if _, err := s.engine.GetHotspots(ctx, query.GetHotspotsOptions{Limit: 20}); err == nil {
+		warmed++
+	}
+
 	response := CacheResponse{
 		Status:    "success",
-		Message:   "Cache warming initiated",
+		Message:   fmt.Sprintf("Cache warmed with %d queries (architecture, status, hotspots)", warmed),
 		Timestamp: time.Now().UTC(),
 	}
 
@@ -812,10 +830,15 @@ func (s *Server) handleCacheClear(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// For now, just return success - actual cache clearing would be implemented
+	// Clear all caches
+	if err := s.engine.ClearAllCache(); err != nil {
+		WriteError(w, err, http.StatusInternalServerError)
+		return
+	}
+
 	response := CacheResponse{
 		Status:    "success",
-		Message:   "Cache cleared",
+		Message:   "All caches cleared (query, view, negative)",
 		Timestamp: time.Now().UTC(),
 	}
 

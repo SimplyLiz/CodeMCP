@@ -4,8 +4,8 @@
 bin/
 
 # Binaries
-ckb
-ckb-test
+/ckb
+/ckb-test
 *_test
 
 # Go build artifacts
