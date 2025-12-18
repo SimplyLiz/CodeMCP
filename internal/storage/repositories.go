@@ -3,6 +3,7 @@ package storage
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -515,7 +516,8 @@ func (r *ModuleRepository) UpdateAnnotations(moduleID string, boundaries, respon
 }
 
 // UpsertAnnotations creates or updates the v2 annotation fields for a module
-// If the module doesn't exist, it creates a minimal module record with the annotation data
+// If the module doesn't exist and moduleID looks like a valid path, creates a minimal module record.
+// Returns an error if module doesn't exist and moduleID is not a valid path.
 func (r *ModuleRepository) UpsertAnnotations(moduleID string, boundaries, responsibility, ownerRef, tags *string, source string, confidence float64) error {
 	// First try to update existing module
 	result, err := r.db.Exec(`
@@ -538,15 +540,30 @@ func (r *ModuleRepository) UpsertAnnotations(moduleID string, boundaries, respon
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
 
-	// If module doesn't exist, create it with annotation data
+	// If module doesn't exist, only create if moduleID looks like a valid path
 	if rowsAffected == 0 {
+		// Check if moduleID looks like a filesystem path (contains path separator or starts with .)
+		isPath := strings.Contains(moduleID, "/") || strings.HasPrefix(moduleID, ".")
+		if !isPath {
+			return fmt.Errorf("module not found: %s (use a path-like moduleID to auto-create)", moduleID)
+		}
+
+		// Extract a reasonable name from the path
+		name := moduleID
+		if idx := strings.LastIndex(moduleID, "/"); idx >= 0 {
+			name = moduleID[idx+1:]
+		}
+		if name == "" {
+			name = moduleID
+		}
+
 		_, err = r.db.Exec(`
 			INSERT INTO modules (module_id, name, root_path, detected_at, state_id, boundaries, responsibility, owner_ref, tags, source, confidence, updated_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`,
 			moduleID,
-			moduleID, // Use moduleID as name for declared modules
-			moduleID, // Use moduleID as root_path
+			name,     // Use last path component as name
+			moduleID, // Use moduleID as root_path (it's a valid path)
 			time.Now().Format(time.RFC3339),
 			"declared", // state_id indicates this was created via annotation
 			boundaries,
