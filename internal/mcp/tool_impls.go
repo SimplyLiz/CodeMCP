@@ -4,7 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
 
+	"ckb/internal/complexity"
 	"ckb/internal/jobs"
 	"ckb/internal/query"
 )
@@ -1277,6 +1281,14 @@ func (s *MCPServer) toolGetHotspots(params map[string]interface{}) (interface{},
 				"score":           h.Coupling.Score,
 			}
 		}
+		if h.Complexity != nil {
+			hotspotInfo["complexity"] = map[string]interface{}{
+				"cyclomatic":    h.Complexity.Cyclomatic,
+				"cognitive":     h.Complexity.Cognitive,
+				"functionCount": h.Complexity.FunctionCount,
+				"score":         h.Complexity.Score,
+			}
+		}
 		if h.Ranking != nil {
 			hotspotInfo["ranking"] = map[string]interface{}{
 				"score":         h.Ranking.Score,
@@ -1896,12 +1908,12 @@ func (s *MCPServer) toolGetModuleResponsibilities(params map[string]interface{})
 	modules := make([]map[string]interface{}, 0, len(resp.Modules))
 	for _, m := range resp.Modules {
 		moduleInfo := map[string]interface{}{
-			"moduleId":     m.ModuleId,
-			"name":         m.Name,
-			"path":         m.Path,
-			"summary":      m.Summary,
-			"source":       m.Source,
-			"confidence":   m.Confidence,
+			"moduleId":   m.ModuleId,
+			"name":       m.Name,
+			"path":       m.Path,
+			"summary":    m.Summary,
+			"source":     m.Source,
+			"confidence": m.Confidence,
 		}
 		if len(m.Capabilities) > 0 {
 			moduleInfo["capabilities"] = m.Capabilities
@@ -2561,6 +2573,125 @@ func (s *MCPServer) toolGetOwnershipDrift(params map[string]interface{}) (interf
 	resp, err := s.engine.GetOwnershipDrift(ctx, opts)
 	if err != nil {
 		return nil, fmt.Errorf("getOwnershipDrift failed: %w", err)
+	}
+
+	jsonBytes, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// toolGetFileComplexity handles the getFileComplexity tool call
+func (s *MCPServer) toolGetFileComplexity(params map[string]interface{}) (interface{}, error) {
+	ctx := context.Background()
+
+	// Parse filePath (required)
+	filePath, ok := params["filePath"].(string)
+	if !ok || filePath == "" {
+		return nil, fmt.Errorf("filePath is required")
+	}
+
+	// Parse includeFunctions (optional, default: true)
+	includeFunctions := true
+	if v, ok := params["includeFunctions"].(bool); ok {
+		includeFunctions = v
+	}
+
+	// Parse sortBy (optional, default: "cyclomatic")
+	sortBy := "cyclomatic"
+	if v, ok := params["sortBy"].(string); ok && v != "" {
+		sortBy = v
+	}
+
+	// Parse limit (optional, default: 20)
+	limit := 20
+	if v, ok := params["limit"].(float64); ok && v > 0 {
+		limit = int(v)
+	}
+
+	s.logger.Debug("Executing getFileComplexity", map[string]interface{}{
+		"filePath":         filePath,
+		"includeFunctions": includeFunctions,
+		"sortBy":           sortBy,
+		"limit":            limit,
+	})
+
+	// Resolve the file path
+	absPath := filePath
+	if !filepath.IsAbs(filePath) {
+		absPath = filepath.Join(s.engine.GetRepoRoot(), filePath)
+	}
+
+	// Check if file exists
+	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("file not found: %s", filePath)
+	}
+
+	// Analyze the file
+	analyzer := complexity.NewAnalyzer()
+	result, err := analyzer.AnalyzeFile(ctx, absPath)
+	if err != nil {
+		return nil, fmt.Errorf("analysis failed: %w", err)
+	}
+
+	// Check for analysis error
+	if result.Error != "" {
+		return map[string]interface{}{
+			"path":  filePath,
+			"error": result.Error,
+		}, nil
+	}
+
+	// Build response
+	resp := map[string]interface{}{
+		"path":              filePath,
+		"language":          string(result.Language),
+		"functionCount":     result.FunctionCount,
+		"totalCyclomatic":   result.TotalCyclomatic,
+		"totalCognitive":    result.TotalCognitive,
+		"averageCyclomatic": result.AverageCyclomatic,
+		"averageCognitive":  result.AverageCognitive,
+		"maxCyclomatic":     result.MaxCyclomatic,
+		"maxCognitive":      result.MaxCognitive,
+	}
+
+	// Include functions if requested
+	if includeFunctions && len(result.Functions) > 0 {
+		// Sort functions by the specified metric
+		functions := make([]complexity.ComplexityResult, len(result.Functions))
+		copy(functions, result.Functions)
+
+		sort.Slice(functions, func(i, j int) bool {
+			switch sortBy {
+			case "cognitive":
+				return functions[i].Cognitive > functions[j].Cognitive
+			case "lines":
+				return functions[i].Lines > functions[j].Lines
+			default: // cyclomatic
+				return functions[i].Cyclomatic > functions[j].Cyclomatic
+			}
+		})
+
+		// Apply limit
+		if limit > 0 && len(functions) > limit {
+			functions = functions[:limit]
+		}
+
+		// Convert to response format
+		funcList := make([]map[string]interface{}, len(functions))
+		for i, fn := range functions {
+			funcList[i] = map[string]interface{}{
+				"name":       fn.Name,
+				"startLine":  fn.StartLine,
+				"endLine":    fn.EndLine,
+				"cyclomatic": fn.Cyclomatic,
+				"cognitive":  fn.Cognitive,
+				"lines":      fn.Lines,
+			}
+		}
+		resp["functions"] = funcList
 	}
 
 	jsonBytes, err := json.MarshalIndent(resp, "", "  ")

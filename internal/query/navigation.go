@@ -2393,14 +2393,15 @@ type GetHotspotsResponse struct {
 
 // HotspotV52 represents a hotspot with v5.2 ranking signals.
 type HotspotV52 struct {
-	FilePath  string           `json:"filePath"`
-	Role      string           `json:"role,omitempty"` // core, test, config, unknown
-	Language  string           `json:"language,omitempty"`
-	Churn     HotspotChurn     `json:"churn"`
-	Coupling  *HotspotCoupling `json:"coupling,omitempty"`
-	Recency   string           `json:"recency"`   // recent, moderate, stale
-	RiskLevel string           `json:"riskLevel"` // low, medium, high
-	Ranking   *RankingV52      `json:"ranking"`
+	FilePath   string             `json:"filePath"`
+	Role       string             `json:"role,omitempty"` // core, test, config, unknown
+	Language   string             `json:"language,omitempty"`
+	Churn      HotspotChurn       `json:"churn"`
+	Coupling   *HotspotCoupling   `json:"coupling,omitempty"`
+	Complexity *HotspotComplexity `json:"complexity,omitempty"` // v6.2.2: tree-sitter complexity
+	Recency    string             `json:"recency"`              // recent, moderate, stale
+	RiskLevel  string             `json:"riskLevel"`            // low, medium, high
+	Ranking    *RankingV52        `json:"ranking"`
 }
 
 // HotspotChurn contains churn-related metrics.
@@ -2416,6 +2417,14 @@ type HotspotCoupling struct {
 	DependentCount  int     `json:"dependentCount"`
 	DependencyCount int     `json:"dependencyCount"`
 	Score           float64 `json:"score"`
+}
+
+// HotspotComplexity contains code complexity metrics.
+type HotspotComplexity struct {
+	Cyclomatic    int     `json:"cyclomatic"`    // Max cyclomatic complexity
+	Cognitive     int     `json:"cognitive"`     // Max cognitive complexity
+	FunctionCount int     `json:"functionCount"` // Number of functions analyzed
+	Score         float64 `json:"score"`         // Normalized complexity score (0-1)
 }
 
 // GetHotspots returns files that deserve attention based on churn, coupling, and recency.
@@ -2541,6 +2550,38 @@ func (e *Engine) GetHotspots(ctx context.Context, opts GetHotspotsOptions) (*Get
 	// Apply limit
 	if len(hotspots) > opts.Limit {
 		hotspots = hotspots[:opts.Limit]
+	}
+
+	// Add complexity data via tree-sitter (v6.2.2)
+	if e.complexityAnalyzer != nil {
+		for i := range hotspots {
+			fc, err := e.complexityAnalyzer.GetFileComplexityFull(ctx, filepath.Join(e.repoRoot, hotspots[i].FilePath))
+			if err == nil && fc.Error == "" && fc.FunctionCount > 0 {
+				// Calculate normalized score (0-1) based on max complexity thresholds
+				// Cyclomatic > 10 is high, > 20 is very high
+				// Cognitive > 15 is high, > 30 is very high
+				cyclomaticScore := float64(fc.MaxCyclomatic) / 20.0
+				cognitiveScore := float64(fc.MaxCognitive) / 30.0
+				if cyclomaticScore > 1.0 {
+					cyclomaticScore = 1.0
+				}
+				if cognitiveScore > 1.0 {
+					cognitiveScore = 1.0
+				}
+				// Use max of the two as the complexity score
+				complexityScore := cyclomaticScore
+				if cognitiveScore > complexityScore {
+					complexityScore = cognitiveScore
+				}
+
+				hotspots[i].Complexity = &HotspotComplexity{
+					Cyclomatic:    fc.MaxCyclomatic,
+					Cognitive:     fc.MaxCognitive,
+					FunctionCount: fc.FunctionCount,
+					Score:         complexityScore,
+				}
+			}
+		}
 	}
 
 	// Add coupling data if SCIP available

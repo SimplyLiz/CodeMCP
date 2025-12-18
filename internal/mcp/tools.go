@@ -1183,6 +1183,37 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				"required": []string{"federation"},
 			},
 		},
+		// v6.2.2 Tree-sitter Complexity tools
+		{
+			Name:        "getFileComplexity",
+			Description: "Get code complexity metrics for a source file using tree-sitter parsing. Returns cyclomatic and cognitive complexity for each function, plus file-level aggregates. Supports Go, JavaScript, TypeScript, Python, Rust, Java, and Kotlin.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"filePath": map[string]interface{}{
+						"type":        "string",
+						"description": "Path to the source file (relative or absolute)",
+					},
+					"includeFunctions": map[string]interface{}{
+						"type":        "boolean",
+						"default":     true,
+						"description": "Include per-function complexity breakdown",
+					},
+					"sortBy": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"cyclomatic", "cognitive", "lines"},
+						"default":     "cyclomatic",
+						"description": "Sort functions by this metric (descending)",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"default":     20,
+						"description": "Maximum number of functions to return (most complex first)",
+					},
+				},
+				"required": []string{"filePath"},
+			},
+		},
 	}
 }
 
@@ -1244,4 +1275,6 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["suppressContractEdge"] = s.toolSuppressContractEdge
 	s.tools["verifyContractEdge"] = s.toolVerifyContractEdge
 	s.tools["getContractStats"] = s.toolGetContractStats
+	// v6.2.2 Tree-sitter Complexity tools
+	s.tools["getFileComplexity"] = s.toolGetFileComplexity
 }

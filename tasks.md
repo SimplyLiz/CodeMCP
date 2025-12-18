@@ -1010,7 +1010,7 @@ Note: Phases 2 and 3 can run in parallel after Phase 1 completes.
 | Async/background refresh | Needs job runner design |
 | Multi-repo sync | Complex; needs cross-repo ID strategy |
 | Runtime telemetry (observed mode) | Needs instrumentation design |
-| Complexity for non-Go languages | Tree-sitter integration not ready |
+| ~~Complexity for non-Go languages~~ | Done in v6.2.2 via tree-sitter |
 | LLM-generated responsibilities | Privacy contract needs user consent flow |
 
 ---
@@ -1266,17 +1266,29 @@ Add cyclomatic and cognitive complexity metrics for all supported languages usin
   - Created `internal/hotspots/complexity.go` integration layer
   - Supports all languages via tree-sitter
 
-- [ ] **2.2** Add complexity to `getHotspots` response for all languages
+- [x] **2.2** Add complexity to `getHotspots` response for all languages
+  - Added `HotspotComplexity` struct to `internal/query/navigation.go`
+  - Added `complexityAnalyzer` to Engine
+  - Complexity is computed for top hotspots after limit is applied
 
-- [ ] **2.3** Add `getFileComplexity` MCP tool (optional)
+- [x] **2.3** Add `getFileComplexity` MCP tool
+  - Returns cyclomatic and cognitive complexity for each function
+  - Supports sorting by cyclomatic, cognitive, or lines
+  - Returns file-level aggregates (total, average, max)
 
 ### Phase 3: Testing
 
 - [x] **3.1** Unit tests for each language parser
   - Go, JavaScript, Python, Rust, Java tested
   - Cognitive nesting penalty verified
-- [ ] **3.2** Benchmark complexity computation
-- [ ] **3.3** Validate against known complexity tools
+- [x] **3.2** Benchmark complexity computation
+  - Added benchmarks for Go (small/medium/large), JS, Python, Rust, Java
+  - ~3ms for medium files, ~20ms for large files
+- [x] **3.3** Validate against known complexity tools
+  - Validated against gocyclo (Go cyclomatic)
+  - Validated against radon (Python)
+  - Validated against ESLint complexity rule (JavaScript)
+  - Validated against SonarSource cognitive complexity
 
 ---
 

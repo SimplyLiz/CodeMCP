@@ -16,6 +16,7 @@ import (
 	"ckb/internal/compression"
 	"ckb/internal/config"
 	"ckb/internal/errors"
+	"ckb/internal/hotspots"
 	"ckb/internal/identity"
 	"ckb/internal/jobs"
 	"ckb/internal/logging"
@@ -42,6 +43,9 @@ type Engine struct {
 	// Job runner for async operations
 	jobStore  *jobs.Store
 	jobRunner *jobs.Runner
+
+	// Complexity analyzer for hotspots
+	complexityAnalyzer *hotspots.ComplexityAnalyzer
 
 	// Cached repo state
 	repoStateMu     sync.RWMutex
@@ -83,14 +87,15 @@ func NewEngine(repoRoot string, db *storage.DB, logger *logging.Logger, cfg *con
 	cache := storage.NewCache(db)
 
 	engine := &Engine{
-		db:           db,
-		logger:       logger,
-		config:       cfg,
-		compressor:   compressor,
-		resolver:     resolver,
-		repoRoot:     repoRoot,
-		orchestrator: orchestrator,
-		cache:        cache,
+		db:                 db,
+		logger:             logger,
+		config:             cfg,
+		compressor:         compressor,
+		resolver:           resolver,
+		repoRoot:           repoRoot,
+		orchestrator:       orchestrator,
+		cache:              cache,
+		complexityAnalyzer: hotspots.NewComplexityAnalyzer(),
 	}
 
 	// Initialize backends
@@ -444,6 +449,11 @@ func (e *Engine) GetJobRunnerStats() map[string]interface{} {
 	stats := e.jobRunner.Stats()
 	stats["available"] = true
 	return stats
+}
+
+// GetRepoRoot returns the repository root path.
+func (e *Engine) GetRepoRoot() string {
+	return e.repoRoot
 }
 
 // GetScipBackend returns the SCIP adapter (may be nil).
