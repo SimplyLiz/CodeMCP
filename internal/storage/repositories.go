@@ -1463,3 +1463,267 @@ func (r *ResponsibilityRepository) scanResponsibilities(rows *sql.Rows) ([]*Resp
 
 	return records, nil
 }
+
+// ============================================================================
+// v2 Decisions Repository (Architectural Memory)
+// ============================================================================
+
+// DecisionRecord represents an ADR record in the database
+type DecisionRecord struct {
+	ID              string    // "ADR-001" style
+	Title           string
+	Status          string    // "proposed" | "accepted" | "deprecated" | "superseded"
+	AffectedModules string    // JSON array of module IDs
+	FilePath        string    // relative path to .md file
+	Author          string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+// DecisionRepository provides CRUD operations for decisions table
+type DecisionRepository struct {
+	db *DB
+}
+
+// NewDecisionRepository creates a new decision repository
+func NewDecisionRepository(db *DB) *DecisionRepository {
+	return &DecisionRepository{db: db}
+}
+
+// Create inserts a new decision record
+func (r *DecisionRepository) Create(record *DecisionRecord) error {
+	_, err := r.db.Exec(`
+		INSERT INTO decisions (id, title, status, affected_modules, file_path, author, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		record.ID,
+		record.Title,
+		record.Status,
+		record.AffectedModules,
+		record.FilePath,
+		record.Author,
+		record.CreatedAt.Format(time.RFC3339),
+		record.UpdatedAt.Format(time.RFC3339),
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to create decision: %w", err)
+	}
+
+	return nil
+}
+
+// GetByID retrieves a decision by its ID
+func (r *DecisionRepository) GetByID(id string) (*DecisionRecord, error) {
+	var record DecisionRecord
+	var createdAt, updatedAt string
+	var author sql.NullString
+	var affectedModules sql.NullString
+
+	err := r.db.QueryRow(`
+		SELECT id, title, status, affected_modules, file_path, author, created_at, updated_at
+		FROM decisions
+		WHERE id = ?
+	`, id).Scan(
+		&record.ID,
+		&record.Title,
+		&record.Status,
+		&affectedModules,
+		&record.FilePath,
+		&author,
+		&createdAt,
+		&updatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get decision: %w", err)
+	}
+
+	record.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	record.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+	if author.Valid {
+		record.Author = author.String
+	}
+	if affectedModules.Valid {
+		record.AffectedModules = affectedModules.String
+	}
+
+	return &record, nil
+}
+
+// GetByStatus retrieves all decisions with a given status
+func (r *DecisionRepository) GetByStatus(status string, limit int) ([]*DecisionRecord, error) {
+	rows, err := r.db.Query(`
+		SELECT id, title, status, affected_modules, file_path, author, created_at, updated_at
+		FROM decisions
+		WHERE status = ?
+		ORDER BY created_at DESC
+		LIMIT ?
+	`, status, limit)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get decisions by status: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	return r.scanDecisions(rows)
+}
+
+// GetByModule retrieves all decisions affecting a module
+func (r *DecisionRepository) GetByModule(moduleID string, limit int) ([]*DecisionRecord, error) {
+	// Use JSON_EACH to search within the affected_modules array
+	searchPattern := "%" + moduleID + "%"
+	rows, err := r.db.Query(`
+		SELECT id, title, status, affected_modules, file_path, author, created_at, updated_at
+		FROM decisions
+		WHERE affected_modules LIKE ?
+		ORDER BY created_at DESC
+		LIMIT ?
+	`, searchPattern, limit)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get decisions by module: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	return r.scanDecisions(rows)
+}
+
+// ListAll returns all decisions
+func (r *DecisionRepository) ListAll(limit int) ([]*DecisionRecord, error) {
+	rows, err := r.db.Query(`
+		SELECT id, title, status, affected_modules, file_path, author, created_at, updated_at
+		FROM decisions
+		ORDER BY created_at DESC
+		LIMIT ?
+	`, limit)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to list decisions: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	return r.scanDecisions(rows)
+}
+
+// Update updates an existing decision record
+func (r *DecisionRepository) Update(record *DecisionRecord) error {
+	record.UpdatedAt = time.Now()
+	result, err := r.db.Exec(`
+		UPDATE decisions
+		SET title = ?, status = ?, affected_modules = ?, file_path = ?, author = ?, updated_at = ?
+		WHERE id = ?
+	`,
+		record.Title,
+		record.Status,
+		record.AffectedModules,
+		record.FilePath,
+		record.Author,
+		record.UpdatedAt.Format(time.RFC3339),
+		record.ID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to update decision: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("decision not found: %s", record.ID)
+	}
+
+	return nil
+}
+
+// Upsert creates or updates a decision
+func (r *DecisionRepository) Upsert(record *DecisionRecord) error {
+	existing, err := r.GetByID(record.ID)
+	if err != nil {
+		return err
+	}
+
+	if existing == nil {
+		return r.Create(record)
+	}
+
+	return r.Update(record)
+}
+
+// Delete removes a decision record
+func (r *DecisionRepository) Delete(id string) error {
+	_, err := r.db.Exec("DELETE FROM decisions WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("failed to delete decision: %w", err)
+	}
+	return nil
+}
+
+// Search performs text search on decisions
+func (r *DecisionRepository) Search(query string, limit int) ([]*DecisionRecord, error) {
+	searchPattern := "%" + query + "%"
+	rows, err := r.db.Query(`
+		SELECT id, title, status, affected_modules, file_path, author, created_at, updated_at
+		FROM decisions
+		WHERE title LIKE ? OR id LIKE ?
+		ORDER BY created_at DESC
+		LIMIT ?
+	`, searchPattern, searchPattern, limit)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to search decisions: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	return r.scanDecisions(rows)
+}
+
+// scanDecisions scans rows into DecisionRecord structs
+func (r *DecisionRepository) scanDecisions(rows *sql.Rows) ([]*DecisionRecord, error) {
+	var records []*DecisionRecord
+
+	for rows.Next() {
+		var record DecisionRecord
+		var createdAt, updatedAt string
+		var author sql.NullString
+		var affectedModules sql.NullString
+
+		err := rows.Scan(
+			&record.ID,
+			&record.Title,
+			&record.Status,
+			&affectedModules,
+			&record.FilePath,
+			&author,
+			&createdAt,
+			&updatedAt,
+		)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan decision: %w", err)
+		}
+
+		record.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		record.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+		if author.Valid {
+			record.Author = author.String
+		}
+		if affectedModules.Valid {
+			record.AffectedModules = affectedModules.String
+		}
+
+		records = append(records, &record)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating decisions: %w", err)
+	}
+
+	return records, nil
+}

@@ -489,6 +489,136 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		{
+			Name:        "recordDecision",
+			Description: "Record an architectural decision (ADR). Creates both a markdown file and database entry. Use to document design decisions, rationale, and consequences.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"title": map[string]interface{}{
+						"type":        "string",
+						"description": "Short title for the decision (e.g., 'Use PostgreSQL for persistence')",
+					},
+					"context": map[string]interface{}{
+						"type":        "string",
+						"description": "Background and forces driving the decision",
+					},
+					"decision": map[string]interface{}{
+						"type":        "string",
+						"description": "What was decided and why",
+					},
+					"consequences": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "List of consequences (positive and negative) of this decision",
+					},
+					"affectedModules": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "List of module IDs affected by this decision",
+					},
+					"alternatives": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "List of alternatives that were considered",
+					},
+					"author": map[string]interface{}{
+						"type":        "string",
+						"description": "Author of the decision",
+					},
+					"status": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"proposed", "accepted", "deprecated", "superseded"},
+						"default":     "proposed",
+						"description": "Status of the decision",
+					},
+				},
+				"required": []string{"title", "context", "decision", "consequences"},
+			},
+		},
+		{
+			Name:        "getDecisions",
+			Description: "Get architectural decisions (ADRs). Returns recorded decisions with their status, affected modules, and file paths. Use to understand past architectural choices.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"id": map[string]interface{}{
+						"type":        "string",
+						"description": "Specific decision ID (e.g., 'ADR-001'). Returns single decision with full details.",
+					},
+					"status": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"proposed", "accepted", "deprecated", "superseded"},
+						"description": "Filter by status",
+					},
+					"moduleId": map[string]interface{}{
+						"type":        "string",
+						"description": "Filter by affected module",
+					},
+					"search": map[string]interface{}{
+						"type":        "string",
+						"description": "Search in title and ID",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"default":     50,
+						"description": "Maximum number of decisions to return",
+					},
+				},
+			},
+		},
+		{
+			Name:        "annotateModule",
+			Description: "Add or update module metadata (responsibilities, tags, boundaries). Enhances architectural understanding without modifying code.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"moduleId": map[string]interface{}{
+						"type":        "string",
+						"description": "Module ID (typically the directory path)",
+					},
+					"responsibility": map[string]interface{}{
+						"type":        "string",
+						"description": "One-sentence description of what this module does",
+					},
+					"capabilities": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "List of capabilities provided by this module",
+					},
+					"tags": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Tags for categorization (e.g., 'core', 'infrastructure', 'api')",
+					},
+					"publicPaths": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Paths intended as public API boundaries",
+					},
+					"internalPaths": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Paths intended to be internal/private",
+					},
+				},
+				"required": []string{"moduleId"},
+			},
+		},
 	}
 }
 
@@ -517,4 +647,7 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["refreshArchitecture"] = s.toolRefreshArchitecture
 	s.tools["getOwnership"] = s.toolGetOwnership
 	s.tools["getModuleResponsibilities"] = s.toolGetModuleResponsibilities
+	s.tools["recordDecision"] = s.toolRecordDecision
+	s.tools["getDecisions"] = s.toolGetDecisions
+	s.tools["annotateModule"] = s.toolAnnotateModule
 }
