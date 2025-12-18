@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"ckb/internal/paths"
 )
 
 // Parser parses ADR markdown files
@@ -42,9 +44,19 @@ func (p *Parser) FindADRDirectories() []string {
 	return found
 }
 
-// ParseDirectory parses all ADRs in a directory
+// ParseDirectory parses all ADRs in a directory (relative to repoRoot)
 func (p *Parser) ParseDirectory(dirPath string) ([]*ArchitecturalDecision, error) {
 	fullPath := filepath.Join(p.repoRoot, dirPath)
+	return p.parseDirectoryInternal(fullPath, dirPath)
+}
+
+// ParseDirectoryAbsolute parses all ADRs in an absolute directory path
+func (p *Parser) ParseDirectoryAbsolute(absPath string) ([]*ArchitecturalDecision, error) {
+	return p.parseDirectoryInternal(absPath, absPath)
+}
+
+// parseDirectoryInternal is the internal implementation for parsing ADR directories
+func (p *Parser) parseDirectoryInternal(fullPath, pathForFilePath string) ([]*ArchitecturalDecision, error) {
 	entries, err := os.ReadDir(fullPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read directory: %w", err)
@@ -66,31 +78,59 @@ func (p *Parser) ParseDirectory(dirPath string) ([]*ArchitecturalDecision, error
 			continue
 		}
 
-		filePath := filepath.Join(dirPath, name)
-		adr, err := p.ParseFile(filePath)
+		adrPath := filepath.Join(fullPath, name)
+		adr, err := p.ParseFileAbsolute(adrPath)
 		if err != nil {
 			// Log but continue
 			continue
 		}
 
+		// Set the file path for storage
+		adr.FilePath = filepath.Join(pathForFilePath, name)
 		adrs = append(adrs, adr)
 	}
 
 	return adrs, nil
 }
 
-// ParseFile parses a single ADR markdown file
+// ParseFile parses a single ADR markdown file (relative to repoRoot)
 func (p *Parser) ParseFile(relPath string) (*ArchitecturalDecision, error) {
 	fullPath := filepath.Join(p.repoRoot, relPath)
+	adr, err := p.parseFileInternal(fullPath)
+	if err != nil {
+		return nil, err
+	}
+	adr.FilePath = relPath
+	return adr, nil
+}
+
+// ParseFileAbsolute parses a single ADR markdown file from an absolute path
+func (p *Parser) ParseFileAbsolute(absPath string) (*ArchitecturalDecision, error) {
+	adr, err := p.parseFileInternal(absPath)
+	if err != nil {
+		return nil, err
+	}
+	adr.FilePath = absPath
+	return adr, nil
+}
+
+// ParseFileAbsolute is a package-level helper to parse an ADR from an absolute path
+// without needing to create a Parser instance
+func ParseFileAbsolute(absPath string) (*ArchitecturalDecision, error) {
+	// Create a temporary parser - repoRoot not needed for absolute paths
+	p := &Parser{}
+	return p.ParseFileAbsolute(absPath)
+}
+
+// parseFileInternal is the internal implementation for parsing ADR files
+func (p *Parser) parseFileInternal(fullPath string) (*ArchitecturalDecision, error) {
 	file, err := os.Open(fullPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
-	adr := &ArchitecturalDecision{
-		FilePath: relPath,
-	}
+	adr := &ArchitecturalDecision{}
 
 	scanner := bufio.NewScanner(file)
 	var currentSection string
@@ -165,7 +205,7 @@ func (p *Parser) ParseFile(relPath string) (*ArchitecturalDecision, error) {
 
 	// Extract ID from filename if not found in content
 	if adr.ID == "" {
-		adr.ID = extractIDFromFilename(relPath)
+		adr.ID = extractIDFromFilename(fullPath)
 	}
 
 	// Default status
@@ -292,18 +332,13 @@ func parseDate(s string) (time.Time, error) {
 }
 
 // GetNextADRNumber finds the next available ADR number
+// Scans both repo-local directories and v6.0 global persistence path
 func (p *Parser) GetNextADRNumber() (int, error) {
-	dirs := p.FindADRDirectories()
-
 	maxNum := 0
 	numPattern := regexp.MustCompile(`ADR-(\d+)`)
 
-	for _, dir := range dirs {
-		adrs, err := p.ParseDirectory(dir)
-		if err != nil {
-			continue
-		}
-
+	// Helper to extract max ADR number from a list of ADRs
+	updateMaxNum := func(adrs []*ArchitecturalDecision) {
 		for _, adr := range adrs {
 			if matches := numPattern.FindStringSubmatch(adr.ID); len(matches) > 1 {
 				var num int
@@ -312,6 +347,23 @@ func (p *Parser) GetNextADRNumber() (int, error) {
 					maxNum = num
 				}
 			}
+		}
+	}
+
+	// Scan repo-local directories
+	dirs := p.FindADRDirectories()
+	for _, dir := range dirs {
+		adrs, err := p.ParseDirectory(dir)
+		if err != nil {
+			continue
+		}
+		updateMaxNum(adrs)
+	}
+
+	// Also scan v6.0 global persistence path (~/.ckb/repos/<hash>/decisions/)
+	if globalDir, err := paths.GetDecisionsDir(p.repoRoot); err == nil {
+		if adrs, err := p.ParseDirectoryAbsolute(globalDir); err == nil {
+			updateMaxNum(adrs)
 		}
 	}
 

@@ -4,6 +4,8 @@ package query
 
 import (
 	"context"
+	"fmt"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	"ckb/internal/config"
 	"ckb/internal/errors"
 	"ckb/internal/identity"
+	"ckb/internal/jobs"
 	"ckb/internal/logging"
 	"ckb/internal/output"
 	"ckb/internal/storage"
@@ -35,6 +38,10 @@ type Engine struct {
 	scipAdapter   *scip.SCIPAdapter
 	gitAdapter    *git.GitAdapter
 	lspSupervisor *lsp.LspSupervisor
+
+	// Job runner for async operations
+	jobStore  *jobs.Store
+	jobRunner *jobs.Runner
 
 	// Cached repo state
 	repoStateMu     sync.RWMutex
@@ -94,7 +101,80 @@ func NewEngine(repoRoot string, db *storage.DB, logger *logging.Logger, cfg *con
 		// Don't fail - some backends are optional
 	}
 
+	// Initialize job runner
+	if err := engine.initializeJobRunner(); err != nil {
+		logger.Warn("Failed to initialize job runner", map[string]interface{}{
+			"error": err.Error(),
+		})
+		// Don't fail - async operations will be unavailable
+	}
+
 	return engine, nil
+}
+
+// initializeJobRunner sets up the background job runner.
+func (e *Engine) initializeJobRunner() error {
+	ckbDir := filepath.Join(e.repoRoot, ".ckb")
+
+	// Open job store
+	jobStore, err := jobs.OpenStore(ckbDir, e.logger)
+	if err != nil {
+		return err
+	}
+	e.jobStore = jobStore
+
+	// Create runner with default config
+	config := jobs.DefaultRunnerConfig()
+	e.jobRunner = jobs.NewRunner(jobStore, e.logger, config)
+
+	// Register job handlers
+	e.registerJobHandlers()
+
+	// Start the runner
+	return e.jobRunner.Start()
+}
+
+// registerJobHandlers registers handlers for each job type.
+func (e *Engine) registerJobHandlers() {
+	// Refresh architecture handler
+	e.jobRunner.RegisterHandler(jobs.JobTypeRefreshArchitecture, func(ctx context.Context, job *jobs.Job, progress func(int)) (interface{}, error) {
+		scope, err := jobs.ParseRefreshScope(job.Scope)
+		if err != nil {
+			return nil, err
+		}
+
+		// Execute the refresh synchronously (we're already in async context)
+		opts := RefreshArchitectureOptions{
+			Scope:  scope.Scope,
+			Force:  scope.Force,
+			DryRun: false,
+			Async:  false, // Already in async context
+		}
+
+		progress(10) // Starting
+
+		resp, err := e.RefreshArchitecture(ctx, opts)
+		if err != nil {
+			return nil, err
+		}
+
+		progress(100) // Done
+
+		// Build result from response
+		result := &jobs.RefreshResult{
+			Status:   resp.Status,
+			Duration: fmt.Sprintf("%dms", resp.DurationMs),
+			Warnings: resp.Warnings,
+		}
+
+		if resp.Changes != nil {
+			result.ModulesChanged = resp.Changes.ModulesUpdated + resp.Changes.ModulesCreated
+			result.OwnershipUpdated = resp.Changes.OwnershipUpdated
+			result.HotspotsUpdated = resp.Changes.HotspotsUpdated
+		}
+
+		return result, nil
+	})
 }
 
 // initializeBackends initializes all configured backends.
@@ -293,6 +373,20 @@ func (e *Engine) wrapError(err error, code errors.ErrorCode) *errors.CkbError {
 func (e *Engine) Close() error {
 	var lastErr error
 
+	// Stop job runner first
+	if e.jobRunner != nil {
+		if err := e.jobRunner.Stop(10 * time.Second); err != nil {
+			lastErr = err
+		}
+	}
+
+	// Close job store
+	if e.jobStore != nil {
+		if err := e.jobStore.Close(); err != nil {
+			lastErr = err
+		}
+	}
+
 	if e.orchestrator != nil {
 		if err := e.orchestrator.Shutdown(); err != nil {
 			lastErr = err
@@ -306,6 +400,50 @@ func (e *Engine) Close() error {
 	}
 
 	return lastErr
+}
+
+// Job management methods
+
+// GetJob retrieves a job by ID.
+func (e *Engine) GetJob(jobID string) (*jobs.Job, error) {
+	if e.jobRunner == nil {
+		return nil, errors.NewCkbError(errors.BackendUnavailable, "job runner not available", nil, nil, nil)
+	}
+	return e.jobRunner.GetJob(jobID)
+}
+
+// ListJobs lists jobs with optional filters.
+func (e *Engine) ListJobs(opts jobs.ListJobsOptions) (*jobs.ListJobsResponse, error) {
+	if e.jobRunner == nil {
+		return nil, errors.NewCkbError(errors.BackendUnavailable, "job runner not available", nil, nil, nil)
+	}
+	return e.jobRunner.ListJobs(opts)
+}
+
+// CancelJob cancels a queued or running job.
+func (e *Engine) CancelJob(jobID string) error {
+	if e.jobRunner == nil {
+		return errors.NewCkbError(errors.BackendUnavailable, "job runner not available", nil, nil, nil)
+	}
+	return e.jobRunner.Cancel(jobID)
+}
+
+// SubmitJob submits a new job for background processing.
+func (e *Engine) SubmitJob(job *jobs.Job) error {
+	if e.jobRunner == nil {
+		return errors.NewCkbError(errors.BackendUnavailable, "job runner not available", nil, nil, nil)
+	}
+	return e.jobRunner.Submit(job)
+}
+
+// GetJobRunnerStats returns statistics about the job runner.
+func (e *Engine) GetJobRunnerStats() map[string]interface{} {
+	if e.jobRunner == nil {
+		return map[string]interface{}{"available": false}
+	}
+	stats := e.jobRunner.Stats()
+	stats["available"] = true
+	return stats
 }
 
 // GetScipBackend returns the SCIP adapter (may be nil).

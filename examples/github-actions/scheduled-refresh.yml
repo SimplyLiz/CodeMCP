@@ -1,0 +1,148 @@
+# CKB Scheduled Architecture Refresh Workflow
+# This workflow runs daily to refresh CKB's architectural model
+# and update cached analysis data.
+
+name: CKB Architecture Refresh
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: 'Refresh scope (all, modules, symbols, hotspots)'
+        required: false
+        default: 'all'
+      force:
+        description: 'Force full refresh'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed for git analysis
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Install CKB
+        run: |
+          go install github.com/yourorg/ckb@latest
+
+      - name: Initialize CKB
+        run: |
+          ckb init
+          ckb doctor --fix
+
+      - name: Check CKB Status
+        run: |
+          ckb status
+
+      - name: Refresh Architecture
+        id: refresh
+        run: |
+          SCOPE="${{ github.event.inputs.scope || 'all' }}"
+          FORCE="${{ github.event.inputs.force || 'false' }}"
+
+          PARAMS='{"scope": "'$SCOPE'"'
+          if [ "$FORCE" = "true" ]; then
+            PARAMS="$PARAMS"', "force": true'
+          fi
+          PARAMS="$PARAMS"'}'
+
+          echo "Refreshing architecture with: $PARAMS"
+
+          RESULT=$(ckb mcp --json '{
+            "tool": "refreshArchitecture",
+            "params": '"$PARAMS"'
+          }')
+
+          echo "$RESULT" | jq .
+
+          MODULES=$(echo "$RESULT" | jq -r '.changes.modulesUpdated // 0')
+          HOTSPOTS=$(echo "$RESULT" | jq -r '.changes.hotspotsComputed // 0')
+
+          echo "modules_updated=$MODULES" >> $GITHUB_OUTPUT
+          echo "hotspots_computed=$HOTSPOTS" >> $GITHUB_OUTPUT
+
+      - name: Generate Architecture Report
+        run: |
+          # Get current architecture state
+          ckb mcp --json '{
+            "tool": "getArchitecture",
+            "params": {}
+          }' > architecture.json
+
+          # Get hotspots
+          ckb mcp --json '{
+            "tool": "getHotspots",
+            "params": {"limit": 20}
+          }' > hotspots.json
+
+          # Get ownership drift
+          ckb mcp --json '{
+            "tool": "getOwnershipDrift",
+            "params": {"threshold": 0.3, "limit": 10}
+          }' > drift.json
+
+          echo "## Architecture Report - $(date -u +%Y-%m-%d)" > ARCHITECTURE_REPORT.md
+          echo "" >> ARCHITECTURE_REPORT.md
+
+          # Add module summary
+          echo "### Modules" >> ARCHITECTURE_REPORT.md
+          jq -r '.modules[] | "- **\(.moduleId)**: \(.fileCount) files"' architecture.json >> ARCHITECTURE_REPORT.md || echo "No modules found" >> ARCHITECTURE_REPORT.md
+          echo "" >> ARCHITECTURE_REPORT.md
+
+          # Add hotspots
+          echo "### Top Hotspots" >> ARCHITECTURE_REPORT.md
+          jq -r '.hotspots[:5][] | "- `\(.filePath)` (score: \(.ranking.score | tostring[:4]))"' hotspots.json >> ARCHITECTURE_REPORT.md || echo "No hotspots found" >> ARCHITECTURE_REPORT.md
+          echo "" >> ARCHITECTURE_REPORT.md
+
+          # Add drift summary
+          echo "### Ownership Drift Summary" >> ARCHITECTURE_REPORT.md
+          DRIFT_COUNT=$(jq -r '.summary.filesWithDrift' drift.json)
+          echo "Files with ownership drift: $DRIFT_COUNT" >> ARCHITECTURE_REPORT.md
+          echo "" >> ARCHITECTURE_REPORT.md
+
+      - name: Upload Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: ckb-reports
+          path: |
+            architecture.json
+            hotspots.json
+            drift.json
+            ARCHITECTURE_REPORT.md
+          retention-days: 30
+
+      - name: Commit CKB Database (Optional)
+        if: github.event_name == 'schedule'
+        run: |
+          # Optionally commit the updated .ckb directory
+          # This caches the analysis results for faster queries
+          if [ -d ".ckb" ]; then
+            git config --local user.email "github-actions[bot]@users.noreply.github.com"
+            git config --local user.name "github-actions[bot]"
+            git add .ckb/
+            git diff --staged --quiet || git commit -m "chore: update CKB analysis cache [skip ci]"
+            git push
+          fi
+
+      - name: Summary
+        run: |
+          echo "## CKB Refresh Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Modules updated: ${{ steps.refresh.outputs.modules_updated }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Hotspots computed: ${{ steps.refresh.outputs.hotspots_computed }}" >> $GITHUB_STEP_SUMMARY

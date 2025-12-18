@@ -33,12 +33,19 @@ type SymbolAlias struct {
 
 // Module represents a module record
 type Module struct {
-	ModuleID     string
-	Name         string
-	RootPath     string
-	ManifestType *string
-	DetectedAt   time.Time
-	StateID      string
+	ModuleID       string
+	Name           string
+	RootPath       string
+	ManifestType   *string
+	DetectedAt     time.Time
+	StateID        string
+	// v2 fields for Architectural Memory
+	Boundaries     *string // JSON: {public: [], internal: []}
+	Responsibility *string // one-sentence description
+	OwnerRef       *string // link to ownership
+	Tags           *string // JSON array
+	Source         string  // "declared" | "inferred"
+	Confidence     float64
 }
 
 // DependencyEdge represents a dependency relationship between modules
@@ -482,6 +489,57 @@ func (r *ModuleRepository) Delete(moduleID string) error {
 		return fmt.Errorf("failed to delete module: %w", err)
 	}
 	return nil
+}
+
+// UpdateAnnotations updates the v2 annotation fields for a module
+func (r *ModuleRepository) UpdateAnnotations(moduleID string, boundaries, responsibility, ownerRef, tags *string, source string, confidence float64) error {
+	result, err := r.db.Exec(`
+		UPDATE modules
+		SET boundaries = ?, responsibility = ?, owner_ref = ?, tags = ?, source = ?, confidence = ?
+		WHERE module_id = ?
+	`, boundaries, responsibility, ownerRef, tags, source, confidence, moduleID)
+	if err != nil {
+		return fmt.Errorf("failed to update module annotations: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("module not found: %s", moduleID)
+	}
+
+	return nil
+}
+
+// GetAnnotations retrieves the v2 annotation fields for a module
+func (r *ModuleRepository) GetAnnotations(moduleID string) (*Module, error) {
+	var module Module
+	var detectedAt string
+
+	err := r.db.QueryRow(`
+		SELECT module_id, name, root_path, manifest_type, detected_at, state_id,
+		       boundaries, responsibility, owner_ref, tags,
+		       COALESCE(source, 'inferred') as source, COALESCE(confidence, 0.5) as confidence
+		FROM modules WHERE module_id = ?
+	`, moduleID).Scan(
+		&module.ModuleID, &module.Name, &module.RootPath, &module.ManifestType,
+		&detectedAt, &module.StateID,
+		&module.Boundaries, &module.Responsibility, &module.OwnerRef, &module.Tags,
+		&module.Source, &module.Confidence,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get module annotations: %w", err)
+	}
+
+	module.DetectedAt, _ = time.Parse(time.RFC3339, detectedAt)
+	return &module, nil
 }
 
 // scanModules scans rows into Module structs
