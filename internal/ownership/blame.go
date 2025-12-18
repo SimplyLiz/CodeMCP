@@ -58,21 +58,21 @@ type BlameResult struct {
 
 // AuthorContribution represents an author's contribution to a file
 type AuthorContribution struct {
-	Author       string  `json:"author"`
-	Email        string  `json:"email"`
-	LineCount    int     `json:"lineCount"`
-	WeightedLines float64 `json:"weightedLines"`
-	Percentage   float64 `json:"percentage"`
-	LastCommit   time.Time `json:"lastCommit"`
+	Author        string    `json:"author"`
+	Email         string    `json:"email"`
+	LineCount     int       `json:"lineCount"`
+	WeightedLines float64   `json:"weightedLines"`
+	Percentage    float64   `json:"percentage"`
+	LastCommit    time.Time `json:"lastCommit"`
 }
 
 // BlameOwnership represents ownership derived from git blame
 type BlameOwnership struct {
-	FilePath      string                `json:"filePath"`
-	TotalLines    int                   `json:"totalLines"`
-	Contributors  []AuthorContribution  `json:"contributors"`
-	ComputedAt    time.Time            `json:"computedAt"`
-	Confidence    float64              `json:"confidence"`
+	FilePath     string               `json:"filePath"`
+	TotalLines   int                  `json:"totalLines"`
+	Contributors []AuthorContribution `json:"contributors"`
+	ComputedAt   time.Time            `json:"computedAt"`
+	Confidence   float64              `json:"confidence"`
 }
 
 // RunGitBlame runs git blame on a file and parses the output
@@ -199,10 +199,10 @@ func ComputeBlameOwnership(result *BlameResult, config BlameConfig) *BlameOwners
 
 	// Aggregate by author
 	authorStats := make(map[string]*struct {
-		email        string
-		lineCount    int
-		weightedSum  float64
-		lastCommit   time.Time
+		email       string
+		lineCount   int
+		weightedSum float64
+		lastCommit  time.Time
 	})
 
 	totalWeighted := 0.0
@@ -223,10 +223,10 @@ func ComputeBlameOwnership(result *BlameResult, config BlameConfig) *BlameOwners
 		stats, exists := authorStats[key]
 		if !exists {
 			stats = &struct {
-				email        string
-				lineCount    int
-				weightedSum  float64
-				lastCommit   time.Time
+				email       string
+				lineCount   int
+				weightedSum float64
+				lastCommit  time.Time
 			}{
 				email: entry.AuthorMail,
 			}

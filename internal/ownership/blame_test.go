@@ -59,8 +59,8 @@ filename test.go
 
 func TestComputeBlameOwnership(t *testing.T) {
 	now := time.Now()
-	recent := now.Add(-7 * 24 * time.Hour)    // 7 days ago
-	old := now.Add(-180 * 24 * time.Hour)     // 180 days ago (2 half-lives)
+	recent := now.Add(-7 * 24 * time.Hour) // 7 days ago
+	old := now.Add(-180 * 24 * time.Hour)  // 180 days ago (2 half-lives)
 
 	result := &BlameResult{
 		FilePath: "test.go",

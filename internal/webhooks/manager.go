@@ -23,9 +23,9 @@ import (
 
 // Manager manages webhooks and their deliveries
 type Manager struct {
-	store   *Store
-	logger  *logging.Logger
-	client  *http.Client
+	store  *Store
+	logger *logging.Logger
+	client *http.Client
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -382,10 +382,10 @@ func (m *Manager) formatSlack(event *Event) (string, error) {
 	payload := map[string]interface{}{
 		"attachments": []map[string]interface{}{
 			{
-				"color":   color,
-				"text":    text,
-				"ts":      event.Timestamp.Unix(),
-				"footer":  "CKB",
+				"color":  color,
+				"text":   text,
+				"ts":     event.Timestamp.Unix(),
+				"footer": "CKB",
 			},
 		},
 	}

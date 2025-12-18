@@ -19,14 +19,14 @@ type GetModuleResponsibilitiesOptions struct {
 
 // ModuleResponsibility represents a module's responsibility info.
 type ModuleResponsibility struct {
-	ModuleId     string                `json:"moduleId"`
-	Name         string                `json:"name"`
-	Path         string                `json:"path"`
-	Summary      string                `json:"summary"`
-	Capabilities []string              `json:"capabilities,omitempty"`
-	Source       string                `json:"source"` // "declared" | "inferred"
-	Confidence   float64               `json:"confidence"`
-	Files        []FileResponsibility  `json:"files,omitempty"`
+	ModuleId     string               `json:"moduleId"`
+	Name         string               `json:"name"`
+	Path         string               `json:"path"`
+	Summary      string               `json:"summary"`
+	Capabilities []string             `json:"capabilities,omitempty"`
+	Source       string               `json:"source"` // "declared" | "inferred"
+	Confidence   float64              `json:"confidence"`
+	Files        []FileResponsibility `json:"files,omitempty"`
 }
 
 // FileResponsibility represents a file's responsibility info.
@@ -38,16 +38,16 @@ type FileResponsibility struct {
 
 // GetModuleResponsibilitiesResponse is the response for getModuleResponsibilities.
 type GetModuleResponsibilitiesResponse struct {
-	CkbVersion      string                   `json:"ckbVersion"`
-	SchemaVersion   string                   `json:"schemaVersion"`
-	Tool            string                   `json:"tool"`
-	Modules         []ModuleResponsibility   `json:"modules"`
-	TotalCount      int                      `json:"totalCount"`
-	Confidence      float64                  `json:"confidence"`
-	ConfidenceBasis []ConfidenceBasisItem    `json:"confidenceBasis"`
-	Limitations     []string                 `json:"limitations,omitempty"`
-	Provenance      *Provenance              `json:"provenance,omitempty"`
-	Drilldowns      []output.Drilldown       `json:"drilldowns,omitempty"`
+	CkbVersion      string                 `json:"ckbVersion"`
+	SchemaVersion   string                 `json:"schemaVersion"`
+	Tool            string                 `json:"tool"`
+	Modules         []ModuleResponsibility `json:"modules"`
+	TotalCount      int                    `json:"totalCount"`
+	Confidence      float64                `json:"confidence"`
+	ConfidenceBasis []ConfidenceBasisItem  `json:"confidenceBasis"`
+	Limitations     []string               `json:"limitations,omitempty"`
+	Provenance      *Provenance            `json:"provenance,omitempty"`
+	Drilldowns      []output.Drilldown     `json:"drilldowns,omitempty"`
 }
 
 // GetModuleResponsibilities returns responsibilities for modules.

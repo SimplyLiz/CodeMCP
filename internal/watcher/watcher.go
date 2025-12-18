@@ -79,10 +79,10 @@ func DefaultConfig() Config {
 
 // Watcher watches for file system changes in git repositories
 type Watcher struct {
-	config   Config
-	logger   *logging.Logger
-	handler  ChangeHandler
-	repos    map[string]*repoWatcher // repoPath -> watcher
+	config  Config
+	logger  *logging.Logger
+	handler ChangeHandler
+	repos   map[string]*repoWatcher // repoPath -> watcher
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -92,12 +92,12 @@ type Watcher struct {
 
 // repoWatcher watches a single repository
 type repoWatcher struct {
-	repoPath   string
-	gitDir     string
-	debouncer  *Debouncer
-	lastHead   string
-	lastIndex  time.Time
-	stopCh     chan struct{}
+	repoPath  string
+	gitDir    string
+	debouncer *Debouncer
+	lastHead  string
+	lastIndex time.Time
+	stopCh    chan struct{}
 }
 
 // New creates a new file system watcher

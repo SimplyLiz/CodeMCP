@@ -122,12 +122,12 @@ func GetDecisionNodeTypes(lang Language) []string {
 			"while_statement",
 			"except_clause",
 			"with_statement",
-			"boolean_operator",          // and, or
-			"conditional_expression",    // ternary
-			"list_comprehension",        // for clause
-			"dictionary_comprehension",  // for clause
-			"set_comprehension",         // for clause
-			"generator_expression",      // for clause
+			"boolean_operator",         // and, or
+			"conditional_expression",   // ternary
+			"list_comprehension",       // for clause
+			"dictionary_comprehension", // for clause
+			"set_comprehension",        // for clause
+			"generator_expression",     // for clause
 		}
 	case LangRust:
 		return []string{

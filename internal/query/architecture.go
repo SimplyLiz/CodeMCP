@@ -325,11 +325,11 @@ type RefreshArchitectureOptions struct {
 
 // RefreshArchitectureChanges tracks what was changed during refresh.
 type RefreshArchitectureChanges struct {
-	ModulesUpdated           int `json:"modulesUpdated,omitempty"`
-	ModulesCreated           int `json:"modulesCreated,omitempty"`
-	OwnershipUpdated         int `json:"ownershipUpdated,omitempty"`
-	HotspotsUpdated          int `json:"hotspotsUpdated,omitempty"`
-	ResponsibilitiesUpdated  int `json:"responsibilitiesUpdated,omitempty"`
+	ModulesUpdated          int `json:"modulesUpdated,omitempty"`
+	ModulesCreated          int `json:"modulesCreated,omitempty"`
+	OwnershipUpdated        int `json:"ownershipUpdated,omitempty"`
+	HotspotsUpdated         int `json:"hotspotsUpdated,omitempty"`
+	ResponsibilitiesUpdated int `json:"responsibilitiesUpdated,omitempty"`
 }
 
 // RefreshArchitectureResponse is the response for refreshArchitecture.

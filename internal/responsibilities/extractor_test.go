@@ -296,4 +296,3 @@ This package provides a comprehensive solution for data processing.
 		t.Errorf("Expected 3 capabilities, got %d", len(capabilities))
 	}
 }
-

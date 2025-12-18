@@ -8,7 +8,8 @@ import (
 // Schema version tracking
 // v1: Initial schema (symbol_mappings, symbol_aliases, modules, dependency_edges, caches)
 // v2: Architectural Memory (ownership, hotspots, responsibilities, decisions)
-const currentSchemaVersion = 2
+// v3: Telemetry (observed_usage, observed_callers, coverage_snapshots)
+const currentSchemaVersion = 3
 
 // initializeSchema creates all tables for a new database
 func (db *DB) initializeSchema() error {
@@ -55,6 +56,11 @@ func (db *DB) initializeSchema() error {
 			return err
 		}
 
+		// Create v3 Telemetry tables
+		if err := createTelemetryTables(tx); err != nil {
+			return err
+		}
+
 		// Set initial schema version
 		if err := setSchemaVersion(tx, currentSchemaVersion); err != nil {
 			return err
@@ -92,6 +98,12 @@ func (db *DB) runMigrations() error {
 	if version < 2 {
 		if err := db.migrateToV2(); err != nil {
 			return fmt.Errorf("failed to migrate to v2: %w", err)
+		}
+	}
+
+	if version < 3 {
+		if err := db.migrateToV3(); err != nil {
+			return fmt.Errorf("failed to migrate to v3: %w", err)
 		}
 	}
 
@@ -651,6 +663,130 @@ func createDecisionsTable(tx *sql.Tx) error {
 		)
 	`); err != nil {
 		return fmt.Errorf("failed to create decisions_fts table: %w", err)
+	}
+
+	return nil
+}
+
+// migrateToV3 migrates the database from v2 to v3 (Telemetry)
+func (db *DB) migrateToV3() error {
+	return db.WithTx(func(tx *sql.Tx) error {
+		db.logger.Info("Migrating database to v3 (Telemetry)", nil)
+
+		// Create new v3 telemetry tables
+		if err := createTelemetryTables(tx); err != nil {
+			return err
+		}
+
+		// Update schema version
+		if err := setSchemaVersion(tx, 3); err != nil {
+			return err
+		}
+
+		db.logger.Info("Database migrated to v3", nil)
+		return nil
+	})
+}
+
+// createTelemetryTables creates tables for runtime telemetry (v3)
+func createTelemetryTables(tx *sql.Tx) error {
+	tables := []string{
+		// Observed usage aggregates (matched symbols only)
+		`CREATE TABLE IF NOT EXISTS observed_usage (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			symbol_id TEXT NOT NULL,
+			match_quality TEXT NOT NULL,
+			match_confidence REAL NOT NULL,
+			period TEXT NOT NULL,
+			period_type TEXT NOT NULL,
+			call_count INTEGER NOT NULL,
+			error_count INTEGER DEFAULT 0,
+			service_version TEXT,
+			source TEXT NOT NULL,
+			ingested_at TEXT NOT NULL,
+			UNIQUE(symbol_id, period, source)
+		)`,
+
+		// Unmatched events (separate table for clean deduplication)
+		`CREATE TABLE IF NOT EXISTS observed_unmatched (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			service_name TEXT NOT NULL,
+			function_name TEXT NOT NULL,
+			namespace TEXT,
+			file_path TEXT,
+			period TEXT NOT NULL,
+			period_type TEXT NOT NULL,
+			call_count INTEGER NOT NULL,
+			error_count INTEGER DEFAULT 0,
+			unmatch_reason TEXT,
+			source TEXT NOT NULL,
+			ingested_at TEXT NOT NULL
+		)`,
+
+		// Caller breakdown (optional, opt-in)
+		`CREATE TABLE IF NOT EXISTS observed_callers (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			symbol_id TEXT NOT NULL,
+			caller_service TEXT NOT NULL,
+			period TEXT NOT NULL,
+			call_count INTEGER NOT NULL,
+			UNIQUE(symbol_id, caller_service, period)
+		)`,
+
+		// Telemetry sync log
+		`CREATE TABLE IF NOT EXISTS telemetry_sync_log (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			source TEXT NOT NULL,
+			started_at TEXT NOT NULL,
+			completed_at TEXT,
+			status TEXT NOT NULL,
+			events_received INTEGER,
+			events_matched_exact INTEGER,
+			events_matched_strong INTEGER,
+			events_matched_weak INTEGER,
+			events_unmatched INTEGER,
+			service_versions TEXT,
+			coverage_score REAL,
+			coverage_level TEXT,
+			error TEXT
+		)`,
+
+		// Coverage snapshots (for trend tracking)
+		`CREATE TABLE IF NOT EXISTS coverage_snapshots (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			snapshot_date TEXT NOT NULL,
+			attribute_coverage REAL,
+			match_coverage REAL,
+			service_coverage REAL,
+			overall_score REAL,
+			overall_level TEXT,
+			warnings TEXT
+		)`,
+	}
+
+	for _, stmt := range tables {
+		if _, err := tx.Exec(stmt); err != nil {
+			return fmt.Errorf("failed to create telemetry table: %w", err)
+		}
+	}
+
+	// Create indexes
+	indexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_observed_symbol ON observed_usage(symbol_id)",
+		"CREATE INDEX IF NOT EXISTS idx_observed_period ON observed_usage(period)",
+		"CREATE INDEX IF NOT EXISTS idx_observed_quality ON observed_usage(match_quality)",
+		"CREATE INDEX IF NOT EXISTS idx_observed_calls ON observed_usage(call_count DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_unmatched_service ON observed_unmatched(service_name)",
+		"CREATE INDEX IF NOT EXISTS idx_unmatched_function ON observed_unmatched(function_name)",
+		"CREATE INDEX IF NOT EXISTS idx_unmatched_period ON observed_unmatched(period)",
+		"CREATE INDEX IF NOT EXISTS idx_callers_symbol ON observed_callers(symbol_id)",
+		"CREATE INDEX IF NOT EXISTS idx_coverage_date ON coverage_snapshots(snapshot_date)",
+	}
+
+	for _, idx := range indexes {
+		if _, err := tx.Exec(idx); err != nil {
+			return fmt.Errorf("failed to create telemetry index: %w", err)
+		}
 	}
 
 	return nil

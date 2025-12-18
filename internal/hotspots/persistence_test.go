@@ -124,11 +124,11 @@ func TestCalculateInstability(t *testing.T) {
 		efferent int
 		expected float64
 	}{
-		{5, 10, 0.667},  // Ce / (Ca + Ce) = 10 / (5 + 10)
-		{0, 10, 1.0},    // All outgoing
-		{10, 0, 0.0},    // All incoming
-		{0, 0, 0.5},     // No dependencies - returns neutral 0.5
-		{5, 5, 0.5},     // Balanced
+		{5, 10, 0.667}, // Ce / (Ca + Ce) = 10 / (5 + 10)
+		{0, 10, 1.0},   // All outgoing
+		{10, 0, 0.0},   // All incoming
+		{0, 0, 0.5},    // No dependencies - returns neutral 0.5
+		{5, 5, 0.5},    // Balanced
 	}
 
 	for _, tt := range tests {
@@ -153,12 +153,12 @@ func TestComputeCompositeScore(t *testing.T) {
 		complexity float64
 		expected   float64
 	}{
-		{1.0, 1.0, 1.0, 1.0},       // All maxed out
-		{0.0, 0.0, 0.0, 0.0},       // All zero
-		{0.5, 0.5, 0.5, 0.5},       // All half
-		{1.0, 0.0, 0.0, 0.4},       // Only churn
-		{0.0, 1.0, 0.0, 0.3},       // Only coupling
-		{0.0, 0.0, 1.0, 0.3},       // Only complexity
+		{1.0, 1.0, 1.0, 1.0}, // All maxed out
+		{0.0, 0.0, 0.0, 0.0}, // All zero
+		{0.5, 0.5, 0.5, 0.5}, // All half
+		{1.0, 0.0, 0.0, 0.4}, // Only churn
+		{0.0, 1.0, 0.0, 0.3}, // Only coupling
+		{0.0, 0.0, 1.0, 0.3}, // Only complexity
 	}
 
 	for _, tt := range tests {

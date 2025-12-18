@@ -40,12 +40,12 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("/jobs/", s.handleJobRoutes) // GET /:id, POST /:id/cancel
 
 	// v6.1 CI/CD endpoints
-	s.router.HandleFunc("/pr/summary", s.handleSummarizePR)           // GET/POST
+	s.router.HandleFunc("/pr/summary", s.handleSummarizePR)         // GET/POST
 	s.router.HandleFunc("/ownership/drift", s.handleOwnershipDrift) // GET
 
 	// v6.2 Federation endpoints
-	s.router.HandleFunc("/federations", s.handleListFederations)    // GET
-	s.router.HandleFunc("/federations/", s.handleFederationRoutes)  // /federations/:name/*
+	s.router.HandleFunc("/federations", s.handleListFederations)   // GET
+	s.router.HandleFunc("/federations/", s.handleFederationRoutes) // /federations/:name/*
 
 	// POST endpoints
 	s.router.HandleFunc("/doctor/fix", s.handleDoctorFix)

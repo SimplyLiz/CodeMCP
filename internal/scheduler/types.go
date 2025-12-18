@@ -20,8 +20,8 @@ const (
 type Schedule struct {
 	ID           string     `json:"id"`
 	TaskType     TaskType   `json:"taskType"`
-	Target       string     `json:"target,omitempty"`       // repoId or federationName
-	Expression   string     `json:"expression"`             // cron or "every Xh"
+	Target       string     `json:"target,omitempty"` // repoId or federationName
+	Expression   string     `json:"expression"`       // cron or "every Xh"
 	Enabled      bool       `json:"enabled"`
 	NextRun      time.Time  `json:"nextRun"`
 	LastRun      *time.Time `json:"lastRun,omitempty"`
@@ -82,14 +82,14 @@ type ListSchedulesResponse struct {
 
 // ScheduleRun represents a single execution of a schedule
 type ScheduleRun struct {
-	ID         string    `json:"id"`
-	ScheduleID string    `json:"scheduleId"`
-	JobID      string    `json:"jobId,omitempty"`
-	StartedAt  time.Time `json:"startedAt"`
+	ID         string     `json:"id"`
+	ScheduleID string     `json:"scheduleId"`
+	JobID      string     `json:"jobId,omitempty"`
+	StartedAt  time.Time  `json:"startedAt"`
 	EndedAt    *time.Time `json:"endedAt,omitempty"`
-	Status     string    `json:"status"` // "running", "success", "failed"
-	Error      string    `json:"error,omitempty"`
-	Duration   int64     `json:"duration,omitempty"` // milliseconds
+	Status     string     `json:"status"` // "running", "success", "failed"
+	Error      string     `json:"error,omitempty"`
+	Duration   int64      `json:"duration,omitempty"` // milliseconds
 }
 
 // NewSchedule creates a new schedule

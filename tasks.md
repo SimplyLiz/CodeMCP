@@ -1376,16 +1376,358 @@ Adds the ability to detect API contracts (protobuf, OpenAPI) and understand cros
 
 ---
 
+## v6.4 — Observed Reality
+
+*From "maybe used" to "actually used" via runtime telemetry*
+
+### Overview
+
+v6.4 adds **runtime telemetry integration** to CKB, enabling confident answers to "is this code actually used?" — the question static analysis can't reliably answer at scale.
+
+**Theme:** Observed usage from runtime telemetry
+**Non-goal:** CI correlation, pain scoring, causality claims
+
+### Phase 1: Ingest Foundation
+
+- [x] **1.1** Bump version to 6.4.0 in `internal/version/version.go`
+
+- [x] **1.2** Add telemetry config to `internal/config/config.go`
+  - `TelemetryConfig` struct with enabled, service_map, aggregation settings
+  - `TelemetryServiceMap` for service → repo mapping
+  - `TelemetryServicePattern` for regex-based mapping
+  - `TelemetryAggregation` — bucket_size, retention_days, min_calls_to_store
+  - `TelemetryDeadCode` — enabled, min_observation_days, exclude patterns
+  - `TelemetryPrivacy` — redact_caller_names, log_unmatched_events
+
+- [x] **1.3** Add telemetry paths to `internal/paths/paths.go`
+  - `GetTelemetryIngestPort()` — default 9120
+  - Reuse daemon infrastructure for HTTP server
+
+- [x] **1.4** Create `internal/telemetry/` package structure
+  - `types.go` — CallAggregate, IngestPayload, IngestResponse
+  - `ingest.go` — HTTP ingest endpoint handler
+  - `storage.go` — SQLite storage for observed_usage
+  - `service_map.go` — Service → repo mapping resolution
+
+- [x] **1.5** Implement OTLP ingest endpoint (`POST /v1/metrics`)
+  - Accept standard OTLP metrics format
+  - Extract `calls` counter metric
+  - Parse resource attributes: `service.name`, `service.version`
+  - Parse metric attributes: `code.function`, `code.namespace`
+  - Support alternate attribute names via config
+
+- [x] **1.6** Implement JSON ingest fallback (`POST /api/v1/ingest/json`)
+  - Accept simplified JSON format for testing/development
+  - Parse `calls` array with service_name, function_name, file_path, etc.
+
+- [x] **1.7** Add telemetry schema to `internal/storage/sqlite.go`
+  ```sql
+  CREATE TABLE observed_usage (
+      id INTEGER PRIMARY KEY,
+      symbol_id TEXT NOT NULL,
+      match_quality TEXT NOT NULL,     -- "exact" | "strong" | "weak"
+      match_confidence REAL NOT NULL,
+      period TEXT NOT NULL,            -- "2024-12" or "2024-W51"
+      period_type TEXT NOT NULL,       -- "monthly" | "weekly"
+      call_count INTEGER NOT NULL,
+      error_count INTEGER DEFAULT 0,
+      service_version TEXT,
+      source TEXT NOT NULL,
+      ingested_at TEXT NOT NULL,
+      UNIQUE(symbol_id, period, source)
+  );
+
+  CREATE TABLE observed_unmatched (
+      id INTEGER PRIMARY KEY,
+      service_name TEXT NOT NULL,
+      function_name TEXT NOT NULL,
+      namespace TEXT,
+      file_path TEXT,
+      period TEXT NOT NULL,
+      period_type TEXT NOT NULL,
+      call_count INTEGER NOT NULL,
+      error_count INTEGER DEFAULT 0,
+      unmatch_reason TEXT,
+      source TEXT NOT NULL,
+      ingested_at TEXT NOT NULL,
+      UNIQUE(service_name, function_name, COALESCE(namespace, ''), COALESCE(file_path, ''), period, source)
+  );
+
+  CREATE TABLE observed_callers (
+      id INTEGER PRIMARY KEY,
+      symbol_id TEXT NOT NULL,
+      caller_service TEXT NOT NULL,
+      period TEXT NOT NULL,
+      call_count INTEGER NOT NULL,
+      UNIQUE(symbol_id, caller_service, period)
+  );
+
+  CREATE TABLE telemetry_sync_log (
+      id INTEGER PRIMARY KEY,
+      source TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      completed_at TEXT,
+      status TEXT NOT NULL,
+      events_received INTEGER,
+      events_matched_exact INTEGER,
+      events_matched_strong INTEGER,
+      events_matched_weak INTEGER,
+      events_unmatched INTEGER,
+      service_versions TEXT,
+      coverage_score REAL,
+      coverage_level TEXT,
+      error TEXT
+  );
+
+  CREATE TABLE coverage_snapshots (
+      id INTEGER PRIMARY KEY,
+      snapshot_date TEXT NOT NULL,
+      attribute_coverage REAL,
+      match_coverage REAL,
+      service_coverage REAL,
+      overall_score REAL,
+      overall_level TEXT,
+      warnings TEXT
+  );
+  ```
+
+- [x] **1.8** Implement service → repo mapping resolution
+  - Exact match in `service_map`
+  - Pattern match in `service_patterns`
+  - Fallback to `ckb_repo_id` in payload
+  - Log unmapped services
+
+- [x] **1.9** Implement sync logging
+  - Record each ingest batch in `telemetry_sync_log`
+  - Track event counts by match quality
+
+### Phase 2: Symbol Matching
+
+- [x] **2.1** Create `internal/telemetry/matcher.go`
+  - `SymbolMatcher` interface
+  - `MatchSymbol(call CallAggregate, repo Repo) SymbolMatch`
+
+- [x] **2.2** Implement match quality levels
+  | Level | Criteria | Confidence |
+  |-------|----------|------------|
+  | Exact | file_path + function_name + line_number | 0.95 |
+  | Strong | file_path + function_name | 0.85 |
+  | Weak | namespace + function_name (no file) | 0.60 |
+  | Unmatched | No match | — |
+
+- [x] **2.3** Implement exact matching
+  - Use SCIP index to find symbol at file:line
+  - Verify function name matches
+
+- [x] **2.4** Implement strong matching
+  - Find symbols in file by name
+  - Return match if unique
+
+- [x] **2.5** Implement weak matching
+  - Find symbols in namespace by name
+  - Return match only if unambiguous
+
+- [x] **2.6** Implement ambiguity handling
+  - Log ambiguous matches as unmatched
+  - Include reason: "ambiguous_function_name"
+
+- [x] **2.7** Implement feature gating by match quality
+  | Feature | Exact | Strong | Weak |
+  |---------|-------|--------|------|
+  | Dead code candidates | ✅ | ✅ | ❌ |
+  | Usage display | ✅ | ✅ | ⚠️ |
+  | Impact enrichment | ✅ | ✅ | ❌ |
+
+### Phase 3: Coverage Model
+
+- [x] **3.1** Create `internal/telemetry/coverage.go`
+  - `TelemetryCoverage` struct
+  - `ComputeCoverage(events, matches, federation) TelemetryCoverage`
+
+- [x] **3.2** Implement attribute coverage computation
+  - % with file_path, namespace, line_number
+  - Weighted overall: (file * 0.5) + (namespace * 0.3) + (line * 0.2)
+
+- [x] **3.3** Implement match coverage computation
+  - % exact, strong, weak, unmatched
+  - Effective rate = exact + strong
+
+- [x] **3.4** Implement service coverage computation
+  - Compare services reporting vs repos in federation
+  - Compute coverage rate
+
+- [x] **3.5** Implement sampling detection heuristic
+  - Detect patterns indicating sampling
+  - Add warning if detected
+
+- [x] **3.6** Implement overall coverage scoring
+  - Score = (attribute * 0.3) + (match * 0.5) + (service * 0.2)
+  - Level: high (≥0.8), medium (≥0.6), low (≥0.4), insufficient (<0.4)
+
+- [x] **3.7** Implement coverage requirement checks
+  - Gate features by coverage level
+  - Return explanation when requirements not met
+
+- [x] **3.8** Implement coverage snapshot persistence
+  - Store daily/weekly snapshots in `coverage_snapshots`
+  - Enable trend tracking
+
+- [x] **3.9** Add `getTelemetryStatus` MCP tool
+  - Return enabled status, last sync, coverage metrics
+  - List unmapped services
+  - Provide recommendations
+
+### Phase 4: Usage Features
+
+- [x] **4.1** Add `getObservedUsage` MCP tool
+  - Input: repoId, symbolId, period (7d/30d/90d/all)
+  - Output: call counts, trend, match quality, callers (if enabled)
+
+- [x] **4.2** Implement usage data retrieval
+  - Query `observed_usage` by symbol_id and period
+  - Aggregate across periods
+
+- [x] **4.3** Implement trend calculation
+  - Compare recent vs historical periods
+  - Return: increasing, stable, decreasing
+
+- [x] **4.4** Implement caller breakdown (opt-in)
+  - Query `observed_callers` for symbol
+  - Return top callers by count
+
+- [x] **4.5** Implement blended confidence model
+  - Blend static and observed confidence
+  - Static max: 0.79, Observed exact: 0.95
+  - Formula: max(static, observed) + agreement_boost
+
+- [x] **4.6** Enhance `getHotspots` with usage data
+  - Add `observedUsage` field to response
+  - Include call_count_90d, trend, match_quality
+  - Update score formula with usage weight (0.20)
+
+- [x] **4.7** Add CLI: `ckb telemetry status`
+  - Show enabled status, last sync, coverage
+  - List unmapped services
+
+- [x] **4.8** Add CLI: `ckb telemetry usage --repo=<id> --symbol=<path:func>`
+  - Show observed usage for specific symbol
+
+- [x] **4.9** Add CLI: `ckb telemetry unmapped`
+  - List services that couldn't be mapped
+
+- [x] **4.10** Add CLI: `ckb telemetry test-map <service-name>`
+  - Test service mapping resolution
+
+### Phase 5: Dead Code Detection
+
+- [x] **5.1** Create `internal/telemetry/deadcode.go`
+  - `DeadCodeCandidate` struct
+  - `FindDeadCodeCandidates(repo, options) []DeadCodeCandidate`
+
+- [x] **5.2** Implement exclusion patterns
+  - Path patterns: test/**, migrations/**, etc.
+  - Function patterns: *Migration*, *Backup*, *Scheduled*
+  - Configurable via `telemetry.dead_code.exclude_*`
+
+- [x] **5.3** Implement dead code algorithm
+  - Require exact or strong match quality
+  - Require medium+ coverage level
+  - Require min_observation_days elapsed
+  - Return candidates with confidence scores
+
+- [x] **5.4** Implement dead code confidence scoring
+  - Base: exact (0.90), strong (0.80)
+  - Adjust for coverage level
+  - Adjust for static ref count
+  - Adjust for observation window
+  - Adjust for sampling
+  - Cap at 0.90 (never claim certainty)
+
+- [x] **5.5** Add `findDeadCodeCandidates` MCP tool
+  - Input: federation, repoId, minConfidence, limit
+  - Output: candidates, summary, coverage, limitations
+
+- [x] **5.6** Add CLI: `ckb dead-code [--repo=<id>] [--min-confidence=0.7]`
+  - List dead code candidates
+  - Show refs, calls, confidence
+  - Include coverage context in output
+
+### Phase 6: Enhanced Impact Analysis (Opt-in)
+
+- [x] **6.1** Add observed callers to `analyzeImpact` response
+  - New `observedImpact` field (opt-in, requires high coverage)
+  - List observed callers with service, repo, call count, last seen
+
+- [x] **6.2** Implement static vs observed comparison
+  - Static consumers vs observed callers
+  - Identify: in both, static-only, observed-only
+
+- [x] **6.3** Gate by coverage level
+  - Only show observed impact when coverage is high/medium
+  - Include coverage warnings
+
+### Phase 7: Testing
+
+- [x] **7.1** Unit tests for OTLP ingest parsing
+- [x] **7.2** Unit tests for JSON ingest parsing
+- [x] **7.3** Unit tests for service map resolution
+- [x] **7.4** Unit tests for symbol matching at each quality level
+- [x] **7.5** Unit tests for coverage computation
+- [x] **7.6** Unit tests for dead code algorithm
+- [x] **7.7** Unit tests for exclusion patterns
+- [x] **7.8** Integration tests for full ingest → match → store pipeline
+- [x] **7.9** CLI command tests
+
+### Phase 8: Documentation
+
+- [x] **8.1** Document OTEL Collector configuration
+- [x] **8.2** Document service map configuration
+- [x] **8.3** Document coverage requirements
+- [x] **8.4** Document dead code detection limitations
+- [x] **8.5** Add migration guide for enabling telemetry
+
+---
+
+### v6.4 Tool Budget Classification
+
+| Tool | Budget | Max Latency | Notes |
+|------|--------|-------------|-------|
+| getTelemetryStatus | Cheap | 300ms | Reads cached coverage |
+| getObservedUsage | Cheap | 300ms | Single symbol lookup |
+| findDeadCodeCandidates | Heavy | 2000ms | Scans repo symbols |
+| getHotspots (enhanced) | Heavy | 2000ms | Existing + usage blend |
+| analyzeImpact (enhanced) | Heavy | 2000ms | Existing + observed callers |
+
+### v6.4 Success Metrics
+
+| Metric | Target |
+|--------|--------|
+| Ingest latency | P95 < 500ms for 10K events |
+| Symbol match rate (exact+strong) | > 60% with file_path |
+| Dead code precision | > 85% (few false positives) |
+| Coverage computation | < 1s |
+
+### v6.4 Explicitly Deferred
+
+| Feature | Reason | Target |
+|---------|--------|--------|
+| CI correlation | Separate trust axis | v6.5 |
+| File pain scores | Needs CI | v6.5 |
+| Backend adapters (Tempo/Jaeger) | Push-first | v6.5 |
+| Real-time streaming | Batch is sufficient | v6.6+ |
+| Automatic deletion | Too dangerous | Never |
+
+---
+
 ## Scratched (Not Implementing)
 
 | Feature | Reason |
 |---------|--------|
 | Remote federation (HTTPS) | Complexity; defer to v7+ |
 | Team dashboard | Out of scope for CLI tool |
-| Runtime telemetry (observed mode) | Limited value for most users |
 
 ---
 
-*Document version: 1.4*
-*Based on: CKB v6.0-draft-2 + v6.2 federation + v6.2.1 daemon mode + v6.2.2 tree-sitter + v6.3 contracts*
+*Document version: 1.5*
+*Based on: CKB v6.0-draft-2 + v6.2 federation + v6.2.1 daemon mode + v6.2.2 tree-sitter + v6.3 contracts + v6.4 telemetry*
 *Created: December 2024*

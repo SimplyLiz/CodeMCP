@@ -10,13 +10,13 @@ import (
 type EventType string
 
 const (
-	EventRefreshCompleted  EventType = "refresh_completed"
-	EventRefreshFailed     EventType = "refresh_failed"
-	EventHotspotAlert      EventType = "hotspot_alert"
-	EventFederationSync    EventType = "federation_sync"
-	EventJobCompleted      EventType = "job_completed"
-	EventJobFailed         EventType = "job_failed"
-	EventHealthDegraded    EventType = "health_degraded"
+	EventRefreshCompleted EventType = "refresh_completed"
+	EventRefreshFailed    EventType = "refresh_failed"
+	EventHotspotAlert     EventType = "hotspot_alert"
+	EventFederationSync   EventType = "federation_sync"
+	EventJobCompleted     EventType = "job_completed"
+	EventJobFailed        EventType = "job_failed"
+	EventHealthDegraded   EventType = "health_degraded"
 )
 
 // DeliveryStatus represents the status of a webhook delivery
@@ -42,28 +42,28 @@ const (
 
 // Webhook represents a configured webhook endpoint
 type Webhook struct {
-	ID          string      `json:"id"`
-	Name        string      `json:"name"`
-	URL         string      `json:"url"`
-	Secret      string      `json:"-"` // Never serialize
-	Events      []EventType `json:"events"`
-	Format      Format      `json:"format"`
-	Enabled     bool        `json:"enabled"`
-	Headers     map[string]string `json:"headers,omitempty"`
-	MaxRetries  int         `json:"maxRetries"`
-	RetryDelay  int         `json:"retryDelay"` // seconds
-	CreatedAt   time.Time   `json:"createdAt"`
-	UpdatedAt   time.Time   `json:"updatedAt"`
+	ID         string            `json:"id"`
+	Name       string            `json:"name"`
+	URL        string            `json:"url"`
+	Secret     string            `json:"-"` // Never serialize
+	Events     []EventType       `json:"events"`
+	Format     Format            `json:"format"`
+	Enabled    bool              `json:"enabled"`
+	Headers    map[string]string `json:"headers,omitempty"`
+	MaxRetries int               `json:"maxRetries"`
+	RetryDelay int               `json:"retryDelay"` // seconds
+	CreatedAt  time.Time         `json:"createdAt"`
+	UpdatedAt  time.Time         `json:"updatedAt"`
 }
 
 // WebhookSummary is a lightweight view for listing
 type WebhookSummary struct {
-	ID       string      `json:"id"`
-	Name     string      `json:"name"`
-	URL      string      `json:"url"`
-	Events   []EventType `json:"events"`
-	Format   Format      `json:"format"`
-	Enabled  bool        `json:"enabled"`
+	ID      string      `json:"id"`
+	Name    string      `json:"name"`
+	URL     string      `json:"url"`
+	Events  []EventType `json:"events"`
+	Format  Format      `json:"format"`
+	Enabled bool        `json:"enabled"`
 }
 
 // ToSummary creates a summary view
@@ -83,7 +83,7 @@ type Event struct {
 	ID        string          `json:"id"`
 	Type      EventType       `json:"type"`
 	Timestamp time.Time       `json:"timestamp"`
-	Source    string          `json:"source"`    // repo or federation name
+	Source    string          `json:"source"` // repo or federation name
 	Data      json.RawMessage `json:"data"`
 }
 
@@ -106,14 +106,14 @@ type Delivery struct {
 
 // DeadLetter represents a failed delivery in the dead letter queue
 type DeadLetter struct {
-	ID         string    `json:"id"`
-	WebhookID  string    `json:"webhookId"`
-	EventID    string    `json:"eventId"`
-	EventType  EventType `json:"eventType"`
-	Payload    string    `json:"payload"`
-	LastError  string    `json:"lastError"`
-	Attempts   int       `json:"attempts"`
-	DeadAt     time.Time `json:"deadAt"`
+	ID        string    `json:"id"`
+	WebhookID string    `json:"webhookId"`
+	EventID   string    `json:"eventId"`
+	EventType EventType `json:"eventType"`
+	Payload   string    `json:"payload"`
+	LastError string    `json:"lastError"`
+	Attempts  int       `json:"attempts"`
+	DeadAt    time.Time `json:"deadAt"`
 }
 
 // WebhookConfig defines a webhook in configuration

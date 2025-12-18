@@ -433,6 +433,15 @@ func (idx *SCIPIndex) GetCalleeCount(symbolId string) int {
 	return len(callees)
 }
 
+// GetReferenceCount returns the total number of references to a symbol
+func (idx *SCIPIndex) GetReferenceCount(symbolId string) int {
+	refs, err := idx.FindReferences(symbolId, ReferenceOptions{IncludeDefinition: false})
+	if err != nil {
+		return 0
+	}
+	return len(refs)
+}
+
 // mapSCIPKind maps SCIP kind codes to SymbolKind
 func mapSCIPKind(kind int32) SymbolKind {
 	// SCIP SymbolInformation.Kind values

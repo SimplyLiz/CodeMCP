@@ -34,12 +34,12 @@ type SymbolAlias struct {
 
 // Module represents a module record
 type Module struct {
-	ModuleID       string
-	Name           string
-	RootPath       string
-	ManifestType   *string
-	DetectedAt     time.Time
-	StateID        string
+	ModuleID     string
+	Name         string
+	RootPath     string
+	ManifestType *string
+	DetectedAt   time.Time
+	StateID      string
 	// v2 fields for Architectural Memory
 	Boundaries     *string // JSON: {public: [], internal: []}
 	Responsibility *string // one-sentence description
@@ -760,10 +760,10 @@ func formatTimePtr(t *time.Time) interface{} {
 // OwnershipRecord represents an ownership record in the database
 type OwnershipRecord struct {
 	ID         int64
-	Pattern    string  // glob pattern (e.g., "internal/api/**")
-	OwnersJSON string  // JSON array of Owner objects
-	Scope      string  // "maintainer" | "reviewer" | "contributor"
-	Source     string  // "codeowners" | "git-blame" | "declared" | "inferred"
+	Pattern    string // glob pattern (e.g., "internal/api/**")
+	OwnersJSON string // JSON array of Owner objects
+	Scope      string // "maintainer" | "reviewer" | "contributor"
+	Source     string // "codeowners" | "git-blame" | "declared" | "inferred"
 	Confidence float64
 	UpdatedAt  time.Time
 }
@@ -1122,8 +1122,8 @@ func (r *OwnershipRepository) scanHistoryRecords(rows *sql.Rows) ([]*OwnershipHi
 // HotspotSnapshotRecord represents a hotspot snapshot in the database
 type HotspotSnapshotRecord struct {
 	ID                   int64
-	TargetID             string  // file path, module ID, or symbol ID
-	TargetType           string  // "file" | "module" | "symbol"
+	TargetID             string // file path, module ID, or symbol ID
+	TargetType           string // "file" | "module" | "symbol"
 	SnapshotDate         time.Time
 	ChurnCommits30d      int
 	ChurnCommits90d      int
@@ -1359,11 +1359,11 @@ func (r *HotspotRepository) scanSnapshots(rows *sql.Rows) ([]*HotspotSnapshotRec
 // ResponsibilityRecord represents a responsibility in the database
 type ResponsibilityRecord struct {
 	ID           int64
-	TargetID     string  // module ID, file path, or symbol ID
-	TargetType   string  // "module" | "file" | "symbol"
-	Summary      string  // one-sentence description
-	Capabilities string  // JSON array of capabilities
-	Source       string  // "declared" | "inferred" | "llm-generated"
+	TargetID     string // module ID, file path, or symbol ID
+	TargetType   string // "module" | "file" | "symbol"
+	Summary      string // one-sentence description
+	Capabilities string // JSON array of capabilities
+	Source       string // "declared" | "inferred" | "llm-generated"
 	Confidence   float64
 	UpdatedAt    time.Time
 	VerifiedAt   *time.Time // human verification timestamp
@@ -1596,11 +1596,11 @@ func (r *ResponsibilityRepository) scanResponsibilities(rows *sql.Rows) ([]*Resp
 
 // DecisionRecord represents an ADR record in the database
 type DecisionRecord struct {
-	ID              string    // "ADR-001" style
+	ID              string // "ADR-001" style
 	Title           string
-	Status          string    // "proposed" | "accepted" | "deprecated" | "superseded"
-	AffectedModules string    // JSON array of module IDs
-	FilePath        string    // relative path to .md file
+	Status          string // "proposed" | "accepted" | "deprecated" | "superseded"
+	AffectedModules string // JSON array of module IDs
+	FilePath        string // relative path to .md file
 	Author          string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time

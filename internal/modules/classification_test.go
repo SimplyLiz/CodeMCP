@@ -124,78 +124,78 @@ func TestImportEdgeWithLine(t *testing.T) {
 
 func TestImportEdgeMultipleCases(t *testing.T) {
 	testCases := []struct {
-		name       string
-		from       string
-		to         string
-		kind       ImportEdgeKind
-		confidence float64
-		rawImport  string
+		name           string
+		from           string
+		to             string
+		kind           ImportEdgeKind
+		confidence     float64
+		rawImport      string
 		expectLocal    bool
 		expectExternal bool
 		expectStdlib   bool
 	}{
 		{
-			name:       "relative import",
-			from:       "src/components/Button.tsx",
-			to:         "src/components/Icon.tsx",
-			kind:       LocalFile,
-			confidence: 0.95,
-			rawImport:  "./Icon",
+			name:           "relative import",
+			from:           "src/components/Button.tsx",
+			to:             "src/components/Icon.tsx",
+			kind:           LocalFile,
+			confidence:     0.95,
+			rawImport:      "./Icon",
 			expectLocal:    true,
 			expectExternal: false,
 			expectStdlib:   false,
 		},
 		{
-			name:       "npm package",
-			from:       "src/index.ts",
-			to:         "react",
-			kind:       ExternalDependency,
-			confidence: 1.0,
-			rawImport:  "react",
+			name:           "npm package",
+			from:           "src/index.ts",
+			to:             "react",
+			kind:           ExternalDependency,
+			confidence:     1.0,
+			rawImport:      "react",
 			expectLocal:    false,
 			expectExternal: true,
 			expectStdlib:   false,
 		},
 		{
-			name:       "node stdlib",
-			from:       "src/server.ts",
-			to:         "fs",
-			kind:       Stdlib,
-			confidence: 1.0,
-			rawImport:  "node:fs",
+			name:           "node stdlib",
+			from:           "src/server.ts",
+			to:             "fs",
+			kind:           Stdlib,
+			confidence:     1.0,
+			rawImport:      "node:fs",
 			expectLocal:    false,
 			expectExternal: false,
 			expectStdlib:   true,
 		},
 		{
-			name:       "workspace package",
-			from:       "packages/app/src/index.ts",
-			to:         "packages/shared/src/utils",
-			kind:       WorkspacePackage,
-			confidence: 0.85,
-			rawImport:  "@company/shared",
+			name:           "workspace package",
+			from:           "packages/app/src/index.ts",
+			to:             "packages/shared/src/utils",
+			kind:           WorkspacePackage,
+			confidence:     0.85,
+			rawImport:      "@company/shared",
 			expectLocal:    false,
 			expectExternal: false,
 			expectStdlib:   false,
 		},
 		{
-			name:       "local module import",
-			from:       "internal/api/handler.go",
-			to:         "internal/query/engine.go",
-			kind:       LocalModule,
-			confidence: 0.9,
-			rawImport:  "ckb/internal/query",
+			name:           "local module import",
+			from:           "internal/api/handler.go",
+			to:             "internal/query/engine.go",
+			kind:           LocalModule,
+			confidence:     0.9,
+			rawImport:      "ckb/internal/query",
 			expectLocal:    true,
 			expectExternal: false,
 			expectStdlib:   false,
 		},
 		{
-			name:       "unknown import",
-			from:       "src/main.ts",
-			to:         "???",
-			kind:       Unknown,
-			confidence: 0.0,
-			rawImport:  "something-weird",
+			name:           "unknown import",
+			from:           "src/main.ts",
+			to:             "???",
+			kind:           Unknown,
+			confidence:     0.0,
+			rawImport:      "something-weird",
 			expectLocal:    false,
 			expectExternal: false,
 			expectStdlib:   false,

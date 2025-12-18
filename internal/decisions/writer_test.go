@@ -21,14 +21,14 @@ func TestCreateADR(t *testing.T) {
 
 	// Create an ADR
 	adr := &ArchitecturalDecision{
-		ID:           "ADR-001",
-		Title:        "Use PostgreSQL for persistence",
-		Status:       string(StatusProposed),
-		Date:         time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC),
-		Author:       "John Doe",
-		Context:      "We need a database for storing user data.",
-		Decision:     "We will use PostgreSQL.",
-		Consequences: []string{"Better JSON support", "Team training needed"},
+		ID:              "ADR-001",
+		Title:           "Use PostgreSQL for persistence",
+		Status:          string(StatusProposed),
+		Date:            time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC),
+		Author:          "John Doe",
+		Context:         "We need a database for storing user data.",
+		Decision:        "We will use PostgreSQL.",
+		Consequences:    []string{"Better JSON support", "Team training needed"},
 		AffectedModules: []string{"internal/storage", "internal/api"},
 		Alternatives:    []string{"MySQL", "MongoDB"},
 	}

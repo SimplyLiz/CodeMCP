@@ -504,15 +504,29 @@ func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (interface{
 		depth = int(depthVal)
 	}
 
+	// New telemetry options
+	includeTelemetry := true // Default to true
+	if v, ok := params["includeTelemetry"].(bool); ok {
+		includeTelemetry = v
+	}
+
+	telemetryPeriod := "90d"
+	if v, ok := params["telemetryPeriod"].(string); ok {
+		telemetryPeriod = v
+	}
+
 	s.logger.Debug("Executing analyzeImpact", map[string]interface{}{
-		"symbolId": symbolId,
-		"depth":    depth,
+		"symbolId":         symbolId,
+		"depth":            depth,
+		"includeTelemetry": includeTelemetry,
 	})
 
 	ctx := context.Background()
 	opts := query.AnalyzeImpactOptions{
-		SymbolId: symbolId,
-		Depth:    depth,
+		SymbolId:         symbolId,
+		Depth:            depth,
+		IncludeTelemetry: includeTelemetry,
+		TelemetryPeriod:  telemetryPeriod,
 	}
 
 	impactResp, err := s.engine.AnalyzeImpact(ctx, opts)
@@ -559,16 +573,18 @@ func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (interface{
 	}
 
 	result := map[string]interface{}{
-		"directImpact":     directImpact,
-		"transitiveImpact": transitiveImpact,
+		"directImpact":      directImpact,
+		"transitiveImpact":  transitiveImpact,
+		"blendedConfidence": impactResp.BlendedConfidence,
 	}
 
 	if impactResp.RiskScore != nil {
 		factors := make([]map[string]interface{}, 0, len(impactResp.RiskScore.Factors))
 		for _, f := range impactResp.RiskScore.Factors {
 			factors = append(factors, map[string]interface{}{
-				"name":  f.Name,
-				"value": f.Value,
+				"name":   f.Name,
+				"value":  f.Value,
+				"weight": f.Weight,
 			})
 		}
 		result["riskScore"] = map[string]interface{}{
@@ -577,6 +593,24 @@ func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (interface{
 			"explanation": impactResp.RiskScore.Explanation,
 			"factors":     factors,
 		}
+	}
+
+	// Add observed usage if available
+	if impactResp.ObservedUsage != nil {
+		observedUsage := map[string]interface{}{
+			"hasTelemetry": impactResp.ObservedUsage.HasTelemetry,
+		}
+		if impactResp.ObservedUsage.HasTelemetry {
+			observedUsage["totalCalls"] = impactResp.ObservedUsage.TotalCalls
+			observedUsage["lastObserved"] = impactResp.ObservedUsage.LastObserved
+			observedUsage["matchQuality"] = impactResp.ObservedUsage.MatchQuality
+			observedUsage["observedConfidence"] = impactResp.ObservedUsage.ObservedConfidence
+			observedUsage["trend"] = impactResp.ObservedUsage.Trend
+			if len(impactResp.ObservedUsage.CallerServices) > 0 {
+				observedUsage["callerServices"] = impactResp.ObservedUsage.CallerServices
+			}
+		}
+		result["observedUsage"] = observedUsage
 	}
 
 	if impactResp.Provenance != nil {

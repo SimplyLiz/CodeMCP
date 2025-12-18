@@ -33,16 +33,16 @@ const (
 
 // Job represents a background task with its state and metadata.
 type Job struct {
-	ID          string    `json:"id"`
-	Type        JobType   `json:"type"`
-	Scope       string    `json:"scope,omitempty"`       // JSON-encoded scope parameters
-	Status      JobStatus `json:"status"`
-	Progress    int       `json:"progress"`              // 0-100
-	CreatedAt   time.Time `json:"createdAt"`
+	ID          string     `json:"id"`
+	Type        JobType    `json:"type"`
+	Scope       string     `json:"scope,omitempty"` // JSON-encoded scope parameters
+	Status      JobStatus  `json:"status"`
+	Progress    int        `json:"progress"` // 0-100
+	CreatedAt   time.Time  `json:"createdAt"`
 	StartedAt   *time.Time `json:"startedAt,omitempty"`
 	CompletedAt *time.Time `json:"completedAt,omitempty"`
-	Error       string    `json:"error,omitempty"`
-	Result      string    `json:"result,omitempty"`      // JSON-encoded result
+	Error       string     `json:"error,omitempty"`
+	Result      string     `json:"result,omitempty"` // JSON-encoded result
 }
 
 // NewJob creates a new job with the given type and scope.
@@ -142,13 +142,13 @@ func (j *Job) Duration() time.Duration {
 
 // JobSummary is a lightweight view of a job for listing.
 type JobSummary struct {
-	ID          string    `json:"id"`
-	Type        JobType   `json:"type"`
-	Status      JobStatus `json:"status"`
-	Progress    int       `json:"progress"`
-	CreatedAt   time.Time `json:"createdAt"`
+	ID          string     `json:"id"`
+	Type        JobType    `json:"type"`
+	Status      JobStatus  `json:"status"`
+	Progress    int        `json:"progress"`
+	CreatedAt   time.Time  `json:"createdAt"`
 	CompletedAt *time.Time `json:"completedAt,omitempty"`
-	Error       string    `json:"error,omitempty"`
+	Error       string     `json:"error,omitempty"`
 }
 
 // ToSummary creates a summary view of the job.

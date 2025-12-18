@@ -6,19 +6,19 @@ import (
 
 // ArchitecturalDecision represents an ADR (Architectural Decision Record)
 type ArchitecturalDecision struct {
-	ID              string    `json:"id"`              // "ADR-001" style
-	Title           string    `json:"title"`
-	Status          string    `json:"status"`          // "proposed" | "accepted" | "deprecated" | "superseded"
-	Context         string    `json:"context"`
-	Decision        string    `json:"decision"`
-	Consequences    []string  `json:"consequences"`
-	AffectedModules []string  `json:"affectedModules"`
-	Alternatives    []string  `json:"alternatives,omitempty"`
-	SupersededBy    string    `json:"supersededBy,omitempty"`
-	Author          string    `json:"author,omitempty"`
-	Date            time.Time `json:"date"`
+	ID              string     `json:"id"` // "ADR-001" style
+	Title           string     `json:"title"`
+	Status          string     `json:"status"` // "proposed" | "accepted" | "deprecated" | "superseded"
+	Context         string     `json:"context"`
+	Decision        string     `json:"decision"`
+	Consequences    []string   `json:"consequences"`
+	AffectedModules []string   `json:"affectedModules"`
+	Alternatives    []string   `json:"alternatives,omitempty"`
+	SupersededBy    string     `json:"supersededBy,omitempty"`
+	Author          string     `json:"author,omitempty"`
+	Date            time.Time  `json:"date"`
 	LastReviewed    *time.Time `json:"lastReviewed,omitempty"`
-	FilePath        string    `json:"filePath"`        // relative path to .md file
+	FilePath        string     `json:"filePath"` // relative path to .md file
 }
 
 // ADRStatus represents valid ADR statuses

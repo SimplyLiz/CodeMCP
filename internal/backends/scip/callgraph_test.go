@@ -270,42 +270,42 @@ func TestMapSCIPKind(t *testing.T) {
 		kind     int32
 		expected SymbolKind
 	}{
-		{0, KindUnknown},   // Default case
-		{1, KindUnknown},   // UnspecifiedSymbol
-		{2, KindUnknown},   // Comment
-		{3, KindPackage},   // Package
-		{4, KindModule},    // PackageObject
-		{5, KindClass},     // Class
-		{6, KindClass},     // Object
-		{7, KindInterface}, // Trait
-		{8, KindMethod},    // TraitMethod
-		{9, KindMethod},    // Method
-		{10, KindFunction}, // Macro
-		{11, KindType},     // Type
+		{0, KindUnknown},    // Default case
+		{1, KindUnknown},    // UnspecifiedSymbol
+		{2, KindUnknown},    // Comment
+		{3, KindPackage},    // Package
+		{4, KindModule},     // PackageObject
+		{5, KindClass},      // Class
+		{6, KindClass},      // Object
+		{7, KindInterface},  // Trait
+		{8, KindMethod},     // TraitMethod
+		{9, KindMethod},     // Method
+		{10, KindFunction},  // Macro
+		{11, KindType},      // Type
 		{12, KindParameter}, // Parameter
 		{13, KindParameter}, // SelfParameter
-		{14, KindType},     // TypeParameter
-		{15, KindVariable}, // Local
-		{16, KindField},    // Field
+		{14, KindType},      // TypeParameter
+		{15, KindVariable},  // Local
+		{16, KindField},     // Field
 		{17, KindInterface}, // Interface
-		{18, KindFunction}, // Function
-		{19, KindVariable}, // Variable
-		{20, KindConstant}, // Constant
-		{21, KindConstant}, // String
-		{22, KindConstant}, // Number
-		{23, KindConstant}, // Boolean
-		{24, KindVariable}, // Array
+		{18, KindFunction},  // Function
+		{19, KindVariable},  // Variable
+		{20, KindConstant},  // Constant
+		{21, KindConstant},  // String
+		{22, KindConstant},  // Number
+		{23, KindConstant},  // Boolean
+		{24, KindVariable},  // Array
 		{25, KindNamespace}, // Namespace
-		{26, KindConstant}, // Null
-		{27, KindProperty}, // Property
-		{28, KindEnum},     // Enum
-		{29, KindConstant}, // EnumMember
-		{30, KindClass},    // Struct
-		{31, KindFunction}, // Event
-		{32, KindFunction}, // Operator
-		{33, KindMethod},   // Constructor
-		{34, KindMethod},   // Destructor
-		{99, KindUnknown},  // Unknown kind
+		{26, KindConstant},  // Null
+		{27, KindProperty},  // Property
+		{28, KindEnum},      // Enum
+		{29, KindConstant},  // EnumMember
+		{30, KindClass},     // Struct
+		{31, KindFunction},  // Event
+		{32, KindFunction},  // Operator
+		{33, KindMethod},    // Constructor
+		{34, KindMethod},    // Destructor
+		{99, KindUnknown},   // Unknown kind
 	}
 
 	for _, tt := range tests {

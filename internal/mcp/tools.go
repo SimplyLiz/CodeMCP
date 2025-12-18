@@ -134,7 +134,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "analyzeImpact",
-			Description: "Analyze the impact of changing a symbol",
+			Description: "Analyze the impact of changing a symbol. Includes observed telemetry data when available for blended confidence scoring.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -146,6 +146,17 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 						"type":        "number",
 						"default":     2,
 						"description": "Maximum depth for transitive impact analysis",
+					},
+					"includeTelemetry": map[string]interface{}{
+						"type":        "boolean",
+						"default":     true,
+						"description": "Include observed telemetry data in analysis (requires telemetry to be enabled)",
+					},
+					"telemetryPeriod": map[string]interface{}{
+						"type":        "string",
+						"default":     "90d",
+						"description": "Time period for telemetry data (7d, 30d, 90d, all)",
+						"enum":        []string{"7d", "30d", "90d", "all"},
 					},
 				},
 				"required": []string{"symbolId"},
@@ -1214,6 +1225,63 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				"required": []string{"filePath"},
 			},
 		},
+		// v6.4 Telemetry tools
+		{
+			Name:        "getTelemetryStatus",
+			Description: "Get telemetry system status including coverage metrics, last sync time, and unmapped services. Use this to check if telemetry is enabled and working correctly.",
+			InputSchema: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+		},
+		{
+			Name:        "getObservedUsage",
+			Description: "Get runtime observed usage for a symbol. Returns call counts, trend direction, match quality, and optionally caller breakdown. Requires telemetry to be enabled.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"symbolId": map[string]interface{}{
+						"type":        "string",
+						"description": "The symbol ID to get usage for",
+					},
+					"period": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"7d", "30d", "90d", "all"},
+						"default":     "90d",
+						"description": "Time period to analyze",
+					},
+					"includeCallers": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Include caller service breakdown (if enabled)",
+					},
+				},
+				"required": []string{"symbolId"},
+			},
+		},
+		{
+			Name:        "findDeadCodeCandidates",
+			Description: "Find symbols that may be dead code based on observed runtime telemetry. Returns candidates with confidence scores. Only works with medium+ telemetry coverage.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"repoId": map[string]interface{}{
+						"type":        "string",
+						"description": "Repository ID to analyze. If omitted, analyzes current repo.",
+					},
+					"minConfidence": map[string]interface{}{
+						"type":        "number",
+						"default":     0.7,
+						"description": "Minimum confidence threshold (0-1)",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"default":     100,
+						"description": "Maximum candidates to return",
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -1277,4 +1345,8 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["getContractStats"] = s.toolGetContractStats
 	// v6.2.2 Tree-sitter Complexity tools
 	s.tools["getFileComplexity"] = s.toolGetFileComplexity
+	// v6.4 Telemetry tools
+	s.tools["getTelemetryStatus"] = s.toolGetTelemetryStatus
+	s.tools["getObservedUsage"] = s.toolGetObservedUsage
+	s.tools["findDeadCodeCandidates"] = s.toolFindDeadCodeCandidates
 }

@@ -6,10 +6,10 @@ import (
 
 func TestGetNegativeCachePolicy(t *testing.T) {
 	testCases := []struct {
-		errorType     NegativeCacheErrorType
-		expectError   bool
-		expectedTTL   int
-		expectWarmup  bool
+		errorType    NegativeCacheErrorType
+		expectError  bool
+		expectedTTL  int
+		expectWarmup bool
 	}{
 		{SymbolNotFound, false, 60, false},
 		{BackendUnavailable, false, 15, false},
@@ -84,8 +84,8 @@ func TestGetNegativeCacheTTLUnknown(t *testing.T) {
 
 func TestShouldTriggerWarmup(t *testing.T) {
 	testCases := []struct {
-		errorType     NegativeCacheErrorType
-		expectWarmup  bool
+		errorType    NegativeCacheErrorType
+		expectWarmup bool
 	}{
 		{SymbolNotFound, false},
 		{BackendUnavailable, false},

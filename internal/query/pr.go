@@ -32,25 +32,25 @@ type SummarizePRResponse struct {
 
 // PRSummary provides a high-level overview of the PR.
 type PRSummary struct {
-	TotalFiles         int      `json:"totalFiles"`
-	TotalAdditions     int      `json:"totalAdditions"`
-	TotalDeletions     int      `json:"totalDeletions"`
-	TotalModules       int      `json:"totalModules"`
-	HotspotsTouched    int      `json:"hotspotsTouched"`
-	OwnershipCoverage  float64  `json:"ownershipCoverage"` // % of files where author is owner
-	Languages          []string `json:"languages"`
+	TotalFiles        int      `json:"totalFiles"`
+	TotalAdditions    int      `json:"totalAdditions"`
+	TotalDeletions    int      `json:"totalDeletions"`
+	TotalModules      int      `json:"totalModules"`
+	HotspotsTouched   int      `json:"hotspotsTouched"`
+	OwnershipCoverage float64  `json:"ownershipCoverage"` // % of files where author is owner
+	Languages         []string `json:"languages"`
 }
 
 // PRFileChange represents a changed file in the PR.
 type PRFileChange struct {
-	Path       string  `json:"path"`
-	Status     string  `json:"status"` // added, modified, deleted, renamed
-	Additions  int     `json:"additions"`
-	Deletions  int     `json:"deletions"`
-	Module     string  `json:"module,omitempty"`
-	IsHotspot  bool    `json:"isHotspot,omitempty"`
+	Path         string  `json:"path"`
+	Status       string  `json:"status"` // added, modified, deleted, renamed
+	Additions    int     `json:"additions"`
+	Deletions    int     `json:"deletions"`
+	Module       string  `json:"module,omitempty"`
+	IsHotspot    bool    `json:"isHotspot,omitempty"`
 	HotspotScore float64 `json:"hotspotScore,omitempty"`
-	Language   string  `json:"language,omitempty"`
+	Language     string  `json:"language,omitempty"`
 }
 
 // PRModuleImpact describes the impact on a module in a PR context.
@@ -373,4 +373,3 @@ func calculatePRRisk(fileCount, totalChanges, hotspotCount, moduleCount int) PRR
 		Suggestions: suggestions,
 	}
 }
-

@@ -134,13 +134,13 @@ func (f *Federation) SearchModules(opts SearchModulesOptions) (*SearchModulesRes
 
 // OwnershipResult represents ownership from a federated query
 type OwnershipResult struct {
-	RepoUID    string   `json:"repoUid"`
-	RepoID     string   `json:"repoId"`
-	Pattern    string   `json:"pattern"`
-	Owners     []Owner  `json:"owners"`
-	Scope      string   `json:"scope"`
-	Source     string   `json:"source"`
-	Confidence float64  `json:"confidence"`
+	RepoUID    string  `json:"repoUid"`
+	RepoID     string  `json:"repoId"`
+	Pattern    string  `json:"pattern"`
+	Owners     []Owner `json:"owners"`
+	Scope      string  `json:"scope"`
+	Source     string  `json:"source"`
+	Confidence float64 `json:"confidence"`
 }
 
 // Owner represents an owner entry

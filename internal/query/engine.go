@@ -470,3 +470,62 @@ func (e *Engine) GetGitBackend() *git.GitAdapter {
 func (e *Engine) GetLspSupervisor() *lsp.LspSupervisor {
 	return e.lspSupervisor
 }
+
+// GetConfig returns the engine configuration.
+func (e *Engine) GetConfig() *config.Config {
+	return e.config
+}
+
+// GetDB returns the storage database.
+func (e *Engine) GetDB() *storage.DB {
+	return e.db
+}
+
+// TelemetrySymbol represents a symbol for telemetry dead code analysis.
+type TelemetrySymbol struct {
+	ID   string
+	Name string
+	File string
+	Kind string
+}
+
+// GetAllSymbols returns all symbols from the SCIP index for telemetry analysis.
+func (e *Engine) GetAllSymbols() ([]TelemetrySymbol, error) {
+	if e.scipAdapter == nil || !e.scipAdapter.IsAvailable() {
+		return nil, fmt.Errorf("SCIP backend not available")
+	}
+
+	scipSymbols := e.scipAdapter.AllSymbols()
+	if scipSymbols == nil {
+		return nil, nil
+	}
+
+	symbols := make([]TelemetrySymbol, 0, len(scipSymbols))
+	for _, sym := range scipSymbols {
+		// Get the file from the first occurrence if available
+		file := ""
+		// DisplayName is the human-readable name
+		name := sym.DisplayName
+		if name == "" {
+			name = sym.Symbol
+		}
+
+		symbols = append(symbols, TelemetrySymbol{
+			ID:   sym.Symbol,
+			Name: name,
+			File: file, // File comes from occurrences, not symbol info
+			Kind: fmt.Sprintf("%d", sym.Kind),
+		})
+	}
+
+	return symbols, nil
+}
+
+// GetReferenceCount returns the number of static references to a symbol.
+func (e *Engine) GetReferenceCount(symbolId string) (int, error) {
+	if e.scipAdapter == nil || !e.scipAdapter.IsAvailable() {
+		return 0, nil // Return 0 if SCIP not available
+	}
+
+	return e.scipAdapter.GetReferenceCount(symbolId), nil
+}

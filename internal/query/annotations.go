@@ -19,13 +19,13 @@ type AnnotateModuleInput struct {
 
 // AnnotateModuleResult represents the result of annotating a module
 type AnnotateModuleResult struct {
-	ModuleId       string       `json:"moduleId"`
-	Responsibility string       `json:"responsibility,omitempty"`
-	Capabilities   []string     `json:"capabilities,omitempty"`
-	Tags           []string     `json:"tags,omitempty"`
-	Boundaries     *Boundaries  `json:"boundaries,omitempty"`
-	Updated        bool         `json:"updated"`
-	Created        bool         `json:"created"`
+	ModuleId       string      `json:"moduleId"`
+	Responsibility string      `json:"responsibility,omitempty"`
+	Capabilities   []string    `json:"capabilities,omitempty"`
+	Tags           []string    `json:"tags,omitempty"`
+	Boundaries     *Boundaries `json:"boundaries,omitempty"`
+	Updated        bool        `json:"updated"`
+	Created        bool        `json:"created"`
 }
 
 // Boundaries represents API boundary definitions

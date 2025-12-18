@@ -479,3 +479,27 @@ func (s *SCIPAdapter) CountSymbolsByPath(pathPrefix string) int {
 
 	return s.index.CountSymbolsByPath(pathPrefix)
 }
+
+// AllSymbols returns all symbols in the index
+func (s *SCIPAdapter) AllSymbols() []*SymbolInformation {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.index == nil {
+		return nil
+	}
+
+	return s.index.AllSymbols()
+}
+
+// GetReferenceCount returns the count of references to a symbol
+func (s *SCIPAdapter) GetReferenceCount(symbolId string) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.index == nil {
+		return 0
+	}
+
+	return s.index.GetReferenceCount(symbolId)
+}

@@ -23,9 +23,9 @@ type GetOwnershipOptions struct {
 // OwnerInfo represents an owner in the response.
 type OwnerInfo struct {
 	ID         string  `json:"id"`
-	Type       string  `json:"type"`       // "user", "team", "email"
-	Scope      string  `json:"scope"`      // "maintainer", "reviewer", "contributor"
-	Source     string  `json:"source"`     // "codeowners", "git-blame", "declared"
+	Type       string  `json:"type"`   // "user", "team", "email"
+	Scope      string  `json:"scope"`  // "maintainer", "reviewer", "contributor"
+	Source     string  `json:"source"` // "codeowners", "git-blame", "declared"
 	Confidence float64 `json:"confidence"`
 }
 
@@ -54,18 +54,18 @@ type OwnershipHistoryEvent struct {
 
 // GetOwnershipResponse is the response for getOwnership.
 type GetOwnershipResponse struct {
-	CkbVersion      string                   `json:"ckbVersion"`
-	SchemaVersion   string                   `json:"schemaVersion"`
-	Tool            string                   `json:"tool"`
-	Path            string                   `json:"path"`
-	Owners          []OwnerInfo              `json:"owners"`
-	BlameOwnership  *BlameOwnershipInfo      `json:"blameOwnership,omitempty"`
-	History         []OwnershipHistoryEvent  `json:"history,omitempty"`
-	Confidence      float64                  `json:"confidence"`
-	ConfidenceBasis []ConfidenceBasisItem    `json:"confidenceBasis"`
-	Limitations     []string                 `json:"limitations,omitempty"`
-	Provenance      *Provenance              `json:"provenance,omitempty"`
-	Drilldowns      []output.Drilldown       `json:"drilldowns,omitempty"`
+	CkbVersion      string                  `json:"ckbVersion"`
+	SchemaVersion   string                  `json:"schemaVersion"`
+	Tool            string                  `json:"tool"`
+	Path            string                  `json:"path"`
+	Owners          []OwnerInfo             `json:"owners"`
+	BlameOwnership  *BlameOwnershipInfo     `json:"blameOwnership,omitempty"`
+	History         []OwnershipHistoryEvent `json:"history,omitempty"`
+	Confidence      float64                 `json:"confidence"`
+	ConfidenceBasis []ConfidenceBasisItem   `json:"confidenceBasis"`
+	Limitations     []string                `json:"limitations,omitempty"`
+	Provenance      *Provenance             `json:"provenance,omitempty"`
+	Drilldowns      []output.Drilldown      `json:"drilldowns,omitempty"`
 }
 
 // GetOwnership returns ownership information for a file or path.
@@ -245,12 +245,12 @@ type OwnershipDriftOptions struct {
 
 // DriftedFile represents a file with ownership drift.
 type DriftedFile struct {
-	Path             string          `json:"path"`
-	DriftScore       float64         `json:"driftScore"`       // 0-1, higher means more drift
-	DeclaredOwners   []string        `json:"declaredOwners"`   // From CODEOWNERS
-	ActualOwners     []ActualOwner   `json:"actualOwners"`     // From git-blame
-	Reason           string          `json:"reason"`           // Why drift was detected
-	Recommendation   string          `json:"recommendation"`   // Suggested action
+	Path           string        `json:"path"`
+	DriftScore     float64       `json:"driftScore"`     // 0-1, higher means more drift
+	DeclaredOwners []string      `json:"declaredOwners"` // From CODEOWNERS
+	ActualOwners   []ActualOwner `json:"actualOwners"`   // From git-blame
+	Reason         string        `json:"reason"`         // Why drift was detected
+	Recommendation string        `json:"recommendation"` // Suggested action
 }
 
 // ActualOwner represents an owner derived from git-blame.
@@ -261,13 +261,13 @@ type ActualOwner struct {
 
 // OwnershipDriftResponse is the response for getOwnershipDrift.
 type OwnershipDriftResponse struct {
-	CkbVersion    string          `json:"ckbVersion"`
-	SchemaVersion string          `json:"schemaVersion"`
-	Tool          string          `json:"tool"`
-	Summary       DriftSummary    `json:"summary"`
-	DriftedFiles  []DriftedFile   `json:"driftedFiles"`
-	Limitations   []string        `json:"limitations,omitempty"`
-	Provenance    *Provenance     `json:"provenance,omitempty"`
+	CkbVersion    string        `json:"ckbVersion"`
+	SchemaVersion string        `json:"schemaVersion"`
+	Tool          string        `json:"tool"`
+	Summary       DriftSummary  `json:"summary"`
+	DriftedFiles  []DriftedFile `json:"driftedFiles"`
+	Limitations   []string      `json:"limitations,omitempty"`
+	Provenance    *Provenance   `json:"provenance,omitempty"`
 }
 
 // DriftSummary provides high-level drift statistics.
@@ -488,8 +488,8 @@ func calculateDriftScore(declaredOwners []string, contributors []ownership.Autho
 		isOwner := false
 		for owner := range declaredSet {
 			if strings.Contains(authorNormalized, owner) ||
-			   strings.Contains(emailNormalized, owner) ||
-			   strings.Contains(owner, authorNormalized) {
+				strings.Contains(emailNormalized, owner) ||
+				strings.Contains(owner, authorNormalized) {
 				isOwner = true
 				break
 			}

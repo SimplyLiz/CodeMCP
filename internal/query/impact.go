@@ -11,27 +11,43 @@ import (
 	"ckb/internal/errors"
 	"ckb/internal/impact"
 	"ckb/internal/output"
+	"ckb/internal/telemetry"
 )
 
 // AnalyzeImpactOptions contains options for analyzeImpact.
 type AnalyzeImpactOptions struct {
-	SymbolId     string
-	Depth        int
-	IncludeTests bool
+	SymbolId            string
+	Depth               int
+	IncludeTests        bool
+	IncludeTelemetry    bool   // Include observed telemetry data
+	TelemetryPeriod     string // Time period for telemetry ("7d", "30d", "90d")
 }
 
 // AnalyzeImpactResponse is the response for analyzeImpact.
 type AnalyzeImpactResponse struct {
-	Symbol           *SymbolInfo        `json:"symbol"`
-	Visibility       *VisibilityInfo    `json:"visibility"`
-	RiskScore        *RiskScore         `json:"riskScore"`
-	DirectImpact     []ImpactItem       `json:"directImpact"`
-	TransitiveImpact []ImpactItem       `json:"transitiveImpact,omitempty"`
-	ModulesAffected  []ModuleImpact     `json:"modulesAffected"`
-	Truncated        bool               `json:"truncated,omitempty"`
-	TruncationInfo   *TruncationInfo    `json:"truncationInfo,omitempty"`
-	Provenance       *Provenance        `json:"provenance"`
-	Drilldowns       []output.Drilldown `json:"drilldowns,omitempty"`
+	Symbol            *SymbolInfo          `json:"symbol"`
+	Visibility        *VisibilityInfo      `json:"visibility"`
+	RiskScore         *RiskScore           `json:"riskScore"`
+	DirectImpact      []ImpactItem         `json:"directImpact"`
+	TransitiveImpact  []ImpactItem         `json:"transitiveImpact,omitempty"`
+	ModulesAffected   []ModuleImpact       `json:"modulesAffected"`
+	ObservedUsage     *ObservedUsageSummary `json:"observedUsage,omitempty"`
+	BlendedConfidence float64              `json:"blendedConfidence,omitempty"`
+	Truncated         bool                 `json:"truncated,omitempty"`
+	TruncationInfo    *TruncationInfo      `json:"truncationInfo,omitempty"`
+	Provenance        *Provenance          `json:"provenance"`
+	Drilldowns        []output.Drilldown   `json:"drilldowns,omitempty"`
+}
+
+// ObservedUsageSummary contains telemetry-based usage information
+type ObservedUsageSummary struct {
+	HasTelemetry      bool    `json:"hasTelemetry"`
+	TotalCalls        int64   `json:"totalCalls,omitempty"`
+	LastObserved      string  `json:"lastObserved,omitempty"`
+	MatchQuality      string  `json:"matchQuality,omitempty"`
+	ObservedConfidence float64 `json:"observedConfidence,omitempty"`
+	Trend             string  `json:"trend,omitempty"`
+	CallerServices    []string `json:"callerServices,omitempty"`
 }
 
 // RiskScore describes the risk of changing a symbol.
@@ -273,18 +289,257 @@ func (e *Engine) AnalyzeImpact(ctx context.Context, opts AnalyzeImpactOptions) (
 
 	drilldowns := e.generateDrilldowns(compTrunc, completeness, opts.SymbolId, topModule)
 
+	// Get telemetry data if enabled
+	var observedUsage *ObservedUsageSummary
+	var blendedConfidence float64
+
+	if opts.IncludeTelemetry && e.config != nil && e.config.Telemetry.Enabled && e.db != nil {
+		observedUsage, blendedConfidence = e.getObservedUsageForImpact(symbolIdForLookup, opts.TelemetryPeriod)
+
+		// Add telemetry factors to risk score if we have observed data
+		if observedUsage != nil && observedUsage.HasTelemetry && riskScore != nil {
+			riskScore = e.enhanceRiskScoreWithTelemetry(riskScore, observedUsage)
+		}
+	} else {
+		// Static-only confidence
+		blendedConfidence = completeness.Score * 0.79
+	}
+
 	return &AnalyzeImpactResponse{
-		Symbol:           symbolInfo,
-		Visibility:       visibility,
-		RiskScore:        riskScore,
-		DirectImpact:     directImpact,
-		TransitiveImpact: transitiveImpact,
-		ModulesAffected:  modulesAffected,
-		Truncated:        truncationInfo != nil,
-		TruncationInfo:   truncationInfo,
-		Provenance:       provenance,
-		Drilldowns:       drilldowns,
+		Symbol:            symbolInfo,
+		Visibility:        visibility,
+		RiskScore:         riskScore,
+		DirectImpact:      directImpact,
+		TransitiveImpact:  transitiveImpact,
+		ModulesAffected:   modulesAffected,
+		ObservedUsage:     observedUsage,
+		BlendedConfidence: blendedConfidence,
+		Truncated:         truncationInfo != nil,
+		TruncationInfo:    truncationInfo,
+		Provenance:        provenance,
+		Drilldowns:        drilldowns,
 	}, nil
+}
+
+// getObservedUsageForImpact fetches telemetry data for impact analysis
+func (e *Engine) getObservedUsageForImpact(symbolID string, period string) (*ObservedUsageSummary, float64) {
+	storage := telemetry.NewStorage(e.db.Conn())
+
+	// Compute period filter
+	periodFilter := computeTelemetryPeriodFilter(period)
+
+	// Get usage data
+	usages, err := storage.GetObservedUsage(symbolID, periodFilter)
+	if err != nil || len(usages) == 0 {
+		return &ObservedUsageSummary{HasTelemetry: false}, 0.79 // Static-only confidence
+	}
+
+	// Calculate totals
+	var totalCalls int64
+	var lastObserved time.Time
+	var matchQuality telemetry.MatchQuality
+
+	for i, u := range usages {
+		totalCalls += u.CallCount
+		if i == 0 {
+			lastObserved = u.IngestedAt
+			matchQuality = u.MatchQuality
+		}
+	}
+
+	// Get callers
+	var callerServices []string
+	if e.config.Telemetry.Aggregation.StoreCallers {
+		callers, err := storage.GetObservedCallers(symbolID, 5)
+		if err == nil {
+			for _, c := range callers {
+				callerServices = append(callerServices, c.CallerService)
+			}
+		}
+	}
+
+	// Compute trend
+	trend := computeUsageTrend(usages)
+
+	// Build summary
+	summary := &ObservedUsageSummary{
+		HasTelemetry:       true,
+		TotalCalls:         totalCalls,
+		LastObserved:       lastObserved.Format(time.RFC3339),
+		MatchQuality:       string(matchQuality),
+		ObservedConfidence: matchQuality.Confidence(),
+		Trend:              trend,
+		CallerServices:     callerServices,
+	}
+
+	// Compute blended confidence
+	staticConfidence := 0.79
+	observedConfidence := matchQuality.Confidence()
+	blendedConfidence := computeBlendedConfidenceScore(staticConfidence, observedConfidence)
+
+	return summary, blendedConfidence
+}
+
+// enhanceRiskScoreWithTelemetry adds telemetry factors to risk assessment
+func (e *Engine) enhanceRiskScoreWithTelemetry(riskScore *RiskScore, usage *ObservedUsageSummary) *RiskScore {
+	// Copy existing factors
+	enhanced := &RiskScore{
+		Level:       riskScore.Level,
+		Score:       riskScore.Score,
+		Explanation: riskScore.Explanation,
+		Factors:     make([]RiskFactor, len(riskScore.Factors)),
+	}
+	copy(enhanced.Factors, riskScore.Factors)
+
+	// Add observed usage factor
+	usageFactor := RiskFactor{
+		Name:   "observed_usage",
+		Weight: 0.2,
+	}
+
+	if usage.TotalCalls == 0 {
+		usageFactor.Value = 0.0 // No observed usage - lower risk
+	} else if usage.TotalCalls < 100 {
+		usageFactor.Value = 0.3 // Low usage
+	} else if usage.TotalCalls < 1000 {
+		usageFactor.Value = 0.6 // Medium usage
+	} else {
+		usageFactor.Value = 1.0 // High usage - higher risk
+	}
+	enhanced.Factors = append(enhanced.Factors, usageFactor)
+
+	// Add caller diversity factor
+	if len(usage.CallerServices) > 0 {
+		diversityFactor := RiskFactor{
+			Name:   "caller_diversity",
+			Weight: 0.15,
+		}
+		if len(usage.CallerServices) >= 5 {
+			diversityFactor.Value = 1.0 // Many callers - higher risk
+		} else if len(usage.CallerServices) >= 3 {
+			diversityFactor.Value = 0.6
+		} else {
+			diversityFactor.Value = 0.3
+		}
+		enhanced.Factors = append(enhanced.Factors, diversityFactor)
+	}
+
+	// Add trend factor
+	if usage.Trend != "" {
+		trendFactor := RiskFactor{
+			Name:   "usage_trend",
+			Weight: 0.1,
+		}
+		switch usage.Trend {
+		case "increasing":
+			trendFactor.Value = 0.8 // Growing usage - higher risk
+		case "decreasing":
+			trendFactor.Value = 0.2 // Declining usage - lower risk
+		default:
+			trendFactor.Value = 0.5 // Stable
+		}
+		enhanced.Factors = append(enhanced.Factors, trendFactor)
+	}
+
+	// Recalculate score with new factors
+	var totalWeight, weightedSum float64
+	for _, f := range enhanced.Factors {
+		totalWeight += f.Weight
+		weightedSum += f.Value * f.Weight
+	}
+
+	if totalWeight > 0 {
+		enhanced.Score = weightedSum / totalWeight
+	}
+
+	// Update level
+	if enhanced.Score >= 0.7 {
+		enhanced.Level = "high"
+	} else if enhanced.Score >= 0.4 {
+		enhanced.Level = "medium"
+	} else {
+		enhanced.Level = "low"
+	}
+
+	// Update explanation with telemetry info
+	if usage.TotalCalls > 0 {
+		enhanced.Explanation = fmt.Sprintf("%s Observed %d calls from %d services.",
+			enhanced.Explanation, usage.TotalCalls, len(usage.CallerServices))
+	} else {
+		enhanced.Explanation = fmt.Sprintf("%s No runtime calls observed in telemetry window.",
+			enhanced.Explanation)
+	}
+
+	return enhanced
+}
+
+// computeTelemetryPeriodFilter converts period string to date filter
+func computeTelemetryPeriodFilter(period string) string {
+	now := time.Now()
+	switch period {
+	case "7d":
+		return now.AddDate(0, 0, -7).Format("2006-01-02")
+	case "30d":
+		return now.AddDate(0, 0, -30).Format("2006-01-02")
+	case "90d":
+		return now.AddDate(0, 0, -90).Format("2006-01-02")
+	case "all":
+		return ""
+	default:
+		return now.AddDate(0, 0, -90).Format("2006-01-02")
+	}
+}
+
+// computeUsageTrend calculates the usage trend from observed data
+func computeUsageTrend(usages []telemetry.ObservedUsage) string {
+	if len(usages) < 2 {
+		return "stable"
+	}
+
+	mid := len(usages) / 2
+	var recentCalls, olderCalls int64
+	for i, u := range usages {
+		if i < mid {
+			recentCalls += u.CallCount
+		} else {
+			olderCalls += u.CallCount
+		}
+	}
+
+	if olderCalls == 0 {
+		if recentCalls > 0 {
+			return "increasing"
+		}
+		return "stable"
+	}
+
+	ratio := float64(recentCalls) / float64(olderCalls)
+	if ratio > 1.2 {
+		return "increasing"
+	} else if ratio < 0.8 {
+		return "decreasing"
+	}
+	return "stable"
+}
+
+// computeBlendedConfidenceScore combines static and observed confidence
+func computeBlendedConfidenceScore(staticConfidence, observedConfidence float64) float64 {
+	// Take higher, with small boost if both agree
+	base := staticConfidence
+	if observedConfidence > base {
+		base = observedConfidence
+	}
+
+	agreementBoost := 0.0
+	if staticConfidence > 0.5 && observedConfidence > 0.5 {
+		agreementBoost = 0.03
+	}
+
+	result := base + agreementBoost
+	if result > 1.0 {
+		result = 1.0
+	}
+	return result
 }
 
 // filterTestReferences removes test references.

@@ -27,6 +27,9 @@ type Config struct {
 	// v6.2.1 Daemon mode
 	Daemon   DaemonConfig    `json:"daemon" mapstructure:"daemon"`
 	Webhooks []WebhookConfig `json:"webhooks" mapstructure:"webhooks"`
+
+	// v6.4 Telemetry
+	Telemetry TelemetryConfig `json:"telemetry" mapstructure:"telemetry"`
 }
 
 // BackendsConfig contains backend-specific configuration
@@ -130,12 +133,12 @@ type LoggingConfig struct {
 
 // DaemonConfig contains daemon mode configuration (v6.2.1)
 type DaemonConfig struct {
-	Port     int               `json:"port" mapstructure:"port"`
-	Bind     string            `json:"bind" mapstructure:"bind"`
-	LogLevel string            `json:"logLevel" mapstructure:"logLevel"`
-	LogFile  string            `json:"logFile" mapstructure:"logFile"`
-	Auth     DaemonAuthConfig  `json:"auth" mapstructure:"auth"`
-	Watch    DaemonWatchConfig `json:"watch" mapstructure:"watch"`
+	Port     int                  `json:"port" mapstructure:"port"`
+	Bind     string               `json:"bind" mapstructure:"bind"`
+	LogLevel string               `json:"logLevel" mapstructure:"logLevel"`
+	LogFile  string               `json:"logFile" mapstructure:"logFile"`
+	Auth     DaemonAuthConfig     `json:"auth" mapstructure:"auth"`
+	Watch    DaemonWatchConfig    `json:"watch" mapstructure:"watch"`
 	Schedule DaemonScheduleConfig `json:"schedule" mapstructure:"schedule"`
 }
 
@@ -169,6 +172,54 @@ type WebhookConfig struct {
 	Events  []string          `json:"events" mapstructure:"events"`
 	Format  string            `json:"format" mapstructure:"format"`
 	Headers map[string]string `json:"headers" mapstructure:"headers"`
+}
+
+// TelemetryConfig contains runtime telemetry configuration (v6.4)
+type TelemetryConfig struct {
+	Enabled         bool                          `json:"enabled" mapstructure:"enabled"`
+	ServiceMap      map[string]string             `json:"serviceMap" mapstructure:"serviceMap"`             // service name -> repo ID
+	ServicePatterns []TelemetryServicePattern     `json:"servicePatterns" mapstructure:"servicePatterns"`   // regex patterns
+	Aggregation     TelemetryAggregationConfig    `json:"aggregation" mapstructure:"aggregation"`
+	DeadCode        TelemetryDeadCodeConfig       `json:"deadCode" mapstructure:"deadCode"`
+	Privacy         TelemetryPrivacyConfig        `json:"privacy" mapstructure:"privacy"`
+	Attributes      TelemetryAttributesConfig     `json:"attributes" mapstructure:"attributes"`
+}
+
+// TelemetryServicePattern contains regex pattern for service mapping
+type TelemetryServicePattern struct {
+	Pattern string `json:"pattern" mapstructure:"pattern"` // regex pattern
+	Repo    string `json:"repo" mapstructure:"repo"`       // replacement (can use $1, $2, etc.)
+}
+
+// TelemetryAggregationConfig contains aggregation settings
+type TelemetryAggregationConfig struct {
+	BucketSize          string `json:"bucketSize" mapstructure:"bucketSize"`                   // "daily" | "weekly" | "monthly"
+	RetentionDays       int    `json:"retentionDays" mapstructure:"retentionDays"`
+	MinCallsToStore     int    `json:"minCallsToStore" mapstructure:"minCallsToStore"`
+	StoreCallers        bool   `json:"storeCallers" mapstructure:"storeCallers"`
+	MaxCallersPerSymbol int    `json:"maxCallersPerSymbol" mapstructure:"maxCallersPerSymbol"`
+}
+
+// TelemetryDeadCodeConfig contains dead code detection settings
+type TelemetryDeadCodeConfig struct {
+	Enabled            bool     `json:"enabled" mapstructure:"enabled"`
+	MinObservationDays int      `json:"minObservationDays" mapstructure:"minObservationDays"`
+	ExcludePatterns    []string `json:"excludePatterns" mapstructure:"excludePatterns"`   // path patterns
+	ExcludeFunctions   []string `json:"excludeFunctions" mapstructure:"excludeFunctions"` // function name patterns
+}
+
+// TelemetryPrivacyConfig contains privacy settings
+type TelemetryPrivacyConfig struct {
+	RedactCallerNames   bool `json:"redactCallerNames" mapstructure:"redactCallerNames"`
+	LogUnmatchedEvents  bool `json:"logUnmatchedEvents" mapstructure:"logUnmatchedEvents"`
+}
+
+// TelemetryAttributesConfig contains attribute key mappings for OTEL compatibility
+type TelemetryAttributesConfig struct {
+	FunctionKeys  []string `json:"functionKeys" mapstructure:"functionKeys"`
+	NamespaceKeys []string `json:"namespaceKeys" mapstructure:"namespaceKeys"`
+	FileKeys      []string `json:"fileKeys" mapstructure:"fileKeys"`
+	LineKeys      []string `json:"lineKeys" mapstructure:"lineKeys"`
 }
 
 // DefaultConfig returns the default configuration
@@ -288,6 +339,48 @@ func DefaultConfig() *Config {
 			},
 		},
 		Webhooks: []WebhookConfig{},
+		Telemetry: TelemetryConfig{
+			Enabled:         false, // Explicit opt-in required
+			ServiceMap:      map[string]string{},
+			ServicePatterns: []TelemetryServicePattern{},
+			Aggregation: TelemetryAggregationConfig{
+				BucketSize:          "weekly",
+				RetentionDays:       180,
+				MinCallsToStore:     1,
+				StoreCallers:        false,
+				MaxCallersPerSymbol: 20,
+			},
+			DeadCode: TelemetryDeadCodeConfig{
+				Enabled:            true,
+				MinObservationDays: 90,
+				ExcludePatterns: []string{
+					"**/test/**",
+					"**/testdata/**",
+					"**/*_test.go",
+					"**/*.test.ts",
+					"**/migrations/**",
+					"**/scripts/**",
+				},
+				ExcludeFunctions: []string{
+					"*Migration*",
+					"*Backup*",
+					"*Recover*",
+					"*Cleanup*",
+					"*Scheduled*",
+					"*Cron*",
+				},
+			},
+			Privacy: TelemetryPrivacyConfig{
+				RedactCallerNames:  false,
+				LogUnmatchedEvents: true,
+			},
+			Attributes: TelemetryAttributesConfig{
+				FunctionKeys:  []string{"code.function", "code.function.name", "faas.name", "span.name"},
+				NamespaceKeys: []string{"code.namespace", "code.module", "package.name"},
+				FileKeys:      []string{"code.filepath", "code.filename", "source.file"},
+				LineKeys:      []string{"code.lineno", "code.line_number"},
+			},
+		},
 	}
 }
 
