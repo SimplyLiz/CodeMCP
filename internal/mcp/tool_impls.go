@@ -1950,3 +1950,342 @@ func (s *MCPServer) toolGetModuleResponsibilities(params map[string]interface{})
 
 	return string(jsonBytesResp), nil
 }
+
+// toolRecordDecision handles the recordDecision tool call (v6.0)
+func (s *MCPServer) toolRecordDecision(params map[string]interface{}) (interface{}, error) {
+	// Parse required parameters
+	title, ok := params["title"].(string)
+	if !ok || title == "" {
+		return nil, fmt.Errorf("missing or invalid 'title' parameter")
+	}
+
+	context_, ok := params["context"].(string)
+	if !ok || context_ == "" {
+		return nil, fmt.Errorf("missing or invalid 'context' parameter")
+	}
+
+	decision, ok := params["decision"].(string)
+	if !ok || decision == "" {
+		return nil, fmt.Errorf("missing or invalid 'decision' parameter")
+	}
+
+	// Parse consequences (required)
+	var consequences []string
+	if consVal, ok := params["consequences"].([]interface{}); ok {
+		for _, c := range consVal {
+			if cs, ok := c.(string); ok {
+				consequences = append(consequences, cs)
+			}
+		}
+	}
+	if len(consequences) == 0 {
+		return nil, fmt.Errorf("missing or invalid 'consequences' parameter")
+	}
+
+	// Parse optional parameters
+	var affectedModules []string
+	if modsVal, ok := params["affectedModules"].([]interface{}); ok {
+		for _, m := range modsVal {
+			if ms, ok := m.(string); ok {
+				affectedModules = append(affectedModules, ms)
+			}
+		}
+	}
+
+	var alternatives []string
+	if altsVal, ok := params["alternatives"].([]interface{}); ok {
+		for _, a := range altsVal {
+			if as, ok := a.(string); ok {
+				alternatives = append(alternatives, as)
+			}
+		}
+	}
+
+	author, _ := params["author"].(string)
+	status, _ := params["status"].(string)
+
+	s.logger.Debug("Executing recordDecision", map[string]interface{}{
+		"title":           title,
+		"affectedModules": affectedModules,
+		"author":          author,
+		"status":          status,
+	})
+
+	input := &query.RecordDecisionInput{
+		Title:           title,
+		Context:         context_,
+		Decision:        decision,
+		Consequences:    consequences,
+		AffectedModules: affectedModules,
+		Alternatives:    alternatives,
+		Author:          author,
+		Status:          status,
+	}
+
+	resp, err := s.engine.RecordDecision(input)
+	if err != nil {
+		return nil, fmt.Errorf("recordDecision failed: %w", err)
+	}
+
+	result := map[string]interface{}{
+		"id":       resp.Decision.ID,
+		"title":    resp.Decision.Title,
+		"status":   resp.Decision.Status,
+		"filePath": resp.Decision.FilePath,
+		"date":     resp.Decision.Date.Format("2006-01-02"),
+		"source":   resp.Source,
+	}
+
+	if resp.Decision.Author != "" {
+		result["author"] = resp.Decision.Author
+	}
+
+	if len(resp.Decision.AffectedModules) > 0 {
+		result["affectedModules"] = resp.Decision.AffectedModules
+	}
+
+	jsonBytesDecision, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	return string(jsonBytesDecision), nil
+}
+
+// toolGetDecisions handles the getDecisions tool call (v6.0)
+func (s *MCPServer) toolGetDecisions(params map[string]interface{}) (interface{}, error) {
+	// Check if specific ID is requested
+	if id, ok := params["id"].(string); ok && id != "" {
+		s.logger.Debug("Executing getDecisions (single)", map[string]interface{}{
+			"id": id,
+		})
+
+		resp, err := s.engine.GetDecision(id)
+		if err != nil {
+			return nil, fmt.Errorf("getDecision failed: %w", err)
+		}
+
+		result := map[string]interface{}{
+			"id":           resp.Decision.ID,
+			"title":        resp.Decision.Title,
+			"status":       resp.Decision.Status,
+			"context":      resp.Decision.Context,
+			"decision":     resp.Decision.Decision,
+			"consequences": resp.Decision.Consequences,
+			"date":         resp.Decision.Date.Format("2006-01-02"),
+			"filePath":     resp.Decision.FilePath,
+			"source":       resp.Source,
+		}
+
+		if resp.Decision.Author != "" {
+			result["author"] = resp.Decision.Author
+		}
+
+		if len(resp.Decision.AffectedModules) > 0 {
+			result["affectedModules"] = resp.Decision.AffectedModules
+		}
+
+		if len(resp.Decision.Alternatives) > 0 {
+			result["alternatives"] = resp.Decision.Alternatives
+		}
+
+		if resp.Decision.SupersededBy != "" {
+			result["supersededBy"] = resp.Decision.SupersededBy
+		}
+
+		jsonBytesSingle, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return nil, err
+		}
+
+		return string(jsonBytesSingle), nil
+	}
+
+	// List/search decisions
+	queryOpts := &query.DecisionsQuery{}
+
+	if status, ok := params["status"].(string); ok {
+		queryOpts.Status = status
+	}
+
+	if moduleId, ok := params["moduleId"].(string); ok {
+		queryOpts.ModuleID = moduleId
+	}
+
+	if search, ok := params["search"].(string); ok {
+		queryOpts.Search = search
+	}
+
+	if limit, ok := params["limit"].(float64); ok {
+		queryOpts.Limit = int(limit)
+	}
+
+	s.logger.Debug("Executing getDecisions (list)", map[string]interface{}{
+		"status":   queryOpts.Status,
+		"moduleId": queryOpts.ModuleID,
+		"search":   queryOpts.Search,
+		"limit":    queryOpts.Limit,
+	})
+
+	resp, err := s.engine.GetDecisions(queryOpts)
+	if err != nil {
+		return nil, fmt.Errorf("getDecisions failed: %w", err)
+	}
+
+	// Build decisions response
+	decisions := make([]map[string]interface{}, 0, len(resp.Decisions))
+	for _, d := range resp.Decisions {
+		decisionInfo := map[string]interface{}{
+			"id":       d.ID,
+			"title":    d.Title,
+			"status":   d.Status,
+			"date":     d.Date.Format("2006-01-02"),
+			"filePath": d.FilePath,
+		}
+
+		if d.Author != "" {
+			decisionInfo["author"] = d.Author
+		}
+
+		if len(d.AffectedModules) > 0 {
+			decisionInfo["affectedModules"] = d.AffectedModules
+		}
+
+		decisions = append(decisions, decisionInfo)
+	}
+
+	result := map[string]interface{}{
+		"decisions":  decisions,
+		"totalCount": resp.Total,
+	}
+
+	if resp.Query != nil {
+		query := map[string]interface{}{}
+		if resp.Query.Status != "" {
+			query["status"] = resp.Query.Status
+		}
+		if resp.Query.ModuleID != "" {
+			query["moduleId"] = resp.Query.ModuleID
+		}
+		if resp.Query.Search != "" {
+			query["search"] = resp.Query.Search
+		}
+		if len(query) > 0 {
+			result["query"] = query
+		}
+	}
+
+	jsonBytesDecisions, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	return string(jsonBytesDecisions), nil
+}
+
+// toolAnnotateModule handles the annotateModule tool call (v6.0)
+func (s *MCPServer) toolAnnotateModule(params map[string]interface{}) (interface{}, error) {
+	// Parse required parameters
+	moduleId, ok := params["moduleId"].(string)
+	if !ok || moduleId == "" {
+		return nil, fmt.Errorf("missing or invalid 'moduleId' parameter")
+	}
+
+	// Parse optional parameters
+	responsibility, _ := params["responsibility"].(string)
+
+	var capabilities []string
+	if capsVal, ok := params["capabilities"].([]interface{}); ok {
+		for _, c := range capsVal {
+			if cs, ok := c.(string); ok {
+				capabilities = append(capabilities, cs)
+			}
+		}
+	}
+
+	var tags []string
+	if tagsVal, ok := params["tags"].([]interface{}); ok {
+		for _, t := range tagsVal {
+			if ts, ok := t.(string); ok {
+				tags = append(tags, ts)
+			}
+		}
+	}
+
+	var publicPaths []string
+	if pubVal, ok := params["publicPaths"].([]interface{}); ok {
+		for _, p := range pubVal {
+			if ps, ok := p.(string); ok {
+				publicPaths = append(publicPaths, ps)
+			}
+		}
+	}
+
+	var internalPaths []string
+	if intVal, ok := params["internalPaths"].([]interface{}); ok {
+		for _, i := range intVal {
+			if is, ok := i.(string); ok {
+				internalPaths = append(internalPaths, is)
+			}
+		}
+	}
+
+	s.logger.Debug("Executing annotateModule", map[string]interface{}{
+		"moduleId":       moduleId,
+		"responsibility": responsibility,
+		"capabilities":   capabilities,
+		"tags":           tags,
+	})
+
+	input := &query.AnnotateModuleInput{
+		ModuleId:       moduleId,
+		Responsibility: responsibility,
+		Capabilities:   capabilities,
+		Tags:           tags,
+		PublicPaths:    publicPaths,
+		InternalPaths:  internalPaths,
+	}
+
+	resp, err := s.engine.AnnotateModule(input)
+	if err != nil {
+		return nil, fmt.Errorf("annotateModule failed: %w", err)
+	}
+
+	result := map[string]interface{}{
+		"moduleId": resp.ModuleId,
+		"updated":  resp.Updated,
+		"created":  resp.Created,
+	}
+
+	if resp.Responsibility != "" {
+		result["responsibility"] = resp.Responsibility
+	}
+
+	if len(resp.Capabilities) > 0 {
+		result["capabilities"] = resp.Capabilities
+	}
+
+	if len(resp.Tags) > 0 {
+		result["tags"] = resp.Tags
+	}
+
+	if resp.Boundaries != nil {
+		boundaries := map[string]interface{}{}
+		if len(resp.Boundaries.Public) > 0 {
+			boundaries["public"] = resp.Boundaries.Public
+		}
+		if len(resp.Boundaries.Internal) > 0 {
+			boundaries["internal"] = resp.Boundaries.Internal
+		}
+		if len(boundaries) > 0 {
+			result["boundaries"] = boundaries
+		}
+	}
+
+	jsonBytesAnnotate, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	return string(jsonBytesAnnotate), nil
+}
