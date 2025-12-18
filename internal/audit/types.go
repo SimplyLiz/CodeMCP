@@ -1,0 +1,119 @@
+// Package audit provides risk analysis for codebases.
+// It identifies risky code based on multiple signals including complexity,
+// test coverage, bus factor, staleness, and security sensitivity.
+package audit
+
+import "time"
+
+// RiskAnalysis is the result of a risk audit
+type RiskAnalysis struct {
+	Repo       string       `json:"repo"`
+	AnalyzedAt time.Time    `json:"analyzedAt"`
+	Items      []RiskItem   `json:"items"`
+	Summary    RiskSummary  `json:"summary"`
+	QuickWins  []QuickWin   `json:"quickWins"`
+}
+
+// RiskItem represents a single file/module with risk assessment
+type RiskItem struct {
+	File           string       `json:"file"`
+	Module         string       `json:"module,omitempty"`
+	RiskScore      float64      `json:"riskScore"`      // 0-100
+	RiskLevel      string       `json:"riskLevel"`      // "critical" | "high" | "medium" | "low"
+	Factors        []RiskFactor `json:"factors"`
+	Recommendation string       `json:"recommendation,omitempty"`
+}
+
+// RiskFactor represents a contributing factor to the risk score
+type RiskFactor struct {
+	Factor       string  `json:"factor"`       // factor type
+	Value        string  `json:"value"`        // display value
+	Weight       float64 `json:"weight"`       // 0-1 weight
+	Contribution float64 `json:"contribution"` // points contributed to score
+}
+
+// RiskSummary provides aggregate statistics
+type RiskSummary struct {
+	Critical       int              `json:"critical"`
+	High           int              `json:"high"`
+	Medium         int              `json:"medium"`
+	Low            int              `json:"low"`
+	TopRiskFactors []TopRiskFactor  `json:"topRiskFactors"`
+}
+
+// TopRiskFactor represents a commonly occurring risk factor
+type TopRiskFactor struct {
+	Factor string `json:"factor"`
+	Count  int    `json:"count"`
+}
+
+// QuickWin represents a low-effort, high-impact improvement
+type QuickWin struct {
+	Action string `json:"action"`
+	Target string `json:"target"`
+	Effort string `json:"effort"` // "low" | "medium" | "high"
+	Impact string `json:"impact"` // "low" | "medium" | "high"
+}
+
+// AuditOptions configures the risk audit
+type AuditOptions struct {
+	RepoRoot  string  // Repository root path
+	MinScore  float64 // Minimum risk score to include (default: 40)
+	Limit     int     // Max items to return (default: 50)
+	Factor    string  // Filter by specific factor (optional)
+	QuickWins bool    // Only show quick wins
+}
+
+// RiskFactorType constants
+const (
+	FactorComplexity         = "complexity"
+	FactorTestCoverage       = "test_coverage"
+	FactorBusFactor          = "bus_factor"
+	FactorStaleness          = "staleness"
+	FactorSecuritySensitive  = "security_sensitive"
+	FactorErrorRate          = "error_rate"
+	FactorCoChangeCoupling   = "co_change_coupling"
+	FactorChurn              = "churn"
+)
+
+// RiskLevel constants
+const (
+	RiskLevelCritical = "critical"
+	RiskLevelHigh     = "high"
+	RiskLevelMedium   = "medium"
+	RiskLevelLow      = "low"
+)
+
+// RiskWeights defines the weight for each factor
+var RiskWeights = map[string]float64{
+	FactorComplexity:        0.20,
+	FactorTestCoverage:      0.20,
+	FactorBusFactor:         0.15,
+	FactorStaleness:         0.10,
+	FactorSecuritySensitive: 0.15,
+	FactorErrorRate:         0.10,
+	FactorCoChangeCoupling:  0.05,
+	FactorChurn:             0.05,
+}
+
+// SecurityKeywords are keywords that indicate security-sensitive code
+var SecurityKeywords = []string{
+	"password", "secret", "token", "key", "credential",
+	"auth", "encrypt", "decrypt", "hash", "salt",
+	"private", "certificate", "oauth", "jwt", "session",
+	"apikey", "api_key", "access_token", "refresh_token",
+}
+
+// GetRiskLevel returns the risk level based on score
+func GetRiskLevel(score float64) string {
+	switch {
+	case score >= 80:
+		return RiskLevelCritical
+	case score >= 60:
+		return RiskLevelHigh
+	case score >= 40:
+		return RiskLevelMedium
+	default:
+		return RiskLevelLow
+	}
+}

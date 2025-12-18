@@ -1282,6 +1282,139 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		// v6.5 Developer Intelligence tools
+		{
+			Name:        "explainOrigin",
+			Description: "Explain why code exists: origin commit, evolution history, co-changes, and warnings. Answers 'why does this code exist?' with full context.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"symbol": map[string]interface{}{
+						"type":        "string",
+						"description": "Symbol to explain (file path, file:line, or symbol name)",
+					},
+					"includeUsage": map[string]interface{}{
+						"type":        "boolean",
+						"default":     true,
+						"description": "Include telemetry usage data if available",
+					},
+					"includeCoChange": map[string]interface{}{
+						"type":        "boolean",
+						"default":     true,
+						"description": "Include co-change analysis",
+					},
+					"historyLimit": map[string]interface{}{
+						"type":        "integer",
+						"default":     10,
+						"description": "Number of timeline entries to include",
+					},
+				},
+				"required": []string{"symbol"},
+			},
+		},
+		{
+			Name:        "analyzeCoupling",
+			Description: "Find files/symbols that historically change together. Reveals hidden coupling that static analysis misses.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"target": map[string]interface{}{
+						"type":        "string",
+						"description": "File or symbol to analyze",
+					},
+					"minCorrelation": map[string]interface{}{
+						"type":        "number",
+						"default":     0.3,
+						"description": "Minimum correlation threshold (0-1)",
+					},
+					"windowDays": map[string]interface{}{
+						"type":        "integer",
+						"default":     365,
+						"description": "Analysis window in days",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"default":     20,
+						"description": "Maximum results to return",
+					},
+				},
+				"required": []string{"target"},
+			},
+		},
+		{
+			Name:        "exportForLLM",
+			Description: "Export codebase structure in LLM-friendly format. Includes symbols, complexity, usage, and ownership.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"federation": map[string]interface{}{
+						"type":        "string",
+						"description": "Export entire federation (optional)",
+					},
+					"includeUsage": map[string]interface{}{
+						"type":        "boolean",
+						"default":     true,
+						"description": "Include telemetry usage data",
+					},
+					"includeOwnership": map[string]interface{}{
+						"type":        "boolean",
+						"default":     true,
+						"description": "Include owner annotations",
+					},
+					"includeContracts": map[string]interface{}{
+						"type":        "boolean",
+						"default":     true,
+						"description": "Include contract indicators",
+					},
+					"includeComplexity": map[string]interface{}{
+						"type":        "boolean",
+						"default":     true,
+						"description": "Include complexity scores",
+					},
+					"minComplexity": map[string]interface{}{
+						"type":        "integer",
+						"description": "Only include symbols with complexity >= N",
+					},
+					"minCalls": map[string]interface{}{
+						"type":        "integer",
+						"description": "Only include symbols with calls/day >= N",
+					},
+					"maxSymbols": map[string]interface{}{
+						"type":        "integer",
+						"description": "Limit total symbols",
+					},
+				},
+			},
+		},
+		{
+			Name:        "auditRisk",
+			Description: "Find risky code based on multiple signals: complexity, test coverage, bus factor, staleness, security sensitivity, error rate, coupling, and churn.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"minScore": map[string]interface{}{
+						"type":        "number",
+						"default":     40,
+						"description": "Minimum risk score to include (0-100)",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"default":     50,
+						"description": "Maximum items to return",
+					},
+					"factor": map[string]interface{}{
+						"type":        "string",
+						"description": "Filter by specific risk factor",
+						"enum":        []string{"complexity", "test_coverage", "bus_factor", "staleness", "security_sensitive", "error_rate", "co_change_coupling", "churn"},
+					},
+					"quickWins": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Only show quick wins (low effort, high impact)",
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -1349,4 +1482,9 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["getTelemetryStatus"] = s.toolGetTelemetryStatus
 	s.tools["getObservedUsage"] = s.toolGetObservedUsage
 	s.tools["findDeadCodeCandidates"] = s.toolFindDeadCodeCandidates
+	// v6.5 Developer Intelligence tools
+	s.tools["explainOrigin"] = s.toolExplainOrigin
+	s.tools["analyzeCoupling"] = s.toolAnalyzeCoupling
+	s.tools["exportForLLM"] = s.toolExportForLLM
+	s.tools["auditRisk"] = s.toolAuditRisk
 }

@@ -9,7 +9,8 @@ import (
 // v1: Initial schema (symbol_mappings, symbol_aliases, modules, dependency_edges, caches)
 // v2: Architectural Memory (ownership, hotspots, responsibilities, decisions)
 // v3: Telemetry (observed_usage, observed_callers, coverage_snapshots)
-const currentSchemaVersion = 3
+// v4: Developer Intelligence (coupling_cache, risk_scores)
+const currentSchemaVersion = 4
 
 // initializeSchema creates all tables for a new database
 func (db *DB) initializeSchema() error {
@@ -61,6 +62,11 @@ func (db *DB) initializeSchema() error {
 			return err
 		}
 
+		// Create v4 Developer Intelligence tables
+		if err := createDeveloperIntelligenceTables(tx); err != nil {
+			return err
+		}
+
 		// Set initial schema version
 		if err := setSchemaVersion(tx, currentSchemaVersion); err != nil {
 			return err
@@ -104,6 +110,12 @@ func (db *DB) runMigrations() error {
 	if version < 3 {
 		if err := db.migrateToV3(); err != nil {
 			return fmt.Errorf("failed to migrate to v3: %w", err)
+		}
+	}
+
+	if version < 4 {
+		if err := db.migrateToV4(); err != nil {
+			return fmt.Errorf("failed to migrate to v4: %w", err)
 		}
 	}
 
@@ -816,6 +828,80 @@ func createModuleRenamesTable(tx *sql.Tx) error {
 	for _, indexSQL := range indexes {
 		if _, err := tx.Exec(indexSQL); err != nil {
 			return fmt.Errorf("failed to create index: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// ============================================================================
+// v4 Schema: Developer Intelligence Tables
+// ============================================================================
+
+// migrateToV4 migrates the database from v3 to v4 (Developer Intelligence)
+func (db *DB) migrateToV4() error {
+	return db.WithTx(func(tx *sql.Tx) error {
+		db.logger.Info("Migrating database to v4 (Developer Intelligence)", nil)
+
+		// Create new v4 Developer Intelligence tables
+		if err := createDeveloperIntelligenceTables(tx); err != nil {
+			return err
+		}
+
+		// Update schema version
+		if err := setSchemaVersion(tx, 4); err != nil {
+			return err
+		}
+
+		db.logger.Info("Database migrated to v4", nil)
+		return nil
+	})
+}
+
+// createDeveloperIntelligenceTables creates tables for v6.5 features
+func createDeveloperIntelligenceTables(tx *sql.Tx) error {
+	tables := []string{
+		// Coupling cache - precomputed co-change correlations
+		`CREATE TABLE IF NOT EXISTS coupling_cache (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			file_path TEXT NOT NULL,
+			correlated_file TEXT NOT NULL,
+			correlation REAL NOT NULL,
+			co_change_count INTEGER NOT NULL,
+			total_changes INTEGER NOT NULL,
+			computed_at TEXT NOT NULL,
+			UNIQUE(file_path, correlated_file)
+		)`,
+
+		// Risk scores cache - computed risk scores for files
+		`CREATE TABLE IF NOT EXISTS risk_scores (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			file_path TEXT NOT NULL UNIQUE,
+			risk_score REAL NOT NULL,
+			risk_level TEXT NOT NULL,
+			factors TEXT NOT NULL,
+			computed_at TEXT NOT NULL
+		)`,
+	}
+
+	for _, stmt := range tables {
+		if _, err := tx.Exec(stmt); err != nil {
+			return fmt.Errorf("failed to create developer intelligence table: %w", err)
+		}
+	}
+
+	// Create indexes
+	indexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_coupling_file ON coupling_cache(file_path)",
+		"CREATE INDEX IF NOT EXISTS idx_coupling_correlation ON coupling_cache(correlation DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_coupling_correlated ON coupling_cache(correlated_file)",
+		"CREATE INDEX IF NOT EXISTS idx_risk_score ON risk_scores(risk_score DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_risk_level ON risk_scores(risk_level)",
+	}
+
+	for _, idx := range indexes {
+		if _, err := tx.Exec(idx); err != nil {
+			return fmt.Errorf("failed to create developer intelligence index: %w", err)
 		}
 	}
 

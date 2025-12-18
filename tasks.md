@@ -1719,6 +1719,430 @@ v6.4 adds **runtime telemetry integration** to CKB, enabling confident answers t
 
 ---
 
+## v6.5 — Developer-Friendly Intelligence
+
+*Explain code origins, detect coupling, export for LLMs, audit risk, and query via SQL*
+
+### Overview
+
+v6.5 adds developer-loved features that answer practical questions:
+- **Why does this code exist?** → `ckb explain`
+- **What changes with this file?** → `ckb coupling`
+- **Give me a codebase dump for LLMs** → `ckb export`
+- **What's risky in this codebase?** → `ckb audit`
+- **Let me query code metadata directly** → `ckb query`
+
+---
+
+### Phase 1: Symbol Explanation (`ckb explain`)
+
+*"Why does this code exist?" — origin, history, co-changes, warnings*
+
+- [ ] **1.1** Create `internal/explain/` package structure
+  - `types.go` — SymbolExplanation, Origin, Evolution, Warning types
+  - `explain.go` — ExplainSymbol main function
+  - `origin.go` — Find origin commit for symbol
+  - `evolution.go` — Build evolution timeline
+  - `warnings.go` — Analyze and generate warnings
+
+- [ ] **1.2** Implement `SymbolExplanation` type
+  ```go
+  type SymbolExplanation struct {
+      Symbol          string          `json:"symbol"`
+      SymbolId        string          `json:"symbolId"`
+      File            string          `json:"file"`
+      Line            int             `json:"line"`
+      Module          string          `json:"module,omitempty"`
+      Origin          Origin          `json:"origin"`
+      Evolution       Evolution       `json:"evolution"`
+      Ownership       OwnershipInfo   `json:"ownership"`
+      CoChangePatterns []CoChange     `json:"coChangePatterns"`
+      References      References      `json:"references"`
+      ObservedUsage   *ObservedUsage  `json:"observedUsage,omitempty"`
+      Warnings        []Warning       `json:"warnings"`
+  }
+  ```
+
+- [ ] **1.3** Implement origin commit detection
+  - Use `git log --follow --diff-filter=A -- <file>` to find file creation
+  - Parse git blame for specific lines around symbol definition
+  - Return author, date, commit message (the "why")
+
+- [ ] **1.4** Implement evolution timeline
+  - Get commits that touched the symbol's file
+  - Filter to commits that modified lines near symbol
+  - Track contributors and their commit counts
+  - Return timeline with most recent first
+
+- [ ] **1.5** Implement co-change pattern extraction
+  - Reuse coupling analysis from Phase 2
+  - Return top 5-10 files that change with this symbol
+  - Include correlation percentage
+
+- [ ] **1.6** Implement reference extraction from commit messages
+  - Regex patterns: `#\d+` (issues), `PR #\d+` (PRs)
+  - Extract JIRA-style: `[A-Z]+-\d+`
+  - Return deduplicated lists
+
+- [ ] **1.7** Implement warning generation
+  - **temporary_code**: Detect "temp", "temporary", "hack", "fixme", "todo", "remove after" in origin message + age > 3 months
+  - **bus_factor**: Only 1 contributor active in past year
+  - **high_coupling**: >= 3 files with > 70% correlation
+  - **stale**: Not touched in > 12 months
+  - **complex**: Cyclomatic complexity > 30
+
+- [ ] **1.8** Integrate observed usage from v6.4 telemetry (if enabled)
+  - Add calls/day, error rate, trend
+  - Show last called timestamp
+
+- [ ] **1.9** Add `explainSymbol` MCP tool
+  ```go
+  type ExplainSymbolOptions struct {
+      RepoId        string `json:"repoId"`
+      Symbol        string `json:"symbol"`       // name or file:line
+      IncludeUsage  bool   `json:"includeUsage"` // default: true
+      HistoryLimit  int    `json:"historyLimit"` // default: 10
+  }
+  ```
+  - Budget: Heavy
+  - Max latency: 2000ms
+
+- [ ] **1.10** Add CLI: `ckb explain <symbol>`
+  - Options: `--repo`, `--format`, `--history`, `--no-usage`, `--no-cochange`
+  - Pretty-print output with sections and colors
+
+---
+
+### Phase 2: Co-Change Patterns (`ckb coupling`)
+
+*Files/symbols that historically change together*
+
+- [ ] **2.1** Create `internal/coupling/` package structure
+  - `types.go` — CouplingAnalysis, Correlation types
+  - `analyzer.go` — Main coupling analysis
+  - `cache.go` — SQLite persistence
+
+- [ ] **2.2** Add coupling cache table to schema
+  ```sql
+  CREATE TABLE coupling_cache (
+      file_path TEXT NOT NULL,
+      correlated_file TEXT NOT NULL,
+      correlation REAL NOT NULL,
+      co_change_count INTEGER NOT NULL,
+      total_changes INTEGER NOT NULL,
+      computed_at TEXT NOT NULL,
+      PRIMARY KEY (file_path, correlated_file)
+  );
+  CREATE INDEX idx_coupling_file ON coupling_cache(file_path);
+  CREATE INDEX idx_coupling_correlation ON coupling_cache(correlation DESC);
+  ```
+
+- [ ] **2.3** Implement coupling analysis algorithm
+  - Get all commits touching target file within window (default: 365 days)
+  - For each commit, get all other files changed
+  - Compute correlation = co_change_count / total_target_changes
+  - Filter by min_correlation (default: 0.3)
+  - Sort by correlation descending
+
+- [ ] **2.4** Implement insight generation
+  - Test file correlation: "Changes often require test updates (85% correlation)"
+  - Proto/API correlation: "API contract changes in 55% of commits"
+  - High coupling warning: "Strong coupling detected with N files"
+
+- [ ] **2.5** Implement recommendations
+  - "When modifying X, consider reviewing: ..."
+  - Prioritize by correlation level (high > medium)
+
+- [ ] **2.6** Add `analyzeCoupling` MCP tool
+  ```go
+  type AnalyzeCouplingOptions struct {
+      RepoId         string `json:"repoId"`
+      Target         string `json:"target"`         // file or symbol
+      MinCorrelation float64 `json:"minCorrelation"` // default: 0.3
+      WindowDays     int    `json:"windowDays"`     // default: 365
+      Limit          int    `json:"limit"`          // default: 20
+  }
+  ```
+  - Budget: Heavy
+  - Max latency: 2000ms
+
+- [ ] **2.7** Add CLI: `ckb coupling <target>`
+  - Options: `--repo`, `--min-correlation`, `--window`, `--limit`, `--format`
+  - Pretty-print with correlation levels (high/medium/low)
+
+---
+
+### Phase 3: LLM Export (`ckb export`)
+
+*Codebase structure optimized for LLM context windows*
+
+- [ ] **3.1** Create `internal/export/` package structure
+  - `types.go` — LLMExport, ExportOptions types
+  - `exporter.go` — Main export function
+  - `formatter.go` — Text/JSON/Markdown formatters
+
+- [ ] **3.2** Implement `LLMExport` type
+  ```go
+  type LLMExport struct {
+      Metadata ExportMetadata `json:"metadata"`
+      Modules  []ExportModule `json:"modules"`
+  }
+
+  type ExportSymbol struct {
+      Type        string   `json:"type"`        // class, function, interface
+      Name        string   `json:"name"`
+      Complexity  int      `json:"complexity,omitempty"`
+      CallsPerDay int      `json:"callsPerDay,omitempty"`
+      Importance  int      `json:"importance,omitempty"` // 1-3 stars
+      Contracts   []string `json:"contracts,omitempty"`
+      Warnings    []string `json:"warnings,omitempty"`
+      IsInterface bool     `json:"isInterface,omitempty"`
+  }
+  ```
+
+- [ ] **3.3** Implement export algorithm
+  - Iterate modules sorted by path
+  - For each module, iterate files
+  - For each file, iterate symbols
+  - Apply filters: min_complexity, min_calls
+  - Apply limit: max_symbols
+  - Format according to output format
+
+- [ ] **3.4** Implement text output format
+  ```
+  ## pkg/auth/ (owner: @security-team)
+
+    ! middleware.go
+      $ AuthMiddleware
+        # Authenticate()      c=23  calls=15k/day ★★★
+        # ValidateToken()     c=18  calls=15k/day ★★
+  ```
+  - Legend at bottom explaining symbols
+
+- [ ] **3.5** Implement importance scoring
+  - Importance = usage × complexity
+  - Stars: 3 (high), 2 (medium), 1 (low)
+  - Consider: dead code candidates get warning
+
+- [ ] **3.6** Add `exportForLLM` MCP tool
+  ```go
+  type ExportForLLMOptions struct {
+      RepoId           string `json:"repoId"`
+      Federation       string `json:"federation,omitempty"`
+      IncludeUsage     bool   `json:"includeUsage"`     // default: true
+      IncludeOwnership bool   `json:"includeOwnership"` // default: true
+      IncludeContracts bool   `json:"includeContracts"` // default: true
+      IncludeComplexity bool  `json:"includeComplexity"` // default: true
+      MinComplexity    int    `json:"minComplexity,omitempty"`
+      MinCalls         int    `json:"minCalls,omitempty"`
+      MaxSymbols       int    `json:"maxSymbols,omitempty"`
+  }
+  ```
+  - Budget: Heavy
+  - Max latency: 5000ms (large repos)
+
+- [ ] **3.7** Add CLI: `ckb export`
+  - Options: `--repo`, `--federation`, `--output`, `--format`
+  - Options: `--no-usage`, `--no-ownership`, `--no-contracts`, `--no-complexity`
+  - Options: `--min-complexity`, `--min-calls`, `--max-symbols`
+
+---
+
+### Phase 4: Risk Audit (`ckb audit`)
+
+*Find risky code based on multiple signals*
+
+- [ ] **4.1** Create `internal/audit/` package structure
+  - `types.go` — RiskAnalysis, RiskItem, RiskFactor types
+  - `analyzer.go` — Main audit algorithm
+  - `scoring.go` — Risk score computation
+  - `quickwins.go` — Quick wins identification
+  - `cache.go` — SQLite persistence
+
+- [ ] **4.2** Add risk scores table to schema
+  ```sql
+  CREATE TABLE risk_scores (
+      file_path TEXT PRIMARY KEY,
+      risk_score REAL NOT NULL,
+      risk_level TEXT NOT NULL,
+      factors TEXT NOT NULL,          -- JSON
+      computed_at TEXT NOT NULL
+  );
+  CREATE INDEX idx_risk_score ON risk_scores(risk_score DESC);
+  CREATE INDEX idx_risk_level ON risk_scores(risk_level);
+  ```
+
+- [ ] **4.3** Implement risk factor computation
+  | Factor | Weight | Max Contribution |
+  |--------|--------|-----------------|
+  | complexity | 0.20 | 20 |
+  | test_coverage | 0.20 | 20 |
+  | bus_factor | 0.15 | 15 |
+  | staleness | 0.10 | 10 |
+  | security_sensitive | 0.15 | 15 |
+  | error_rate | 0.10 | 10 |
+  | co_change_coupling | 0.05 | 5 |
+  | churn | 0.05 | 5 |
+
+- [ ] **4.4** Implement security keyword detection
+  - Keywords: password, secret, token, key, credential, auth, encrypt, decrypt, hash, salt, private, certificate, oauth, jwt
+  - Case-insensitive scan of file content
+
+- [ ] **4.5** Implement risk level classification
+  - critical: score >= 80
+  - high: score >= 60
+  - medium: score >= 40
+  - low: score < 40
+
+- [ ] **4.6** Implement recommendation generation
+  - Per-item recommendations based on top factors
+  - "Urgent refactoring needed. Assign new owner, increase test coverage..."
+
+- [ ] **4.7** Implement quick wins identification
+  - Low effort + high impact
+  - Example: "Add tests to pkg/auth/token.go (complexity=18, coverage=0%)"
+  - Example: "Assign backup owner to pkg/payments/ (bus factor=1)"
+
+- [ ] **4.8** Add `auditRisk` MCP tool
+  ```go
+  type AuditRiskOptions struct {
+      RepoId     string   `json:"repoId"`
+      MinScore   int      `json:"minScore"`   // default: 40
+      Limit      int      `json:"limit"`      // default: 50
+      Factor     string   `json:"factor,omitempty"` // filter by factor
+      QuickWins  bool     `json:"quickWins"`  // only show quick wins
+  }
+  ```
+  - Budget: Heavy
+  - Max latency: 5000ms
+
+- [ ] **4.9** Add CLI: `ckb audit`
+  - Options: `--repo`, `--min-score`, `--limit`, `--factor`, `--format`, `--quick-wins`
+  - Pretty-print with risk levels (color-coded)
+  - Summary at bottom with counts and top factors
+
+---
+
+### Phase 5: SQL Interface (`ckb query`)
+
+*Execute SQL queries against codebase metadata*
+
+- [ ] **5.1** Create `internal/query/sql/` package
+  - `executor.go` — SQL query execution
+  - `views.go` — Virtual table definitions
+  - `security.go` — Query validation/sandboxing
+
+- [ ] **5.2** Implement virtual tables backed by existing data
+  | Table | Source |
+  |-------|--------|
+  | symbols | SCIP index |
+  | files | File system + SCIP |
+  | modules | Module detection |
+  | owners | Ownership data |
+  | contracts | Contract detection |
+  | observed_usage | v6.4 telemetry |
+  | git_commits | Git log |
+  | git_file_changes | Git log |
+
+- [ ] **5.3** Implement query validation
+  - Read-only queries only
+  - Allowlist of tables
+  - Max execution time: 30s
+  - Max result rows: 10000
+
+- [ ] **5.4** Implement SQL executor
+  - Use SQLite with read-only connection
+  - Execute query against virtual tables
+  - Return columns + rows
+
+- [ ] **5.5** Add `executeQuery` MCP tool
+  ```go
+  type ExecuteQueryOptions struct {
+      RepoId string `json:"repoId"`
+      Query  string `json:"query"`
+  }
+
+  type QueryResult struct {
+      Columns  []string        `json:"columns"`
+      Rows     [][]interface{} `json:"rows"`
+      RowCount int             `json:"rowCount"`
+  }
+  ```
+  - Budget: Heavy
+  - Max latency: 30000ms
+
+- [ ] **5.6** Add CLI: `ckb query "<sql>"`
+  - Options: `--repo`, `--format` (table, json, csv), `--output`
+  - Pretty-print as table by default
+
+- [ ] **5.7** Add common query examples to help text
+  - "Find high-complexity functions"
+  - "God objects (files with many functions)"
+  - "Dead code candidates (not called, high complexity)"
+  - "Files with no owner"
+  - "Most active contributors to a module"
+
+---
+
+### Phase 6: Database Schema Additions
+
+- [ ] **6.1** Add coupling_cache table (Phase 2)
+- [ ] **6.2** Add risk_scores table (Phase 4)
+- [ ] **6.3** Create migration v6 -> v7
+
+---
+
+### Phase 7: Testing
+
+- [ ] **7.1** Unit tests for origin commit detection
+- [ ] **7.2** Unit tests for evolution timeline
+- [ ] **7.3** Unit tests for warning generation
+- [ ] **7.4** Unit tests for coupling analysis
+- [ ] **7.5** Unit tests for risk scoring
+- [ ] **7.6** Unit tests for security keyword detection
+- [ ] **7.7** Unit tests for SQL query validation
+- [ ] **7.8** Integration tests for full explain flow
+- [ ] **7.9** Integration tests for export generation
+- [ ] **7.10** CLI command tests
+
+---
+
+### v6.5 Tool Budget Classification
+
+| Tool | Budget | Max Latency | Notes |
+|------|--------|-------------|-------|
+| explainSymbol | Heavy | 2000ms | Git log + coupling analysis |
+| analyzeCoupling | Heavy | 2000ms | Git history scan |
+| exportForLLM | Heavy | 5000ms | Full codebase iteration |
+| auditRisk | Heavy | 5000ms | Multi-factor analysis |
+| executeQuery | Heavy | 30000ms | User-defined SQL |
+
+---
+
+### v6.5 Success Metrics
+
+| Feature | Metric | Target |
+|---------|--------|--------|
+| `ckb explain` | Time to generate | < 2s |
+| `ckb coupling` | Correlation accuracy | Manually validated |
+| `ckb export` | Token efficiency | < 50K tokens for 10K LOC |
+| `ckb audit` | Precision | > 80% (risky = actually risky) |
+| `ckb query` | Query time | < 100ms for typical queries |
+
+---
+
+### v6.5 Implementation Priority
+
+| Priority | Feature | Effort | Value |
+|----------|---------|--------|-------|
+| P0 | `ckb explain` | Low | Very High |
+| P0 | `ckb coupling` | Medium | Very High |
+| P1 | `ckb export` | Low | High |
+| P1 | `ckb audit` | Low | High |
+| P2 | `ckb query` | Medium | Medium |
+
+---
+
 ## Scratched (Not Implementing)
 
 | Feature | Reason |
@@ -1728,6 +2152,6 @@ v6.4 adds **runtime telemetry integration** to CKB, enabling confident answers t
 
 ---
 
-*Document version: 1.5*
-*Based on: CKB v6.0-draft-2 + v6.2 federation + v6.2.1 daemon mode + v6.2.2 tree-sitter + v6.3 contracts + v6.4 telemetry*
+*Document version: 1.6*
+*Based on: CKB v6.0-draft-2 + v6.2 federation + v6.2.1 daemon mode + v6.2.2 tree-sitter + v6.3 contracts + v6.4 telemetry + v6.5 developer intelligence*
 *Created: December 2024*
