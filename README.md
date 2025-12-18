@@ -51,6 +51,9 @@ Cross-repo intelligence through explicit API boundaries. Detect protobuf and Ope
 ### Runtime Telemetry (v6.4)
 From "maybe used" to "actually used". Integrate OpenTelemetry metrics to see real call counts, detect dead code with confidence scores, and enrich impact analysis with observed callers.
 
+### Developer Intelligence (v6.5)
+Understand *why* code exists, not just *what* it does. Explain symbol origins with git history, find co-change coupling patterns, export codebase structure for LLMs, and audit risk with 8 weighted factors (complexity, test coverage, bus factor, security, staleness, error rate, coupling, churn).
+
 ## Three Ways to Use It
 
 | Interface | Best For |
@@ -87,7 +90,7 @@ Now Claude can answer questions like:
 - *"Is this legacy code still used?"*
 - *"Summarize PR #123 by risk level"*
 
-## MCP Tools (54 Available)
+## MCP Tools (58 Available)
 
 CKB exposes code intelligence through the Model Context Protocol:
 
@@ -181,6 +184,14 @@ CKB exposes code intelligence through the Model Context Protocol:
 | `getObservedUsage` | Observed usage for a symbol |
 | `findDeadCodeCandidates` | Find symbols with zero runtime calls |
 
+### v6.5 — Developer Intelligence
+| Tool | Purpose |
+|------|---------|
+| `explainOrigin` | Why does this code exist? (origin, evolution, warnings) |
+| `analyzeCoupling` | Find files/symbols that change together |
+| `exportForLLM` | LLM-friendly codebase export |
+| `auditRisk` | Multi-signal risk audit (8 factors) |
+
 ## Documentation
 
 📚 **[Full Documentation Wiki](https://github.com/SimplyLiz/CodeMCP/wiki)**
@@ -195,7 +206,7 @@ CKB exposes code intelligence through the Model Context Protocol:
 | [Federation](https://github.com/SimplyLiz/CodeMCP/wiki/Federation) | Cross-repository queries & contracts (v6.3) |
 | [CI/CD Integration](https://github.com/SimplyLiz/CodeMCP/wiki/CI-CD-Integration) | GitHub Actions, PR analysis (v6.1) |
 | [API Reference](https://github.com/SimplyLiz/CodeMCP/wiki/API-Reference) | HTTP API documentation |
-| [MCP Integration](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration) | Claude Code / AI assistant setup (54 tools) |
+| [MCP Integration](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration) | Claude Code / AI assistant setup (58 tools) |
 | [Architecture](https://github.com/SimplyLiz/CodeMCP/wiki/Architecture) | System design and components |
 | [Configuration](https://github.com/SimplyLiz/CodeMCP/wiki/Configuration) | All options including MODULES.toml |
 | [Performance](https://github.com/SimplyLiz/CodeMCP/wiki/Performance) | Latency targets and benchmarks |
@@ -274,6 +285,12 @@ ckb telemetry status
 ckb telemetry usage --symbol="internal/api/handler.go:HandleRequest"
 ckb telemetry unmapped
 ckb dead-code --min-confidence=0.7
+
+# Developer Intelligence commands (v6.5)
+ckb explain internal/api/handler.go:42
+ckb coupling internal/query/engine.go --min-correlation=0.5
+ckb export --min-complexity=10 --max-symbols=200
+ckb audit --min-score=60 --quick-wins
 ```
 
 ## HTTP API
@@ -388,14 +405,18 @@ CKB maintains persistent knowledge:
 ├── cmd/ckb/              # CLI commands
 ├── internal/
 │   ├── api/              # HTTP API server
+│   ├── audit/            # Risk audit with weighted factors (v6.5)
 │   ├── backends/
 │   │   ├── git/          # Git backend (blame, history)
 │   │   ├── lsp/          # LSP backend adapter
 │   │   └── scip/         # SCIP backend adapter
 │   ├── complexity/       # Tree-sitter complexity metrics (v6.2.2)
 │   ├── config/           # Configuration management
+│   ├── coupling/         # Co-change coupling analysis (v6.5)
 │   ├── daemon/           # Daemon process lifecycle (v6.2.1)
 │   ├── decisions/        # ADR parsing and storage
+│   ├── explain/          # Symbol origin explanation (v6.5)
+│   ├── export/           # LLM-friendly export (v6.5)
 │   ├── federation/       # Cross-repo federation (v6.2)
 │   ├── hotspots/         # Hotspot tracking and trends
 │   ├── identity/         # Symbol identity and aliasing
