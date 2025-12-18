@@ -42,6 +42,12 @@ Query across multiple repositories. Group related repos into federations and sea
 ### Daemon Mode (v6.2.1)
 Always-on service with HTTP API, scheduled tasks (cron/intervals), file watching for git changes, and webhooks to Slack/PagerDuty/Discord.
 
+### Tree-sitter Complexity (v6.2.2)
+Language-agnostic complexity metrics for Go, JavaScript, TypeScript, Python, Rust, Java, and Kotlin. Computes cyclomatic and cognitive complexity to feed into hotspot risk scores.
+
+### Contract-Aware Impact Analysis (v6.3)
+Cross-repo intelligence through explicit API boundaries. Detect protobuf and OpenAPI contracts, track consumer dependencies with evidence tiers, and answer "What breaks if I change this shared API?"
+
 ## Three Ways to Use It
 
 | Interface | Best For |
@@ -78,7 +84,7 @@ Now Claude can answer questions like:
 - *"Is this legacy code still used?"*
 - *"Summarize PR #123 by risk level"*
 
-## MCP Tools (44 Available)
+## MCP Tools (50 Available)
 
 CKB exposes code intelligence through the Model Context Protocol:
 
@@ -150,6 +156,16 @@ CKB exposes code intelligence through the Model Context Protocol:
 | `testWebhook` | Send test webhook |
 | `webhookDeliveries` | Get delivery history |
 
+### v6.3 — Contract-Aware Impact Analysis
+| Tool | Purpose |
+|------|---------|
+| `listContracts` | List contracts in federation |
+| `analyzeContractImpact` | Analyze impact of contract changes |
+| `getContractDependencies` | Get contract deps for a repo |
+| `suppressContractEdge` | Suppress false positive edge |
+| `verifyContractEdge` | Verify an edge |
+| `getContractStats` | Contract statistics |
+
 ## Documentation
 
 📚 **[Full Documentation Wiki](https://github.com/SimplyLiz/CodeMCP/wiki)**
@@ -161,10 +177,10 @@ CKB exposes code intelligence through the Model Context Protocol:
 | **[Practical Limits](https://github.com/SimplyLiz/CodeMCP/wiki/Practical-Limits)** | Accuracy notes, blind spots, validation tips |
 | [User Guide](https://github.com/SimplyLiz/CodeMCP/wiki/User-Guide) | CLI commands and best practices |
 | [Daemon Mode](https://github.com/SimplyLiz/CodeMCP/wiki/Daemon-Mode) | Always-on service, scheduler, webhooks (v6.2.1) |
-| [Federation](https://github.com/SimplyLiz/CodeMCP/wiki/Federation) | Cross-repository queries (v6.2) |
+| [Federation](https://github.com/SimplyLiz/CodeMCP/wiki/Federation) | Cross-repository queries & contracts (v6.3) |
 | [CI/CD Integration](https://github.com/SimplyLiz/CodeMCP/wiki/CI-CD-Integration) | GitHub Actions, PR analysis (v6.1) |
 | [API Reference](https://github.com/SimplyLiz/CodeMCP/wiki/API-Reference) | HTTP API documentation |
-| [MCP Integration](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration) | Claude Code / AI assistant setup (44 tools) |
+| [MCP Integration](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration) | Claude Code / AI assistant setup (50 tools) |
 | [Architecture](https://github.com/SimplyLiz/CodeMCP/wiki/Architecture) | System design and components |
 | [Configuration](https://github.com/SimplyLiz/CodeMCP/wiki/Configuration) | All options including MODULES.toml |
 | [Performance](https://github.com/SimplyLiz/CodeMCP/wiki/Performance) | Latency targets and benchmarks |
@@ -231,6 +247,12 @@ ckb daemon schedule run <schedule-id>
 ckb webhooks list
 ckb webhooks test <webhook-id>
 ckb webhooks deliveries <webhook-id>
+
+# Contract commands (v6.3)
+ckb contracts list platform
+ckb contracts impact platform --repo=api --path=proto/api/v1/user.proto
+ckb contracts deps platform --repo=api
+ckb contracts stats platform
 ```
 
 ## HTTP API
@@ -340,6 +362,7 @@ CKB maintains persistent knowledge:
 │   │   ├── git/          # Git backend (blame, history)
 │   │   ├── lsp/          # LSP backend adapter
 │   │   └── scip/         # SCIP backend adapter
+│   ├── complexity/       # Tree-sitter complexity metrics (v6.2.2)
 │   ├── config/           # Configuration management
 │   ├── daemon/           # Daemon process lifecycle (v6.2.1)
 │   ├── decisions/        # ADR parsing and storage
