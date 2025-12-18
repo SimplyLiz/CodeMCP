@@ -110,12 +110,13 @@ type ContractEdge struct {
 	DetectedAt   time.Time `json:"detectedAt"`
 
 	// Manual overrides
-	Suppressed   bool       `json:"suppressed,omitempty"`
-	SuppressedBy string     `json:"suppressedBy,omitempty"`
-	SuppressedAt *time.Time `json:"suppressedAt,omitempty"`
-	Verified     bool       `json:"verified,omitempty"`
-	VerifiedBy   string     `json:"verifiedBy,omitempty"`
-	VerifiedAt   *time.Time `json:"verifiedAt,omitempty"`
+	Suppressed         bool       `json:"suppressed,omitempty"`
+	SuppressedBy       string     `json:"suppressedBy,omitempty"`
+	SuppressedAt       *time.Time `json:"suppressedAt,omitempty"`
+	SuppressionReason  string     `json:"suppressionReason,omitempty"`
+	Verified           bool       `json:"verified,omitempty"`
+	VerifiedBy         string     `json:"verifiedBy,omitempty"`
+	VerifiedAt         *time.Time `json:"verifiedAt,omitempty"`
 }
 
 // ProtoImport represents an import relationship between proto contracts
@@ -336,7 +337,7 @@ func (idx *Index) FindDirectConsumers(contractID string, includeTier EvidenceTie
 	query := fmt.Sprintf(`
 		SELECT id, edge_key, contract_id, consumer_repo_uid, consumer_repo_id, consumer_paths,
 			tier, evidence_type, evidence_details, confidence, confidence_basis, detector_name, detected_at,
-			suppressed, suppressed_by, suppressed_at, verified, verified_by, verified_at
+			suppressed, suppressed_by, suppressed_at, suppression_reason, verified, verified_by, verified_at
 		FROM contract_edges
 		WHERE contract_id = ? AND suppressed = 0 AND %s
 		ORDER BY confidence DESC
@@ -494,11 +495,11 @@ func scanContractEdges(rows *sql.Rows) ([]ContractEdge, error) {
 		var consumerPaths, evidenceDetails, confidenceBasis sql.NullString
 		var detectedAt string
 		var suppressedAt, verifiedAt sql.NullString
-		var suppressedBy, verifiedBy sql.NullString
+		var suppressedBy, verifiedBy, suppressionReason sql.NullString
 
 		if err := rows.Scan(&e.ID, &e.EdgeKey, &e.ContractID, &e.ConsumerRepoUID, &e.ConsumerRepoID,
 			&consumerPaths, &e.Tier, &e.EvidenceType, &evidenceDetails, &e.Confidence, &confidenceBasis,
-			&e.DetectorName, &detectedAt, &e.Suppressed, &suppressedBy, &suppressedAt,
+			&e.DetectorName, &detectedAt, &e.Suppressed, &suppressedBy, &suppressedAt, &suppressionReason,
 			&e.Verified, &verifiedBy, &verifiedAt); err != nil {
 			continue
 		}
@@ -514,6 +515,7 @@ func scanContractEdges(rows *sql.Rows) ([]ContractEdge, error) {
 			e.DetectedAt = t
 		}
 		e.SuppressedBy = suppressedBy.String
+		e.SuppressionReason = suppressionReason.String
 		e.VerifiedBy = verifiedBy.String
 		if suppressedAt.Valid {
 			if t, err := time.Parse(time.RFC3339, suppressedAt.String); err == nil {

@@ -230,7 +230,7 @@ CREATE TABLE IF NOT EXISTS proto_imports (
 CREATE INDEX IF NOT EXISTS idx_proto_imports_imported ON proto_imports(imported_contract_id);
 `
 
-const currentSchemaVersion = 1
+const currentSchemaVersion = 2
 
 // OpenIndex opens or creates the federation index database
 func OpenIndex(federationName string) (*Index, error) {
@@ -284,8 +284,43 @@ func (idx *Index) initSchema() error {
 		if _, err := idx.db.Exec("INSERT OR REPLACE INTO schema_version (version) VALUES (?)", currentSchemaVersion); err != nil {
 			return fmt.Errorf("failed to set schema version: %w", err)
 		}
+	} else if version < currentSchemaVersion {
+		// Run migrations
+		if err := idx.migrate(version); err != nil {
+			return fmt.Errorf("failed to migrate schema: %w", err)
+		}
 	}
-	// If version exists and matches, we're good
+
+	return nil
+}
+
+// migrate runs schema migrations from the given version to currentSchemaVersion
+func (idx *Index) migrate(fromVersion int) error {
+	// Migration from v1 to v2: add suppression_reason column to contract_edges
+	if fromVersion < 2 {
+		// Check if the column already exists (defensive)
+		var exists bool
+		err := idx.db.QueryRow(`
+			SELECT COUNT(*) > 0 FROM pragma_table_info('contract_edges') WHERE name = 'suppression_reason'
+		`).Scan(&exists)
+		if err != nil {
+			// If the check fails, try to add the column anyway
+			exists = false
+		}
+
+		if !exists {
+			_, err := idx.db.Exec(`ALTER TABLE contract_edges ADD COLUMN suppression_reason TEXT`)
+			if err != nil {
+				return fmt.Errorf("failed to add suppression_reason column: %w", err)
+			}
+		}
+	}
+
+	// Update schema version
+	_, err := idx.db.Exec("UPDATE schema_version SET version = ?", currentSchemaVersion)
+	if err != nil {
+		return fmt.Errorf("failed to update schema version: %w", err)
+	}
 
 	return nil
 }

@@ -3,7 +3,9 @@ package federation
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"sort"
+	"strings"
 )
 
 // AnalyzeContractImpactOptions contains options for impact analysis
@@ -393,13 +395,13 @@ func (f *Federation) gatherOwnership(contract *Contract, consumers []Consumer) I
 func (f *Federation) queryOwnership(repoUID, path string) []Owner {
 	var owners []Owner
 
-	// Query ownership entries for this repo, matching patterns
+	// Query ownership entries for this repo that could match the path
+	// We fetch patterns and filter in Go for proper glob matching
 	rows, err := f.index.db.Query(`
-		SELECT owners, scope, source, confidence
+		SELECT pattern, owners, scope, source, confidence
 		FROM federated_ownership
 		WHERE repo_uid = ?
 		ORDER BY confidence DESC
-		LIMIT 10
 	`, repoUID)
 	if err != nil {
 		return owners
@@ -407,9 +409,14 @@ func (f *Federation) queryOwnership(repoUID, path string) []Owner {
 	defer rows.Close()
 
 	for rows.Next() {
-		var ownersJSON, scope, source string
+		var pattern, ownersJSON, scope, source string
 		var confidence float64
-		if err := rows.Scan(&ownersJSON, &scope, &source, &confidence); err != nil {
+		if err := rows.Scan(&pattern, &ownersJSON, &scope, &source, &confidence); err != nil {
+			continue
+		}
+
+		// Check if pattern matches the path
+		if !matchOwnershipPattern(pattern, path) {
 			continue
 		}
 
@@ -420,8 +427,10 @@ func (f *Federation) queryOwnership(repoUID, path string) []Owner {
 		}
 
 		// Add owners with their weight adjusted by confidence
+		// More specific patterns (longer, no wildcards) get higher weight
+		specificity := patternSpecificity(pattern)
 		for _, o := range ownerList {
-			o.Weight = o.Weight * confidence
+			o.Weight = o.Weight * confidence * specificity
 			owners = append(owners, o)
 		}
 	}
@@ -437,6 +446,102 @@ func (f *Federation) queryOwnership(repoUID, path string) []Owner {
 		return deduped[:5]
 	}
 	return deduped
+}
+
+// matchOwnershipPattern matches a path against a CODEOWNERS-style pattern
+func matchOwnershipPattern(pattern, path string) bool {
+	// Handle special cases
+	if pattern == "*" || pattern == "**" {
+		return true
+	}
+
+	// Normalize paths
+	pattern = strings.TrimPrefix(pattern, "/")
+	path = strings.TrimPrefix(path, "/")
+
+	// If pattern ends with /, it matches directories
+	if strings.HasSuffix(pattern, "/") {
+		dirPattern := strings.TrimSuffix(pattern, "/")
+		return strings.HasPrefix(path, dirPattern+"/") || path == dirPattern
+	}
+
+	// If pattern contains **, use path.Match with recursive matching
+	if strings.Contains(pattern, "**") {
+		// Convert ** to match any path segment
+		// e.g., "internal/**/*.go" should match "internal/foo/bar/baz.go"
+		parts := strings.Split(pattern, "**")
+		if len(parts) == 2 {
+			prefix := strings.TrimSuffix(parts[0], "/")
+			suffix := strings.TrimPrefix(parts[1], "/")
+
+			// Check if path starts with prefix
+			if prefix != "" && !strings.HasPrefix(path, prefix) {
+				return false
+			}
+
+			// Check if path ends with suffix pattern
+			if suffix != "" {
+				remainder := path
+				if prefix != "" {
+					remainder = strings.TrimPrefix(path, prefix)
+					remainder = strings.TrimPrefix(remainder, "/")
+				}
+				// Simple glob match for suffix
+				matched, _ := filepath.Match(suffix, filepath.Base(remainder))
+				if !matched && !strings.HasSuffix(remainder, suffix) {
+					return false
+				}
+			}
+			return true
+		}
+	}
+
+	// Try exact match first
+	if path == pattern {
+		return true
+	}
+
+	// Try as a prefix (directory pattern without trailing /)
+	if strings.HasPrefix(path, pattern+"/") {
+		return true
+	}
+
+	// Try glob match
+	matched, _ := filepath.Match(pattern, path)
+	if matched {
+		return true
+	}
+
+	// Try matching just the filename for patterns like "*.go"
+	if strings.Contains(pattern, "*") && !strings.Contains(pattern, "/") {
+		matched, _ = filepath.Match(pattern, filepath.Base(path))
+		if matched {
+			return true
+		}
+	}
+
+	return false
+}
+
+// patternSpecificity returns a weight based on how specific a pattern is
+// More specific patterns should have higher weight
+func patternSpecificity(pattern string) float64 {
+	// Wildcards reduce specificity
+	if pattern == "*" || pattern == "**" {
+		return 0.1
+	}
+	if strings.Contains(pattern, "**") {
+		return 0.5
+	}
+	if strings.Contains(pattern, "*") {
+		return 0.7
+	}
+	// Longer patterns are more specific
+	specificity := 1.0 + float64(len(pattern))/100.0
+	if specificity > 2.0 {
+		specificity = 2.0
+	}
+	return specificity
 }
 
 // deduplicateOwners merges duplicate owners by summing weights
@@ -634,7 +739,7 @@ func (f *Federation) GetContractEdge(edgeID int64) (*ContractEdge, error) {
 	rows, err := f.index.db.Query(`
 		SELECT id, edge_key, contract_id, consumer_repo_uid, consumer_repo_id, consumer_paths,
 			tier, evidence_type, evidence_details, confidence, confidence_basis, detector_name, detected_at,
-			suppressed, suppressed_by, suppressed_at, verified, verified_by, verified_at
+			suppressed, suppressed_by, suppressed_at, suppression_reason, verified, verified_by, verified_at
 		FROM contract_edges
 		WHERE id = ?
 	`, edgeID)
@@ -658,7 +763,7 @@ func (f *Federation) GetContractEdgeByKey(edgeKey string) (*ContractEdge, error)
 	rows, err := f.index.db.Query(`
 		SELECT id, edge_key, contract_id, consumer_repo_uid, consumer_repo_id, consumer_paths,
 			tier, evidence_type, evidence_details, confidence, confidence_basis, detector_name, detected_at,
-			suppressed, suppressed_by, suppressed_at, verified, verified_by, verified_at
+			suppressed, suppressed_by, suppressed_at, suppression_reason, verified, verified_by, verified_at
 		FROM contract_edges
 		WHERE edge_key = ?
 	`, edgeKey)
