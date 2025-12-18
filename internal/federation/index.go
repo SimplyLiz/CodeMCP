@@ -205,6 +205,7 @@ CREATE TABLE IF NOT EXISTS contract_edges (
     suppressed INTEGER DEFAULT 0,
     suppressed_by TEXT,
     suppressed_at TEXT,
+    suppression_reason TEXT,
     verified INTEGER DEFAULT 0,
     verified_by TEXT,
     verified_at TEXT,

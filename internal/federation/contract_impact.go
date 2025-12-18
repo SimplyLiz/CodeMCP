@@ -106,9 +106,7 @@ func (f *Federation) AnalyzeContractImpact(opts AnalyzeContractImpactOptions) (*
 	if opts.MaxDepth <= 0 {
 		opts.MaxDepth = 3
 	}
-	if !opts.IncludeTransitive {
-		opts.IncludeTransitive = true
-	}
+	// Note: IncludeTransitive defaults to false (zero value), callers must opt-in
 
 	// Find the repo
 	repo := f.config.GetRepo(opts.RepoID)
@@ -336,7 +334,7 @@ func computeRisk(contract *Contract, consumers []Consumer, totalRepoCount int) (
 	return level, factors
 }
 
-// gatherOwnership gathers ownership info
+// gatherOwnership gathers ownership info from federated_ownership table
 func (f *Federation) gatherOwnership(contract *Contract, consumers []Consumer) ImpactOwnership {
 	ownership := ImpactOwnership{
 		DefinitionOwners: []Owner{},
@@ -344,32 +342,121 @@ func (f *Federation) gatherOwnership(contract *Contract, consumers []Consumer) I
 		ApprovalRequired: []Owner{},
 	}
 
-	// TODO: Integrate with actual ownership data from federated_ownership table
-	// For now, return basic structure
+	// Query ownership for the contract definition
+	defOwners := f.queryOwnership(contract.RepoUID, contract.Path)
+	ownership.DefinitionOwners = defOwners
 
-	// Get unique consumer repo IDs
-	repoOwnerMap := make(map[string]bool)
+	// Query ownership for consumer paths
+	seenOwners := make(map[string]bool)
 	for _, c := range consumers {
-		repoOwnerMap[c.RepoID] = true
+		for _, path := range c.ConsumerPaths {
+			owners := f.queryOwnership(c.RepoUID, path)
+			for _, o := range owners {
+				key := o.Type + ":" + o.ID
+				if !seenOwners[key] {
+					seenOwners[key] = true
+					ownership.ConsumerOwners = append(ownership.ConsumerOwners, o)
+				}
+			}
+		}
 	}
 
-	// Create placeholder owners for each repo
-	for repoID := range repoOwnerMap {
-		ownership.ConsumerOwners = append(ownership.ConsumerOwners, Owner{
-			Type: "repo",
-			ID:   repoID,
-		})
+	// Approval required: definition owners + top consumer owners
+	for _, o := range ownership.DefinitionOwners {
+		ownership.ApprovalRequired = append(ownership.ApprovalRequired, o)
 	}
 
-	// Approval required is union of definition + top consumer owners
-	ownership.ApprovalRequired = append(ownership.ApprovalRequired, ownership.DefinitionOwners...)
+	// Add top N consumer owners (limit to 5)
 	topN := 5
 	if len(ownership.ConsumerOwners) < topN {
 		topN = len(ownership.ConsumerOwners)
 	}
-	ownership.ApprovalRequired = append(ownership.ApprovalRequired, ownership.ConsumerOwners[:topN]...)
+	for i := 0; i < topN; i++ {
+		// Avoid duplicates in approval list
+		key := ownership.ConsumerOwners[i].Type + ":" + ownership.ConsumerOwners[i].ID
+		alreadyInApproval := false
+		for _, a := range ownership.ApprovalRequired {
+			if a.Type+":"+a.ID == key {
+				alreadyInApproval = true
+				break
+			}
+		}
+		if !alreadyInApproval {
+			ownership.ApprovalRequired = append(ownership.ApprovalRequired, ownership.ConsumerOwners[i])
+		}
+	}
 
 	return ownership
+}
+
+// queryOwnership queries federated_ownership for owners matching a path
+func (f *Federation) queryOwnership(repoUID, path string) []Owner {
+	var owners []Owner
+
+	// Query ownership entries for this repo, matching patterns
+	rows, err := f.index.db.Query(`
+		SELECT owners, scope, source, confidence
+		FROM federated_ownership
+		WHERE repo_uid = ?
+		ORDER BY confidence DESC
+		LIMIT 10
+	`, repoUID)
+	if err != nil {
+		return owners
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var ownersJSON, scope, source string
+		var confidence float64
+		if err := rows.Scan(&ownersJSON, &scope, &source, &confidence); err != nil {
+			continue
+		}
+
+		// Parse owners JSON
+		var ownerList []Owner
+		if err := json.Unmarshal([]byte(ownersJSON), &ownerList); err != nil {
+			continue
+		}
+
+		// Add owners with their weight adjusted by confidence
+		for _, o := range ownerList {
+			o.Weight = o.Weight * confidence
+			owners = append(owners, o)
+		}
+	}
+
+	// Deduplicate and sort by weight
+	deduped := deduplicateOwners(owners)
+	sort.Slice(deduped, func(i, j int) bool {
+		return deduped[i].Weight > deduped[j].Weight
+	})
+
+	// Return top 5
+	if len(deduped) > 5 {
+		return deduped[:5]
+	}
+	return deduped
+}
+
+// deduplicateOwners merges duplicate owners by summing weights
+func deduplicateOwners(owners []Owner) []Owner {
+	merged := make(map[string]*Owner)
+	for _, o := range owners {
+		key := o.Type + ":" + o.ID
+		if existing, ok := merged[key]; ok {
+			existing.Weight += o.Weight
+		} else {
+			copy := o
+			merged[key] = &copy
+		}
+	}
+
+	result := make([]Owner, 0, len(merged))
+	for _, o := range merged {
+		result = append(result, *o)
+	}
+	return result
 }
 
 // ListContractsResult contains the results of listing contracts
@@ -534,7 +621,7 @@ func (f *Federation) GetDependencies(opts GetDependenciesOptions) (*GetDependenc
 
 // SuppressContractEdge suppresses a contract edge
 func (f *Federation) SuppressContractEdge(edgeID int64, suppressedBy string, reason string) error {
-	return f.index.SuppressEdge(edgeID, suppressedBy)
+	return f.index.SuppressEdge(edgeID, suppressedBy, reason)
 }
 
 // VerifyContractEdge verifies a contract edge

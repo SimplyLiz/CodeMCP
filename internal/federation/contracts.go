@@ -558,13 +558,13 @@ func scanContract(rows *sql.Rows) (*Contract, error) {
 }
 
 // SuppressEdge suppresses a contract edge
-func (idx *Index) SuppressEdge(edgeID int64, suppressedBy string) error {
+func (idx *Index) SuppressEdge(edgeID int64, suppressedBy, reason string) error {
 	now := time.Now().Format(time.RFC3339)
 	_, err := idx.db.Exec(`
 		UPDATE contract_edges
-		SET suppressed = 1, suppressed_by = ?, suppressed_at = ?
+		SET suppressed = 1, suppressed_by = ?, suppressed_at = ?, suppression_reason = ?
 		WHERE id = ?
-	`, suppressedBy, now, edgeID)
+	`, suppressedBy, now, reason, edgeID)
 	return err
 }
 

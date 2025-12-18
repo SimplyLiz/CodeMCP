@@ -235,7 +235,6 @@ func (f *Federation) syncContracts(repo RepoConfig) (int, int, error) {
 				contractsSynced++
 			}
 		}
-		referencesSynced += len(protoResult.References)
 
 		// Store proto imports for transitivity
 		for _, pi := range protoResult.ProtoImports {
@@ -258,10 +257,10 @@ func (f *Federation) syncContracts(repo RepoConfig) (int, int, error) {
 				contractsSynced++
 			}
 		}
-		referencesSynced += len(openapiResult.References)
 	}
 
 	// Resolve references and create edges
+	// Note: referencesSynced counts successfully resolved edges, not raw references
 	allRefs := []OutgoingReference{}
 	if protoResult != nil {
 		allRefs = append(allRefs, protoResult.References...)
@@ -292,7 +291,9 @@ func (f *Federation) syncContracts(repo RepoConfig) (int, int, error) {
 				ConfidenceBasis: ref.ConfidenceBasis,
 				DetectorName:    ref.DetectorName,
 			}
-			f.index.UpsertContractEdge(edge)
+			if err := f.index.UpsertContractEdge(edge); err == nil {
+				referencesSynced++
+			}
 		}
 	}
 
