@@ -1842,3 +1842,111 @@ func (s *MCPServer) toolGetOwnership(params map[string]interface{}) (interface{}
 
 	return string(jsonBytesOwnership), nil
 }
+
+// toolGetModuleResponsibilities handles the getModuleResponsibilities tool call (v6.0)
+func (s *MCPServer) toolGetModuleResponsibilities(params map[string]interface{}) (interface{}, error) {
+	ctx := context.Background()
+
+	// Parse moduleId (optional)
+	moduleId, _ := params["moduleId"].(string)
+
+	// Parse includeFiles (default: false)
+	includeFiles := false
+	if includeFilesVal, ok := params["includeFiles"].(bool); ok {
+		includeFiles = includeFilesVal
+	}
+
+	// Parse limit (default: 20)
+	limit := 20
+	if limitVal, ok := params["limit"].(float64); ok {
+		limit = int(limitVal)
+	}
+
+	s.logger.Debug("Executing getModuleResponsibilities", map[string]interface{}{
+		"moduleId":     moduleId,
+		"includeFiles": includeFiles,
+		"limit":        limit,
+	})
+
+	opts := query.GetModuleResponsibilitiesOptions{
+		ModuleId:     moduleId,
+		IncludeFiles: includeFiles,
+		Limit:        limit,
+	}
+
+	resp, err := s.engine.GetModuleResponsibilities(ctx, opts)
+	if err != nil {
+		return nil, fmt.Errorf("getModuleResponsibilities failed: %w", err)
+	}
+
+	// Build modules response
+	modules := make([]map[string]interface{}, 0, len(resp.Modules))
+	for _, m := range resp.Modules {
+		moduleInfo := map[string]interface{}{
+			"moduleId":     m.ModuleId,
+			"name":         m.Name,
+			"path":         m.Path,
+			"summary":      m.Summary,
+			"source":       m.Source,
+			"confidence":   m.Confidence,
+		}
+		if len(m.Capabilities) > 0 {
+			moduleInfo["capabilities"] = m.Capabilities
+		}
+		if len(m.Files) > 0 {
+			files := make([]map[string]interface{}, 0, len(m.Files))
+			for _, f := range m.Files {
+				files = append(files, map[string]interface{}{
+					"path":       f.Path,
+					"summary":    f.Summary,
+					"confidence": f.Confidence,
+				})
+			}
+			moduleInfo["files"] = files
+		}
+		modules = append(modules, moduleInfo)
+	}
+
+	result := map[string]interface{}{
+		"meta": map[string]interface{}{
+			"ckbVersion":    resp.CkbVersion,
+			"schemaVersion": resp.SchemaVersion,
+			"tool":          resp.Tool,
+		},
+		"modules":         modules,
+		"totalCount":      resp.TotalCount,
+		"confidence":      resp.Confidence,
+		"confidenceBasis": resp.ConfidenceBasis,
+	}
+
+	if len(resp.Limitations) > 0 {
+		result["limitations"] = resp.Limitations
+	}
+
+	if resp.Provenance != nil {
+		result["provenance"] = map[string]interface{}{
+			"repoStateId":     resp.Provenance.RepoStateId,
+			"repoStateDirty":  resp.Provenance.RepoStateDirty,
+			"queryDurationMs": resp.Provenance.QueryDurationMs,
+		}
+	}
+
+	if len(resp.Drilldowns) > 0 {
+		drilldowns := make([]map[string]interface{}, 0, len(resp.Drilldowns))
+		for _, d := range resp.Drilldowns {
+			drilldowns = append(drilldowns, map[string]interface{}{
+				"label":          d.Label,
+				"query":          d.Query,
+				"relevanceScore": d.RelevanceScore,
+			})
+		}
+		result["drilldowns"] = drilldowns
+	}
+
+	jsonBytesResp, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	return string(jsonBytesResp), nil
+}

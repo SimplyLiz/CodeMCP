@@ -466,6 +466,29 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				"required": []string{"path"},
 			},
 		},
+		{
+			Name:        "getModuleResponsibilities",
+			Description: "Get responsibilities for modules. Returns what each module does, its capabilities, and how confident we are in this assessment. Extracted from README files, doc comments, and code analysis.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"moduleId": map[string]interface{}{
+						"type":        "string",
+						"description": "Specific module ID to get responsibilities for. Omit to get all modules.",
+					},
+					"includeFiles": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Whether to include file-level responsibilities",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"default":     20,
+						"description": "Maximum number of modules to return",
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -493,4 +516,5 @@ func (s *MCPServer) RegisterTools() {
 	// v6.0 Architectural Memory tools
 	s.tools["refreshArchitecture"] = s.toolRefreshArchitecture
 	s.tools["getOwnership"] = s.toolGetOwnership
+	s.tools["getModuleResponsibilities"] = s.toolGetModuleResponsibilities
 }

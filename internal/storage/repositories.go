@@ -988,3 +988,478 @@ func (r *OwnershipRepository) scanHistoryRecords(rows *sql.Rows) ([]*OwnershipHi
 
 	return records, nil
 }
+
+// ============================================================================
+// v2 Hotspot Repository (Architectural Memory)
+// ============================================================================
+
+// HotspotSnapshotRecord represents a hotspot snapshot in the database
+type HotspotSnapshotRecord struct {
+	ID                   int64
+	TargetID             string  // file path, module ID, or symbol ID
+	TargetType           string  // "file" | "module" | "symbol"
+	SnapshotDate         time.Time
+	ChurnCommits30d      int
+	ChurnCommits90d      int
+	ChurnAuthors30d      int
+	ComplexityCyclomatic float64
+	ComplexityCognitive  float64
+	CouplingAfferent     int     // incoming dependencies
+	CouplingEfferent     int     // outgoing dependencies
+	CouplingInstability  float64 // efferent / (afferent + efferent)
+	Score                float64 // composite hotspot score
+}
+
+// HotspotRepository provides CRUD operations for hotspot_snapshots table
+type HotspotRepository struct {
+	db *DB
+}
+
+// NewHotspotRepository creates a new hotspot repository
+func NewHotspotRepository(db *DB) *HotspotRepository {
+	return &HotspotRepository{db: db}
+}
+
+// SaveSnapshot inserts a new hotspot snapshot (append-only)
+func (r *HotspotRepository) SaveSnapshot(record *HotspotSnapshotRecord) error {
+	result, err := r.db.Exec(`
+		INSERT INTO hotspot_snapshots (
+			target_id, target_type, snapshot_date,
+			churn_commits_30d, churn_commits_90d, churn_authors_30d,
+			complexity_cyclomatic, complexity_cognitive,
+			coupling_afferent, coupling_efferent, coupling_instability,
+			score
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		record.TargetID,
+		record.TargetType,
+		record.SnapshotDate.Format(time.RFC3339),
+		record.ChurnCommits30d,
+		record.ChurnCommits90d,
+		record.ChurnAuthors30d,
+		record.ComplexityCyclomatic,
+		record.ComplexityCognitive,
+		record.CouplingAfferent,
+		record.CouplingEfferent,
+		record.CouplingInstability,
+		record.Score,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to save hotspot snapshot: %w", err)
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("failed to get inserted id: %w", err)
+	}
+	record.ID = id
+
+	return nil
+}
+
+// GetSnapshotsByTarget retrieves snapshots for a target, ordered by date descending
+func (r *HotspotRepository) GetSnapshotsByTarget(targetID string, limit int) ([]*HotspotSnapshotRecord, error) {
+	rows, err := r.db.Query(`
+		SELECT id, target_id, target_type, snapshot_date,
+		       churn_commits_30d, churn_commits_90d, churn_authors_30d,
+		       complexity_cyclomatic, complexity_cognitive,
+		       coupling_afferent, coupling_efferent, coupling_instability,
+		       score
+		FROM hotspot_snapshots
+		WHERE target_id = ?
+		ORDER BY snapshot_date DESC
+		LIMIT ?
+	`, targetID, limit)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get hotspot snapshots: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	return r.scanSnapshots(rows)
+}
+
+// GetSnapshotsByTargetInRange retrieves snapshots within a date range
+func (r *HotspotRepository) GetSnapshotsByTargetInRange(targetID string, startDate, endDate time.Time) ([]*HotspotSnapshotRecord, error) {
+	rows, err := r.db.Query(`
+		SELECT id, target_id, target_type, snapshot_date,
+		       churn_commits_30d, churn_commits_90d, churn_authors_30d,
+		       complexity_cyclomatic, complexity_cognitive,
+		       coupling_afferent, coupling_efferent, coupling_instability,
+		       score
+		FROM hotspot_snapshots
+		WHERE target_id = ? AND snapshot_date >= ? AND snapshot_date <= ?
+		ORDER BY snapshot_date ASC
+	`, targetID, startDate.Format(time.RFC3339), endDate.Format(time.RFC3339))
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get hotspot snapshots in range: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	return r.scanSnapshots(rows)
+}
+
+// GetTopHotspots retrieves the top hotspots by score for a given date
+func (r *HotspotRepository) GetTopHotspots(targetType string, snapshotDate time.Time, limit int) ([]*HotspotSnapshotRecord, error) {
+	dateStr := snapshotDate.Format("2006-01-02")
+	rows, err := r.db.Query(`
+		SELECT id, target_id, target_type, snapshot_date,
+		       churn_commits_30d, churn_commits_90d, churn_authors_30d,
+		       complexity_cyclomatic, complexity_cognitive,
+		       coupling_afferent, coupling_efferent, coupling_instability,
+		       score
+		FROM hotspot_snapshots
+		WHERE target_type = ? AND date(snapshot_date) = ?
+		ORDER BY score DESC
+		LIMIT ?
+	`, targetType, dateStr, limit)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get top hotspots: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	return r.scanSnapshots(rows)
+}
+
+// GetLatestSnapshot retrieves the most recent snapshot for a target
+func (r *HotspotRepository) GetLatestSnapshot(targetID string) (*HotspotSnapshotRecord, error) {
+	var record HotspotSnapshotRecord
+	var snapshotDate string
+
+	err := r.db.QueryRow(`
+		SELECT id, target_id, target_type, snapshot_date,
+		       churn_commits_30d, churn_commits_90d, churn_authors_30d,
+		       complexity_cyclomatic, complexity_cognitive,
+		       coupling_afferent, coupling_efferent, coupling_instability,
+		       score
+		FROM hotspot_snapshots
+		WHERE target_id = ?
+		ORDER BY snapshot_date DESC
+		LIMIT 1
+	`, targetID).Scan(
+		&record.ID,
+		&record.TargetID,
+		&record.TargetType,
+		&snapshotDate,
+		&record.ChurnCommits30d,
+		&record.ChurnCommits90d,
+		&record.ChurnAuthors30d,
+		&record.ComplexityCyclomatic,
+		&record.ComplexityCognitive,
+		&record.CouplingAfferent,
+		&record.CouplingEfferent,
+		&record.CouplingInstability,
+		&record.Score,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latest snapshot: %w", err)
+	}
+
+	record.SnapshotDate, err = time.Parse(time.RFC3339, snapshotDate)
+	if err != nil {
+		return nil, fmt.Errorf("invalid snapshot_date format: %w", err)
+	}
+
+	return &record, nil
+}
+
+// DeleteOldSnapshots removes snapshots older than the specified date
+func (r *HotspotRepository) DeleteOldSnapshots(before time.Time) (int64, error) {
+	result, err := r.db.Exec(`
+		DELETE FROM hotspot_snapshots WHERE snapshot_date < ?
+	`, before.Format(time.RFC3339))
+
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete old snapshots: %w", err)
+	}
+
+	return result.RowsAffected()
+}
+
+// scanSnapshots scans rows into HotspotSnapshotRecord structs
+func (r *HotspotRepository) scanSnapshots(rows *sql.Rows) ([]*HotspotSnapshotRecord, error) {
+	var records []*HotspotSnapshotRecord
+
+	for rows.Next() {
+		var record HotspotSnapshotRecord
+		var snapshotDate string
+
+		err := rows.Scan(
+			&record.ID,
+			&record.TargetID,
+			&record.TargetType,
+			&snapshotDate,
+			&record.ChurnCommits30d,
+			&record.ChurnCommits90d,
+			&record.ChurnAuthors30d,
+			&record.ComplexityCyclomatic,
+			&record.ComplexityCognitive,
+			&record.CouplingAfferent,
+			&record.CouplingEfferent,
+			&record.CouplingInstability,
+			&record.Score,
+		)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan hotspot snapshot: %w", err)
+		}
+
+		record.SnapshotDate, err = time.Parse(time.RFC3339, snapshotDate)
+		if err != nil {
+			return nil, fmt.Errorf("invalid snapshot_date format: %w", err)
+		}
+
+		records = append(records, &record)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating hotspot snapshots: %w", err)
+	}
+
+	return records, nil
+}
+
+// ============================================================================
+// v2 Responsibilities Repository (Architectural Memory)
+// ============================================================================
+
+// ResponsibilityRecord represents a responsibility in the database
+type ResponsibilityRecord struct {
+	ID           int64
+	TargetID     string  // module ID, file path, or symbol ID
+	TargetType   string  // "module" | "file" | "symbol"
+	Summary      string  // one-sentence description
+	Capabilities string  // JSON array of capabilities
+	Source       string  // "declared" | "inferred" | "llm-generated"
+	Confidence   float64
+	UpdatedAt    time.Time
+	VerifiedAt   *time.Time // human verification timestamp
+}
+
+// ResponsibilityRepository provides CRUD operations for responsibilities table
+type ResponsibilityRepository struct {
+	db *DB
+}
+
+// NewResponsibilityRepository creates a new responsibility repository
+func NewResponsibilityRepository(db *DB) *ResponsibilityRepository {
+	return &ResponsibilityRepository{db: db}
+}
+
+// Create inserts a new responsibility record
+func (r *ResponsibilityRepository) Create(record *ResponsibilityRecord) error {
+	result, err := r.db.Exec(`
+		INSERT INTO responsibilities (target_id, target_type, summary, capabilities, source, confidence, updated_at, verified_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		record.TargetID,
+		record.TargetType,
+		record.Summary,
+		record.Capabilities,
+		record.Source,
+		record.Confidence,
+		record.UpdatedAt.Format(time.RFC3339),
+		formatTimePtr(record.VerifiedAt),
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to create responsibility: %w", err)
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("failed to get inserted id: %w", err)
+	}
+	record.ID = id
+
+	return nil
+}
+
+// GetByTarget retrieves responsibility for a target
+func (r *ResponsibilityRepository) GetByTarget(targetID string) (*ResponsibilityRecord, error) {
+	var record ResponsibilityRecord
+	var updatedAt string
+	var verifiedAt sql.NullString
+
+	err := r.db.QueryRow(`
+		SELECT id, target_id, target_type, summary, capabilities, source, confidence, updated_at, verified_at
+		FROM responsibilities
+		WHERE target_id = ?
+	`, targetID).Scan(
+		&record.ID,
+		&record.TargetID,
+		&record.TargetType,
+		&record.Summary,
+		&record.Capabilities,
+		&record.Source,
+		&record.Confidence,
+		&updatedAt,
+		&verifiedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get responsibility: %w", err)
+	}
+
+	record.UpdatedAt, err = time.Parse(time.RFC3339, updatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("invalid updated_at format: %w", err)
+	}
+
+	if verifiedAt.Valid {
+		t, err := time.Parse(time.RFC3339, verifiedAt.String)
+		if err != nil {
+			return nil, fmt.Errorf("invalid verified_at format: %w", err)
+		}
+		record.VerifiedAt = &t
+	}
+
+	return &record, nil
+}
+
+// GetByType retrieves all responsibilities for a target type
+func (r *ResponsibilityRepository) GetByType(targetType string, limit int) ([]*ResponsibilityRecord, error) {
+	rows, err := r.db.Query(`
+		SELECT id, target_id, target_type, summary, capabilities, source, confidence, updated_at, verified_at
+		FROM responsibilities
+		WHERE target_type = ?
+		ORDER BY confidence DESC
+		LIMIT ?
+	`, targetType, limit)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get responsibilities by type: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	return r.scanResponsibilities(rows)
+}
+
+// Upsert creates or updates a responsibility
+func (r *ResponsibilityRepository) Upsert(record *ResponsibilityRecord) error {
+	var existingID int64
+	err := r.db.QueryRow(`
+		SELECT id FROM responsibilities WHERE target_id = ?
+	`, record.TargetID).Scan(&existingID)
+
+	if err == sql.ErrNoRows {
+		return r.Create(record)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to check existing responsibility: %w", err)
+	}
+
+	record.ID = existingID
+	return r.Update(record)
+}
+
+// Update updates an existing responsibility
+func (r *ResponsibilityRepository) Update(record *ResponsibilityRecord) error {
+	_, err := r.db.Exec(`
+		UPDATE responsibilities
+		SET target_type = ?, summary = ?, capabilities = ?, source = ?, confidence = ?, updated_at = ?, verified_at = ?
+		WHERE id = ?
+	`,
+		record.TargetType,
+		record.Summary,
+		record.Capabilities,
+		record.Source,
+		record.Confidence,
+		record.UpdatedAt.Format(time.RFC3339),
+		formatTimePtr(record.VerifiedAt),
+		record.ID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to update responsibility: %w", err)
+	}
+
+	return nil
+}
+
+// Delete removes a responsibility
+func (r *ResponsibilityRepository) Delete(targetID string) error {
+	_, err := r.db.Exec("DELETE FROM responsibilities WHERE target_id = ?", targetID)
+	if err != nil {
+		return fmt.Errorf("failed to delete responsibility: %w", err)
+	}
+	return nil
+}
+
+// Search performs full-text search on responsibilities
+func (r *ResponsibilityRepository) Search(query string, limit int) ([]*ResponsibilityRecord, error) {
+	// Use LIKE for simple search (FTS5 would be better for production)
+	searchPattern := "%" + query + "%"
+	rows, err := r.db.Query(`
+		SELECT id, target_id, target_type, summary, capabilities, source, confidence, updated_at, verified_at
+		FROM responsibilities
+		WHERE summary LIKE ? OR capabilities LIKE ?
+		ORDER BY confidence DESC
+		LIMIT ?
+	`, searchPattern, searchPattern, limit)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to search responsibilities: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	return r.scanResponsibilities(rows)
+}
+
+// scanResponsibilities scans rows into ResponsibilityRecord structs
+func (r *ResponsibilityRepository) scanResponsibilities(rows *sql.Rows) ([]*ResponsibilityRecord, error) {
+	var records []*ResponsibilityRecord
+
+	for rows.Next() {
+		var record ResponsibilityRecord
+		var updatedAt string
+		var verifiedAt sql.NullString
+
+		err := rows.Scan(
+			&record.ID,
+			&record.TargetID,
+			&record.TargetType,
+			&record.Summary,
+			&record.Capabilities,
+			&record.Source,
+			&record.Confidence,
+			&updatedAt,
+			&verifiedAt,
+		)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan responsibility: %w", err)
+		}
+
+		record.UpdatedAt, err = time.Parse(time.RFC3339, updatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("invalid updated_at format: %w", err)
+		}
+
+		if verifiedAt.Valid {
+			t, err := time.Parse(time.RFC3339, verifiedAt.String)
+			if err != nil {
+				return nil, fmt.Errorf("invalid verified_at format: %w", err)
+			}
+			record.VerifiedAt = &t
+		}
+
+		records = append(records, &record)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating responsibilities: %w", err)
+	}
+
+	return records, nil
+}
