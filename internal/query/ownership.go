@@ -2,12 +2,15 @@ package query
 
 import (
 	"context"
+	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"ckb/internal/errors"
 	"ckb/internal/output"
 	"ckb/internal/ownership"
+	"ckb/internal/version"
 )
 
 // GetOwnershipOptions contains options for getOwnership.
@@ -231,3 +234,291 @@ func (e *Engine) GetOwnership(ctx context.Context, opts GetOwnershipOptions) (*G
 		Drilldowns:      drilldowns,
 	}, nil
 }
+
+// OwnershipDriftOptions contains options for getOwnershipDrift.
+type OwnershipDriftOptions struct {
+	Scope          string  `json:"scope"`          // Module or directory path to analyze
+	Threshold      float64 `json:"threshold"`      // Drift score threshold to report (0-1, default 0.3)
+	Limit          int     `json:"limit"`          // Max files to return (default 20)
+	IncludeDetails bool    `json:"includeDetails"` // Include detailed blame info (default false)
+}
+
+// DriftedFile represents a file with ownership drift.
+type DriftedFile struct {
+	Path             string          `json:"path"`
+	DriftScore       float64         `json:"driftScore"`       // 0-1, higher means more drift
+	DeclaredOwners   []string        `json:"declaredOwners"`   // From CODEOWNERS
+	ActualOwners     []ActualOwner   `json:"actualOwners"`     // From git-blame
+	Reason           string          `json:"reason"`           // Why drift was detected
+	Recommendation   string          `json:"recommendation"`   // Suggested action
+}
+
+// ActualOwner represents an owner derived from git-blame.
+type ActualOwner struct {
+	ID         string  `json:"id"`
+	Percentage float64 `json:"percentage"`
+}
+
+// OwnershipDriftResponse is the response for getOwnershipDrift.
+type OwnershipDriftResponse struct {
+	CkbVersion    string          `json:"ckbVersion"`
+	SchemaVersion string          `json:"schemaVersion"`
+	Tool          string          `json:"tool"`
+	Summary       DriftSummary    `json:"summary"`
+	DriftedFiles  []DriftedFile   `json:"driftedFiles"`
+	Limitations   []string        `json:"limitations,omitempty"`
+	Provenance    *Provenance     `json:"provenance,omitempty"`
+}
+
+// DriftSummary provides high-level drift statistics.
+type DriftSummary struct {
+	TotalFilesAnalyzed int     `json:"totalFilesAnalyzed"`
+	FilesWithDrift     int     `json:"filesWithDrift"`
+	AverageDriftScore  float64 `json:"averageDriftScore"`
+	MostDriftedModule  string  `json:"mostDriftedModule,omitempty"`
+}
+
+// GetOwnershipDrift analyzes ownership drift between CODEOWNERS and git-blame.
+func (e *Engine) GetOwnershipDrift(ctx context.Context, opts OwnershipDriftOptions) (*OwnershipDriftResponse, error) {
+	startTime := time.Now()
+
+	// Default values
+	if opts.Threshold <= 0 {
+		opts.Threshold = 0.3
+	}
+	if opts.Limit <= 0 {
+		opts.Limit = 20
+	}
+
+	var limitations []string
+
+	// Get repo state
+	repoState, err := e.GetRepoState(ctx, "head")
+	if err != nil {
+		return nil, e.wrapError(err, errors.InternalError)
+	}
+
+	// Find CODEOWNERS file
+	codeownersPath := ownership.FindCodeownersFile(e.repoRoot)
+	if codeownersPath == "" {
+		limitations = append(limitations, "No CODEOWNERS file found - cannot detect drift")
+		return &OwnershipDriftResponse{
+			CkbVersion:    version.Version,
+			SchemaVersion: "6.1",
+			Tool:          "getOwnershipDrift",
+			Summary: DriftSummary{
+				TotalFilesAnalyzed: 0,
+				FilesWithDrift:     0,
+			},
+			DriftedFiles: []DriftedFile{},
+			Limitations:  limitations,
+			Provenance: &Provenance{
+				RepoStateId:     repoState.RepoStateId,
+				RepoStateDirty:  repoState.Dirty,
+				QueryDurationMs: time.Since(startTime).Milliseconds(),
+			},
+		}, nil
+	}
+
+	codeownersFile, err := ownership.ParseCodeownersFile(codeownersPath)
+	if err != nil {
+		return nil, e.wrapError(err, errors.InternalError)
+	}
+
+	// Determine scope
+	scopePath := e.repoRoot
+	if opts.Scope != "" {
+		scopePath = filepath.Join(e.repoRoot, opts.Scope)
+	}
+
+	// Collect source files to analyze
+	var filesToAnalyze []string
+	err = filepath.Walk(scopePath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // Skip files we can't access
+		}
+		if info.IsDir() {
+			// Skip hidden directories
+			if strings.HasPrefix(info.Name(), ".") && info.Name() != "." {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		// Only analyze source code files
+		if isSourceFile(path) {
+			relPath, _ := filepath.Rel(e.repoRoot, path)
+			filesToAnalyze = append(filesToAnalyze, relPath)
+		}
+		return nil
+	})
+	if err != nil {
+		limitations = append(limitations, "Error walking directory: "+err.Error())
+	}
+
+	// Analyze each file for drift
+	var driftedFiles []DriftedFile
+	totalDrift := 0.0
+	moduleDriftCounts := make(map[string]int)
+
+	blameConfig := ownership.DefaultBlameConfig()
+
+	for _, filePath := range filesToAnalyze {
+		// Get declared owners from CODEOWNERS
+		declaredOwners := codeownersFile.GetOwnersForPath(filePath)
+		if len(declaredOwners) == 0 {
+			continue // No declared ownership, skip
+		}
+
+		// Get actual owners from git-blame
+		blameResult, blameErr := ownership.RunGitBlame(e.repoRoot, filePath)
+		if blameErr != nil {
+			continue // Skip files we can't blame
+		}
+
+		blameOwnership := ownership.ComputeBlameOwnership(blameResult, blameConfig)
+		if blameOwnership.TotalLines == 0 {
+			continue
+		}
+
+		// Calculate drift score
+		driftScore := calculateDriftScore(declaredOwners, blameOwnership.Contributors)
+
+		if driftScore >= opts.Threshold {
+			// Build actual owners list
+			actualOwners := make([]ActualOwner, 0, len(blameOwnership.Contributors))
+			for _, c := range blameOwnership.Contributors {
+				actualOwners = append(actualOwners, ActualOwner{
+					ID:         c.Author,
+					Percentage: c.Percentage,
+				})
+			}
+
+			// Determine reason and recommendation
+			reason, recommendation := getDriftReasonAndRecommendation(driftScore, declaredOwners, blameOwnership.Contributors)
+
+			driftedFiles = append(driftedFiles, DriftedFile{
+				Path:           filePath,
+				DriftScore:     driftScore,
+				DeclaredOwners: declaredOwners,
+				ActualOwners:   actualOwners,
+				Reason:         reason,
+				Recommendation: recommendation,
+			})
+
+			// Track module drift
+			module := filepath.Dir(filePath)
+			moduleDriftCounts[module]++
+		}
+
+		totalDrift += driftScore
+	}
+
+	// Sort by drift score (highest first)
+	for i := 0; i < len(driftedFiles)-1; i++ {
+		for j := i + 1; j < len(driftedFiles); j++ {
+			if driftedFiles[j].DriftScore > driftedFiles[i].DriftScore {
+				driftedFiles[i], driftedFiles[j] = driftedFiles[j], driftedFiles[i]
+			}
+		}
+	}
+
+	// Limit results
+	if len(driftedFiles) > opts.Limit {
+		driftedFiles = driftedFiles[:opts.Limit]
+	}
+
+	// Find most drifted module
+	mostDriftedModule := ""
+	maxDriftCount := 0
+	for module, count := range moduleDriftCounts {
+		if count > maxDriftCount {
+			maxDriftCount = count
+			mostDriftedModule = module
+		}
+	}
+
+	// Calculate average drift
+	avgDrift := 0.0
+	if len(filesToAnalyze) > 0 {
+		avgDrift = totalDrift / float64(len(filesToAnalyze))
+	}
+
+	return &OwnershipDriftResponse{
+		CkbVersion:    version.Version,
+		SchemaVersion: "6.1",
+		Tool:          "getOwnershipDrift",
+		Summary: DriftSummary{
+			TotalFilesAnalyzed: len(filesToAnalyze),
+			FilesWithDrift:     len(driftedFiles),
+			AverageDriftScore:  avgDrift,
+			MostDriftedModule:  mostDriftedModule,
+		},
+		DriftedFiles: driftedFiles,
+		Limitations:  limitations,
+		Provenance: &Provenance{
+			RepoStateId:     repoState.RepoStateId,
+			RepoStateDirty:  repoState.Dirty,
+			QueryDurationMs: time.Since(startTime).Milliseconds(),
+		},
+	}, nil
+}
+
+// calculateDriftScore computes how much the actual ownership differs from declared.
+// Returns 0-1 where 0 means no drift and 1 means complete drift.
+func calculateDriftScore(declaredOwners []string, contributors []ownership.AuthorContribution) float64 {
+	if len(contributors) == 0 {
+		return 0
+	}
+
+	// Normalize declared owners for comparison
+	declaredSet := make(map[string]bool)
+	for _, owner := range declaredOwners {
+		// Remove @ prefix and convert to lowercase for comparison
+		normalized := strings.TrimPrefix(strings.ToLower(owner), "@")
+		declaredSet[normalized] = true
+	}
+
+	// Calculate percentage of code written by non-owners
+	nonOwnerPercentage := 0.0
+	for _, c := range contributors {
+		// Check if contributor matches any declared owner
+		authorNormalized := strings.ToLower(c.Author)
+		emailNormalized := strings.ToLower(c.Email)
+
+		isOwner := false
+		for owner := range declaredSet {
+			if strings.Contains(authorNormalized, owner) ||
+			   strings.Contains(emailNormalized, owner) ||
+			   strings.Contains(owner, authorNormalized) {
+				isOwner = true
+				break
+			}
+		}
+
+		if !isOwner {
+			nonOwnerPercentage += c.Percentage
+		}
+	}
+
+	return nonOwnerPercentage / 100.0
+}
+
+// getDriftReasonAndRecommendation returns human-readable drift explanation.
+func getDriftReasonAndRecommendation(driftScore float64, declaredOwners []string, contributors []ownership.AuthorContribution) (string, string) {
+	if driftScore > 0.7 {
+		topContributor := ""
+		if len(contributors) > 0 {
+			topContributor = contributors[0].Author
+		}
+		return "Major drift: primary contributor differs from declared owner",
+			"Consider adding " + topContributor + " as maintainer"
+	}
+	if driftScore > 0.5 {
+		return "Moderate drift: significant contributions from non-owners",
+			"Review CODEOWNERS to add active contributors"
+	}
+	return "Minor drift: some contributions from outside ownership",
+		"Monitor for increasing drift"
+}
+
+// isSourceFile is defined in responsibilities.go

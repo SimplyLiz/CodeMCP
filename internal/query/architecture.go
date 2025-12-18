@@ -2,12 +2,14 @@ package query
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"time"
 
 	"ckb/internal/architecture"
 	"ckb/internal/compression"
 	"ckb/internal/errors"
+	"ckb/internal/jobs"
 	"ckb/internal/modules"
 	"ckb/internal/output"
 )
@@ -316,6 +318,9 @@ type RefreshArchitectureOptions struct {
 
 	// DryRun previews changes without making them
 	DryRun bool
+
+	// Async runs the refresh in the background and returns immediately with a job ID
+	Async bool
 }
 
 // RefreshArchitectureChanges tracks what was changed during refresh.
@@ -332,11 +337,12 @@ type RefreshArchitectureResponse struct {
 	CkbVersion    string                      `json:"ckbVersion"`
 	SchemaVersion string                      `json:"schemaVersion"`
 	Tool          string                      `json:"tool"`
-	Status        string                      `json:"status"` // "completed", "skipped"
+	Status        string                      `json:"status"` // "completed", "skipped", "queued"
 	Scope         string                      `json:"scope"`
-	Changes       *RefreshArchitectureChanges `json:"changes"`
-	DurationMs    int64                       `json:"durationMs"`
+	Changes       *RefreshArchitectureChanges `json:"changes,omitempty"`
+	DurationMs    int64                       `json:"durationMs,omitempty"`
 	DryRun        bool                        `json:"dryRun,omitempty"`
+	JobId         string                      `json:"jobId,omitempty"` // Set when Async=true
 	Warnings      []string                    `json:"warnings,omitempty"`
 	Provenance    *Provenance                 `json:"provenance,omitempty"`
 }
@@ -362,6 +368,11 @@ func (e *Engine) RefreshArchitecture(ctx context.Context, opts RefreshArchitectu
 	}
 	if !validScopes[opts.Scope] {
 		return nil, e.wrapError(nil, errors.ScopeInvalid)
+	}
+
+	// Handle async mode - queue job and return immediately
+	if opts.Async {
+		return e.queueRefreshJob(opts)
 	}
 
 	// Get repo state
@@ -448,5 +459,41 @@ func (e *Engine) RefreshArchitecture(ctx context.Context, opts RefreshArchitectu
 			RepoStateDirty:  repoState.Dirty,
 			QueryDurationMs: durationMs,
 		},
+	}, nil
+}
+
+// queueRefreshJob creates a job for async refresh and returns immediately.
+func (e *Engine) queueRefreshJob(opts RefreshArchitectureOptions) (*RefreshArchitectureResponse, error) {
+	if e.jobRunner == nil {
+		return nil, e.wrapError(
+			fmt.Errorf("job runner not available"),
+			errors.BackendUnavailable,
+		)
+	}
+
+	// Create job with scope
+	scope := &jobs.RefreshScope{
+		Scope: opts.Scope,
+		Force: opts.Force,
+	}
+
+	job, err := jobs.NewJob(jobs.JobTypeRefreshArchitecture, scope)
+	if err != nil {
+		return nil, e.wrapError(err, errors.InternalError)
+	}
+
+	// Submit to runner
+	if err := e.jobRunner.Submit(job); err != nil {
+		return nil, e.wrapError(err, errors.InternalError)
+	}
+
+	return &RefreshArchitectureResponse{
+		CkbVersion:    "6.0",
+		SchemaVersion: "6.0",
+		Tool:          "refreshArchitecture",
+		Status:        "queued",
+		Scope:         opts.Scope,
+		JobId:         job.ID,
+		Warnings:      []string{"Job queued for async processing"},
 	}, nil
 }

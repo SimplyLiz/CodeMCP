@@ -23,7 +23,25 @@ func (s *Server) registerRoutes() {
 
 	// Architecture and impact
 	s.router.HandleFunc("/architecture", s.handleGetArchitecture)
-	s.router.HandleFunc("/impact/", s.handleAnalyzeImpact) // GET /impact/:id
+	s.router.HandleFunc("/architecture/refresh", s.handleRefreshArchitecture) // POST with async support
+	s.router.HandleFunc("/impact/", s.handleAnalyzeImpact)                    // GET /impact/:id
+
+	// v6.0 Architectural Memory endpoints
+	s.router.HandleFunc("/hotspots", s.handleGetHotspots)
+	s.router.HandleFunc("/ownership", s.handleGetOwnership)
+	s.router.HandleFunc("/decisions", s.handleDecisions) // GET list, POST create
+	s.router.HandleFunc("/modules/", s.handleModules)    // GET /modules/:id/overview, /modules/:id/responsibilities
+	s.router.HandleFunc("/callgraph/", s.handleGetCallGraph)
+	s.router.HandleFunc("/explain/symbol/", s.handleExplainSymbol)
+	s.router.HandleFunc("/justify/", s.handleJustifySymbol)
+
+	// v6.1 Job management endpoints
+	s.router.HandleFunc("/jobs", s.handleListJobs)   // GET
+	s.router.HandleFunc("/jobs/", s.handleJobRoutes) // GET /:id, POST /:id/cancel
+
+	// v6.1 CI/CD endpoints
+	s.router.HandleFunc("/pr/summary", s.handleSummarizePR)           // GET/POST
+	s.router.HandleFunc("/ownership/drift", s.handleOwnershipDrift) // GET
 
 	// POST endpoints
 	s.router.HandleFunc("/doctor/fix", s.handleDoctorFix)
@@ -62,7 +80,22 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 			"GET /search?q=query - Search symbols",
 			"GET /refs/:id - Find references",
 			"GET /architecture - Architecture overview",
+			"POST /architecture/refresh - Refresh architectural model (async support)",
 			"GET /impact/:id - Impact analysis",
+			"GET /hotspots - Get code hotspots",
+			"GET /ownership?path=... - Get file/path ownership",
+			"GET /decisions - List architectural decisions",
+			"POST /decisions - Record architectural decision",
+			"GET /modules/:id/overview - Module overview",
+			"GET /modules/:id/responsibilities - Module responsibilities",
+			"GET /callgraph/:id - Get call graph",
+			"GET /explain/symbol/:id - Explain symbol",
+			"GET /justify/:id - Justify symbol (keep/investigate/remove)",
+			"GET /jobs - List background jobs",
+			"GET /jobs/:id - Get job status",
+			"POST /jobs/:id/cancel - Cancel job",
+			"GET/POST /pr/summary - Summarize PR changes with risk assessment",
+			"GET /ownership/drift - Detect ownership drift between CODEOWNERS and git-blame",
 			"POST /doctor/fix - Get fix script",
 			"POST /cache/warm - Warm cache",
 			"POST /cache/clear - Clear cache",

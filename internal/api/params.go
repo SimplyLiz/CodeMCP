@@ -92,3 +92,38 @@ func GetPathParam(r *http.Request, prefix string) string {
 	}
 	return strings.TrimPrefix(path, prefix)
 }
+
+// QueryParamInt extracts an integer query parameter with a default value
+func QueryParamInt(r *http.Request, name string, defaultVal int) int {
+	val := r.URL.Query().Get(name)
+	if val == "" {
+		return defaultVal
+	}
+	i, err := strconv.Atoi(val)
+	if err != nil {
+		return defaultVal
+	}
+	return i
+}
+
+// QueryParamFloat extracts a float query parameter with a default value
+func QueryParamFloat(r *http.Request, name string, defaultVal float64) float64 {
+	val := r.URL.Query().Get(name)
+	if val == "" {
+		return defaultVal
+	}
+	f, err := strconv.ParseFloat(val, 64)
+	if err != nil {
+		return defaultVal
+	}
+	return f
+}
+
+// QueryParamBool extracts a boolean query parameter with a default value
+func QueryParamBool(r *http.Request, name string, defaultVal bool) bool {
+	val := r.URL.Query().Get(name)
+	if val == "" {
+		return defaultVal
+	}
+	return val == "true" || val == "1" || val == "yes"
+}

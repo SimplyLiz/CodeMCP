@@ -419,7 +419,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		// v6.0 Architectural Memory tools
 		{
 			Name:        "refreshArchitecture",
-			Description: "Rebuild the architectural model from sources. Use this to refresh ownership, modules, hotspots, or responsibilities data. Heavy operation (up to 30s).",
+			Description: "Rebuild the architectural model from sources. Use this to refresh ownership, modules, hotspots, or responsibilities data. Heavy operation (up to 30s). Use async=true for background processing.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -438,6 +438,11 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 						"type":        "boolean",
 						"default":     false,
 						"description": "Preview what would be refreshed without making changes",
+					},
+					"async": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Run refresh in background and return immediately with a job ID. Use getJobStatus to check progress.",
 					},
 				},
 			},
@@ -619,6 +624,102 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				"required": []string{"moduleId"},
 			},
 		},
+		// v6.1 Job management tools
+		{
+			Name:        "getJobStatus",
+			Description: "Get the status and result of a background job. Use this to check on async operations like refreshArchitecture.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"jobId": map[string]interface{}{
+						"type":        "string",
+						"description": "The job ID returned from an async operation",
+					},
+				},
+				"required": []string{"jobId"},
+			},
+		},
+		{
+			Name:        "listJobs",
+			Description: "List recent background jobs. Use to find job IDs or check overall job history.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"status": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"queued", "running", "completed", "failed", "cancelled"},
+						"description": "Filter by job status",
+					},
+					"type": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"refresh_architecture", "analyze_impact", "export"},
+						"description": "Filter by job type",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"default":     20,
+						"description": "Maximum number of jobs to return",
+					},
+				},
+			},
+		},
+		{
+			Name:        "cancelJob",
+			Description: "Cancel a queued or running background job.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"jobId": map[string]interface{}{
+						"type":        "string",
+						"description": "The job ID to cancel",
+					},
+				},
+				"required": []string{"jobId"},
+			},
+		},
+		// v6.1 CI/CD tools
+		{
+			Name:        "summarizePr",
+			Description: "Analyze changes between branches and provide a PR summary with risk assessment, affected modules, hotspots touched, and suggested reviewers.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"baseBranch": map[string]interface{}{
+						"type":        "string",
+						"description": "Base branch to compare against (default: 'main')",
+					},
+					"headBranch": map[string]interface{}{
+						"type":        "string",
+						"description": "Head branch (default: current HEAD)",
+					},
+					"includeOwnership": map[string]interface{}{
+						"type":        "boolean",
+						"description": "Include ownership analysis for reviewer suggestions (default: true)",
+					},
+				},
+			},
+		},
+		{
+			Name:        "getOwnershipDrift",
+			Description: "Detect ownership drift by comparing CODEOWNERS declarations against actual git-blame ownership. Returns files where the declared owners differ significantly from who actually writes the code.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"scope": map[string]interface{}{
+						"type":        "string",
+						"description": "Module or directory path to analyze (default: entire repo)",
+					},
+					"threshold": map[string]interface{}{
+						"type":        "number",
+						"description": "Drift score threshold to report (0-1, default: 0.3)",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"description": "Maximum files to return (default: 20)",
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -650,4 +751,11 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["recordDecision"] = s.toolRecordDecision
 	s.tools["getDecisions"] = s.toolGetDecisions
 	s.tools["annotateModule"] = s.toolAnnotateModule
+	// v6.1 Job management tools
+	s.tools["getJobStatus"] = s.toolGetJobStatus
+	s.tools["listJobs"] = s.toolListJobs
+	s.tools["cancelJob"] = s.toolCancelJob
+	// v6.1 CI/CD tools
+	s.tools["summarizePr"] = s.toolSummarizePr
+	s.tools["getOwnershipDrift"] = s.toolGetOwnershipDrift
 }

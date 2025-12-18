@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"ckb/internal/jobs"
 	"ckb/internal/query"
 )
 
@@ -1630,16 +1631,24 @@ func (s *MCPServer) toolRefreshArchitecture(params map[string]interface{}) (inte
 		dryRun = dryRunVal
 	}
 
+	// Parse async (default: false)
+	async := false
+	if asyncVal, ok := params["async"].(bool); ok {
+		async = asyncVal
+	}
+
 	s.logger.Debug("Executing refreshArchitecture", map[string]interface{}{
 		"scope":  scope,
 		"force":  force,
 		"dryRun": dryRun,
+		"async":  async,
 	})
 
 	opts := query.RefreshArchitectureOptions{
 		Scope:  scope,
 		Force:  force,
 		DryRun: dryRun,
+		Async:  async,
 	}
 
 	resp, err := s.engine.RefreshArchitecture(ctx, opts)
@@ -1681,6 +1690,10 @@ func (s *MCPServer) toolRefreshArchitecture(params map[string]interface{}) (inte
 
 	if resp.DryRun {
 		result["dryRun"] = true
+	}
+
+	if resp.JobId != "" {
+		result["jobId"] = resp.JobId
 	}
 
 	if len(resp.Warnings) > 0 {
@@ -2288,4 +2301,272 @@ func (s *MCPServer) toolAnnotateModule(params map[string]interface{}) (interface
 	}
 
 	return string(jsonBytesAnnotate), nil
+}
+
+// v6.1 Job management tools
+
+// toolGetJobStatus handles the getJobStatus tool call
+func (s *MCPServer) toolGetJobStatus(params map[string]interface{}) (interface{}, error) {
+	// Parse jobId (required)
+	jobId, ok := params["jobId"].(string)
+	if !ok || jobId == "" {
+		return nil, fmt.Errorf("missing or invalid 'jobId' parameter")
+	}
+
+	s.logger.Debug("Executing getJobStatus", map[string]interface{}{
+		"jobId": jobId,
+	})
+
+	job, err := s.engine.GetJob(jobId)
+	if err != nil {
+		return nil, fmt.Errorf("getJobStatus failed: %w", err)
+	}
+
+	if job == nil {
+		return nil, fmt.Errorf("job not found: %s", jobId)
+	}
+
+	result := map[string]interface{}{
+		"meta": map[string]interface{}{
+			"ckbVersion": "6.1",
+			"tool":       "getJobStatus",
+		},
+		"job": map[string]interface{}{
+			"id":        job.ID,
+			"type":      job.Type,
+			"status":    job.Status,
+			"progress":  job.Progress,
+			"createdAt": job.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		},
+	}
+
+	jobMap := result["job"].(map[string]interface{})
+
+	if job.StartedAt != nil {
+		jobMap["startedAt"] = job.StartedAt.Format("2006-01-02T15:04:05Z")
+	}
+
+	if job.CompletedAt != nil {
+		jobMap["completedAt"] = job.CompletedAt.Format("2006-01-02T15:04:05Z")
+	}
+
+	if job.Error != "" {
+		jobMap["error"] = job.Error
+	}
+
+	if job.Result != "" {
+		// Parse result JSON if possible
+		var resultData interface{}
+		if err := json.Unmarshal([]byte(job.Result), &resultData); err == nil {
+			jobMap["result"] = resultData
+		} else {
+			jobMap["result"] = job.Result
+		}
+	}
+
+	if job.IsTerminal() {
+		jobMap["duration"] = job.Duration().String()
+	}
+
+	jsonBytes, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// toolListJobs handles the listJobs tool call
+func (s *MCPServer) toolListJobs(params map[string]interface{}) (interface{}, error) {
+	s.logger.Debug("Executing listJobs", params)
+
+	opts := jobs.ListJobsOptions{}
+
+	// Parse status filter
+	if statusVal, ok := params["status"].(string); ok && statusVal != "" {
+		opts.Status = []jobs.JobStatus{jobs.JobStatus(statusVal)}
+	}
+
+	// Parse type filter
+	if typeVal, ok := params["type"].(string); ok && typeVal != "" {
+		opts.Type = []jobs.JobType{jobs.JobType(typeVal)}
+	}
+
+	// Parse limit
+	if limitVal, ok := params["limit"].(float64); ok {
+		opts.Limit = int(limitVal)
+	}
+	if opts.Limit <= 0 {
+		opts.Limit = 20
+	}
+
+	resp, err := s.engine.ListJobs(opts)
+	if err != nil {
+		return nil, fmt.Errorf("listJobs failed: %w", err)
+	}
+
+	jobsList := make([]map[string]interface{}, 0, len(resp.Jobs))
+	for _, j := range resp.Jobs {
+		jobMap := map[string]interface{}{
+			"id":        j.ID,
+			"type":      j.Type,
+			"status":    j.Status,
+			"progress":  j.Progress,
+			"createdAt": j.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		}
+
+		if j.CompletedAt != nil {
+			jobMap["completedAt"] = j.CompletedAt.Format("2006-01-02T15:04:05Z")
+		}
+
+		if j.Error != "" {
+			jobMap["error"] = j.Error
+		}
+
+		jobsList = append(jobsList, jobMap)
+	}
+
+	result := map[string]interface{}{
+		"meta": map[string]interface{}{
+			"ckbVersion": "6.1",
+			"tool":       "listJobs",
+		},
+		"jobs":       jobsList,
+		"totalCount": resp.TotalCount,
+	}
+
+	jsonBytes, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// toolCancelJob handles the cancelJob tool call
+func (s *MCPServer) toolCancelJob(params map[string]interface{}) (interface{}, error) {
+	// Parse jobId (required)
+	jobId, ok := params["jobId"].(string)
+	if !ok || jobId == "" {
+		return nil, fmt.Errorf("missing or invalid 'jobId' parameter")
+	}
+
+	s.logger.Debug("Executing cancelJob", map[string]interface{}{
+		"jobId": jobId,
+	})
+
+	err := s.engine.CancelJob(jobId)
+	if err != nil {
+		return nil, fmt.Errorf("cancelJob failed: %w", err)
+	}
+
+	result := map[string]interface{}{
+		"meta": map[string]interface{}{
+			"ckbVersion": "6.1",
+			"tool":       "cancelJob",
+		},
+		"jobId":  jobId,
+		"status": "cancelled",
+	}
+
+	jsonBytes, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// toolSummarizePr handles the summarizePr tool call
+func (s *MCPServer) toolSummarizePr(params map[string]interface{}) (interface{}, error) {
+	ctx := context.Background()
+
+	// Parse baseBranch (optional, default: "main")
+	baseBranch := "main"
+	if v, ok := params["baseBranch"].(string); ok && v != "" {
+		baseBranch = v
+	}
+
+	// Parse headBranch (optional, default: empty means HEAD)
+	headBranch := ""
+	if v, ok := params["headBranch"].(string); ok {
+		headBranch = v
+	}
+
+	// Parse includeOwnership (optional, default: true)
+	includeOwnership := true
+	if v, ok := params["includeOwnership"].(bool); ok {
+		includeOwnership = v
+	}
+
+	s.logger.Debug("Executing summarizePr", map[string]interface{}{
+		"baseBranch":       baseBranch,
+		"headBranch":       headBranch,
+		"includeOwnership": includeOwnership,
+	})
+
+	opts := query.SummarizePROptions{
+		BaseBranch:       baseBranch,
+		HeadBranch:       headBranch,
+		IncludeOwnership: includeOwnership,
+	}
+
+	resp, err := s.engine.SummarizePR(ctx, opts)
+	if err != nil {
+		return nil, fmt.Errorf("summarizePr failed: %w", err)
+	}
+
+	jsonBytes, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// toolGetOwnershipDrift handles the getOwnershipDrift tool call
+func (s *MCPServer) toolGetOwnershipDrift(params map[string]interface{}) (interface{}, error) {
+	ctx := context.Background()
+
+	// Parse scope (optional)
+	scope := ""
+	if v, ok := params["scope"].(string); ok {
+		scope = v
+	}
+
+	// Parse threshold (optional, default: 0.3)
+	threshold := 0.3
+	if v, ok := params["threshold"].(float64); ok && v > 0 {
+		threshold = v
+	}
+
+	// Parse limit (optional, default: 20)
+	limit := 20
+	if v, ok := params["limit"].(float64); ok && v > 0 {
+		limit = int(v)
+	}
+
+	s.logger.Debug("Executing getOwnershipDrift", map[string]interface{}{
+		"scope":     scope,
+		"threshold": threshold,
+		"limit":     limit,
+	})
+
+	opts := query.OwnershipDriftOptions{
+		Scope:     scope,
+		Threshold: threshold,
+		Limit:     limit,
+	}
+
+	resp, err := s.engine.GetOwnershipDrift(ctx, opts)
+	if err != nil {
+		return nil, fmt.Errorf("getOwnershipDrift failed: %w", err)
+	}
+
+	jsonBytes, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	return string(jsonBytes), nil
 }
