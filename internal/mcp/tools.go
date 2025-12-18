@@ -442,6 +442,30 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		{
+			Name:        "getOwnership",
+			Description: "Get ownership information for files or paths. Returns owners from CODEOWNERS and git-blame with confidence scores. Use to identify who to contact for code review or questions.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"path": map[string]interface{}{
+						"type":        "string",
+						"description": "File or directory path to get ownership for",
+					},
+					"includeBlame": map[string]interface{}{
+						"type":        "boolean",
+						"default":     true,
+						"description": "Whether to include git-blame ownership analysis",
+					},
+					"includeHistory": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Whether to include recent ownership change history",
+					},
+				},
+				"required": []string{"path"},
+			},
+		},
 	}
 }
 
@@ -468,4 +492,5 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["recentlyRelevant"] = s.toolRecentlyRelevant
 	// v6.0 Architectural Memory tools
 	s.tools["refreshArchitecture"] = s.toolRefreshArchitecture
+	s.tools["getOwnership"] = s.toolGetOwnership
 }

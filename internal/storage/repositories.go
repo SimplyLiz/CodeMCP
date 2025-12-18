@@ -626,3 +626,365 @@ func formatTimePtr(t *time.Time) interface{} {
 	}
 	return t.Format(time.RFC3339)
 }
+
+// ============================================================================
+// v2 Ownership Repository (Architectural Memory)
+// ============================================================================
+
+// OwnershipRecord represents an ownership record in the database
+type OwnershipRecord struct {
+	ID         int64
+	Pattern    string  // glob pattern (e.g., "internal/api/**")
+	OwnersJSON string  // JSON array of Owner objects
+	Scope      string  // "maintainer" | "reviewer" | "contributor"
+	Source     string  // "codeowners" | "git-blame" | "declared" | "inferred"
+	Confidence float64
+	UpdatedAt  time.Time
+}
+
+// OwnershipHistoryRecord represents a historical ownership change
+type OwnershipHistoryRecord struct {
+	ID         int64
+	Pattern    string
+	OwnerID    string // @username, @org/team, or email
+	Event      string // "added" | "removed" | "promoted" | "demoted"
+	Reason     string // e.g., "git_blame_shift", "codeowners_update"
+	RecordedAt time.Time
+}
+
+// OwnershipRepository provides CRUD operations for ownership tables
+type OwnershipRepository struct {
+	db *DB
+}
+
+// NewOwnershipRepository creates a new ownership repository
+func NewOwnershipRepository(db *DB) *OwnershipRepository {
+	return &OwnershipRepository{db: db}
+}
+
+// Create inserts a new ownership record
+func (r *OwnershipRepository) Create(record *OwnershipRecord) error {
+	result, err := r.db.Exec(`
+		INSERT INTO ownership (pattern, owners, scope, source, confidence, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`,
+		record.Pattern,
+		record.OwnersJSON,
+		record.Scope,
+		record.Source,
+		record.Confidence,
+		record.UpdatedAt.Format(time.RFC3339),
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to create ownership record: %w", err)
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("failed to get inserted id: %w", err)
+	}
+	record.ID = id
+
+	return nil
+}
+
+// GetByPattern retrieves ownership records matching a pattern
+func (r *OwnershipRepository) GetByPattern(pattern string) ([]*OwnershipRecord, error) {
+	rows, err := r.db.Query(`
+		SELECT id, pattern, owners, scope, source, confidence, updated_at
+		FROM ownership
+		WHERE pattern = ?
+		ORDER BY confidence DESC
+	`, pattern)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ownership records: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	return r.scanOwnershipRecords(rows)
+}
+
+// GetBySource retrieves all ownership records from a specific source
+func (r *OwnershipRepository) GetBySource(source string) ([]*OwnershipRecord, error) {
+	rows, err := r.db.Query(`
+		SELECT id, pattern, owners, scope, source, confidence, updated_at
+		FROM ownership
+		WHERE source = ?
+		ORDER BY pattern
+	`, source)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ownership records by source: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	return r.scanOwnershipRecords(rows)
+}
+
+// GetMatchingPattern finds ownership records where the path matches the stored pattern
+// Uses GLOB matching similar to CODEOWNERS
+func (r *OwnershipRepository) GetMatchingPattern(filePath string) ([]*OwnershipRecord, error) {
+	// Get all records and match in Go (SQLite GLOB doesn't support ** patterns)
+	rows, err := r.db.Query(`
+		SELECT id, pattern, owners, scope, source, confidence, updated_at
+		FROM ownership
+		ORDER BY LENGTH(pattern) DESC, confidence DESC
+	`)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ownership records: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	records, err := r.scanOwnershipRecords(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter to matching patterns (in a real implementation, we'd do pattern matching)
+	// For now, return all records - the caller will handle matching
+	return records, nil
+}
+
+// Update updates an existing ownership record
+func (r *OwnershipRepository) Update(record *OwnershipRecord) error {
+	result, err := r.db.Exec(`
+		UPDATE ownership
+		SET pattern = ?,
+		    owners = ?,
+		    scope = ?,
+		    source = ?,
+		    confidence = ?,
+		    updated_at = ?
+		WHERE id = ?
+	`,
+		record.Pattern,
+		record.OwnersJSON,
+		record.Scope,
+		record.Source,
+		record.Confidence,
+		record.UpdatedAt.Format(time.RFC3339),
+		record.ID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to update ownership record: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("ownership record not found: %d", record.ID)
+	}
+
+	return nil
+}
+
+// Upsert creates or updates an ownership record based on pattern and source
+func (r *OwnershipRepository) Upsert(record *OwnershipRecord) error {
+	// First try to find existing record
+	var existingID int64
+	err := r.db.QueryRow(`
+		SELECT id FROM ownership WHERE pattern = ? AND source = ?
+	`, record.Pattern, record.Source).Scan(&existingID)
+
+	if err == sql.ErrNoRows {
+		// Create new record
+		return r.Create(record)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to check existing ownership: %w", err)
+	}
+
+	// Update existing record
+	record.ID = existingID
+	return r.Update(record)
+}
+
+// Delete removes an ownership record
+func (r *OwnershipRepository) Delete(id int64) error {
+	_, err := r.db.Exec("DELETE FROM ownership WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("failed to delete ownership record: %w", err)
+	}
+	return nil
+}
+
+// DeleteByPatternAndSource removes ownership records matching pattern and source
+func (r *OwnershipRepository) DeleteByPatternAndSource(pattern string, source string) error {
+	_, err := r.db.Exec("DELETE FROM ownership WHERE pattern = ? AND source = ?", pattern, source)
+	if err != nil {
+		return fmt.Errorf("failed to delete ownership records: %w", err)
+	}
+	return nil
+}
+
+// DeleteBySource removes all ownership records from a source
+func (r *OwnershipRepository) DeleteBySource(source string) error {
+	_, err := r.db.Exec("DELETE FROM ownership WHERE source = ?", source)
+	if err != nil {
+		return fmt.Errorf("failed to delete ownership records by source: %w", err)
+	}
+	return nil
+}
+
+// ListAll returns all ownership records
+func (r *OwnershipRepository) ListAll() ([]*OwnershipRecord, error) {
+	rows, err := r.db.Query(`
+		SELECT id, pattern, owners, scope, source, confidence, updated_at
+		FROM ownership
+		ORDER BY pattern, confidence DESC
+	`)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to list ownership records: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	return r.scanOwnershipRecords(rows)
+}
+
+// scanOwnershipRecords scans rows into OwnershipRecord structs
+func (r *OwnershipRepository) scanOwnershipRecords(rows *sql.Rows) ([]*OwnershipRecord, error) {
+	var records []*OwnershipRecord
+
+	for rows.Next() {
+		var record OwnershipRecord
+		var updatedAt string
+
+		err := rows.Scan(
+			&record.ID,
+			&record.Pattern,
+			&record.OwnersJSON,
+			&record.Scope,
+			&record.Source,
+			&record.Confidence,
+			&updatedAt,
+		)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan ownership record: %w", err)
+		}
+
+		record.UpdatedAt, err = time.Parse(time.RFC3339, updatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("invalid updated_at format: %w", err)
+		}
+
+		records = append(records, &record)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating ownership records: %w", err)
+	}
+
+	return records, nil
+}
+
+// RecordHistoryEvent adds an ownership history event (append-only)
+func (r *OwnershipRepository) RecordHistoryEvent(record *OwnershipHistoryRecord) error {
+	result, err := r.db.Exec(`
+		INSERT INTO ownership_history (pattern, owner_id, event, reason, recorded_at)
+		VALUES (?, ?, ?, ?, ?)
+	`,
+		record.Pattern,
+		record.OwnerID,
+		record.Event,
+		record.Reason,
+		record.RecordedAt.Format(time.RFC3339),
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to record ownership history: %w", err)
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("failed to get inserted id: %w", err)
+	}
+	record.ID = id
+
+	return nil
+}
+
+// GetHistoryByPattern retrieves ownership history for a pattern
+func (r *OwnershipRepository) GetHistoryByPattern(pattern string, limit int) ([]*OwnershipHistoryRecord, error) {
+	rows, err := r.db.Query(`
+		SELECT id, pattern, owner_id, event, reason, recorded_at
+		FROM ownership_history
+		WHERE pattern = ?
+		ORDER BY recorded_at DESC
+		LIMIT ?
+	`, pattern, limit)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ownership history: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	return r.scanHistoryRecords(rows)
+}
+
+// GetHistoryByOwner retrieves ownership history for an owner
+func (r *OwnershipRepository) GetHistoryByOwner(ownerID string, limit int) ([]*OwnershipHistoryRecord, error) {
+	rows, err := r.db.Query(`
+		SELECT id, pattern, owner_id, event, reason, recorded_at
+		FROM ownership_history
+		WHERE owner_id = ?
+		ORDER BY recorded_at DESC
+		LIMIT ?
+	`, ownerID, limit)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ownership history by owner: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	return r.scanHistoryRecords(rows)
+}
+
+// scanHistoryRecords scans rows into OwnershipHistoryRecord structs
+func (r *OwnershipRepository) scanHistoryRecords(rows *sql.Rows) ([]*OwnershipHistoryRecord, error) {
+	var records []*OwnershipHistoryRecord
+
+	for rows.Next() {
+		var record OwnershipHistoryRecord
+		var recordedAt string
+		var reason sql.NullString
+
+		err := rows.Scan(
+			&record.ID,
+			&record.Pattern,
+			&record.OwnerID,
+			&record.Event,
+			&reason,
+			&recordedAt,
+		)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan ownership history: %w", err)
+		}
+
+		record.RecordedAt, err = time.Parse(time.RFC3339, recordedAt)
+		if err != nil {
+			return nil, fmt.Errorf("invalid recorded_at format: %w", err)
+		}
+
+		if reason.Valid {
+			record.Reason = reason.String
+		}
+
+		records = append(records, &record)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating ownership history: %w", err)
+	}
+
+	return records, nil
+}

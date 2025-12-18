@@ -1702,3 +1702,143 @@ func (s *MCPServer) toolRefreshArchitecture(params map[string]interface{}) (inte
 
 	return string(jsonBytesRefresh), nil
 }
+
+// toolGetOwnership handles the getOwnership tool call (v6.0)
+func (s *MCPServer) toolGetOwnership(params map[string]interface{}) (interface{}, error) {
+	ctx := context.Background()
+
+	// Parse path (required)
+	path, ok := params["path"].(string)
+	if !ok || path == "" {
+		return nil, fmt.Errorf("missing or invalid 'path' parameter")
+	}
+
+	// Parse includeBlame (default: true)
+	includeBlame := true
+	if includeBlameVal, ok := params["includeBlame"].(bool); ok {
+		includeBlame = includeBlameVal
+	}
+
+	// Parse includeHistory (default: false)
+	includeHistory := false
+	if includeHistoryVal, ok := params["includeHistory"].(bool); ok {
+		includeHistory = includeHistoryVal
+	}
+
+	s.logger.Debug("Executing getOwnership", map[string]interface{}{
+		"path":           path,
+		"includeBlame":   includeBlame,
+		"includeHistory": includeHistory,
+	})
+
+	opts := query.GetOwnershipOptions{
+		Path:           path,
+		IncludeBlame:   includeBlame,
+		IncludeHistory: includeHistory,
+	}
+
+	resp, err := s.engine.GetOwnership(ctx, opts)
+	if err != nil {
+		return nil, fmt.Errorf("getOwnership failed: %w", err)
+	}
+
+	// Build owners response
+	owners := make([]map[string]interface{}, 0, len(resp.Owners))
+	for _, o := range resp.Owners {
+		ownerInfo := map[string]interface{}{
+			"id":         o.ID,
+			"type":       o.Type,
+			"scope":      o.Scope,
+			"source":     o.Source,
+			"confidence": o.Confidence,
+		}
+		owners = append(owners, ownerInfo)
+	}
+
+	// Build blame contributors if present
+	var blameContributors []map[string]interface{}
+	if resp.BlameOwnership != nil {
+		blameContributors = make([]map[string]interface{}, 0, len(resp.BlameOwnership.Contributors))
+		for _, c := range resp.BlameOwnership.Contributors {
+			contribInfo := map[string]interface{}{
+				"author":     c.Author,
+				"email":      c.Email,
+				"lineCount":  c.LineCount,
+				"percentage": c.Percentage,
+			}
+			blameContributors = append(blameContributors, contribInfo)
+		}
+	}
+
+	// Build history events if present
+	var history []map[string]interface{}
+	if len(resp.History) > 0 {
+		history = make([]map[string]interface{}, 0, len(resp.History))
+		for _, h := range resp.History {
+			historyInfo := map[string]interface{}{
+				"pattern":    h.Pattern,
+				"ownerId":    h.OwnerID,
+				"event":      h.Event,
+				"recordedAt": h.RecordedAt,
+			}
+			if h.Reason != "" {
+				historyInfo["reason"] = h.Reason
+			}
+			history = append(history, historyInfo)
+		}
+	}
+
+	result := map[string]interface{}{
+		"meta": map[string]interface{}{
+			"ckbVersion":    resp.CkbVersion,
+			"schemaVersion": resp.SchemaVersion,
+			"tool":          resp.Tool,
+		},
+		"path":            resp.Path,
+		"owners":          owners,
+		"confidence":      resp.Confidence,
+		"confidenceBasis": resp.ConfidenceBasis,
+	}
+
+	if blameContributors != nil {
+		result["blameOwnership"] = map[string]interface{}{
+			"totalLines":   resp.BlameOwnership.TotalLines,
+			"contributors": blameContributors,
+		}
+	}
+
+	if history != nil {
+		result["history"] = history
+	}
+
+	if len(resp.Limitations) > 0 {
+		result["limitations"] = resp.Limitations
+	}
+
+	if resp.Provenance != nil {
+		result["provenance"] = map[string]interface{}{
+			"repoStateId":     resp.Provenance.RepoStateId,
+			"repoStateDirty":  resp.Provenance.RepoStateDirty,
+			"queryDurationMs": resp.Provenance.QueryDurationMs,
+		}
+	}
+
+	if len(resp.Drilldowns) > 0 {
+		drilldowns := make([]map[string]interface{}, 0, len(resp.Drilldowns))
+		for _, d := range resp.Drilldowns {
+			drilldowns = append(drilldowns, map[string]interface{}{
+				"label":          d.Label,
+				"query":          d.Query,
+				"relevanceScore": d.RelevanceScore,
+			})
+		}
+		result["drilldowns"] = drilldowns
+	}
+
+	jsonBytesOwnership, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	return string(jsonBytesOwnership), nil
+}
