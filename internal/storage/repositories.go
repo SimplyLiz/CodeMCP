@@ -514,6 +514,57 @@ func (r *ModuleRepository) UpdateAnnotations(moduleID string, boundaries, respon
 	return nil
 }
 
+// UpsertAnnotations creates or updates the v2 annotation fields for a module
+// If the module doesn't exist, it creates a minimal module record with the annotation data
+func (r *ModuleRepository) UpsertAnnotations(moduleID string, boundaries, responsibility, ownerRef, tags *string, source string, confidence float64) error {
+	// First try to update existing module
+	result, err := r.db.Exec(`
+		UPDATE modules
+		SET boundaries = COALESCE(?, boundaries),
+		    responsibility = COALESCE(?, responsibility),
+		    owner_ref = COALESCE(?, owner_ref),
+		    tags = COALESCE(?, tags),
+		    source = ?,
+		    confidence = ?,
+		    updated_at = ?
+		WHERE module_id = ?
+	`, boundaries, responsibility, ownerRef, tags, source, confidence, time.Now().Format(time.RFC3339), moduleID)
+	if err != nil {
+		return fmt.Errorf("failed to update module annotations: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	// If module doesn't exist, create it with annotation data
+	if rowsAffected == 0 {
+		_, err = r.db.Exec(`
+			INSERT INTO modules (module_id, name, root_path, detected_at, state_id, boundaries, responsibility, owner_ref, tags, source, confidence, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`,
+			moduleID,
+			moduleID, // Use moduleID as name for declared modules
+			moduleID, // Use moduleID as root_path
+			time.Now().Format(time.RFC3339),
+			"declared", // state_id indicates this was created via annotation
+			boundaries,
+			responsibility,
+			ownerRef,
+			tags,
+			source,
+			confidence,
+			time.Now().Format(time.RFC3339),
+		)
+		if err != nil {
+			return fmt.Errorf("failed to create module with annotations: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // GetAnnotations retrieves the v2 annotation fields for a module
 func (r *ModuleRepository) GetAnnotations(moduleID string) (*Module, error) {
 	var module Module

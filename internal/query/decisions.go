@@ -158,12 +158,18 @@ func (e *Engine) GetDecision(id string) (*DecisionResult, error) {
 		}, nil
 	}
 
-	// Not in database - try scanning file system
+	// Not in database - try scanning file system (both repo-local and global v6.0 paths)
 	parser := decisions.NewParser(e.repoRoot)
-	dirs := parser.FindADRDirectories()
+	allDirs := parser.FindAllADRDirectories()
 
-	for _, dir := range dirs {
-		adrs, err := parser.ParseDirectory(dir)
+	for _, dir := range allDirs {
+		var adrs []*decisions.ArchitecturalDecision
+		var err error
+		if dir.IsAbsolute {
+			adrs, err = parser.ParseDirectoryAbsolute(dir.Path)
+		} else {
+			adrs, err = parser.ParseDirectory(dir.Path)
+		}
 		if err != nil {
 			continue
 		}
@@ -234,13 +240,19 @@ func (e *Engine) GetDecisions(query *DecisionsQuery) (*DecisionsResult, error) {
 		}, nil
 	}
 
-	// Fall back to file system scan
+	// Fall back to file system scan (both repo-local and global v6.0 paths)
 	parser := decisions.NewParser(e.repoRoot)
-	dirs := parser.FindADRDirectories()
+	allDirs := parser.FindAllADRDirectories()
 
 	var allADRs []*decisions.ArchitecturalDecision
-	for _, dir := range dirs {
-		adrs, err := parser.ParseDirectory(dir)
+	for _, dir := range allDirs {
+		var adrs []*decisions.ArchitecturalDecision
+		var err error
+		if dir.IsAbsolute {
+			adrs, err = parser.ParseDirectoryAbsolute(dir.Path)
+		} else {
+			adrs, err = parser.ParseDirectory(dir.Path)
+		}
 		if err != nil {
 			continue
 		}
@@ -347,15 +359,22 @@ func (e *Engine) UpdateDecisionStatus(id string, newStatus string) (*DecisionRes
 }
 
 // SyncDecisionsFromFiles scans the file system and syncs ADRs to the database
+// Scans both repo-local and global v6.0 persistence paths
 func (e *Engine) SyncDecisionsFromFiles() (int, error) {
 	parser := decisions.NewParser(e.repoRoot)
 	decisionRepo := storage.NewDecisionRepository(e.db)
 
-	dirs := parser.FindADRDirectories()
+	allDirs := parser.FindAllADRDirectories()
 	synced := 0
 
-	for _, dir := range dirs {
-		adrs, err := parser.ParseDirectory(dir)
+	for _, dir := range allDirs {
+		var adrs []*decisions.ArchitecturalDecision
+		var err error
+		if dir.IsAbsolute {
+			adrs, err = parser.ParseDirectoryAbsolute(dir.Path)
+		} else {
+			adrs, err = parser.ParseDirectory(dir.Path)
+		}
 		if err != nil {
 			continue
 		}

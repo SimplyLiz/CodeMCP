@@ -120,8 +120,9 @@ func (e *Engine) AnnotateModule(input *AnnotateModuleInput) (*AnnotateModuleResu
 		responsibilityPtr = &input.Responsibility
 	}
 
-	// Update module annotations (ignore error if module doesn't exist in modules table yet)
-	_ = moduleRepo.UpdateAnnotations(
+	// Update or create module with annotations using UpsertAnnotations
+	// This ensures the module record exists and has the annotation data
+	if err := moduleRepo.UpsertAnnotations(
 		input.ModuleId,
 		boundariesJSON,
 		responsibilityPtr,
@@ -129,7 +130,13 @@ func (e *Engine) AnnotateModule(input *AnnotateModuleInput) (*AnnotateModuleResu
 		tagsJSON,
 		"declared",
 		1.0, // User-declared is high confidence
-	)
+	); err != nil {
+		// Log warning but don't fail - the responsibility record was already saved
+		e.logger.Warn("Failed to update module annotations", map[string]interface{}{
+			"moduleId": input.ModuleId,
+			"error":    err.Error(),
+		})
+	}
 
 	// Build result
 	result := &AnnotateModuleResult{

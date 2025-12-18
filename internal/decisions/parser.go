@@ -22,7 +22,8 @@ func NewParser(repoRoot string) *Parser {
 	return &Parser{repoRoot: repoRoot}
 }
 
-// FindADRDirectories returns directories that may contain ADRs
+// FindADRDirectories returns directories that may contain ADRs (repo-local paths only)
+// For the v6.0 global persistence path, use GetGlobalDecisionsDir()
 func (p *Parser) FindADRDirectories() []string {
 	candidates := []string{
 		"docs/decisions",
@@ -42,6 +43,50 @@ func (p *Parser) FindADRDirectories() []string {
 	}
 
 	return found
+}
+
+// GetGlobalDecisionsDir returns the v6.0 global persistence path for ADRs
+// Path: ~/.ckb/repos/<hash>/decisions/
+// Returns empty string if the directory doesn't exist
+func (p *Parser) GetGlobalDecisionsDir() string {
+	globalDir, err := paths.GetDecisionsDir(p.repoRoot)
+	if err != nil {
+		return ""
+	}
+	if info, err := os.Stat(globalDir); err == nil && info.IsDir() {
+		return globalDir
+	}
+	return ""
+}
+
+// FindAllADRDirectories returns all directories that may contain ADRs,
+// including both repo-local paths and the v6.0 global persistence path
+func (p *Parser) FindAllADRDirectories() []ADRDirectory {
+	var dirs []ADRDirectory
+
+	// Add repo-local directories (relative paths)
+	for _, dir := range p.FindADRDirectories() {
+		dirs = append(dirs, ADRDirectory{
+			Path:       dir,
+			IsAbsolute: false,
+		})
+	}
+
+	// Add v6.0 global persistence path (absolute path)
+	if globalDir := p.GetGlobalDecisionsDir(); globalDir != "" {
+		dirs = append(dirs, ADRDirectory{
+			Path:       globalDir,
+			IsAbsolute: true,
+		})
+	}
+
+	return dirs
+}
+
+// ADRDirectory represents a directory containing ADRs
+type ADRDirectory struct {
+	Path       string // Relative path for repo-local, absolute path for global
+	IsAbsolute bool   // True if Path is an absolute path
 }
 
 // ParseDirectory parses all ADRs in a directory (relative to repoRoot)
