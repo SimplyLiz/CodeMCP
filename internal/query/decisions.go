@@ -3,9 +3,11 @@ package query
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"ckb/internal/decisions"
+	"ckb/internal/paths"
 	"ckb/internal/storage"
 )
 
@@ -67,11 +69,14 @@ func (e *Engine) RecordDecision(input *RecordDecisionInput) (*DecisionResult, er
 		adr.Status = input.Status
 	}
 
-	// Determine output directory
-	outputDir := decisions.GetDefaultOutputDir(e.repoRoot)
+	// Use v6.0 global persistence path (~/.ckb/repos/<hash>/decisions/)
+	outputDir, err := paths.EnsureDecisionsDir(e.repoRoot)
+	if err != nil {
+		return nil, fmt.Errorf("failed to ensure decisions directory: %w", err)
+	}
 
-	// Create writer and write the ADR file
-	writer := decisions.NewWriter(e.repoRoot, outputDir)
+	// Create writer with absolute path and write the ADR file
+	writer := decisions.NewWriterWithAbsolutePath(outputDir)
 	filePath, err := writer.CreateADR(adr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ADR file: %w", err)
@@ -291,18 +296,36 @@ func (e *Engine) UpdateDecisionStatus(id string, newStatus string) (*DecisionRes
 	}
 
 	// Parse the file to get full ADR
-	parser := decisions.NewParser(e.repoRoot)
-	adr, err := parser.ParseFile(record.FilePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse ADR file: %w", err)
+	// First try the v6.0 persistent path, then fall back to repo-local
+	var adr *decisions.ArchitecturalDecision
+	var parseErr error
+
+	// Check if the file path is absolute (v6.0 style)
+	if filepath.IsAbs(record.FilePath) {
+		adr, parseErr = decisions.ParseFileAbsolute(record.FilePath)
+	} else {
+		// Try repo-local path
+		parser := decisions.NewParser(e.repoRoot)
+		adr, parseErr = parser.ParseFile(record.FilePath)
+	}
+
+	if parseErr != nil {
+		return nil, fmt.Errorf("failed to parse ADR file: %w", parseErr)
 	}
 
 	// Update status
 	adr.Status = newStatus
 
-	// Write back to file
-	outputDir := decisions.GetDefaultOutputDir(e.repoRoot)
-	writer := decisions.NewWriter(e.repoRoot, outputDir)
+	// Write back to file - use appropriate writer based on path type
+	var writer *decisions.Writer
+	if filepath.IsAbs(record.FilePath) {
+		// v6.0 absolute path - use directory of the file
+		writer = decisions.NewWriterWithAbsolutePath(filepath.Dir(record.FilePath))
+	} else {
+		// Repo-local path
+		outputDir := decisions.GetDefaultOutputDir(e.repoRoot)
+		writer = decisions.NewWriter(e.repoRoot, outputDir)
+	}
 	if err := writer.UpdateADR(adr); err != nil {
 		return nil, fmt.Errorf("failed to update ADR file: %w", err)
 	}

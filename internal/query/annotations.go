@@ -37,6 +37,7 @@ type Boundaries struct {
 // AnnotateModule adds or updates module metadata
 func (e *Engine) AnnotateModule(input *AnnotateModuleInput) (*AnnotateModuleResult, error) {
 	respRepo := storage.NewResponsibilityRepository(e.db)
+	moduleRepo := storage.NewModuleRepository(e.db)
 
 	// Check if module already has annotations
 	existing, err := respRepo.GetByTarget(input.ModuleId)
@@ -92,6 +93,43 @@ func (e *Engine) AnnotateModule(input *AnnotateModuleInput) (*AnnotateModuleResu
 		}
 		updated = true
 	}
+
+	// Also update the modules table v2 columns (boundaries, responsibility, tags, owner_ref)
+	var boundariesJSON *string
+	if len(input.PublicPaths) > 0 || len(input.InternalPaths) > 0 {
+		boundaries := map[string][]string{
+			"public":   input.PublicPaths,
+			"internal": input.InternalPaths,
+		}
+		if bytes, err := json.Marshal(boundaries); err == nil {
+			s := string(bytes)
+			boundariesJSON = &s
+		}
+	}
+
+	var tagsJSON *string
+	if len(input.Tags) > 0 {
+		if bytes, err := json.Marshal(input.Tags); err == nil {
+			s := string(bytes)
+			tagsJSON = &s
+		}
+	}
+
+	var responsibilityPtr *string
+	if input.Responsibility != "" {
+		responsibilityPtr = &input.Responsibility
+	}
+
+	// Update module annotations (ignore error if module doesn't exist in modules table yet)
+	_ = moduleRepo.UpdateAnnotations(
+		input.ModuleId,
+		boundariesJSON,
+		responsibilityPtr,
+		nil, // ownerRef - not provided in input
+		tagsJSON,
+		"declared",
+		1.0, // User-declared is high confidence
+	)
 
 	// Build result
 	result := &AnnotateModuleResult{
