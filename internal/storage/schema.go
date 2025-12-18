@@ -6,7 +6,9 @@ import (
 )
 
 // Schema version tracking
-const currentSchemaVersion = 1
+// v1: Initial schema (symbol_mappings, symbol_aliases, modules, dependency_edges, caches)
+// v2: Architectural Memory (ownership, hotspots, responsibilities, decisions)
+const currentSchemaVersion = 2
 
 // initializeSchema creates all tables for a new database
 func (db *DB) initializeSchema() error {
@@ -16,20 +18,40 @@ func (db *DB) initializeSchema() error {
 			return err
 		}
 
-		// Create all application tables
+		// Create v1 application tables
 		if err := createSymbolMappingsTable(tx); err != nil {
 			return err
 		}
 		if err := createSymbolAliasesTable(tx); err != nil {
 			return err
 		}
-		if err := createModulesTable(tx); err != nil {
+		if err := createModulesTableV2(tx); err != nil {
 			return err
 		}
 		if err := createDependencyEdgesTable(tx); err != nil {
 			return err
 		}
 		if err := createCacheTablesTable(tx); err != nil {
+			return err
+		}
+
+		// Create v2 Architectural Memory tables
+		if err := createOwnershipTable(tx); err != nil {
+			return err
+		}
+		if err := createOwnershipHistoryTable(tx); err != nil {
+			return err
+		}
+		if err := createHotspotSnapshotsTable(tx); err != nil {
+			return err
+		}
+		if err := createResponsibilitiesTable(tx); err != nil {
+			return err
+		}
+		if err := createDecisionsTable(tx); err != nil {
+			return err
+		}
+		if err := createModuleRenamesTable(tx); err != nil {
 			return err
 		}
 
@@ -67,15 +89,70 @@ func (db *DB) runMigrations() error {
 	})
 
 	// Run migrations sequentially
-	// Add migration functions here as schema evolves
-	// Example:
-	// if version < 2 {
-	//     if err := db.migrateToV2(); err != nil {
-	//         return err
-	//     }
-	// }
+	if version < 2 {
+		if err := db.migrateToV2(); err != nil {
+			return fmt.Errorf("failed to migrate to v2: %w", err)
+		}
+	}
 
 	return nil
+}
+
+// migrateToV2 migrates the database from v1 to v2 (Architectural Memory)
+func (db *DB) migrateToV2() error {
+	return db.WithTx(func(tx *sql.Tx) error {
+		db.logger.Info("Migrating database to v2 (Architectural Memory)", nil)
+
+		// Add new columns to modules table
+		alterStatements := []string{
+			"ALTER TABLE modules ADD COLUMN boundaries TEXT",
+			"ALTER TABLE modules ADD COLUMN responsibility TEXT",
+			"ALTER TABLE modules ADD COLUMN owner_ref TEXT",
+			"ALTER TABLE modules ADD COLUMN tags TEXT",
+			"ALTER TABLE modules ADD COLUMN source TEXT NOT NULL DEFAULT 'inferred'",
+			"ALTER TABLE modules ADD COLUMN confidence REAL NOT NULL DEFAULT 0.5",
+			"ALTER TABLE modules ADD COLUMN confidence_basis TEXT",
+			"ALTER TABLE modules ADD COLUMN updated_at TEXT",
+		}
+
+		for _, stmt := range alterStatements {
+			if _, err := tx.Exec(stmt); err != nil {
+				// SQLite will error if column already exists, which is fine
+				db.logger.Debug("ALTER TABLE statement", map[string]interface{}{
+					"statement": stmt,
+					"error":     err.Error(),
+				})
+			}
+		}
+
+		// Create new v2 tables
+		if err := createOwnershipTable(tx); err != nil {
+			return err
+		}
+		if err := createOwnershipHistoryTable(tx); err != nil {
+			return err
+		}
+		if err := createHotspotSnapshotsTable(tx); err != nil {
+			return err
+		}
+		if err := createResponsibilitiesTable(tx); err != nil {
+			return err
+		}
+		if err := createDecisionsTable(tx); err != nil {
+			return err
+		}
+		if err := createModuleRenamesTable(tx); err != nil {
+			return err
+		}
+
+		// Update schema version
+		if err := setSchemaVersion(tx, 2); err != nil {
+			return err
+		}
+
+		db.logger.Info("Database migrated to v2", nil)
+		return nil
+	})
 }
 
 // getSchemaVersion gets the current schema version
@@ -332,6 +409,277 @@ func createCacheTablesTable(tx *sql.Tx) error {
 	for _, indexSQL := range indexes {
 		if _, err := tx.Exec(indexSQL); err != nil {
 			return fmt.Errorf("failed to create cache index: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// ============================================================================
+// v2 Schema: Architectural Memory Tables
+// ============================================================================
+
+// createModulesTableV2 creates the modules table with v2 columns
+func createModulesTableV2(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+		CREATE TABLE IF NOT EXISTS modules (
+			module_id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			root_path TEXT NOT NULL,
+			manifest_type TEXT,
+			detected_at TEXT NOT NULL,
+			state_id TEXT NOT NULL,
+			-- v2 columns for Architectural Memory
+			boundaries TEXT,                              -- JSON: {public: [], internal: []}
+			responsibility TEXT,                          -- one-sentence description
+			owner_ref TEXT,                               -- link to ownership
+			tags TEXT,                                    -- JSON array
+			source TEXT NOT NULL DEFAULT 'inferred',      -- "declared" | "inferred"
+			confidence REAL NOT NULL DEFAULT 0.5,
+			confidence_basis TEXT,                        -- JSON array
+			updated_at TEXT
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create modules table: %w", err)
+	}
+
+	// Create indexes
+	indexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_modules_name ON modules(name)",
+		"CREATE INDEX IF NOT EXISTS idx_modules_root_path ON modules(root_path)",
+		"CREATE INDEX IF NOT EXISTS idx_modules_state_id ON modules(state_id)",
+		"CREATE INDEX IF NOT EXISTS idx_modules_source ON modules(source)",
+	}
+
+	for _, indexSQL := range indexes {
+		if _, err := tx.Exec(indexSQL); err != nil {
+			return fmt.Errorf("failed to create index: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// createOwnershipTable creates the ownership table
+// Stores ownership rules with source and confidence
+func createOwnershipTable(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+		CREATE TABLE IF NOT EXISTS ownership (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			pattern TEXT NOT NULL,                        -- glob pattern (e.g., "internal/api/**")
+			owners TEXT NOT NULL,                         -- JSON array of Owner objects
+			scope TEXT NOT NULL,                          -- "maintainer" | "reviewer" | "contributor"
+			source TEXT NOT NULL,                         -- "codeowners" | "git-blame" | "declared" | "inferred"
+			confidence REAL NOT NULL,
+			updated_at TEXT NOT NULL
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create ownership table: %w", err)
+	}
+
+	indexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_ownership_pattern ON ownership(pattern)",
+		"CREATE INDEX IF NOT EXISTS idx_ownership_source ON ownership(source)",
+	}
+
+	for _, indexSQL := range indexes {
+		if _, err := tx.Exec(indexSQL); err != nil {
+			return fmt.Errorf("failed to create index: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// createOwnershipHistoryTable creates the ownership_history table (append-only)
+// Tracks ownership changes over time for auditing
+func createOwnershipHistoryTable(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+		CREATE TABLE IF NOT EXISTS ownership_history (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			pattern TEXT NOT NULL,
+			owner_id TEXT NOT NULL,                       -- @username, @org/team, or email
+			event TEXT NOT NULL,                          -- "added" | "removed" | "promoted" | "demoted"
+			reason TEXT,                                  -- e.g., "git_blame_shift", "codeowners_update"
+			recorded_at TEXT NOT NULL
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create ownership_history table: %w", err)
+	}
+
+	indexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_ownership_history_pattern ON ownership_history(pattern)",
+		"CREATE INDEX IF NOT EXISTS idx_ownership_history_recorded_at ON ownership_history(recorded_at)",
+	}
+
+	for _, indexSQL := range indexes {
+		if _, err := tx.Exec(indexSQL); err != nil {
+			return fmt.Errorf("failed to create index: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// createHotspotSnapshotsTable creates the hotspot_snapshots table (append-only)
+// Stores time-series hotspot metrics for trend analysis
+func createHotspotSnapshotsTable(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+		CREATE TABLE IF NOT EXISTS hotspot_snapshots (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			target_id TEXT NOT NULL,                      -- file path, module ID, or symbol ID
+			target_type TEXT NOT NULL,                    -- "file" | "module" | "symbol"
+			snapshot_date TEXT NOT NULL,                  -- ISO 8601 date
+			churn_commits_30d INTEGER,
+			churn_commits_90d INTEGER,
+			churn_authors_30d INTEGER,
+			complexity_cyclomatic REAL,
+			complexity_cognitive REAL,
+			coupling_afferent INTEGER,                    -- incoming dependencies
+			coupling_efferent INTEGER,                    -- outgoing dependencies
+			coupling_instability REAL,                    -- efferent / (afferent + efferent)
+			score REAL NOT NULL                           -- composite hotspot score
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create hotspot_snapshots table: %w", err)
+	}
+
+	indexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_hotspot_target ON hotspot_snapshots(target_id, snapshot_date)",
+		"CREATE INDEX IF NOT EXISTS idx_hotspot_date ON hotspot_snapshots(snapshot_date)",
+		"CREATE INDEX IF NOT EXISTS idx_hotspot_type ON hotspot_snapshots(target_type)",
+	}
+
+	for _, indexSQL := range indexes {
+		if _, err := tx.Exec(indexSQL); err != nil {
+			return fmt.Errorf("failed to create index: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// createResponsibilitiesTable creates the responsibilities table
+// Stores module/file responsibility descriptions
+func createResponsibilitiesTable(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+		CREATE TABLE IF NOT EXISTS responsibilities (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			target_id TEXT NOT NULL,                      -- module ID, file path, or symbol ID
+			target_type TEXT NOT NULL,                    -- "module" | "file" | "symbol"
+			summary TEXT NOT NULL,                        -- one-sentence description
+			capabilities TEXT,                            -- JSON array of capabilities
+			source TEXT NOT NULL,                         -- "declared" | "inferred" | "llm-generated"
+			confidence REAL NOT NULL,
+			updated_at TEXT NOT NULL,
+			verified_at TEXT                              -- human verification timestamp
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create responsibilities table: %w", err)
+	}
+
+	indexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_responsibilities_target ON responsibilities(target_id)",
+		"CREATE INDEX IF NOT EXISTS idx_responsibilities_type ON responsibilities(target_type)",
+		"CREATE INDEX IF NOT EXISTS idx_responsibilities_source ON responsibilities(source)",
+	}
+
+	for _, indexSQL := range indexes {
+		if _, err := tx.Exec(indexSQL); err != nil {
+			return fmt.Errorf("failed to create index: %w", err)
+		}
+	}
+
+	// Create FTS5 virtual table for full-text search
+	if _, err := tx.Exec(`
+		CREATE VIRTUAL TABLE IF NOT EXISTS responsibilities_fts USING fts5(
+			target_id,
+			summary,
+			capabilities,
+			content='responsibilities',
+			content_rowid='id'
+		)
+	`); err != nil {
+		return fmt.Errorf("failed to create responsibilities_fts table: %w", err)
+	}
+
+	return nil
+}
+
+// createDecisionsTable creates the decisions table
+// Stores ADR metadata (content is in markdown files)
+func createDecisionsTable(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+		CREATE TABLE IF NOT EXISTS decisions (
+			id TEXT PRIMARY KEY,                          -- "ADR-001" style
+			title TEXT NOT NULL,
+			status TEXT NOT NULL,                         -- "proposed" | "accepted" | "deprecated" | "superseded"
+			affected_modules TEXT,                        -- JSON array of module IDs
+			file_path TEXT NOT NULL,                      -- relative path to .md file
+			author TEXT,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create decisions table: %w", err)
+	}
+
+	indexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_decisions_status ON decisions(status)",
+		"CREATE INDEX IF NOT EXISTS idx_decisions_created_at ON decisions(created_at)",
+	}
+
+	for _, indexSQL := range indexes {
+		if _, err := tx.Exec(indexSQL); err != nil {
+			return fmt.Errorf("failed to create index: %w", err)
+		}
+	}
+
+	// Create FTS5 virtual table for full-text search
+	if _, err := tx.Exec(`
+		CREATE VIRTUAL TABLE IF NOT EXISTS decisions_fts USING fts5(
+			id,
+			title,
+			content='decisions',
+			content_rowid='rowid'
+		)
+	`); err != nil {
+		return fmt.Errorf("failed to create decisions_fts table: %w", err)
+	}
+
+	return nil
+}
+
+// createModuleRenamesTable creates the module_renames table
+// Tracks module ID changes for stable ID resolution
+func createModuleRenamesTable(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+		CREATE TABLE IF NOT EXISTS module_renames (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			old_id TEXT NOT NULL,
+			new_id TEXT NOT NULL,
+			renamed_at TEXT NOT NULL,
+			reason TEXT                                   -- "directory_rename" | "manual" | "merge"
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create module_renames table: %w", err)
+	}
+
+	indexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_module_renames_old ON module_renames(old_id)",
+		"CREATE INDEX IF NOT EXISTS idx_module_renames_new ON module_renames(new_id)",
+	}
+
+	for _, indexSQL := range indexes {
+		if _, err := tx.Exec(indexSQL); err != nil {
+			return fmt.Errorf("failed to create index: %w", err)
 		}
 	}
 

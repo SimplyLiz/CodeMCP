@@ -1607,3 +1607,98 @@ func (s *MCPServer) toolRecentlyRelevant(params map[string]interface{}) (interfa
 
 	return string(jsonBytesRecent), nil
 }
+
+// toolRefreshArchitecture handles the refreshArchitecture tool call (v6.0)
+func (s *MCPServer) toolRefreshArchitecture(params map[string]interface{}) (interface{}, error) {
+	ctx := context.Background()
+
+	// Parse scope (default: "all")
+	scope := "all"
+	if scopeVal, ok := params["scope"].(string); ok {
+		scope = scopeVal
+	}
+
+	// Parse force (default: false)
+	force := false
+	if forceVal, ok := params["force"].(bool); ok {
+		force = forceVal
+	}
+
+	// Parse dryRun (default: false)
+	dryRun := false
+	if dryRunVal, ok := params["dryRun"].(bool); ok {
+		dryRun = dryRunVal
+	}
+
+	s.logger.Debug("Executing refreshArchitecture", map[string]interface{}{
+		"scope":  scope,
+		"force":  force,
+		"dryRun": dryRun,
+	})
+
+	opts := query.RefreshArchitectureOptions{
+		Scope:  scope,
+		Force:  force,
+		DryRun: dryRun,
+	}
+
+	resp, err := s.engine.RefreshArchitecture(ctx, opts)
+	if err != nil {
+		return nil, fmt.Errorf("refreshArchitecture failed: %w", err)
+	}
+
+	// Build changes response
+	changes := make(map[string]interface{})
+	if resp.Changes != nil {
+		if resp.Changes.ModulesUpdated > 0 {
+			changes["modulesUpdated"] = resp.Changes.ModulesUpdated
+		}
+		if resp.Changes.ModulesCreated > 0 {
+			changes["modulesCreated"] = resp.Changes.ModulesCreated
+		}
+		if resp.Changes.OwnershipUpdated > 0 {
+			changes["ownershipUpdated"] = resp.Changes.OwnershipUpdated
+		}
+		if resp.Changes.HotspotsUpdated > 0 {
+			changes["hotspotsUpdated"] = resp.Changes.HotspotsUpdated
+		}
+		if resp.Changes.ResponsibilitiesUpdated > 0 {
+			changes["responsibilitiesUpdated"] = resp.Changes.ResponsibilitiesUpdated
+		}
+	}
+
+	result := map[string]interface{}{
+		"meta": map[string]interface{}{
+			"ckbVersion":    resp.CkbVersion,
+			"schemaVersion": resp.SchemaVersion,
+			"tool":          resp.Tool,
+		},
+		"status":     resp.Status,
+		"scope":      resp.Scope,
+		"changes":    changes,
+		"durationMs": resp.DurationMs,
+	}
+
+	if resp.DryRun {
+		result["dryRun"] = true
+	}
+
+	if len(resp.Warnings) > 0 {
+		result["warnings"] = resp.Warnings
+	}
+
+	if resp.Provenance != nil {
+		result["provenance"] = map[string]interface{}{
+			"repoStateId":     resp.Provenance.RepoStateId,
+			"repoStateDirty":  resp.Provenance.RepoStateDirty,
+			"queryDurationMs": resp.Provenance.QueryDurationMs,
+		}
+	}
+
+	jsonBytesRefresh, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	return string(jsonBytesRefresh), nil
+}

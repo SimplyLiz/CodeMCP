@@ -416,6 +416,32 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		// v6.0 Architectural Memory tools
+		{
+			Name:        "refreshArchitecture",
+			Description: "Rebuild the architectural model from sources. Use this to refresh ownership, modules, hotspots, or responsibilities data. Heavy operation (up to 30s).",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"scope": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"all", "modules", "ownership", "hotspots", "responsibilities"},
+						"default":     "all",
+						"description": "What to refresh: 'all' (default), 'modules', 'ownership', 'hotspots', or 'responsibilities'",
+					},
+					"force": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Force refresh even if data is fresh",
+					},
+					"dryRun": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Preview what would be refreshed without making changes",
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -440,4 +466,6 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["explainPath"] = s.toolExplainPath
 	s.tools["listKeyConcepts"] = s.toolListKeyConcepts
 	s.tools["recentlyRelevant"] = s.toolRecentlyRelevant
+	// v6.0 Architectural Memory tools
+	s.tools["refreshArchitecture"] = s.toolRefreshArchitecture
 }

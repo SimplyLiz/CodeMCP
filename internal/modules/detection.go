@@ -57,6 +57,29 @@ type DetectionResult struct {
 
 // DetectModules detects modules in a repository using the cascading resolution order
 func DetectModules(repoRoot string, explicitRoots []string, ignoreDirs []string, stateId string, logger *logging.Logger) (*DetectionResult, error) {
+	return DetectModulesWithDeclaration(repoRoot, explicitRoots, ignoreDirs, "", stateId, logger)
+}
+
+// DetectModulesWithDeclaration detects modules with optional MODULES.toml support
+func DetectModulesWithDeclaration(repoRoot string, explicitRoots []string, ignoreDirs []string, declarationFile string, stateId string, logger *logging.Logger) (*DetectionResult, error) {
+	// Step 0: Check for MODULES.toml (v6.0 declared modules)
+	declaredModules, err := LoadDeclaredModules(repoRoot, declarationFile, stateId)
+	if err != nil {
+		logger.Warn("Failed to load MODULES.toml", map[string]interface{}{
+			"error": err.Error(),
+		})
+		// Continue with fallback detection
+	}
+	if len(declaredModules) > 0 {
+		logger.Debug("Loaded declared modules from MODULES.toml", map[string]interface{}{
+			"count": len(declaredModules),
+		})
+		return &DetectionResult{
+			Modules:         declaredModules,
+			DetectionMethod: "declared",
+		}, nil
+	}
+
 	// Step 1: Check explicit config
 	if len(explicitRoots) > 0 {
 		modules, err := detectExplicitModules(repoRoot, explicitRoots, stateId, logger)
