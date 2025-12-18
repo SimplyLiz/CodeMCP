@@ -1,13 +1,23 @@
 # CKB Performance Benchmarks
 
-Performance benchmarks for v5.2 navigation tools, measured against spec latency targets.
+Performance benchmarks for CKB tools, measured against spec latency targets.
 
-## v5.2 Latency Targets
+## Latency Targets
+
+### v5.2 Navigation Tools
 
 | Budget | Target | Tools |
 |--------|--------|-------|
 | Cheap | P95 < 300ms | searchSymbols, explainFile, listEntrypoints, explainPath, getSymbol, explainSymbol |
 | Heavy | P95 < 2000ms | traceUsage, getArchitecture, getHotspots, summarizeDiff, recentlyRelevant, listKeyConcepts, analyzeImpact, getCallGraph, findReferences, justifySymbol |
+
+### v6.0 Architectural Memory Tools
+
+| Budget | Target | Tools |
+|--------|--------|-------|
+| Cheap | P95 < 300ms | getModuleResponsibilities, getOwnership, recordDecision, getDecisions, annotateModule |
+| Heavy | P95 < 2000ms | getArchitecture, getHotspots |
+| Heavy | P95 < 30000ms | refreshArchitecture |
 
 ## Benchmark Results
 
@@ -46,6 +56,37 @@ Simulated tool processing pipelines (multiple items, no I/O).
 | HotspotProcessing | 50 items | 10.1 µs | 2000ms | 99.999% |
 | ConceptExtraction | 10 names | 14.9 µs | 2000ms | 99.999% |
 
+### v6.0 Hotspot Benchmarks
+
+| Function | Time | Allocs | Description |
+|----------|------|--------|-------------|
+| `CalculateInstability` | 0.25 ns | 0 | Martin's instability metric |
+| `ComputeCompositeScore` | 0.26 ns | 0 | Weighted hotspot score |
+| `NormalizeChurnScore` | 0.25 ns | 0 | Churn normalization |
+| `NormalizeCouplingScore` | 0.25 ns | 0 | Coupling normalization |
+| `NormalizeComplexityScore` | 0.26 ns | 0 | Complexity normalization |
+| `CalculateTrend` | 295 ns | 1 | Trend analysis (30 snapshots) |
+
+| Pipeline | Items | Time | Budget | Headroom |
+|----------|-------|------|--------|----------|
+| HotspotScoring | 100 files | 69 ns | 2000ms | 99.999% |
+| TrendAnalysis | 50 files × 10 snapshots | 5.7 µs | 2000ms | 99.999% |
+
+### v6.0 Ownership Benchmarks
+
+| Function | Time | Allocs | Description |
+|----------|------|--------|-------------|
+| `normalizeAuthorKey` | 10 ns | 0 | Author key normalization |
+| `BlameOwnershipToOwners` | 47 ns | 1 | Convert blame to owners |
+| `CodeownersToOwners` | 56 ns | 1 | Convert CODEOWNERS to owners |
+| `isBot` | 743 ns | 0 | Bot detection (regex) |
+| `matchPattern` | 1.9 µs | 59 | Glob pattern matching |
+| `GetOwnersForPath` | 51 µs | 1580 | Resolve owners for path |
+
+| Pipeline | Items | Time | Budget | Headroom |
+|----------|-------|------|--------|----------|
+| OwnershipResolution | 100 files × 50 rules | 9.2 ms | 300ms | 96.9% |
+
 ### Analysis
 
 **In-memory processing is negligible** - all helper functions complete in nanoseconds to microseconds, leaving >99% of the latency budget for I/O operations:
@@ -62,8 +103,11 @@ Simulated tool processing pipelines (multiple items, no I/O).
 ## Running Benchmarks
 
 ```bash
-# Run all benchmarks
+# Run all query benchmarks
 go test ./internal/query/... -bench=. -benchmem -run=^$
+
+# Run all v6.0 benchmarks
+go test ./internal/hotspots/... ./internal/ownership/... -bench=. -benchmem -run=^$
 
 # Run specific benchmark
 go test ./internal/query/... -bench=BenchmarkClassifyPathRole -benchmem -run=^$
@@ -76,4 +120,5 @@ go test ./internal/query/... -bench=BenchmarkDiffProcessingPipeline -cpuprofile=
 
 | Date | Commit | Environment | Notes |
 |------|--------|-------------|-------|
-| 2024-12-17 | Initial | Apple M4 Pro | Baseline benchmarks |
+| 2024-12-17 | Initial | Apple M4 Pro | v5.2 baseline benchmarks |
+| 2024-12-18 | Phase 5 | Apple M4 Pro | v6.0 hotspot and ownership benchmarks |
