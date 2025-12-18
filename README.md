@@ -48,6 +48,9 @@ Language-agnostic complexity metrics for Go, JavaScript, TypeScript, Python, Rus
 ### Contract-Aware Impact Analysis (v6.3)
 Cross-repo intelligence through explicit API boundaries. Detect protobuf and OpenAPI contracts, track consumer dependencies with evidence tiers, and answer "What breaks if I change this shared API?"
 
+### Runtime Telemetry (v6.4)
+From "maybe used" to "actually used". Integrate OpenTelemetry metrics to see real call counts, detect dead code with confidence scores, and enrich impact analysis with observed callers.
+
 ## Three Ways to Use It
 
 | Interface | Best For |
@@ -84,7 +87,7 @@ Now Claude can answer questions like:
 - *"Is this legacy code still used?"*
 - *"Summarize PR #123 by risk level"*
 
-## MCP Tools (50 Available)
+## MCP Tools (54 Available)
 
 CKB exposes code intelligence through the Model Context Protocol:
 
@@ -156,6 +159,11 @@ CKB exposes code intelligence through the Model Context Protocol:
 | `testWebhook` | Send test webhook |
 | `webhookDeliveries` | Get delivery history |
 
+### v6.2.2 — Tree-sitter Complexity
+| Tool | Purpose |
+|------|---------|
+| `getFileComplexity` | Cyclomatic/cognitive complexity metrics |
+
 ### v6.3 — Contract-Aware Impact Analysis
 | Tool | Purpose |
 |------|---------|
@@ -165,6 +173,13 @@ CKB exposes code intelligence through the Model Context Protocol:
 | `suppressContractEdge` | Suppress false positive edge |
 | `verifyContractEdge` | Verify an edge |
 | `getContractStats` | Contract statistics |
+
+### v6.4 — Runtime Telemetry
+| Tool | Purpose |
+|------|---------|
+| `getTelemetryStatus` | Coverage metrics and sync status |
+| `getObservedUsage` | Observed usage for a symbol |
+| `findDeadCodeCandidates` | Find symbols with zero runtime calls |
 
 ## Documentation
 
@@ -180,7 +195,7 @@ CKB exposes code intelligence through the Model Context Protocol:
 | [Federation](https://github.com/SimplyLiz/CodeMCP/wiki/Federation) | Cross-repository queries & contracts (v6.3) |
 | [CI/CD Integration](https://github.com/SimplyLiz/CodeMCP/wiki/CI-CD-Integration) | GitHub Actions, PR analysis (v6.1) |
 | [API Reference](https://github.com/SimplyLiz/CodeMCP/wiki/API-Reference) | HTTP API documentation |
-| [MCP Integration](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration) | Claude Code / AI assistant setup (50 tools) |
+| [MCP Integration](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration) | Claude Code / AI assistant setup (54 tools) |
 | [Architecture](https://github.com/SimplyLiz/CodeMCP/wiki/Architecture) | System design and components |
 | [Configuration](https://github.com/SimplyLiz/CodeMCP/wiki/Configuration) | All options including MODULES.toml |
 | [Performance](https://github.com/SimplyLiz/CodeMCP/wiki/Performance) | Latency targets and benchmarks |
@@ -253,6 +268,12 @@ ckb contracts list platform
 ckb contracts impact platform --repo=api --path=proto/api/v1/user.proto
 ckb contracts deps platform --repo=api
 ckb contracts stats platform
+
+# Telemetry commands (v6.4)
+ckb telemetry status
+ckb telemetry usage --symbol="internal/api/handler.go:HandleRequest"
+ckb telemetry unmapped
+ckb dead-code --min-confidence=0.7
 ```
 
 ## HTTP API
@@ -269,6 +290,11 @@ curl http://localhost:8080/architecture
 curl "http://localhost:8080/ownership?path=internal/api"
 curl http://localhost:8080/hotspots
 curl http://localhost:8080/decisions
+
+# Telemetry endpoints (v6.4)
+curl http://localhost:8080/telemetry/status
+curl "http://localhost:8080/telemetry/usage/ckb:repo:sym:abc123"
+curl http://localhost:8080/telemetry/dead-code
 ```
 
 ## MCP Server (Claude Code Integration)
@@ -327,6 +353,10 @@ CKB configuration is stored in `.ckb/config.json`:
     "bind": "localhost",
     "auth": { "enabled": true, "token": "${CKB_DAEMON_TOKEN}" },
     "watch": { "enabled": true, "debounceMs": 5000 }
+  },
+  "telemetry": {
+    "enabled": true,
+    "service_map": { "my-service": "this-repo" }
   }
 }
 ```
@@ -377,6 +407,7 @@ CKB maintains persistent knowledge:
 │   ├── responsibilities/ # Module responsibility extraction
 │   ├── scheduler/        # Cron/interval task scheduler (v6.2.1)
 │   ├── storage/          # SQLite storage layer
+│   ├── telemetry/        # Runtime telemetry integration (v6.4)
 │   ├── watcher/          # File system watcher (v6.2.1)
 │   └── webhooks/         # Webhook delivery (v6.2.1)
 └── .ckb/                 # CKB data directory
