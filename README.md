@@ -30,6 +30,18 @@ Record and query Architectural Decision Records (ADRs). Link decisions to affect
 ### Dead Code Detection
 Get keep/investigate/remove verdicts on symbols based on usage analysis.
 
+### Background Jobs (v6.1)
+Run long operations asynchronously. Queue architecture refreshes, track progress, and cancel jobs.
+
+### CI/CD Integration (v6.1)
+Analyze PRs for risk assessment and reviewer suggestions. Detect ownership drift between CODEOWNERS and actual contributors.
+
+### Federation (v6.2)
+Query across multiple repositories. Group related repos into federations and search modules, ownership, hotspots, and decisions organization-wide.
+
+### Daemon Mode (v6.2.1)
+Always-on service with HTTP API, scheduled tasks (cron/intervals), file watching for git changes, and webhooks to Slack/PagerDuty/Discord.
+
 ## Three Ways to Use It
 
 | Interface | Best For |
@@ -66,7 +78,7 @@ Now Claude can answer questions like:
 - *"Is this legacy code still used?"*
 - *"Summarize PR #123 by risk level"*
 
-## MCP Tools (25 Available)
+## MCP Tools (44 Available)
 
 CKB exposes code intelligence through the Model Context Protocol:
 
@@ -107,6 +119,37 @@ CKB exposes code intelligence through the Model Context Protocol:
 | `annotateModule` | Add module metadata |
 | `refreshArchitecture` | Rebuild architectural model |
 
+### v6.1 — Production Ready
+| Tool | Purpose |
+|------|---------|
+| `getJobStatus` | Query background job status |
+| `listJobs` | List jobs with filters |
+| `cancelJob` | Cancel queued/running job |
+| `summarizePr` | PR risk analysis & reviewers |
+| `getOwnershipDrift` | CODEOWNERS vs actual ownership |
+
+### v6.2 — Federation
+| Tool | Purpose |
+|------|---------|
+| `listFederations` | List all federations |
+| `federationStatus` | Get federation status |
+| `federationRepos` | List repos in federation |
+| `federationSearchModules` | Cross-repo module search |
+| `federationSearchOwnership` | Cross-repo ownership search |
+| `federationGetHotspots` | Merged hotspots across repos |
+| `federationSearchDecisions` | Cross-repo decision search |
+| `federationSync` | Sync federation index |
+
+### v6.2.1 — Daemon Mode
+| Tool | Purpose |
+|------|---------|
+| `daemonStatus` | Daemon health and stats |
+| `listSchedules` | List scheduled tasks |
+| `runSchedule` | Run a schedule immediately |
+| `listWebhooks` | List configured webhooks |
+| `testWebhook` | Send test webhook |
+| `webhookDeliveries` | Get delivery history |
+
 ## Documentation
 
 📚 **[Full Documentation Wiki](https://github.com/SimplyLiz/CodeMCP/wiki)**
@@ -117,8 +160,11 @@ CKB exposes code intelligence through the Model Context Protocol:
 | **[Prompt Cookbook](https://github.com/SimplyLiz/CodeMCP/wiki/Prompt-Cookbook)** | Real prompts for real problems — start here! |
 | **[Practical Limits](https://github.com/SimplyLiz/CodeMCP/wiki/Practical-Limits)** | Accuracy notes, blind spots, validation tips |
 | [User Guide](https://github.com/SimplyLiz/CodeMCP/wiki/User-Guide) | CLI commands and best practices |
+| [Daemon Mode](https://github.com/SimplyLiz/CodeMCP/wiki/Daemon-Mode) | Always-on service, scheduler, webhooks (v6.2.1) |
+| [Federation](https://github.com/SimplyLiz/CodeMCP/wiki/Federation) | Cross-repository queries (v6.2) |
+| [CI/CD Integration](https://github.com/SimplyLiz/CodeMCP/wiki/CI-CD-Integration) | GitHub Actions, PR analysis (v6.1) |
 | [API Reference](https://github.com/SimplyLiz/CodeMCP/wiki/API-Reference) | HTTP API documentation |
-| [MCP Integration](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration) | Claude Code / AI assistant setup |
+| [MCP Integration](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration) | Claude Code / AI assistant setup (44 tools) |
 | [Architecture](https://github.com/SimplyLiz/CodeMCP/wiki/Architecture) | System design and components |
 | [Configuration](https://github.com/SimplyLiz/CodeMCP/wiki/Configuration) | All options including MODULES.toml |
 | [Performance](https://github.com/SimplyLiz/CodeMCP/wiki/Performance) | Latency targets and benchmarks |
@@ -164,6 +210,27 @@ ckb refresh
 
 # Run diagnostics
 ckb doctor
+
+# Federation commands (v6.2)
+ckb federation create platform --description "Our microservices"
+ckb federation add platform --repo-id=api --path=/code/api
+ckb federation status platform
+ckb federation sync platform
+
+# Daemon commands (v6.2.1)
+ckb daemon start [--port=9120]
+ckb daemon status
+ckb daemon logs --follow
+ckb daemon stop
+
+# Scheduler commands
+ckb daemon schedule list
+ckb daemon schedule run <schedule-id>
+
+# Webhook commands
+ckb webhooks list
+ckb webhooks test <webhook-id>
+ckb webhooks deliveries <webhook-id>
 ```
 
 ## HTTP API
@@ -232,6 +299,12 @@ CKB configuration is stored in `.ckb/config.json`:
   "modules": {
     "detectStrategy": "auto",
     "declarationFile": "MODULES.toml"
+  },
+  "daemon": {
+    "port": 9120,
+    "bind": "localhost",
+    "auth": { "enabled": true, "token": "${CKB_DAEMON_TOKEN}" },
+    "watch": { "enabled": true, "debounceMs": 5000 }
   }
 }
 ```
@@ -268,15 +341,21 @@ CKB maintains persistent knowledge:
 │   │   ├── lsp/          # LSP backend adapter
 │   │   └── scip/         # SCIP backend adapter
 │   ├── config/           # Configuration management
+│   ├── daemon/           # Daemon process lifecycle (v6.2.1)
 │   ├── decisions/        # ADR parsing and storage
+│   ├── federation/       # Cross-repo federation (v6.2)
 │   ├── hotspots/         # Hotspot tracking and trends
 │   ├── identity/         # Symbol identity and aliasing
+│   ├── jobs/             # Background job queue (v6.1)
 │   ├── mcp/              # MCP server for Claude Code
 │   ├── modules/          # Module detection
 │   ├── ownership/        # Ownership tracking
 │   ├── query/            # Query engine
 │   ├── responsibilities/ # Module responsibility extraction
-│   └── storage/          # SQLite storage layer
+│   ├── scheduler/        # Cron/interval task scheduler (v6.2.1)
+│   ├── storage/          # SQLite storage layer
+│   ├── watcher/          # File system watcher (v6.2.1)
+│   └── webhooks/         # Webhook delivery (v6.2.1)
 └── .ckb/                 # CKB data directory
     ├── config.json       # Configuration
     └── ckb.db            # SQLite database
