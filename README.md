@@ -1,56 +1,98 @@
-# CKB (Code Knowledge Backend)
+# CKB — Code Knowledge Backend
 
-A language-agnostic codebase comprehension layer that orchestrates multiple code intelligence backends (SCIP, LSP, Git) and provides semantically compressed, LLM-optimized views.
+**Give your AI assistant superpowers for understanding code.**
 
-> **New to CKB?** Check out the **[Quick Start Guide](QUICKSTART.md)** for step-by-step installation instructions for Windows, macOS, and Linux.
+CKB is a code intelligence layer that gives AI assistants (like Claude Code) deep understanding of your codebase. Instead of grepping through files, your AI can now *navigate* code like a senior engineer would.
 
-## Overview
+## What It Does
 
-CKB acts as a unified interface for code intelligence, aggregating data from multiple sources:
+### Instant Symbol Search
+Find any function, class, or variable across your entire codebase in milliseconds. Filter by type, scope to specific modules.
 
-- **SCIP** - Source Code Intelligence Protocol indexes for precise, pre-computed symbol information
-- **LSP** - Language Server Protocol for on-demand queries
-- **Git** - Repository state, blame, and history information
+### Find All References
+"Where is this function called?" — answered instantly with full context, not just file matches.
 
-## Features
+### Impact Analysis
+Before refactoring, know exactly what breaks. Get a risk score and see all affected code paths.
 
-- **Multi-Backend Orchestration**: Query multiple backends and merge results intelligently
-- **Symbol Search**: Find symbols by name across the codebase
-- **Find References**: Locate all usages of a symbol
-- **Impact Analysis**: Understand the blast radius of changes
-- **Architecture Views**: Get high-level codebase structure
-- **Claude Code Integration**: Native MCP server for Claude Code
+### Architecture Maps
+Understand how modules connect. See dependency graphs without digging through imports.
 
-## Installation
+### Call Graphs
+Trace execution flow. See what calls what, and who depends on whom.
 
-For detailed installation instructions with copy-paste commands, see the **[Quick Start Guide](QUICKSTART.md)**.
+### Dead Code Detection
+Get keep/investigate/remove verdicts on symbols based on usage analysis.
 
-**Quick install (macOS/Linux):**
+## Three Ways to Use It
+
+| Interface | Best For |
+|-----------|----------|
+| **Claude Code (MCP)** | AI-assisted development — Claude can query your codebase directly |
+| **CLI** | Quick lookups from terminal |
+| **HTTP API** | IDE plugins, CI integration, custom tooling |
+
+## Quick Start
+
+> **New to CKB?** Check out the **[Quick Start Guide](QUICKSTART.md)** for detailed installation instructions for Windows, macOS, and Linux.
 
 ```bash
-# Clone and build
+# 1. Build
 git clone https://github.com/anthropics/ckb.git
 cd ckb
 go build -o ckb ./cmd/ckb
 
-# Optional: Install globally
-sudo cp ckb /usr/local/bin/
-```
-
-## Quick Start
-
-### Initialize CKB
-
-```bash
-# Initialize CKB in your project
+# 2. Initialize in your project
 ./ckb init
 
-# Generate SCIP index (requires scip-go for Go projects)
+# 3. Generate index (Go example)
 go install github.com/sourcegraph/scip-go/cmd/scip-go@latest
 scip-go --repository-root=.
+
+# 4. Connect to Claude Code
+claude mcp add --transport stdio ckb -- /path/to/ckb mcp
 ```
 
-### CLI Commands
+Now Claude can answer questions like:
+- *"What calls the HandleRequest function?"*
+- *"What's the blast radius if I change UserService?"*
+- *"Is this legacy code still used?"*
+
+## Features at a Glance
+
+| Feature | CLI | MCP Tool | What It Does |
+|---------|-----|----------|--------------|
+| Search symbols | `ckb search` | `searchSymbols` | Find by name |
+| Get details | `ckb symbol` | `getSymbol` | Full metadata |
+| Find references | `ckb refs` | `findReferences` | All usages |
+| Architecture | `ckb arch` | `getArchitecture` | Module structure |
+| Impact analysis | `ckb impact` | `analyzeImpact` | Change risk |
+| Call graph | — | `getCallGraph` | Caller/callee flow |
+| Dead code check | — | `justifySymbol` | Keep/remove verdict |
+| Module overview | — | `getModuleOverview` | Stats & activity |
+| Health check | `ckb status` | `getStatus` | System status |
+| Diagnostics | `ckb doctor` | `doctor` | Fix issues |
+
+## Why CKB?
+
+| Without CKB | With CKB |
+|-------------|----------|
+| AI greps for patterns | AI navigates semantically |
+| "I found 47 matches for Handler" | "HandleRequest is called by 3 routes in api/server.go" |
+| Guessing at impact | Knowing the blast radius |
+| Reading entire files for context | Getting exactly what's relevant |
+
+## Under the Hood
+
+CKB orchestrates multiple code intelligence backends:
+
+- **SCIP** — Precise, pre-indexed symbol data
+- **LSP** — Real-time language server queries
+- **Git** — Blame, history, churn analysis
+
+Results are merged intelligently and compressed for LLM context limits.
+
+## CLI Usage
 
 ```bash
 # Check system status
@@ -63,7 +105,7 @@ scip-go --repository-root=.
 ./ckb refs NewServer
 
 # Get symbol details
-./ckb symbol "scip-go gomod pkg version \`pkg/path\`/Symbol()."
+./ckb symbol "scip-go gomod pkg version `pkg/path`/Symbol()."
 
 # Get architecture overview
 ./ckb arch
@@ -75,7 +117,7 @@ scip-go --repository-root=.
 ./ckb doctor
 ```
 
-### HTTP API
+## HTTP API
 
 ```bash
 # Start the HTTP server
@@ -88,14 +130,29 @@ curl http://localhost:8080/status
 curl http://localhost:8080/architecture
 ```
 
-### MCP Server (Claude Code Integration)
+### API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/ready` | GET | Readiness check |
+| `/status` | GET | System status |
+| `/search` | GET | Search symbols (`?q=query`) |
+| `/symbol/:id` | GET | Get symbol by ID |
+| `/refs/:id` | GET | Find references |
+| `/architecture` | GET | Architecture overview |
+| `/impact/:id` | GET | Impact analysis |
+| `/doctor` | GET | Run diagnostics |
+| `/openapi.json` | GET | OpenAPI specification |
+
+## MCP Server (Claude Code Integration)
 
 ```bash
 # Start MCP server (reads from stdin, writes to stdout)
 ./ckb mcp
 ```
 
-Configure in Claude Code using the CLI:
+Configure in Claude Code:
 ```bash
 # Add to current project (creates .mcp.json)
 claude mcp add --transport stdio ckb --scope project -- /path/to/ckb mcp
@@ -118,6 +175,8 @@ Or manually add to your MCP config:
   }
 }
 ```
+
+For detailed MCP tool documentation, see **[MCP Tools Reference](docs/mcp.md)**.
 
 ## Configuration
 
@@ -169,36 +228,12 @@ CKB configuration is stored in `.ckb/config.json`:
     └── ckb.db         # SQLite database
 ```
 
-## API Endpoints
+## Requirements
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check |
-| `/ready` | GET | Readiness check |
-| `/status` | GET | System status |
-| `/search` | GET | Search symbols (`?q=query`) |
-| `/symbol/:id` | GET | Get symbol by ID |
-| `/refs/:id` | GET | Find references |
-| `/architecture` | GET | Architecture overview |
-| `/impact/:id` | GET | Impact analysis |
-| `/doctor` | GET | Run diagnostics |
-| `/openapi.json` | GET | OpenAPI specification |
-
-## MCP Tools
-
-| Tool | Description |
-|------|-------------|
-| `searchSymbols` | Search for symbols by name |
-| `getSymbol` | Get detailed symbol information |
-| `findReferences` | Find all references to a symbol |
-| `getArchitecture` | Get codebase architecture overview |
-| `analyzeImpact` | Analyze impact of changing a symbol |
-| `getStatus` | Get CKB system status |
-| `doctor` | Run diagnostic checks |
-| `explainSymbol` | AI-friendly symbol overview with usage and history |
-| `justifySymbol` | Keep/investigate/remove verdict for a symbol |
-| `getCallGraph` | Caller/callee relationships for a symbol |
-| `getModuleOverview` | High-level module statistics and activity |
+- Go 1.21+
+- Git (for repository operations)
+- Optional: gopls (for LSP support)
+- Optional: scip-go (for SCIP indexing)
 
 ## Development
 
@@ -212,13 +247,6 @@ go build -o ckb ./cmd/ckb
 # Regenerate SCIP index
 scip-go --repository-root=.
 ```
-
-## Requirements
-
-- Go 1.21+
-- Git (for repository operations)
-- Optional: gopls (for LSP support)
-- Optional: scip-go (for SCIP indexing)
 
 ## License
 
