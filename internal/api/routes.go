@@ -47,6 +47,10 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("/federations", s.handleListFederations)   // GET
 	s.router.HandleFunc("/federations/", s.handleFederationRoutes) // /federations/:name/*
 
+	// v6.4 Telemetry endpoints
+	s.router.HandleFunc("/telemetry/", s.handleTelemetryRoutes) // /telemetry/status, /telemetry/usage/:id, /telemetry/dead-code
+	s.router.HandleFunc("/telemetry", s.handleTelemetryStatus)  // GET /telemetry (alias for /telemetry/status)
+
 	// POST endpoints
 	s.router.HandleFunc("/doctor/fix", s.handleDoctorFix)
 	s.router.HandleFunc("/cache/warm", s.handleCacheWarm)
@@ -108,6 +112,9 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 			"GET /federations/:name/hotspots - Get hotspots across federation",
 			"GET /federations/:name/decisions?q=... - Search decisions across federation",
 			"POST /federations/:name/sync - Sync federation index",
+			"GET /telemetry/status - Telemetry system status and coverage",
+			"GET /telemetry/usage/:id - Observed usage for a symbol",
+			"GET /telemetry/dead-code - Find dead code candidates",
 			"POST /doctor/fix - Get fix script",
 			"POST /cache/warm - Warm cache",
 			"POST /cache/clear - Clear cache",
