@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -450,5 +451,276 @@ func TestTombstones(t *testing.T) {
 
 	if resolved.Symbol != nil {
 		t.Error("expected symbol to be nil for deleted symbols")
+	}
+}
+
+func TestAliasCycleDetection(t *testing.T) {
+	db, tmpDir := setupTestDB(t)
+	defer cleanupTestDB(db, tmpDir)
+
+	logger := logging.NewLogger(logging.Config{
+		Format: logging.JSONFormat,
+		Level:  logging.DebugLevel,
+	})
+
+	repo := NewSymbolRepository(db, logger)
+	resolver := NewIdentityResolver(db, logger)
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	// Create two symbols that will form a cycle
+	mapping1 := &SymbolMapping{
+		StableId:                   "ckb:test:sym:cycle1",
+		Fingerprint:                &SymbolFingerprint{Name: "cycle1", Kind: KindFunction},
+		State:                      StateDeleted,
+		Location:                   &Location{Path: "src/test.go", Line: 10, Column: 5},
+		LocationFreshness:          MayBeStale,
+		DefinitionVersionSemantics: UnknownSemantics,
+		LastVerifiedAt:             now,
+		LastVerifiedStateId:        "state-1",
+		DeletedAt:                  now,
+		DeletedInStateId:           "state-1",
+	}
+	mapping2 := &SymbolMapping{
+		StableId:                   "ckb:test:sym:cycle2",
+		Fingerprint:                &SymbolFingerprint{Name: "cycle2", Kind: KindFunction},
+		State:                      StateDeleted,
+		Location:                   &Location{Path: "src/test.go", Line: 20, Column: 5},
+		LocationFreshness:          MayBeStale,
+		DefinitionVersionSemantics: UnknownSemantics,
+		LastVerifiedAt:             now,
+		LastVerifiedStateId:        "state-1",
+		DeletedAt:                  now,
+		DeletedInStateId:           "state-1",
+	}
+
+	if err := repo.Create(mapping1); err != nil {
+		t.Fatalf("failed to create mapping1: %v", err)
+	}
+	if err := repo.Create(mapping2); err != nil {
+		t.Fatalf("failed to create mapping2: %v", err)
+	}
+
+	// Create circular alias: cycle1 -> cycle2 -> cycle1
+	creator := NewAliasCreator(db, logger)
+	alias1 := &SymbolAlias{
+		OldStableId:    "ckb:test:sym:cycle1",
+		NewStableId:    "ckb:test:sym:cycle2",
+		Reason:         ReasonRenamed,
+		Confidence:     0.9,
+		CreatedAt:      now,
+		CreatedStateId: "state-1",
+	}
+	alias2 := &SymbolAlias{
+		OldStableId:    "ckb:test:sym:cycle2",
+		NewStableId:    "ckb:test:sym:cycle1",
+		Reason:         ReasonRenamed,
+		Confidence:     0.9,
+		CreatedAt:      now,
+		CreatedStateId: "state-1",
+	}
+
+	if err := creator.createAlias(alias1); err != nil {
+		t.Fatalf("failed to create alias1: %v", err)
+	}
+	if err := creator.createAlias(alias2); err != nil {
+		t.Fatalf("failed to create alias2: %v", err)
+	}
+
+	// Resolution should detect the cycle and return an error
+	resolved, err := resolver.ResolveSymbolId("ckb:test:sym:cycle1")
+	if err == nil {
+		t.Error("expected error for alias cycle")
+	}
+	if resolved == nil {
+		t.Fatal("expected resolved struct even on error")
+	}
+	if resolved.Error == "" {
+		t.Error("expected error message in resolved struct")
+	}
+}
+
+func TestAliasChainTooDeep(t *testing.T) {
+	db, tmpDir := setupTestDB(t)
+	defer cleanupTestDB(db, tmpDir)
+
+	logger := logging.NewLogger(logging.Config{
+		Format: logging.JSONFormat,
+		Level:  logging.DebugLevel,
+	})
+
+	repo := NewSymbolRepository(db, logger)
+	resolver := NewIdentityResolver(db, logger)
+	now := time.Now().UTC().Format(time.RFC3339)
+	creator := NewAliasCreator(db, logger)
+
+	// Create a chain of 5 symbols (exceeding AliasChainMaxDepth of 3)
+	numSymbols := AliasChainMaxDepth + 3
+	symbols := make([]string, numSymbols)
+	for i := 0; i < numSymbols; i++ {
+		symbols[i] = fmt.Sprintf("ckb:test:sym:deep%d", i)
+		state := StateDeleted
+		if i == numSymbols-1 {
+			state = StateActive // Last one is active
+		}
+		mapping := &SymbolMapping{
+			StableId:                   symbols[i],
+			Fingerprint:                &SymbolFingerprint{Name: fmt.Sprintf("deep%d", i), Kind: KindFunction},
+			State:                      state,
+			Location:                   &Location{Path: "src/test.go", Line: 10 + i, Column: 5},
+			LocationFreshness:          Fresh,
+			DefinitionVersionSemantics: UnknownSemantics,
+			LastVerifiedAt:             now,
+			LastVerifiedStateId:        "state-1",
+		}
+		if state == StateDeleted {
+			mapping.DeletedAt = now
+			mapping.DeletedInStateId = "state-1"
+			mapping.LocationFreshness = MayBeStale
+		}
+		if err := repo.Create(mapping); err != nil {
+			t.Fatalf("failed to create mapping %d: %v", i, err)
+		}
+	}
+
+	// Create chain of aliases: deep0 -> deep1 -> deep2 -> deep3 -> deep4 -> deep5
+	for i := 0; i < numSymbols-1; i++ {
+		alias := &SymbolAlias{
+			OldStableId:    symbols[i],
+			NewStableId:    symbols[i+1],
+			Reason:         ReasonRenamed,
+			Confidence:     0.9,
+			CreatedAt:      now,
+			CreatedStateId: "state-1",
+		}
+		if err := creator.createAlias(alias); err != nil {
+			t.Fatalf("failed to create alias %d: %v", i, err)
+		}
+	}
+
+	// Resolution should fail due to max depth exceeded
+	resolved, err := resolver.ResolveSymbolId(symbols[0])
+	if err == nil {
+		t.Error("expected error for alias chain too deep")
+	}
+	if resolved == nil {
+		t.Fatal("expected resolved struct even on error")
+	}
+	if resolved.Error == "" {
+		t.Error("expected error message in resolved struct")
+	}
+}
+
+func TestSymbolNotFound(t *testing.T) {
+	db, tmpDir := setupTestDB(t)
+	defer cleanupTestDB(db, tmpDir)
+
+	logger := logging.NewLogger(logging.Config{
+		Format: logging.JSONFormat,
+		Level:  logging.DebugLevel,
+	})
+
+	resolver := NewIdentityResolver(db, logger)
+
+	// Try to resolve a non-existent symbol with no alias
+	resolved, err := resolver.ResolveSymbolId("ckb:test:sym:nonexistent")
+	if err == nil {
+		t.Error("expected error for non-existent symbol")
+	}
+	if resolved == nil {
+		t.Fatal("expected resolved struct even on error")
+	}
+	if resolved.Error == "" {
+		t.Error("expected error message in resolved struct")
+	}
+	if resolved.Symbol != nil {
+		t.Error("expected symbol to be nil for non-existent symbol")
+	}
+}
+
+func TestDirectSymbolResolution(t *testing.T) {
+	db, tmpDir := setupTestDB(t)
+	defer cleanupTestDB(db, tmpDir)
+
+	logger := logging.NewLogger(logging.Config{
+		Format: logging.JSONFormat,
+		Level:  logging.DebugLevel,
+	})
+
+	repo := NewSymbolRepository(db, logger)
+	resolver := NewIdentityResolver(db, logger)
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	// Create an active symbol
+	mapping := &SymbolMapping{
+		StableId:                   "ckb:test:sym:direct",
+		Fingerprint:                &SymbolFingerprint{Name: "directFunc", Kind: KindFunction},
+		State:                      StateActive,
+		Location:                   &Location{Path: "src/test.go", Line: 10, Column: 5},
+		LocationFreshness:          Fresh,
+		DefinitionVersionSemantics: UnknownSemantics,
+		LastVerifiedAt:             now,
+		LastVerifiedStateId:        "state-1",
+	}
+
+	if err := repo.Create(mapping); err != nil {
+		t.Fatalf("failed to create mapping: %v", err)
+	}
+
+	// Direct resolution should work without redirect
+	resolved, err := resolver.ResolveSymbolId("ckb:test:sym:direct")
+	if err != nil {
+		t.Fatalf("failed to resolve symbol: %v", err)
+	}
+
+	if resolved.Symbol == nil {
+		t.Fatal("expected symbol to be found")
+	}
+	if resolved.Symbol.StableId != "ckb:test:sym:direct" {
+		t.Errorf("expected stable ID 'ckb:test:sym:direct', got %s", resolved.Symbol.StableId)
+	}
+	if resolved.Redirected {
+		t.Error("expected no redirect for direct lookup")
+	}
+	if resolved.Deleted {
+		t.Error("expected symbol not to be deleted")
+	}
+}
+
+func TestAliasChainMaxDepthConstant(t *testing.T) {
+	// Verify the constant is set correctly per spec
+	if AliasChainMaxDepth != 3 {
+		t.Errorf("AliasChainMaxDepth = %d, expected 3 per spec Section 4.5", AliasChainMaxDepth)
+	}
+}
+
+func TestResolvedSymbolStruct(t *testing.T) {
+	// Test that ResolvedSymbol struct has all expected fields
+	resolved := &ResolvedSymbol{
+		Symbol: &SymbolMapping{
+			StableId: "test",
+		},
+		Redirected:         true,
+		RedirectedFrom:     "old-id",
+		RedirectReason:     ReasonRenamed,
+		RedirectConfidence: 0.95,
+		Deleted:            false,
+		DeletedAt:          "",
+		Error:              "",
+	}
+
+	if resolved.Symbol == nil {
+		t.Error("expected symbol to be set")
+	}
+	if !resolved.Redirected {
+		t.Error("expected redirected to be true")
+	}
+	if resolved.RedirectedFrom != "old-id" {
+		t.Errorf("expected redirectedFrom 'old-id', got %s", resolved.RedirectedFrom)
+	}
+	if resolved.RedirectReason != ReasonRenamed {
+		t.Errorf("expected reason %s, got %s", ReasonRenamed, resolved.RedirectReason)
+	}
+	if resolved.RedirectConfidence != 0.95 {
+		t.Errorf("expected confidence 0.95, got %f", resolved.RedirectConfidence)
 	}
 }
