@@ -2,24 +2,30 @@
 
 **Give your AI assistant superpowers for understanding code.**
 
-CKB is a code intelligence layer that gives AI assistants (like Claude Code) deep understanding of your codebase. Instead of grepping through files, your AI can now *navigate* code like a senior engineer would.
+CKB is a code intelligence layer that gives AI assistants (like Claude Code) deep understanding of your codebase. Instead of grepping through files, your AI can now *navigate* code like a senior engineer would—with knowledge of who owns what, what's risky to change, and how everything connects.
 
 ## What It Does
 
-### Instant Symbol Search
-Find any function, class, or variable across your entire codebase in milliseconds. Filter by type, scope to specific modules.
+### Symbol Navigation
+Find any function, class, or variable across your entire codebase in milliseconds. Filter by type, scope to specific modules, and get full metadata.
 
-### Find All References
-"Where is this function called?" — answered instantly with full context, not just file matches.
+### Call Flow & Tracing
+Trace how code is reached from API endpoints, CLI commands, or jobs. See the full call chain, not just direct callers.
 
 ### Impact Analysis
-Before refactoring, know exactly what breaks. Get a risk score and see all affected code paths.
+Before refactoring, know exactly what breaks. Get a risk score, see all affected code paths, and identify hotspots.
 
 ### Architecture Maps
-Understand how modules connect. See dependency graphs without digging through imports.
+Understand how modules connect. See dependency graphs, module responsibilities, and key domain concepts.
 
-### Call Graphs
-Trace execution flow. See what calls what, and who depends on whom.
+### Ownership Intelligence
+Know who owns what code—from CODEOWNERS rules and git blame with time-weighted analysis. Get reviewer suggestions for any path.
+
+### Hotspot Detection
+Identify volatile areas before they become problems. Track churn trends and get 30-day risk projections.
+
+### Architectural Decisions
+Record and query Architectural Decision Records (ADRs). Link decisions to affected modules with full-text search.
 
 ### Dead Code Detection
 Get keep/investigate/remove verdicts on symbols based on usage analysis.
@@ -34,16 +40,15 @@ Get keep/investigate/remove verdicts on symbols based on usage analysis.
 
 ## Quick Start
 
-> **New to CKB?** Check out the **[Quick Start Guide](QUICKSTART.md)** for detailed installation instructions for Windows, macOS, and Linux.
-
 ```bash
 # 1. Build
-git clone https://github.com/anthropics/ckb.git
-cd ckb
+git clone https://github.com/SimplyLiz/CodeMCP.git
+cd CodeMCP
 go build -o ckb ./cmd/ckb
 
 # 2. Initialize in your project
-./ckb init
+cd /path/to/your/project
+/path/to/ckb init
 
 # 3. Generate index (Go example)
 go install github.com/sourcegraph/scip-go/cmd/scip-go@latest
@@ -55,106 +60,132 @@ claude mcp add --transport stdio ckb -- /path/to/ckb mcp
 
 Now Claude can answer questions like:
 - *"What calls the HandleRequest function?"*
+- *"How is ProcessPayment reached from the API?"*
 - *"What's the blast radius if I change UserService?"*
+- *"Who owns the internal/api module?"*
 - *"Is this legacy code still used?"*
+- *"Summarize PR #123 by risk level"*
 
-## Features at a Glance
+## MCP Tools (25 Available)
 
-| Feature | CLI | MCP Tool | What It Does |
-|---------|-----|----------|--------------|
-| Search symbols | `ckb search` | `searchSymbols` | Find by name |
-| Get details | `ckb symbol` | `getSymbol` | Full metadata |
-| Find references | `ckb refs` | `findReferences` | All usages |
-| Architecture | `ckb arch` | `getArchitecture` | Module structure |
-| Impact analysis | `ckb impact` | `analyzeImpact` | Change risk |
-| Call graph | — | `getCallGraph` | Caller/callee flow |
-| Dead code check | — | `justifySymbol` | Keep/remove verdict |
-| Module overview | — | `getModuleOverview` | Stats & activity |
-| Health check | `ckb status` | `getStatus` | System status |
-| Diagnostics | `ckb doctor` | `doctor` | Fix issues |
+CKB exposes code intelligence through the Model Context Protocol:
+
+### v5.1 — Core Navigation
+| Tool | Purpose |
+|------|---------|
+| `searchSymbols` | Find symbols by name with filtering |
+| `getSymbol` | Get symbol details |
+| `findReferences` | Find all usages |
+| `explainSymbol` | AI-friendly symbol explanation |
+| `justifySymbol` | Keep/investigate/remove verdict |
+| `getCallGraph` | Caller/callee relationships |
+| `getModuleOverview` | Module statistics |
+| `analyzeImpact` | Change risk analysis |
+| `getStatus` | System health |
+| `doctor` | Diagnostics |
+
+### v5.2 — Discovery & Flow
+| Tool | Purpose |
+|------|---------|
+| `traceUsage` | How is this symbol reached? |
+| `listEntrypoints` | System entrypoints (API, CLI, jobs) |
+| `explainFile` | File-level orientation |
+| `explainPath` | Why does this path exist? |
+| `summarizeDiff` | What changed, what might break? |
+| `getArchitecture` | Module dependency overview |
+| `getHotspots` | Volatile areas with trends |
+| `listKeyConcepts` | Domain concepts in codebase |
+| `recentlyRelevant` | What matters now? |
+
+### v6.0 — Architectural Memory
+| Tool | Purpose |
+|------|---------|
+| `getOwnership` | Who owns this code? |
+| `getModuleResponsibilities` | What does this module do? |
+| `recordDecision` | Create an ADR |
+| `getDecisions` | Query architectural decisions |
+| `annotateModule` | Add module metadata |
+| `refreshArchitecture` | Rebuild architectural model |
+
+## Documentation
+
+📚 **[Full Documentation Wiki](https://github.com/SimplyLiz/CodeMCP/wiki)**
+
+| Page | Description |
+|------|-------------|
+| **[Quick Start](https://github.com/SimplyLiz/CodeMCP/wiki/Quick-Start)** | Step-by-step installation for Windows, macOS, Linux |
+| **[Prompt Cookbook](https://github.com/SimplyLiz/CodeMCP/wiki/Prompt-Cookbook)** | Real prompts for real problems — start here! |
+| **[Practical Limits](https://github.com/SimplyLiz/CodeMCP/wiki/Practical-Limits)** | Accuracy notes, blind spots, validation tips |
+| [User Guide](https://github.com/SimplyLiz/CodeMCP/wiki/User-Guide) | CLI commands and best practices |
+| [API Reference](https://github.com/SimplyLiz/CodeMCP/wiki/API-Reference) | HTTP API documentation |
+| [MCP Integration](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration) | Claude Code / AI assistant setup |
+| [Architecture](https://github.com/SimplyLiz/CodeMCP/wiki/Architecture) | System design and components |
+| [Configuration](https://github.com/SimplyLiz/CodeMCP/wiki/Configuration) | All options including MODULES.toml |
+| [Performance](https://github.com/SimplyLiz/CodeMCP/wiki/Performance) | Latency targets and benchmarks |
+| [Contributing](https://github.com/SimplyLiz/CodeMCP/wiki/Contributing) | Development guidelines |
 
 ## Why CKB?
 
 | Without CKB | With CKB |
 |-------------|----------|
 | AI greps for patterns | AI navigates semantically |
-| "I found 47 matches for Handler" | "HandleRequest is called by 3 routes in api/server.go" |
-| Guessing at impact | Knowing the blast radius |
+| "I found 47 matches for Handler" | "HandleRequest is called by 3 routes via CheckoutService" |
+| Guessing at impact | Knowing the blast radius with risk scores |
 | Reading entire files for context | Getting exactly what's relevant |
-
-## Under the Hood
-
-CKB orchestrates multiple code intelligence backends:
-
-- **SCIP** — Precise, pre-indexed symbol data
-- **LSP** — Real-time language server queries
-- **Git** — Blame, history, churn analysis
-
-Results are merged intelligently and compressed for LLM context limits.
+| "Who owns this?" → search CODEOWNERS | Instant ownership with reviewer suggestions |
+| "Is this safe to change?" → hope | Hotspot trends + impact analysis |
 
 ## CLI Usage
 
 ```bash
-# Check system status
-./ckb status
+# System status
+ckb status
 
 # Search for symbols
-./ckb search NewServer
+ckb search NewServer
 
-# Find references to a symbol
-./ckb refs NewServer
-
-# Get symbol details
-./ckb symbol "scip-go gomod pkg version `pkg/path`/Symbol()."
+# Find references
+ckb refs NewServer
 
 # Get architecture overview
-./ckb arch
+ckb arch
 
 # Analyze change impact
-./ckb impact <symbol-id>
+ckb impact <symbol-id>
+
+# Query ownership
+ckb ownership internal/api/handler.go
+
+# List architectural decisions
+ckb decisions
+
+# Refresh architectural model
+ckb refresh
 
 # Run diagnostics
-./ckb doctor
+ckb doctor
 ```
 
 ## HTTP API
 
 ```bash
 # Start the HTTP server
-./ckb serve --port 8080
+ckb serve --port 8080
 
 # Example API calls
 curl http://localhost:8080/health
-curl http://localhost:8080/search?q=NewServer
 curl http://localhost:8080/status
+curl http://localhost:8080/search?q=NewServer
 curl http://localhost:8080/architecture
+curl "http://localhost:8080/ownership?path=internal/api"
+curl http://localhost:8080/hotspots
+curl http://localhost:8080/decisions
 ```
-
-### API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check |
-| `/ready` | GET | Readiness check |
-| `/status` | GET | System status |
-| `/search` | GET | Search symbols (`?q=query`) |
-| `/symbol/:id` | GET | Get symbol by ID |
-| `/refs/:id` | GET | Find references |
-| `/architecture` | GET | Architecture overview |
-| `/impact/:id` | GET | Impact analysis |
-| `/doctor` | GET | Run diagnostics |
-| `/openapi.json` | GET | OpenAPI specification |
 
 ## MCP Server (Claude Code Integration)
 
 ```bash
-# Start MCP server (reads from stdin, writes to stdout)
-./ckb mcp
-```
-
-Configure in Claude Code:
-```bash
-# Add to current project (creates .mcp.json)
+# Add to current project
 claude mcp add --transport stdio ckb --scope project -- /path/to/ckb mcp
 
 # Or add globally for all projects
@@ -164,7 +195,7 @@ claude mcp add --transport stdio ckb --scope user -- /path/to/ckb mcp
 claude mcp list
 ```
 
-Or manually add to your MCP config:
+Or manually add to `.mcp.json`:
 ```json
 {
   "mcpServers": {
@@ -176,56 +207,79 @@ Or manually add to your MCP config:
 }
 ```
 
-For detailed MCP tool documentation, see **[MCP Tools Reference](docs/mcp.md)**.
-
 ## Configuration
 
 CKB configuration is stored in `.ckb/config.json`:
 
 ```json
 {
-  "version": 5,
-  "repoRoot": ".",
+  "version": 6,
   "backends": {
-    "scip": {
-      "enabled": true,
-      "indexPath": ".scip/index.scip"
-    },
-    "lsp": {
-      "enabled": true,
-      "servers": {
-        "go": {
-          "command": "/path/to/gopls",
-          "args": []
-        }
-      }
-    },
-    "git": {
-      "enabled": true
-    }
+    "scip": { "enabled": true, "indexPath": "index.scip" },
+    "lsp": { "enabled": true },
+    "git": { "enabled": true }
+  },
+  "ownership": {
+    "enabled": true,
+    "codeownersPath": ".github/CODEOWNERS",
+    "gitBlameEnabled": true,
+    "timeDecayHalfLife": 90
+  },
+  "decisions": {
+    "enabled": true,
+    "directories": ["docs/decisions", "docs/adr"]
+  },
+  "modules": {
+    "detectStrategy": "auto",
+    "declarationFile": "MODULES.toml"
   }
 }
 ```
+
+See [Configuration Guide](https://github.com/SimplyLiz/CodeMCP/wiki/Configuration) for all options.
+
+## Under the Hood
+
+CKB orchestrates multiple code intelligence backends:
+
+- **SCIP** — Precise, pre-indexed symbol data (fastest)
+- **LSP** — Real-time language server queries
+- **Git** — Blame, history, churn analysis, ownership
+
+Results are merged intelligently and compressed for LLM context limits.
+
+### Architectural Memory
+
+CKB maintains persistent knowledge:
+- **Module Registry** — Boundaries, responsibilities, tags (from MODULES.toml or inference)
+- **Ownership Registry** — CODEOWNERS + git-blame with time decay
+- **Hotspot Tracker** — Historical snapshots with trend analysis
+- **Decision Log** — ADRs with full-text search
 
 ## Project Structure
 
 ```
 .
-├── cmd/ckb/           # CLI commands
+├── cmd/ckb/              # CLI commands
 ├── internal/
-│   ├── api/           # HTTP API server
+│   ├── api/              # HTTP API server
 │   ├── backends/
-│   │   ├── git/       # Git backend (blame, history)
-│   │   ├── lsp/       # LSP backend adapter
-│   │   └── scip/      # SCIP backend adapter
-│   ├── config/        # Configuration management
-│   ├── identity/      # Symbol identity and aliasing
-│   ├── mcp/           # MCP server for Claude Code
-│   ├── query/         # Query engine
-│   └── storage/       # SQLite storage layer
-└── .ckb/              # CKB data directory
-    ├── config.json    # Configuration
-    └── ckb.db         # SQLite database
+│   │   ├── git/          # Git backend (blame, history)
+│   │   ├── lsp/          # LSP backend adapter
+│   │   └── scip/         # SCIP backend adapter
+│   ├── config/           # Configuration management
+│   ├── decisions/        # ADR parsing and storage
+│   ├── hotspots/         # Hotspot tracking and trends
+│   ├── identity/         # Symbol identity and aliasing
+│   ├── mcp/              # MCP server for Claude Code
+│   ├── modules/          # Module detection
+│   ├── ownership/        # Ownership tracking
+│   ├── query/            # Query engine
+│   ├── responsibilities/ # Module responsibility extraction
+│   └── storage/          # SQLite storage layer
+└── .ckb/                 # CKB data directory
+    ├── config.json       # Configuration
+    └── ckb.db            # SQLite database
 ```
 
 ## Requirements
