@@ -1025,6 +1025,164 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				"required": []string{"webhookId"},
 			},
 		},
+		// v6.3 Contract-Aware Impact Analysis tools
+		{
+			Name:        "listContracts",
+			Description: "List API contracts (protobuf, OpenAPI) in a federation. Returns detected contracts with their visibility classification.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"federation": map[string]interface{}{
+						"type":        "string",
+						"description": "Name of the federation to query",
+					},
+					"repoId": map[string]interface{}{
+						"type":        "string",
+						"description": "Filter to contracts from this repo",
+					},
+					"contractType": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"proto", "openapi"},
+						"description": "Filter by contract type",
+					},
+					"visibility": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"public", "internal", "unknown"},
+						"description": "Filter by visibility",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"default":     50,
+						"description": "Maximum contracts to return",
+					},
+				},
+				"required": []string{"federation"},
+			},
+		},
+		{
+			Name:        "analyzeContractImpact",
+			Description: "Analyze the impact of changing an API contract. Returns direct and transitive consumers, risk assessment, and ownership information.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"federation": map[string]interface{}{
+						"type":        "string",
+						"description": "Name of the federation",
+					},
+					"repoId": map[string]interface{}{
+						"type":        "string",
+						"description": "Repository containing the contract",
+					},
+					"path": map[string]interface{}{
+						"type":        "string",
+						"description": "Path to the contract file",
+					},
+					"includeHeuristic": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Include tier 3 (heuristic) edges",
+					},
+					"includeTransitive": map[string]interface{}{
+						"type":        "boolean",
+						"default":     true,
+						"description": "Include transitive consumers",
+					},
+					"maxDepth": map[string]interface{}{
+						"type":        "integer",
+						"default":     3,
+						"description": "Maximum depth for transitive analysis",
+					},
+				},
+				"required": []string{"federation", "repoId", "path"},
+			},
+		},
+		{
+			Name:        "getContractDependencies",
+			Description: "Get contract dependencies for a repository. Shows both contracts this repo depends on and consumers of contracts this repo provides.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"federation": map[string]interface{}{
+						"type":        "string",
+						"description": "Name of the federation",
+					},
+					"repoId": map[string]interface{}{
+						"type":        "string",
+						"description": "Repository to analyze",
+					},
+					"moduleId": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional module filter",
+					},
+					"direction": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"consumers", "dependencies", "both"},
+						"default":     "both",
+						"description": "Which direction to query",
+					},
+					"includeHeuristic": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Include tier 3 (heuristic) edges",
+					},
+				},
+				"required": []string{"federation", "repoId"},
+			},
+		},
+		{
+			Name:        "suppressContractEdge",
+			Description: "Suppress a false positive contract dependency edge. The edge will be hidden from analysis results.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"federation": map[string]interface{}{
+						"type":        "string",
+						"description": "Name of the federation",
+					},
+					"edgeId": map[string]interface{}{
+						"type":        "integer",
+						"description": "ID of the edge to suppress",
+					},
+					"reason": map[string]interface{}{
+						"type":        "string",
+						"description": "Reason for suppression",
+					},
+				},
+				"required": []string{"federation", "edgeId"},
+			},
+		},
+		{
+			Name:        "verifyContractEdge",
+			Description: "Mark a contract dependency edge as verified. Increases confidence in the edge.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"federation": map[string]interface{}{
+						"type":        "string",
+						"description": "Name of the federation",
+					},
+					"edgeId": map[string]interface{}{
+						"type":        "integer",
+						"description": "ID of the edge to verify",
+					},
+				},
+				"required": []string{"federation", "edgeId"},
+			},
+		},
+		{
+			Name:        "getContractStats",
+			Description: "Get contract statistics for a federation. Returns counts of contracts, edges, and breakdown by type.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"federation": map[string]interface{}{
+						"type":        "string",
+						"description": "Name of the federation",
+					},
+				},
+				"required": []string{"federation"},
+			},
+		},
 	}
 }
 
@@ -1079,4 +1237,11 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["listWebhooks"] = s.toolListWebhooks
 	s.tools["testWebhook"] = s.toolTestWebhook
 	s.tools["webhookDeliveries"] = s.toolWebhookDeliveries
+	// v6.3 Contract-Aware Impact Analysis tools
+	s.tools["listContracts"] = s.toolListContracts
+	s.tools["analyzeContractImpact"] = s.toolAnalyzeContractImpact
+	s.tools["getContractDependencies"] = s.toolGetContractDependencies
+	s.tools["suppressContractEdge"] = s.toolSuppressContractEdge
+	s.tools["verifyContractEdge"] = s.toolVerifyContractEdge
+	s.tools["getContractStats"] = s.toolGetContractStats
 }

@@ -136,6 +136,97 @@ CREATE TABLE IF NOT EXISTS sync_log (
     error TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_sync_log_repo ON sync_log(repo_uid);
+
+-- v6.3 Contract tables
+-- Contracts table stores detected API contracts (proto, openapi, graphql)
+CREATE TABLE IF NOT EXISTS contracts (
+    id TEXT PRIMARY KEY,              -- repoUid:path (stable)
+    repo_uid TEXT NOT NULL,
+    repo_id TEXT NOT NULL,
+    path TEXT NOT NULL,
+
+    contract_type TEXT NOT NULL,      -- "proto" | "openapi" | "graphql"
+
+    -- Parsed metadata (JSON)
+    metadata TEXT NOT NULL,
+
+    -- Classification
+    visibility TEXT NOT NULL,         -- "public" | "internal" | "unknown"
+    visibility_basis TEXT,
+    confidence REAL NOT NULL,
+
+    -- For import resolution (JSON array)
+    import_keys TEXT,
+
+    indexed_at TEXT NOT NULL,
+
+    FOREIGN KEY (repo_uid) REFERENCES federation_repos(repo_uid) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_contracts_repo ON contracts(repo_uid);
+CREATE INDEX IF NOT EXISTS idx_contracts_type ON contracts(contract_type);
+CREATE INDEX IF NOT EXISTS idx_contracts_visibility ON contracts(visibility);
+
+-- Import key lookup (for fast resolution)
+CREATE TABLE IF NOT EXISTS contract_import_keys (
+    import_key TEXT NOT NULL,
+    contract_id TEXT NOT NULL,
+    PRIMARY KEY (import_key, contract_id),
+    FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_import_keys_key ON contract_import_keys(import_key);
+
+-- Cross-repo dependency edges
+CREATE TABLE IF NOT EXISTS contract_edges (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    -- Unique constraint to prevent duplicates
+    edge_key TEXT NOT NULL UNIQUE,    -- hash(source + consumer + evidence_type)
+
+    -- The contract being consumed
+    contract_id TEXT NOT NULL,
+
+    -- The consumer
+    consumer_repo_uid TEXT NOT NULL,
+    consumer_repo_id TEXT NOT NULL,
+    consumer_paths TEXT NOT NULL,     -- JSON array of files proving consumption
+
+    -- Evidence classification
+    tier TEXT NOT NULL,               -- "declared" | "derived" | "heuristic"
+    evidence_type TEXT NOT NULL,      -- "proto_import" | "generated_code" | etc.
+    evidence_details TEXT,            -- JSON
+    confidence REAL NOT NULL,
+    confidence_basis TEXT,
+
+    -- Detector metadata
+    detector_name TEXT NOT NULL,
+    detected_at TEXT NOT NULL,
+
+    -- Manual overrides
+    suppressed INTEGER DEFAULT 0,
+    suppressed_by TEXT,
+    suppressed_at TEXT,
+    verified INTEGER DEFAULT 0,
+    verified_by TEXT,
+    verified_at TEXT,
+
+    FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE,
+    FOREIGN KEY (consumer_repo_uid) REFERENCES federation_repos(repo_uid) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_edges_contract ON contract_edges(contract_id);
+CREATE INDEX IF NOT EXISTS idx_edges_consumer ON contract_edges(consumer_repo_uid);
+CREATE INDEX IF NOT EXISTS idx_edges_tier ON contract_edges(tier);
+CREATE INDEX IF NOT EXISTS idx_edges_suppressed ON contract_edges(suppressed);
+
+-- Proto import graph (for transitive analysis)
+CREATE TABLE IF NOT EXISTS proto_imports (
+    importer_contract_id TEXT NOT NULL,
+    imported_contract_id TEXT NOT NULL,
+    import_path TEXT NOT NULL,        -- the actual import string
+    PRIMARY KEY (importer_contract_id, imported_contract_id),
+    FOREIGN KEY (importer_contract_id) REFERENCES contracts(id) ON DELETE CASCADE,
+    FOREIGN KEY (imported_contract_id) REFERENCES contracts(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_proto_imports_imported ON proto_imports(imported_contract_id);
 `
 
 const currentSchemaVersion = 1
@@ -317,12 +408,18 @@ func (idx *Index) ClearRepoData(repoUID string) error {
 		"federated_ownership",
 		"federated_hotspots",
 		"federated_decisions",
+		"contracts",
 	}
 
 	for _, table := range tables {
 		if _, err := tx.Exec(fmt.Sprintf("DELETE FROM %s WHERE repo_uid = ?", table), repoUID); err != nil {
 			return err
 		}
+	}
+
+	// Also clear edges where this repo is the consumer
+	if _, err := tx.Exec("DELETE FROM contract_edges WHERE consumer_repo_uid = ?", repoUID); err != nil {
+		return err
 	}
 
 	return tx.Commit()

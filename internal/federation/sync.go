@@ -38,6 +38,12 @@ type SyncResult struct {
 	// DecisionsSynced is the number of decisions synced
 	DecisionsSynced int `json:"decisionsSynced"`
 
+	// ContractsSynced is the number of contracts synced
+	ContractsSynced int `json:"contractsSynced"`
+
+	// ReferencesSynced is the number of contract references synced
+	ReferencesSynced int `json:"referencesSynced"`
+
 	// Error is the error message if sync failed
 	Error string `json:"error,omitempty"`
 }
@@ -161,6 +167,15 @@ func (f *Federation) syncRepo(repo RepoConfig, opts SyncOptions) SyncResult {
 		})
 	}
 
+	// Sync contracts (v6.3)
+	result.ContractsSynced, result.ReferencesSynced, syncErr = f.syncContracts(repo)
+	if syncErr != nil && f.logger != nil {
+		f.logger.Warn("Failed to sync contracts", map[string]interface{}{
+			"repo":  repo.RepoID,
+			"error": syncErr.Error(),
+		})
+	}
+
 	// Update repo entry in index
 	now := time.Now()
 	tagsJSON, _ := json.Marshal(repo.Tags)
@@ -191,11 +206,123 @@ func (f *Federation) syncRepo(repo RepoConfig, opts SyncOptions) SyncResult {
 			"ownership":  result.OwnershipSynced,
 			"hotspots":   result.HotspotsSynced,
 			"decisions":  result.DecisionsSynced,
+			"contracts":  result.ContractsSynced,
+			"references": result.ReferencesSynced,
 			"durationMs": result.Duration.Milliseconds(),
 		})
 	}
 
 	return result
+}
+
+// syncContracts detects and syncs contracts and their references
+func (f *Federation) syncContracts(repo RepoConfig) (int, int, error) {
+	contractsSynced := 0
+	referencesSynced := 0
+
+	// Run proto detector
+	protoDetector := NewProtoDetector()
+	protoResult, err := protoDetector.Detect(repo.Path, repo.RepoUID, repo.RepoID)
+	if err != nil && f.logger != nil {
+		f.logger.Warn("Proto detection failed", map[string]interface{}{
+			"repo":  repo.RepoID,
+			"error": err.Error(),
+		})
+	}
+	if protoResult != nil {
+		for _, contract := range protoResult.Contracts {
+			if err := f.index.UpsertContract(&contract); err == nil {
+				contractsSynced++
+			}
+		}
+		referencesSynced += len(protoResult.References)
+
+		// Store proto imports for transitivity
+		for _, pi := range protoResult.ProtoImports {
+			f.index.UpsertProtoImport(&pi)
+		}
+	}
+
+	// Run OpenAPI detector
+	openapiDetector := NewOpenAPIDetector()
+	openapiResult, err := openapiDetector.Detect(repo.Path, repo.RepoUID, repo.RepoID)
+	if err != nil && f.logger != nil {
+		f.logger.Warn("OpenAPI detection failed", map[string]interface{}{
+			"repo":  repo.RepoID,
+			"error": err.Error(),
+		})
+	}
+	if openapiResult != nil {
+		for _, contract := range openapiResult.Contracts {
+			if err := f.index.UpsertContract(&contract); err == nil {
+				contractsSynced++
+			}
+		}
+		referencesSynced += len(openapiResult.References)
+	}
+
+	// Resolve references and create edges
+	allRefs := []OutgoingReference{}
+	if protoResult != nil {
+		allRefs = append(allRefs, protoResult.References...)
+	}
+	if openapiResult != nil {
+		allRefs = append(allRefs, openapiResult.References...)
+	}
+
+	for _, ref := range allRefs {
+		// Try to resolve the import key to contract IDs
+		contractIDs, err := f.index.ResolveImportKey(ref.ImportKey)
+		if err != nil || len(contractIDs) == 0 {
+			continue
+		}
+
+		// Create edges to each resolved contract
+		for _, contractID := range contractIDs {
+			edge := &ContractEdge{
+				EdgeKey:         ComputeEdgeKey(contractID, ref.ConsumerRepoUID, ref.EvidenceType, []string{ref.ConsumerPath}),
+				ContractID:      contractID,
+				ConsumerRepoUID: ref.ConsumerRepoUID,
+				ConsumerRepoID:  ref.ConsumerRepoID,
+				ConsumerPaths:   []string{ref.ConsumerPath},
+				Tier:            ref.Tier,
+				EvidenceType:    ref.EvidenceType,
+				EvidenceDetails: ref.EvidenceDetails,
+				Confidence:      ref.Confidence,
+				ConfidenceBasis: ref.ConfidenceBasis,
+				DetectorName:    ref.DetectorName,
+			}
+			f.index.UpsertContractEdge(edge)
+		}
+	}
+
+	// Resolve proto imports to contract IDs
+	if protoResult != nil {
+		for _, contract := range protoResult.Contracts {
+			var metadata ProtoMetadata
+			if err := json.Unmarshal(contract.Metadata, &metadata); err != nil {
+				continue
+			}
+
+			for _, imp := range metadata.Imports {
+				importedIDs, err := f.index.ResolveImportKey(imp)
+				if err != nil || len(importedIDs) == 0 {
+					continue
+				}
+
+				for _, importedID := range importedIDs {
+					pi := &ProtoImport{
+						ImporterContractID: contract.ID,
+						ImportedContractID: importedID,
+						ImportPath:         imp,
+					}
+					f.index.UpsertProtoImport(pi)
+				}
+			}
+		}
+	}
+
+	return contractsSynced, referencesSynced, nil
 }
 
 // syncModules syncs modules from the repo to the federation index
