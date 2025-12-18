@@ -41,14 +41,16 @@ jobs:
         run: |
           go install github.com/yourorg/ckb@latest
 
-      - name: Initialize CKB
+      - name: Initialize CKB and Start Server
         run: |
           ckb init
           ckb doctor --fix
+          ckb serve --port 8080 &
+          sleep 2  # Wait for server to start
 
       - name: Check CKB Status
         run: |
-          ckb status
+          curl -s http://localhost:8080/status | jq .
 
       - name: Refresh Architecture
         id: refresh
@@ -56,18 +58,11 @@ jobs:
           SCOPE="${{ github.event.inputs.scope || 'all' }}"
           FORCE="${{ github.event.inputs.force || 'false' }}"
 
-          PARAMS='{"scope": "'$SCOPE'"'
-          if [ "$FORCE" = "true" ]; then
-            PARAMS="$PARAMS"', "force": true'
-          fi
-          PARAMS="$PARAMS"'}'
+          echo "Refreshing architecture with scope=$SCOPE, force=$FORCE"
 
-          echo "Refreshing architecture with: $PARAMS"
-
-          RESULT=$(ckb mcp --json '{
-            "tool": "refreshArchitecture",
-            "params": '"$PARAMS"'
-          }')
+          RESULT=$(curl -s -X POST http://localhost:8080/architecture/refresh \
+            -H "Content-Type: application/json" \
+            -d "{\"scope\": \"$SCOPE\", \"force\": $FORCE}")
 
           echo "$RESULT" | jq .
 
@@ -80,22 +75,13 @@ jobs:
       - name: Generate Architecture Report
         run: |
           # Get current architecture state
-          ckb mcp --json '{
-            "tool": "getArchitecture",
-            "params": {}
-          }' > architecture.json
+          curl -s http://localhost:8080/architecture > architecture.json
 
           # Get hotspots
-          ckb mcp --json '{
-            "tool": "getHotspots",
-            "params": {"limit": 20}
-          }' > hotspots.json
+          curl -s "http://localhost:8080/hotspots?limit=20" > hotspots.json
 
           # Get ownership drift
-          ckb mcp --json '{
-            "tool": "getOwnershipDrift",
-            "params": {"threshold": 0.3, "limit": 10}
-          }' > drift.json
+          curl -s "http://localhost:8080/ownership/drift?threshold=0.3&limit=10" > drift.json
 
           echo "## Architecture Report - $(date -u +%Y-%m-%d)" > ARCHITECTURE_REPORT.md
           echo "" >> ARCHITECTURE_REPORT.md

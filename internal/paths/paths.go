@@ -272,3 +272,248 @@ func GetRepoInfo(repoRoot string) (*RepoInfo, error) {
 		DecisionsDir:       filepath.Join(globalDataDir, DecisionsSubdir),
 	}, nil
 }
+
+// v6.2 Federation Paths
+// These functions manage the ~/.ckb/federation/ directory structure for multi-repo federation
+
+const (
+	// FederationSubdir is the subdirectory for federation data
+	FederationSubdir = "federation"
+
+	// FederationConfigFile is the name of the federation config file
+	FederationConfigFile = "config.toml"
+
+	// FederationIndexFile is the name of the federation index database
+	FederationIndexFile = "index.db"
+)
+
+// GetFederationsDir returns the base directory for all federations
+// Path: ~/.ckb/federation/
+func GetFederationsDir() (string, error) {
+	ckbHome, err := GetCKBHome()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(ckbHome, FederationSubdir), nil
+}
+
+// GetFederationDir returns the directory for a specific federation
+// Path: ~/.ckb/federation/<name>/
+func GetFederationDir(name string) (string, error) {
+	federationsDir, err := GetFederationsDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(federationsDir, name), nil
+}
+
+// GetFederationConfigPath returns the path to a federation's config file
+// Path: ~/.ckb/federation/<name>/config.toml
+func GetFederationConfigPath(name string) (string, error) {
+	fedDir, err := GetFederationDir(name)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(fedDir, FederationConfigFile), nil
+}
+
+// GetFederationIndexPath returns the path to a federation's index database
+// Path: ~/.ckb/federation/<name>/index.db
+func GetFederationIndexPath(name string) (string, error) {
+	fedDir, err := GetFederationDir(name)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(fedDir, FederationIndexFile), nil
+}
+
+// EnsureFederationDir creates the federation directory if it doesn't exist
+// Returns the directory path
+func EnsureFederationDir(name string) (string, error) {
+	fedDir, err := GetFederationDir(name)
+	if err != nil {
+		return "", err
+	}
+
+	if err := os.MkdirAll(fedDir, 0755); err != nil {
+		return "", err
+	}
+
+	return fedDir, nil
+}
+
+// ListFederations returns the names of all existing federations
+func ListFederations() ([]string, error) {
+	federationsDir, err := GetFederationsDir()
+	if err != nil {
+		return nil, err
+	}
+
+	// If the federations directory doesn't exist, return empty list
+	if _, err := os.Stat(federationsDir); os.IsNotExist(err) {
+		return []string{}, nil
+	}
+
+	entries, err := os.ReadDir(federationsDir)
+	if err != nil {
+		return nil, err
+	}
+
+	var federations []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			// Verify it has a config file
+			configPath := filepath.Join(federationsDir, entry.Name(), FederationConfigFile)
+			if _, err := os.Stat(configPath); err == nil {
+				federations = append(federations, entry.Name())
+			}
+		}
+	}
+
+	return federations, nil
+}
+
+// FederationExists checks if a federation with the given name exists
+func FederationExists(name string) (bool, error) {
+	configPath, err := GetFederationConfigPath(name)
+	if err != nil {
+		return false, err
+	}
+
+	_, err = os.Stat(configPath)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// DeleteFederationDir removes the federation directory and all its contents
+func DeleteFederationDir(name string) error {
+	fedDir, err := GetFederationDir(name)
+	if err != nil {
+		return err
+	}
+	return os.RemoveAll(fedDir)
+}
+
+// v6.2.1 Daemon Paths
+// These functions manage the ~/.ckb/daemon/ directory structure for daemon mode
+
+const (
+	// DaemonSubdir is the subdirectory for daemon data
+	DaemonSubdir = "daemon"
+
+	// DaemonPIDFile is the name of the daemon PID file
+	DaemonPIDFile = "daemon.pid"
+
+	// DaemonLogFile is the name of the daemon log file
+	DaemonLogFile = "daemon.log"
+
+	// DaemonDBFile is the name of the daemon database (jobs, schedule, webhooks)
+	DaemonDBFile = "daemon.db"
+
+	// DaemonSocketFile is the name of the Unix socket (optional)
+	DaemonSocketFile = "daemon.sock"
+)
+
+// GetDaemonDir returns the daemon data directory
+// Path: ~/.ckb/daemon/
+func GetDaemonDir() (string, error) {
+	ckbHome, err := GetCKBHome()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(ckbHome, DaemonSubdir), nil
+}
+
+// EnsureDaemonDir creates the daemon directory if it doesn't exist
+// Returns the directory path
+func EnsureDaemonDir() (string, error) {
+	daemonDir, err := GetDaemonDir()
+	if err != nil {
+		return "", err
+	}
+
+	if err := os.MkdirAll(daemonDir, 0755); err != nil {
+		return "", err
+	}
+
+	return daemonDir, nil
+}
+
+// GetDaemonPIDPath returns the path to the daemon PID file
+// Path: ~/.ckb/daemon/daemon.pid
+func GetDaemonPIDPath() (string, error) {
+	daemonDir, err := GetDaemonDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(daemonDir, DaemonPIDFile), nil
+}
+
+// GetDaemonLogPath returns the path to the daemon log file
+// Path: ~/.ckb/daemon/daemon.log
+func GetDaemonLogPath() (string, error) {
+	daemonDir, err := GetDaemonDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(daemonDir, DaemonLogFile), nil
+}
+
+// GetDaemonDBPath returns the path to the daemon database
+// Path: ~/.ckb/daemon/daemon.db
+func GetDaemonDBPath() (string, error) {
+	daemonDir, err := GetDaemonDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(daemonDir, DaemonDBFile), nil
+}
+
+// GetDaemonSocketPath returns the path to the daemon Unix socket
+// Path: ~/.ckb/daemon/daemon.sock
+func GetDaemonSocketPath() (string, error) {
+	daemonDir, err := GetDaemonDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(daemonDir, DaemonSocketFile), nil
+}
+
+// DaemonInfo holds information about daemon paths
+type DaemonInfo struct {
+	// Dir is the daemon data directory
+	Dir string
+
+	// PIDPath is the path to the PID file
+	PIDPath string
+
+	// LogPath is the path to the log file
+	LogPath string
+
+	// DBPath is the path to the daemon database
+	DBPath string
+
+	// SocketPath is the path to the Unix socket
+	SocketPath string
+}
+
+// GetDaemonInfo returns all daemon path information
+func GetDaemonInfo() (*DaemonInfo, error) {
+	daemonDir, err := GetDaemonDir()
+	if err != nil {
+		return nil, err
+	}
+
+	return &DaemonInfo{
+		Dir:        daemonDir,
+		PIDPath:    filepath.Join(daemonDir, DaemonPIDFile),
+		LogPath:    filepath.Join(daemonDir, DaemonLogFile),
+		DBPath:     filepath.Join(daemonDir, DaemonDBFile),
+		SocketPath: filepath.Join(daemonDir, DaemonSocketFile),
+	}, nil
+}

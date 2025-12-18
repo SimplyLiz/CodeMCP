@@ -53,27 +53,28 @@ Replace the installation step with your preferred method:
 
 ### Customizing Analysis
 
-Modify the MCP tool parameters to suit your needs:
+CKB exposes a REST API. Start the server and use `curl`:
 
-```yaml
-# Adjust risk thresholds
-ckb mcp --json '{
-  "tool": "summarizePr",
-  "params": {
-    "baseBranch": "main",
-    "includeOwnership": true
-  }
-}'
+```bash
+# Start server in background
+ckb serve --port 8080 &
+sleep 2
 
-# Focus on specific modules
-ckb mcp --json '{
-  "tool": "getOwnershipDrift",
-  "params": {
-    "scope": "internal/api",
-    "threshold": 0.4,
-    "limit": 10
-  }
-}'
+# PR analysis with ownership
+curl -X POST http://localhost:8080/pr/summary \
+  -H "Content-Type: application/json" \
+  -d '{"baseBranch": "main", "includeOwnership": true}'
+
+# Ownership drift for specific module
+curl "http://localhost:8080/ownership/drift?scope=internal/api&threshold=0.4&limit=10"
+
+# Get hotspots
+curl "http://localhost:8080/hotspots?limit=20"
+
+# Async architecture refresh
+curl -X POST http://localhost:8080/architecture/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"scope": "all", "async": true}'
 ```
 
 ## Environment Variables

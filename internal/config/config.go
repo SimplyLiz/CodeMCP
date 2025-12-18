@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Config represents the complete CKB configuration (v5 schema)
+// Config represents the complete CKB configuration (v5 schema, extended in v6.2.1)
 type Config struct {
 	Version  int    `json:"version" mapstructure:"version"`
 	RepoRoot string `json:"repoRoot" mapstructure:"repoRoot"`
@@ -23,6 +23,10 @@ type Config struct {
 	BackendLimits BackendLimitsConfig `json:"backendLimits" mapstructure:"backendLimits"`
 	Privacy       PrivacyConfig       `json:"privacy" mapstructure:"privacy"`
 	Logging       LoggingConfig       `json:"logging" mapstructure:"logging"`
+
+	// v6.2.1 Daemon mode
+	Daemon   DaemonConfig    `json:"daemon" mapstructure:"daemon"`
+	Webhooks []WebhookConfig `json:"webhooks" mapstructure:"webhooks"`
 }
 
 // BackendsConfig contains backend-specific configuration
@@ -124,6 +128,49 @@ type LoggingConfig struct {
 	Level  string `json:"level" mapstructure:"level"`
 }
 
+// DaemonConfig contains daemon mode configuration (v6.2.1)
+type DaemonConfig struct {
+	Port     int               `json:"port" mapstructure:"port"`
+	Bind     string            `json:"bind" mapstructure:"bind"`
+	LogLevel string            `json:"logLevel" mapstructure:"logLevel"`
+	LogFile  string            `json:"logFile" mapstructure:"logFile"`
+	Auth     DaemonAuthConfig  `json:"auth" mapstructure:"auth"`
+	Watch    DaemonWatchConfig `json:"watch" mapstructure:"watch"`
+	Schedule DaemonScheduleConfig `json:"schedule" mapstructure:"schedule"`
+}
+
+// DaemonAuthConfig contains daemon authentication configuration
+type DaemonAuthConfig struct {
+	Enabled   bool   `json:"enabled" mapstructure:"enabled"`
+	Token     string `json:"token" mapstructure:"token"`
+	TokenFile string `json:"tokenFile" mapstructure:"tokenFile"`
+}
+
+// DaemonWatchConfig contains file watching configuration
+type DaemonWatchConfig struct {
+	Enabled        bool     `json:"enabled" mapstructure:"enabled"`
+	DebounceMs     int      `json:"debounceMs" mapstructure:"debounceMs"`
+	IgnorePatterns []string `json:"ignorePatterns" mapstructure:"ignorePatterns"`
+	Repos          []string `json:"repos" mapstructure:"repos"`
+}
+
+// DaemonScheduleConfig contains scheduler configuration
+type DaemonScheduleConfig struct {
+	Refresh         string `json:"refresh" mapstructure:"refresh"`
+	FederationSync  string `json:"federationSync" mapstructure:"federationSync"`
+	HotspotSnapshot string `json:"hotspotSnapshot" mapstructure:"hotspotSnapshot"`
+}
+
+// WebhookConfig contains webhook configuration (v6.2.1)
+type WebhookConfig struct {
+	ID      string            `json:"id" mapstructure:"id"`
+	URL     string            `json:"url" mapstructure:"url"`
+	Secret  string            `json:"secret" mapstructure:"secret"`
+	Events  []string          `json:"events" mapstructure:"events"`
+	Format  string            `json:"format" mapstructure:"format"`
+	Headers map[string]string `json:"headers" mapstructure:"headers"`
+}
+
 // DefaultConfig returns the default configuration
 func DefaultConfig() *Config {
 	return &Config{
@@ -218,6 +265,29 @@ func DefaultConfig() *Config {
 			Format: "human",
 			Level:  "info",
 		},
+		Daemon: DaemonConfig{
+			Port:     9120,
+			Bind:     "localhost",
+			LogLevel: "info",
+			LogFile:  "", // Default: ~/.ckb/daemon/daemon.log
+			Auth: DaemonAuthConfig{
+				Enabled:   true,
+				Token:     "", // Will check CKB_DAEMON_TOKEN env var
+				TokenFile: "",
+			},
+			Watch: DaemonWatchConfig{
+				Enabled:        true,
+				DebounceMs:     5000,
+				IgnorePatterns: []string{"*.log", "node_modules/**", ".git/**", "**/*.tmp"},
+				Repos:          []string{}, // Empty = all federated repos
+			},
+			Schedule: DaemonScheduleConfig{
+				Refresh:         "every 4h",
+				FederationSync:  "every 1h",
+				HotspotSnapshot: "daily",
+			},
+		},
+		Webhooks: []WebhookConfig{},
 	}
 }
 

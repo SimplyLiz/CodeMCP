@@ -129,9 +129,16 @@ func (e *Engine) GetDecision(id string) (*DecisionResult, error) {
 
 	if record != nil {
 		// Parse the file to get full content
-		parser := decisions.NewParser(e.repoRoot)
-		adr, err := parser.ParseFile(record.FilePath)
-		if err == nil {
+		// Check if path is absolute (v6.0 style) or repo-relative
+		var adr *decisions.ArchitecturalDecision
+		var parseErr error
+		if filepath.IsAbs(record.FilePath) {
+			adr, parseErr = decisions.ParseFileAbsolute(record.FilePath)
+		} else {
+			parser := decisions.NewParser(e.repoRoot)
+			adr, parseErr = parser.ParseFile(record.FilePath)
+		}
+		if parseErr == nil {
 			return &DecisionResult{
 				Decision: adr,
 				Source:   "both",

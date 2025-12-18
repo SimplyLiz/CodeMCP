@@ -91,6 +91,56 @@ func (e *Engine) GetSymbol(ctx context.Context, opts GetSymbolOptions) (*GetSymb
 	// Resolve symbol ID through aliases
 	resolved, err := e.resolver.ResolveSymbolId(opts.SymbolId)
 	if err != nil {
+		// If identity resolution fails and this looks like a raw SCIP ID,
+		// try querying SCIP directly as a fallback
+		if strings.HasPrefix(opts.SymbolId, "scip-") && e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
+			result, scipErr := e.scipAdapter.GetSymbol(ctx, opts.SymbolId)
+			if scipErr == nil && result != nil {
+				// Successfully found in SCIP - build response directly
+				completeness := CompletenessInfo{
+					Score:  result.Completeness.Score,
+					Reason: string(result.Completeness.Reason),
+				}
+				backendContribs := []BackendContribution{{
+					BackendId:    "scip",
+					Available:    true,
+					Used:         true,
+					ResultCount:  1,
+					Completeness: result.Completeness.Score,
+				}}
+				return &GetSymbolResponse{
+					Symbol: &SymbolInfo{
+						StableId:            result.StableID,
+						Name:                result.Name,
+						Kind:                result.Kind,
+						Signature:           result.SignatureFull,
+						SignatureNormalized: result.SignatureNormalized,
+						ContainerName:       result.ContainerName,
+						ModuleId:            result.ModuleID,
+						Documentation:       result.Documentation,
+						LocationFreshness:   e.getLocationFreshness(repoState),
+						Visibility: &VisibilityInfo{
+							Visibility: result.Visibility,
+							Confidence: result.VisibilityConfidence,
+							Source:     "scip",
+						},
+						Location: &LocationInfo{
+							FileId:      result.Location.Path,
+							StartLine:   result.Location.Line,
+							StartColumn: result.Location.Column,
+							EndLine:     result.Location.EndLine,
+							EndColumn:   result.Location.EndColumn,
+						},
+					},
+					Provenance: e.buildProvenance(repoState, opts.RepoStateMode, startTime, backendContribs, completeness),
+					Drilldowns: []output.Drilldown{
+						{Label: "Find references", Query: fmt.Sprintf("findReferences %s", opts.SymbolId)},
+						{Label: "Get call graph", Query: fmt.Sprintf("getCallGraph %s", opts.SymbolId)},
+					},
+				}, nil
+			}
+		}
+
 		// Check if it's a known error type
 		if ckbErr, ok := err.(*errors.CkbError); ok {
 			completeness := CompletenessInfo{Score: 0.0, Reason: "symbol-not-found"}
