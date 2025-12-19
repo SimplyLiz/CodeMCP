@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -212,10 +211,8 @@ func runDaemonBackground() error {
 	// Start the process
 	cmd := exec.Command(executable, args...)
 
-	// Detach from parent
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setsid: true,
-	}
+	// Detach from parent (platform-specific)
+	setDaemonSysProcAttr(cmd)
 
 	// Redirect stdout/stderr to log file
 	logPath, err := paths.GetDaemonLogPath()
