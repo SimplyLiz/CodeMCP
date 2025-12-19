@@ -79,8 +79,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: linux
-            arch: amd64
+          # linux/amd64 is built in the 'build' job, skip here to avoid artifact conflict
           - os: linux
             arch: arm64
           - os: darwin
