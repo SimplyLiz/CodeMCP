@@ -39,11 +39,76 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish to npm
-        uses: evg4b/goreleaser-npm-publisher-action@v1
-        with:
-          prefix: '@tastehub'
-          project: ckb
+      - name: Publish npm packages
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "Publishing version $VERSION"
+
+          # Update version in package.json
+          cd npm
+          npm version $VERSION --no-git-tag-version --allow-same-version
+
+          # Update optionalDependencies versions
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            for (const dep of Object.keys(pkg.optionalDependencies || {})) {
+              pkg.optionalDependencies[dep] = '$VERSION';
+            }
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+          # Publish main package
+          npm publish --access public || echo "Main package may already exist"
+
+          cd ..
+
+          # Create and publish platform packages
+          PLATFORMS="darwin-arm64 darwin-x64 linux-x64 linux-arm64 win32-x64"
+
+          for PLATFORM in $PLATFORMS; do
+            echo "Creating package for $PLATFORM"
+
+            # Map platform to goreleaser naming
+            case $PLATFORM in
+              darwin-arm64) ARCHIVE="ckb_${VERSION}_darwin_arm64.tar.gz" ;;
+              darwin-x64)   ARCHIVE="ckb_${VERSION}_darwin_amd64.tar.gz" ;;
+              linux-x64)    ARCHIVE="ckb_${VERSION}_linux_amd64.tar.gz" ;;
+              linux-arm64)  ARCHIVE="ckb_${VERSION}_linux_arm64.tar.gz" ;;
+              win32-x64)    ARCHIVE="ckb_${VERSION}_windows_amd64.zip" ;;
+            esac
+
+            PKG_NAME="@tastehub/ckb-${PLATFORM}"
+            PKG_DIR="npm-${PLATFORM}"
+
+            mkdir -p "$PKG_DIR/bin"
+
+            # Download from GitHub release
+            if [[ $PLATFORM == win32-x64 ]]; then
+              curl -sL "https://github.com/SimplyLiz/CodeMCP/releases/download/v${VERSION}/${ARCHIVE}" -o archive.zip
+              unzip -q archive.zip -d "$PKG_DIR/bin"
+              mv "$PKG_DIR/bin/ckb.exe" "$PKG_DIR/bin/" 2>/dev/null || true
+            else
+              curl -sL "https://github.com/SimplyLiz/CodeMCP/releases/download/v${VERSION}/${ARCHIVE}" | tar xz -C "$PKG_DIR/bin"
+            fi
+
+            # Create package.json
+            cat > "$PKG_DIR/package.json" << EOF
+          {
+            "name": "${PKG_NAME}",
+            "version": "${VERSION}",
+            "description": "CKB binary for ${PLATFORM}",
+            "os": ["${PLATFORM%-*}"],
+            "cpu": ["${PLATFORM#*-}"],
+            "files": ["bin"],
+            "license": "MIT"
+          }
+          EOF
+
+            # Publish
+            cd "$PKG_DIR"
+            npm publish --access public || echo "Package $PKG_NAME may already exist"
+            cd ..
+          done
