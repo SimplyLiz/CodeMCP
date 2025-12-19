@@ -151,7 +151,7 @@ func (r *Runner) recoverPendingJobs() {
 			recovered++
 		default:
 			// Queue still full, will retry on next interval
-			break
+			continue
 		}
 	}
 

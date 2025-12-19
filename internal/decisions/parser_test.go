@@ -260,23 +260,8 @@ func TestGetNextADRNumber(t *testing.T) {
 		"adr-005-fifth.md",
 	}
 
-	adrContent := `# ADR-%03d: Test
-
-**Status:** proposed
-**Date:** 2024-01-01
-
-## Context
-Test.
-
-## Decision
-Test.
-
-## Consequences
-- Test
-`
-
 	for i, filename := range adrs {
-		content := []byte(adrContent)
+		var content []byte
 		if i == 0 {
 			content = []byte(`# ADR-001: First
 

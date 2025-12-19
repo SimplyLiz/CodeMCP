@@ -335,7 +335,7 @@ func (e *Engine) GetOwnershipDrift(ctx context.Context, opts OwnershipDriftOptio
 	var filesToAnalyze []string
 	err = filepath.Walk(scopePath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil // Skip files we can't access
+			return nil //nolint:nilerr // skip inaccessible files
 		}
 		if info.IsDir() {
 			// Skip hidden directories

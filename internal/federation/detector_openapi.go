@@ -341,7 +341,7 @@ func findFilesNamed(root, name string) ([]string, error) {
 
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil // Skip errors
+			return nil //nolint:nilerr // skip inaccessible files
 		}
 
 		// Skip hidden directories and common non-source directories

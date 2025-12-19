@@ -69,7 +69,7 @@ func (p *PIDFile) IsRunning() (bool, int, error) {
 	pid, err := strconv.Atoi(pidStr)
 	if err != nil {
 		// Invalid PID file, treat as not running
-		return false, 0, nil
+		return false, 0, nil //nolint:nilerr // intentional: invalid PID treated as not running
 	}
 
 	// Check if process exists

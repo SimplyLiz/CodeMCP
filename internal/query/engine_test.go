@@ -791,9 +791,9 @@ func TestGetCallGraph(t *testing.T) {
 			return
 		}
 
-		// Should have metadata
+		// Should have metadata - at least one of these should be set
 		if result.Root == "" && result.CkbVersion == "" {
-			// One of these should be set
+			t.Error("expected at least Root or CkbVersion to be set")
 		}
 	})
 

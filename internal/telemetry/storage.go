@@ -524,11 +524,11 @@ func (s *Storage) GetObservationWindowDays() (int, error) {
 	// Parse periods (format: "2024-12" or "2024-W51")
 	min, err := parsePeriod(minPeriod.String)
 	if err != nil {
-		return 0, nil
+		return 0, nil //nolint:nilerr // return 0 for unparseable periods
 	}
 	max, err := parsePeriod(maxPeriod.String)
 	if err != nil {
-		return 0, nil
+		return 0, nil //nolint:nilerr // return 0 for unparseable periods
 	}
 
 	return int(max.Sub(min).Hours() / 24), nil

@@ -27,6 +27,7 @@ func (s *MCPServer) toolDaemonStatus(params map[string]interface{}) (interface{}
 	// Get daemon info from paths
 	info, err := paths.GetDaemonInfo()
 	if err != nil {
+		//nolint:nilerr // partial status is acceptable
 		return map[string]interface{}{
 			"running": true,
 			"pid":     pid,

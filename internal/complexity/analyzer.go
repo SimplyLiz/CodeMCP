@@ -36,6 +36,7 @@ func (a *Analyzer) AnalyzeFile(ctx context.Context, path string) (*FileComplexit
 
 	source, err := os.ReadFile(path)
 	if err != nil {
+		//nolint:nilerr // error captured in Error field
 		return &FileComplexity{
 			Path:  path,
 			Error: "failed to read file: " + err.Error(),
@@ -49,6 +50,7 @@ func (a *Analyzer) AnalyzeFile(ctx context.Context, path string) (*FileComplexit
 func (a *Analyzer) AnalyzeSource(ctx context.Context, path string, source []byte, lang Language) (*FileComplexity, error) {
 	root, err := a.parser.Parse(ctx, source, lang)
 	if err != nil {
+		//nolint:nilerr // error captured in Error field
 		return &FileComplexity{
 			Path:     path,
 			Language: lang,

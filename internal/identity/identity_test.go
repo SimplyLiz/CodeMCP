@@ -723,4 +723,13 @@ func TestResolvedSymbolStruct(t *testing.T) {
 	if resolved.RedirectConfidence != 0.95 {
 		t.Errorf("expected confidence 0.95, got %f", resolved.RedirectConfidence)
 	}
+	if resolved.Deleted {
+		t.Error("expected deleted to be false")
+	}
+	if resolved.DeletedAt != "" {
+		t.Errorf("expected empty deletedAt, got %s", resolved.DeletedAt)
+	}
+	if resolved.Error != "" {
+		t.Errorf("expected empty error, got %s", resolved.Error)
+	}
 }

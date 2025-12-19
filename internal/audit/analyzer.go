@@ -131,7 +131,7 @@ func (a *Analyzer) analyzeFile(ctx context.Context, repoRoot, file string) (*Ris
 	// Simplified: check if test file exists
 	hasTests := a.hasTestFile(file)
 	coverageContrib := 0.0
-	coverageValue := "unknown"
+	var coverageValue string
 	if !hasTests {
 		coverageContrib = 15.0 // Penalize missing tests
 		coverageValue = "no test file"
@@ -245,7 +245,7 @@ func (a *Analyzer) findSourceFiles(repoRoot string) ([]string, error) {
 
 	err := filepath.Walk(repoRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil // Skip errors
+			return nil //nolint:nilerr // skip inaccessible files
 		}
 
 		if info.IsDir() {

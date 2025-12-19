@@ -10,11 +10,11 @@ import (
 func TestGetCKBHome(t *testing.T) {
 	// Test with environment variable
 	originalEnv := os.Getenv(CKBHomeEnvVar)
-	defer os.Setenv(CKBHomeEnvVar, originalEnv)
+	t.Cleanup(func() { _ = os.Setenv(CKBHomeEnvVar, originalEnv) })
 
 	// Set custom home
 	customHome := "/custom/ckb/home"
-	os.Setenv(CKBHomeEnvVar, customHome)
+	_ = os.Setenv(CKBHomeEnvVar, customHome)
 
 	home, err := GetCKBHome()
 	if err != nil {
@@ -25,7 +25,7 @@ func TestGetCKBHome(t *testing.T) {
 	}
 
 	// Test without environment variable
-	os.Unsetenv(CKBHomeEnvVar)
+	_ = os.Unsetenv(CKBHomeEnvVar)
 
 	home, err = GetCKBHome()
 	if err != nil {
@@ -64,12 +64,12 @@ func TestGetRepoDataDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	t.Cleanup(func() { _ = os.RemoveAll(tempDir) })
 
 	// Set CKB_HOME
 	originalEnv := os.Getenv(CKBHomeEnvVar)
-	os.Setenv(CKBHomeEnvVar, tempDir)
-	defer os.Setenv(CKBHomeEnvVar, originalEnv)
+	_ = os.Setenv(CKBHomeEnvVar, tempDir)
+	t.Cleanup(func() { _ = os.Setenv(CKBHomeEnvVar, originalEnv) })
 
 	repoRoot := "/my/repo"
 	dataDir, err := GetRepoDataDir(repoRoot)
@@ -90,12 +90,12 @@ func TestEnsureRepoDataDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	t.Cleanup(func() { _ = os.RemoveAll(tempDir) })
 
 	// Set CKB_HOME
 	originalEnv := os.Getenv(CKBHomeEnvVar)
-	os.Setenv(CKBHomeEnvVar, tempDir)
-	defer os.Setenv(CKBHomeEnvVar, originalEnv)
+	_ = os.Setenv(CKBHomeEnvVar, tempDir)
+	t.Cleanup(func() { _ = os.Setenv(CKBHomeEnvVar, originalEnv) })
 
 	repoRoot := "/my/repo"
 	dataDir, err := EnsureRepoDataDir(repoRoot)
@@ -119,12 +119,12 @@ func TestGetDecisionsDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	t.Cleanup(func() { _ = os.RemoveAll(tempDir) })
 
 	// Set CKB_HOME
 	originalEnv := os.Getenv(CKBHomeEnvVar)
-	os.Setenv(CKBHomeEnvVar, tempDir)
-	defer os.Setenv(CKBHomeEnvVar, originalEnv)
+	_ = os.Setenv(CKBHomeEnvVar, tempDir)
+	t.Cleanup(func() { _ = os.Setenv(CKBHomeEnvVar, originalEnv) })
 
 	repoRoot := "/my/repo"
 	decisionsDir, err := GetDecisionsDir(repoRoot)
@@ -144,12 +144,12 @@ func TestEnsureDecisionsDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	t.Cleanup(func() { _ = os.RemoveAll(tempDir) })
 
 	// Set CKB_HOME
 	originalEnv := os.Getenv(CKBHomeEnvVar)
-	os.Setenv(CKBHomeEnvVar, tempDir)
-	defer os.Setenv(CKBHomeEnvVar, originalEnv)
+	_ = os.Setenv(CKBHomeEnvVar, tempDir)
+	t.Cleanup(func() { _ = os.Setenv(CKBHomeEnvVar, originalEnv) })
 
 	repoRoot := "/my/repo"
 	decisionsDir, err := EnsureDecisionsDir(repoRoot)
@@ -173,12 +173,12 @@ func TestGetRepoDatabasePath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	t.Cleanup(func() { _ = os.RemoveAll(tempDir) })
 
 	// Set CKB_HOME
 	originalEnv := os.Getenv(CKBHomeEnvVar)
-	os.Setenv(CKBHomeEnvVar, tempDir)
-	defer os.Setenv(CKBHomeEnvVar, originalEnv)
+	_ = os.Setenv(CKBHomeEnvVar, tempDir)
+	t.Cleanup(func() { _ = os.Setenv(CKBHomeEnvVar, originalEnv) })
 
 	repoRoot := "/my/repo"
 	dbPath, err := GetRepoDatabasePath(repoRoot)
@@ -232,12 +232,12 @@ func TestGetRepoInfo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	t.Cleanup(func() { _ = os.RemoveAll(tempDir) })
 
 	// Set CKB_HOME
 	originalEnv := os.Getenv(CKBHomeEnvVar)
-	os.Setenv(CKBHomeEnvVar, filepath.Join(tempDir, ".ckb-home"))
-	defer os.Setenv(CKBHomeEnvVar, originalEnv)
+	_ = os.Setenv(CKBHomeEnvVar, filepath.Join(tempDir, ".ckb-home"))
+	t.Cleanup(func() { _ = os.Setenv(CKBHomeEnvVar, originalEnv) })
 
 	// Create a repo dir
 	repoDir := filepath.Join(tempDir, "my-repo")
@@ -294,7 +294,7 @@ func TestCanonicalizePath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	t.Cleanup(func() { _ = os.RemoveAll(tempDir) })
 
 	// Create test file
 	testFile := filepath.Join(tempDir, "subdir", "test.go")

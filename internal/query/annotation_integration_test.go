@@ -131,6 +131,12 @@ func TestRelatedDecisionStruct(t *testing.T) {
 	if len(rd.AffectedModules) != 2 {
 		t.Errorf("expected 2 affected modules, got %d", len(rd.AffectedModules))
 	}
+	if rd.Title != "Use Redis for caching" {
+		t.Errorf("expected title 'Use Redis for caching', got %s", rd.Title)
+	}
+	if rd.FilePath != "docs/decisions/adr-001-use-redis.md" {
+		t.Errorf("expected filePath, got %s", rd.FilePath)
+	}
 }
 
 func TestModuleAnnotationsStruct(t *testing.T) {
@@ -150,6 +156,12 @@ func TestModuleAnnotationsStruct(t *testing.T) {
 	}
 	if len(ma.Capabilities) != 2 {
 		t.Errorf("expected 2 capabilities, got %d", len(ma.Capabilities))
+	}
+	if len(ma.Tags) != 2 {
+		t.Errorf("expected 2 tags, got %d", len(ma.Tags))
+	}
+	if ma.Confidence != 0.95 {
+		t.Errorf("expected confidence 0.95, got %f", ma.Confidence)
 	}
 }
 

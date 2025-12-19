@@ -235,7 +235,7 @@ func (e *Exporter) findFilesInModule(repoRoot, modPath string) ([]string, error)
 	fullPath := filepath.Join(repoRoot, modPath)
 	err := filepath.Walk(fullPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil // Skip errors
+			return nil //nolint:nilerr // skip inaccessible files
 		}
 
 		if info.IsDir() {
