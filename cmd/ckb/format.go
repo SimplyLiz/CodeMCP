@@ -144,8 +144,28 @@ func formatResponseHuman(resp *Response) (string, error) {
 func formatStatusHuman(resp *StatusResponseCLI) (string, error) {
 	var b strings.Builder
 
-	b.WriteString(fmt.Sprintf("CKB Status - v%s\n", resp.CkbVersion))
-	b.WriteString(strings.Repeat("=", 60) + "\n\n")
+	b.WriteString(fmt.Sprintf("CKB v%s\n", resp.CkbVersion))
+	b.WriteString("──────────────────────────────────────────────────────────\n")
+
+	// Analysis Tier (prominent)
+	if resp.Tier != nil {
+		tierIcon := "◐"
+		switch resp.Tier.CurrentName {
+		case "Basic":
+			tierIcon = "○"
+		case "Enhanced":
+			tierIcon = "◉"
+		case "Full":
+			tierIcon = "●"
+		}
+		b.WriteString(fmt.Sprintf("%s Analysis Tier: %s (%s)\n", tierIcon, resp.Tier.CurrentName, resp.Tier.Description))
+		b.WriteString(fmt.Sprintf("  Available Tools: %d of %d\n", len(resp.Tier.AvailableTools), len(resp.Tier.AvailableTools)+len(resp.Tier.UnavailableTools)))
+
+		if resp.Tier.UpgradeHint != "" {
+			b.WriteString(fmt.Sprintf("\n  ⚡ %s\n", resp.Tier.UpgradeHint))
+		}
+		b.WriteString("\n")
+	}
 
 	// Overall health
 	healthIcon := "✓"
@@ -154,49 +174,43 @@ func formatStatusHuman(resp *StatusResponseCLI) (string, error) {
 	}
 	healthText := "Healthy"
 	if !resp.Healthy {
-		healthText = "Unhealthy"
+		healthText = "Issues detected"
 	}
-	b.WriteString(fmt.Sprintf("%s System Health: %s\n\n", healthIcon, healthText))
+	b.WriteString(fmt.Sprintf("%s System: %s\n\n", healthIcon, healthText))
 
-	// Repository State
-	if resp.RepoState != nil {
-		b.WriteString("Repository State:\n")
-		headCommit := resp.RepoState.HeadCommit
-		if len(headCommit) > 12 {
-			headCommit = headCommit[:12]
-		}
-		b.WriteString(fmt.Sprintf("  Head Commit: %s\n", headCommit))
-		b.WriteString(fmt.Sprintf("  Dirty: %v\n", resp.RepoState.Dirty))
-		b.WriteString(fmt.Sprintf("  Computed: %s\n\n", resp.RepoState.ComputedAt))
-	}
-
-	// Backends
+	// Backends (concise)
 	b.WriteString("Backends:\n")
 	for _, backend := range resp.Backends {
 		status := "✓"
 		if !backend.Available {
 			status = "✗"
 		}
-		availText := "Available"
-		if !backend.Available {
-			availText = "Unavailable"
+		details := ""
+		if backend.Details != "" && backend.Available {
+			details = " - " + backend.Details
 		}
-		b.WriteString(fmt.Sprintf("  %s %s: %s\n", status, backend.ID, availText))
-		if len(backend.Capabilities) > 0 {
-			b.WriteString(fmt.Sprintf("     Capabilities: %s\n", strings.Join(backend.Capabilities, ", ")))
-		}
-		if backend.Details != "" {
-			b.WriteString(fmt.Sprintf("     %s\n", backend.Details))
-		}
+		b.WriteString(fmt.Sprintf("  %s %s%s\n", status, backend.ID, details))
 	}
 	b.WriteString("\n")
 
-	// Cache
-	b.WriteString("Cache:\n")
-	b.WriteString(fmt.Sprintf("  Queries Cached: %d\n", resp.Cache.QueryCount))
-	b.WriteString(fmt.Sprintf("  Views Cached: %d\n", resp.Cache.ViewCount))
-	b.WriteString(fmt.Sprintf("  Hit Rate: %.1f%%\n", resp.Cache.HitRate*100))
-	b.WriteString(fmt.Sprintf("  Size: %s\n", formatBytes(resp.Cache.SizeBytes)))
+	// Repository State (compact)
+	if resp.RepoState != nil {
+		headCommit := resp.RepoState.HeadCommit
+		if len(headCommit) > 12 {
+			headCommit = headCommit[:12]
+		}
+		dirty := ""
+		if resp.RepoState.Dirty {
+			dirty = " (uncommitted changes)"
+		}
+		b.WriteString(fmt.Sprintf("Repository: %s%s\n", headCommit, dirty))
+	}
+
+	// Cache (one-liner)
+	if resp.Cache.QueryCount > 0 {
+		b.WriteString(fmt.Sprintf("Cache: %d queries, %.0f%% hit rate, %s\n",
+			resp.Cache.QueryCount, resp.Cache.HitRate*100, formatBytes(resp.Cache.SizeBytes)))
+	}
 
 	return b.String(), nil
 }
@@ -206,16 +220,7 @@ func formatDoctorHuman(resp *DoctorResponseCLI) (string, error) {
 	var b strings.Builder
 
 	b.WriteString("CKB Doctor\n")
-	b.WriteString(strings.Repeat("=", 60) + "\n\n")
-
-	// Overall health
-	healthIcon := "✓"
-	healthText := "All checks passed"
-	if !resp.Healthy {
-		healthIcon = "✗"
-		healthText = "Issues found"
-	}
-	b.WriteString(fmt.Sprintf("%s %s\n\n", healthIcon, healthText))
+	b.WriteString("──────────────────────────────────────────────────────────\n\n")
 
 	// Checks
 	for _, check := range resp.Checks {
@@ -234,16 +239,21 @@ func formatDoctorHuman(resp *DoctorResponseCLI) (string, error) {
 		b.WriteString(fmt.Sprintf("%s %s: %s\n", icon, check.Name, check.Message))
 
 		// Suggested fixes
-		if len(check.SuggestedFixes) > 0 {
-			b.WriteString("  Suggested fixes:\n")
+		if len(check.SuggestedFixes) > 0 && check.Status != "pass" {
 			for _, fix := range check.SuggestedFixes {
-				b.WriteString(fmt.Sprintf("    - %s\n", fix.Description))
 				if fix.Command != "" {
-					b.WriteString(fmt.Sprintf("      $ %s\n", fix.Command))
+					b.WriteString(fmt.Sprintf("  → %s\n", fix.Command))
 				}
 			}
 		}
-		b.WriteString("\n")
+	}
+
+	// Overall summary
+	b.WriteString("\n")
+	if resp.Healthy {
+		b.WriteString("✓ All checks passed\n")
+	} else {
+		b.WriteString("Run 'ckb doctor --fix' to generate fix script\n")
 	}
 
 	return b.String(), nil

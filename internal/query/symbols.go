@@ -413,6 +413,48 @@ func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (
 		}
 	}
 
+	// Fallback to tree-sitter if SCIP unavailable or returned no results
+	if len(results) == 0 && e.symbolExtractor != nil {
+		e.logger.Debug("Falling back to tree-sitter for symbol search", map[string]interface{}{
+			"query": opts.Query,
+		})
+
+		tsSymbols, err := e.symbolExtractor.Search(ctx, e.repoRoot, opts.Query, opts.Limit*2)
+		if err == nil && len(tsSymbols) > 0 {
+			for _, sym := range tsSymbols {
+				results = append(results, SearchResultItem{
+					StableId: fmt.Sprintf("ts:%s:%d", sym.Path, sym.StartLine),
+					Name:     sym.Name,
+					Kind:     string(sym.Kind),
+					ModuleId: sym.Path,
+					Location: &LocationInfo{
+						FileId:      sym.Path,
+						StartLine:   sym.StartLine,
+						StartColumn: sym.StartColumn,
+						EndLine:     sym.EndLine,
+						EndColumn:   sym.EndColumn,
+					},
+					Visibility: &VisibilityInfo{
+						Visibility: "unknown",
+						Confidence: 0.3,
+						Source:     "treesitter",
+					},
+				})
+			}
+			backendContribs = append(backendContribs, BackendContribution{
+				BackendId:    "treesitter",
+				Available:    true,
+				Used:         true,
+				ResultCount:  len(tsSymbols),
+				Completeness: 0.5, // Lower completeness for tree-sitter
+			})
+			completeness = CompletenessInfo{
+				Score:  0.5,
+				Reason: "treesitter-fallback",
+			}
+		}
+	}
+
 	// If no results, return empty response
 	if len(results) == 0 {
 		completeness = CompletenessInfo{Score: 0.0, Reason: "no-results"}

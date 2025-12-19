@@ -22,6 +22,8 @@ import (
 	"ckb/internal/logging"
 	"ckb/internal/output"
 	"ckb/internal/storage"
+	"ckb/internal/symbols"
+	"ckb/internal/tier"
 )
 
 // Engine is the central query coordinator for CKB.
@@ -46,6 +48,12 @@ type Engine struct {
 
 	// Complexity analyzer for hotspots
 	complexityAnalyzer *hotspots.ComplexityAnalyzer
+
+	// Tree-sitter symbol extractor for fallback mode
+	symbolExtractor *symbols.Extractor
+
+	// Tier detector for capability gating
+	tierDetector *tier.Detector
 
 	// Cached repo state
 	repoStateMu     sync.RWMutex
@@ -96,6 +104,8 @@ func NewEngine(repoRoot string, db *storage.DB, logger *logging.Logger, cfg *con
 		orchestrator:       orchestrator,
 		cache:              cache,
 		complexityAnalyzer: hotspots.NewComplexityAnalyzer(),
+		symbolExtractor:    symbols.NewExtractor(logger),
+		tierDetector:       tier.NewDetector(),
 	}
 
 	// Initialize backends
@@ -208,6 +218,10 @@ func (e *Engine) initializeBackends(cfg *config.Config) error {
 		} else {
 			e.scipAdapter = scipAdapter
 			e.orchestrator.RegisterBackend(scipAdapter)
+			// Update tier detector
+			if scipAdapter.IsAvailable() {
+				e.tierDetector.SetScipAvailable(true)
+			}
 		}
 	}
 
@@ -217,6 +231,23 @@ func (e *Engine) initializeBackends(cfg *config.Config) error {
 	}
 
 	return lastErr
+}
+
+// GetTierInfo returns the current analysis tier information.
+func (e *Engine) GetTierInfo() tier.TierInfo {
+	// Refresh SCIP availability in case index was created/deleted
+	if e.scipAdapter != nil {
+		e.tierDetector.SetScipAvailable(e.scipAdapter.IsAvailable())
+	}
+	return e.tierDetector.GetTierInfo()
+}
+
+// GetTier returns the current analysis tier.
+func (e *Engine) GetTier() tier.AnalysisTier {
+	if e.scipAdapter != nil {
+		e.tierDetector.SetScipAvailable(e.scipAdapter.IsAvailable())
+	}
+	return e.tierDetector.DetectTier()
 }
 
 // GetRepoState returns the current repository state.

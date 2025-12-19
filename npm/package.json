@@ -1,0 +1,37 @@
+{
+  "name": "@tastehub/ckb",
+  "version": "7.0.0",
+  "description": "Code Knowledge Base - AI-friendly code intelligence for Claude and other LLM assistants",
+  "keywords": [
+    "code-intelligence",
+    "mcp",
+    "claude",
+    "llm",
+    "scip",
+    "lsp",
+    "analysis"
+  ],
+  "homepage": "https://github.com/simplyliz/ckb",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/simplyliz/ckb.git"
+  },
+  "license": "MIT",
+  "author": "SimplyLiz",
+  "bin": {
+    "ckb": "bin/ckb.js"
+  },
+  "files": [
+    "bin"
+  ],
+  "optionalDependencies": {
+    "@tastehub/ckb-darwin-arm64": "7.0.0",
+    "@tastehub/ckb-darwin-x64": "7.0.0",
+    "@tastehub/ckb-linux-x64": "7.0.0",
+    "@tastehub/ckb-linux-arm64": "7.0.0",
+    "@tastehub/ckb-win32-x64": "7.0.0"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}

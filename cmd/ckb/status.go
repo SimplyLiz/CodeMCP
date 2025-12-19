@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"ckb/internal/query"
+	"ckb/internal/tier"
 )
 
 var (
@@ -62,6 +63,7 @@ func runStatus(cmd *cobra.Command, args []string) {
 // StatusResponseCLI contains the complete system status for CLI output
 type StatusResponseCLI struct {
 	CkbVersion string             `json:"ckbVersion"`
+	Tier       *tier.TierInfo     `json:"tier"`
 	RepoState  *query.RepoState   `json:"repoState"`
 	Backends   []BackendStatusCLI `json:"backends"`
 	Cache      CacheStatusCLI     `json:"cache"`
@@ -109,6 +111,7 @@ func convertStatusResponse(resp *query.StatusResponse) *StatusResponseCLI {
 
 	return &StatusResponseCLI{
 		CkbVersion: resp.CkbVersion,
+		Tier:       resp.Tier,
 		RepoState:  resp.RepoState,
 		Backends:   backends,
 		Cache:      cache,

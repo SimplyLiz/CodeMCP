@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"ckb/internal/tier"
 	"ckb/internal/version"
 )
 
@@ -13,6 +14,7 @@ import (
 type StatusResponse struct {
 	CkbVersion      string          `json:"ckbVersion"`
 	Healthy         bool            `json:"healthy"`
+	Tier            *tier.TierInfo  `json:"tier"`
 	RepoState       *RepoState      `json:"repoState"`
 	Backends        []BackendStatus `json:"backends"`
 	Cache           *CacheStatus    `json:"cache"`
@@ -64,9 +66,13 @@ func (e *Engine) GetStatus(ctx context.Context) (*StatusResponse, error) {
 	// Get cache status
 	cacheStatus := e.getCacheStatus()
 
+	// Get tier info
+	tierInfo := e.GetTierInfo()
+
 	return &StatusResponse{
 		CkbVersion:      version.Version,
 		Healthy:         healthy,
+		Tier:            &tierInfo,
 		RepoState:       repoState,
 		Backends:        backendStatuses,
 		Cache:           cacheStatus,
