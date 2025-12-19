@@ -71,8 +71,8 @@ changelog:
 
 release:
   github:
-    owner: simplyliz
-    name: ckb
+    owner: SimplyLiz
+    name: CodeMCP
   prerelease: auto
   draft: false
   name_template: "CKB v{{.Version}}"
