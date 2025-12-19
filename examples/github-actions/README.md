@@ -38,17 +38,19 @@ Runs daily to refresh CKB's architectural model:
 Replace the installation step with your preferred method:
 
 ```yaml
-# From source
-- run: go install github.com/yourorg/ckb@latest
+# npm (Recommended)
+- uses: actions/setup-node@v4
+  with:
+    node-version: '20'
+- run: npm install -g @tastehub/ckb
 
-# Pre-built binary
+# Or use npx (no install needed)
+- run: npx @tastehub/ckb init
+
+# Pre-built binary (alternative)
 - run: |
-    curl -sSL https://github.com/yourorg/ckb/releases/latest/download/ckb-linux-amd64 -o ckb
-    chmod +x ckb
+    curl -sSL https://github.com/SimplyLiz/CodeMCP/releases/latest/download/ckb_linux_amd64.tar.gz | tar xz
     sudo mv ckb /usr/local/bin/
-
-# Docker
-- run: docker pull yourorg/ckb:latest
 ```
 
 ### Customizing Analysis

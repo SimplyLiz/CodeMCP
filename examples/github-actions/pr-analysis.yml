@@ -21,17 +21,13 @@ jobs:
         with:
           fetch-depth: 0  # Full history needed for git-blame analysis
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          go-version: '1.21'
+          node-version: '20'
 
       - name: Install CKB
-        run: |
-          go install github.com/yourorg/ckb@latest
-          # Or download pre-built binary:
-          # curl -sSL https://github.com/yourorg/ckb/releases/latest/download/ckb-linux-amd64 -o /usr/local/bin/ckb
-          # chmod +x /usr/local/bin/ckb
+        run: npm install -g @tastehub/ckb
 
       - name: Initialize CKB and Start Server
         run: |

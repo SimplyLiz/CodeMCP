@@ -32,7 +32,7 @@ Examples:
 
 func init() {
 	setupCmd.Flags().BoolVar(&setupGlobal, "global", false, "Configure globally for all projects")
-	setupCmd.Flags().BoolVar(&setupNpx, "npx", false, "Use npx @simplyliz/ckb for portable setup")
+	setupCmd.Flags().BoolVar(&setupNpx, "npx", false, "Use npx @tastehub/ckb for portable setup")
 	rootCmd.AddCommand(setupCmd)
 }
 
@@ -53,7 +53,7 @@ func runSetup(cmd *cobra.Command, args []string) error {
 
 	if setupNpx {
 		ckbCommand = "npx"
-		ckbArgs = []string{"-y", "@simplyliz/ckb", "mcp"}
+		ckbArgs = []string{"-y", "@tastehub/ckb", "mcp"}
 	} else {
 		// Find the current ckb binary
 		ckbPath, err := os.Executable()
