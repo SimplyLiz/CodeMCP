@@ -50,14 +50,15 @@ type ExplainSymbolResponse struct {
 
 // ExplainSymbolFacts mirrors the CKB navigation contract at a simplified level.
 type ExplainSymbolFacts struct {
-	Symbol   *SymbolInfo         `json:"symbol,omitempty"`
-	Usage    *ExplainUsage       `json:"usage,omitempty"`
-	History  *ExplainHistory     `json:"history,omitempty"`
-	Flags    *ExplainSymbolFlags `json:"flags,omitempty"`
-	Callers  []ExplainCaller     `json:"callers,omitempty"`
-	Callees  []ExplainCallee     `json:"callees,omitempty"`
-	Module   string              `json:"module,omitempty"`
-	Warnings []string            `json:"warnings,omitempty"`
+	Symbol      *SymbolInfo         `json:"symbol,omitempty"`
+	Usage       *ExplainUsage       `json:"usage,omitempty"`
+	History     *ExplainHistory     `json:"history,omitempty"`
+	Flags       *ExplainSymbolFlags `json:"flags,omitempty"`
+	Callers     []ExplainCaller     `json:"callers,omitempty"`
+	Callees     []ExplainCallee     `json:"callees,omitempty"`
+	Module      string              `json:"module,omitempty"`
+	Warnings    []string            `json:"warnings,omitempty"`
+	Annotations *AnnotationContext  `json:"annotations,omitempty"` // v6.5: Related ADRs and module metadata
 }
 
 // ExplainUsage captures high level usage stats.
@@ -114,10 +115,11 @@ type JustifySymbolOptions struct {
 // JustifySymbolResponse returns a verdict-like assessment.
 type JustifySymbolResponse struct {
 	AINavigationMeta
-	Facts      *ExplainSymbolFacts `json:"facts"`
-	Verdict    string              `json:"verdict"`
-	Confidence float64             `json:"confidence"`
-	Reasoning  string              `json:"reasoning"`
+	Facts            *ExplainSymbolFacts `json:"facts"`
+	Verdict          string              `json:"verdict"`
+	Confidence       float64             `json:"confidence"`
+	Reasoning        string              `json:"reasoning"`
+	RelatedDecisions []RelatedDecision   `json:"relatedDecisions,omitempty"` // v6.5: ADRs that may justify this symbol
 }
 
 // CallGraphOptions configures call graph retrieval.
@@ -161,15 +163,18 @@ type ModuleOverviewOptions struct {
 // ModuleOverviewResponse returns coarse module facts.
 type ModuleOverviewResponse struct {
 	AINavigationMeta
-	Module        ModuleOverviewModule `json:"module"`
-	Size          ModuleSize           `json:"size"`
-	RecentCommits []string             `json:"recentCommits,omitempty"`
+	Module           ModuleOverviewModule `json:"module"`
+	Size             ModuleSize           `json:"size"`
+	RecentCommits    []string             `json:"recentCommits,omitempty"`
+	Annotations      *ModuleAnnotations   `json:"annotations,omitempty"`      // v6.5: Declared module metadata
+	RelatedDecisions []RelatedDecision    `json:"relatedDecisions,omitempty"` // v6.5: ADRs affecting this module
 }
 
 // ModuleOverviewModule contains module identity.
 type ModuleOverviewModule struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
+	Name           string `json:"name"`
+	Path           string `json:"path"`
+	Responsibility string `json:"responsibility,omitempty"` // v6.5: Short description of module purpose
 }
 
 // ModuleSize contains basic size stats.
@@ -274,6 +279,11 @@ func (e *Engine) ExplainSymbol(ctx context.Context, opts ExplainSymbolOptions) (
 		}
 	}
 
+	// v6.5: Add annotation context (related ADRs and module metadata)
+	if facts.Module != "" {
+		facts.Annotations = e.getAnnotationContext(facts.Module)
+	}
+
 	summary := buildExplainSummary(facts)
 
 	prov := symbolResp.Provenance
@@ -350,6 +360,12 @@ func (e *Engine) JustifySymbol(ctx context.Context, opts JustifySymbolOptions) (
 
 	verdict, confidence, reasoning := computeJustifyVerdict(explain.Facts)
 
+	// v6.5: Extract related decisions from annotations for response
+	var relatedDecisions []RelatedDecision
+	if explain.Facts.Annotations != nil && len(explain.Facts.Annotations.RelatedDecisions) > 0 {
+		relatedDecisions = explain.Facts.Annotations.RelatedDecisions
+	}
+
 	return &JustifySymbolResponse{
 		AINavigationMeta: AINavigationMeta{
 			CkbVersion:    version.Version,
@@ -360,18 +376,30 @@ func (e *Engine) JustifySymbol(ctx context.Context, opts JustifySymbolOptions) (
 			Drilldowns:    explain.Drilldowns,
 			Provenance:    explain.Provenance,
 		},
-		Facts:      &explain.Facts,
-		Verdict:    verdict,
-		Confidence: confidence,
-		Reasoning:  reasoning,
+		Facts:            &explain.Facts,
+		Verdict:          verdict,
+		Confidence:       confidence,
+		Reasoning:        reasoning,
+		RelatedDecisions: relatedDecisions,
 	}, nil
 }
 
 // computeJustifyVerdict encapsulates verdict selection logic for unit testing.
+// v6.5: Now considers ADRs - if a module has an accepted ADR, symbols are less likely to be removal candidates.
 func computeJustifyVerdict(facts ExplainSymbolFacts) (verdict string, confidence float64, reasoning string) {
 	// Has active callers -> keep
 	if facts.Usage != nil && facts.Usage.CallerCount > 0 {
 		return "keep", 0.9, fmt.Sprintf("Active callers detected (%d)", facts.Usage.CallerCount)
+	}
+
+	// v6.5: Has architectural decision -> investigate (not auto-remove)
+	// An ADR suggests intentional design, even if no callers are found
+	if facts.Annotations != nil && len(facts.Annotations.RelatedDecisions) > 0 {
+		for _, d := range facts.Annotations.RelatedDecisions {
+			if d.Status == "accepted" || d.Status == "proposed" {
+				return "investigate", 0.75, fmt.Sprintf("No callers found, but related to %s: %s", d.ID, d.Title)
+			}
+		}
 	}
 
 	// Public API with no callers -> investigate
@@ -379,7 +407,7 @@ func computeJustifyVerdict(facts ExplainSymbolFacts) (verdict string, confidence
 		return "investigate", 0.6, "Public API but no callers found"
 	}
 
-	// No callers, not public -> remove candidate
+	// No callers, not public, no ADR -> remove candidate
 	return "remove-candidate", 0.7, "No callers found"
 }
 
@@ -654,6 +682,16 @@ func (e *Engine) GetModuleOverview(ctx context.Context, opts ModuleOverviewOptio
 		}
 	}
 
+	// v6.5: Get module annotations and related decisions
+	annotations := e.getModuleAnnotations(modulePath)
+	relatedDecisions := e.getRelatedDecisions(modulePath)
+
+	// Extract responsibility for module overview
+	var responsibility string
+	if annotations != nil && annotations.Responsibility != "" {
+		responsibility = annotations.Responsibility
+	}
+
 	return &ModuleOverviewResponse{
 		AINavigationMeta: AINavigationMeta{
 			CkbVersion:    version.Version,
@@ -663,14 +701,17 @@ func (e *Engine) GetModuleOverview(ctx context.Context, opts ModuleOverviewOptio
 			Provenance:    prov,
 		},
 		Module: ModuleOverviewModule{
-			Name: moduleName,
-			Path: modulePath,
+			Name:           moduleName,
+			Path:           modulePath,
+			Responsibility: responsibility,
 		},
 		Size: ModuleSize{
 			FileCount:   fileCount,
 			SymbolCount: 0, // Not yet implemented
 		},
-		RecentCommits: recentCommits,
+		RecentCommits:    recentCommits,
+		Annotations:      annotations,
+		RelatedDecisions: relatedDecisions,
 	}, nil
 }
 

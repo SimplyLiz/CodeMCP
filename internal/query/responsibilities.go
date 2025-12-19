@@ -87,21 +87,7 @@ func (e *Engine) GetModuleResponsibilities(ctx context.Context, opts GetModuleRe
 	if opts.ModuleId != "" && archResp != nil {
 		for _, m := range archResp.Modules {
 			if m.ModuleId == opts.ModuleId || m.Path == opts.ModuleId {
-				resp, respErr := extractor.ExtractFromModule(m.Path)
-				if respErr != nil {
-					limitations = append(limitations, "Failed to extract from "+m.Path+": "+respErr.Error())
-					continue
-				}
-
-				modResp := ModuleResponsibility{
-					ModuleId:     m.ModuleId,
-					Name:         m.Name,
-					Path:         m.Path,
-					Summary:      resp.Summary,
-					Capabilities: resp.Capabilities,
-					Source:       resp.Source,
-					Confidence:   resp.Confidence,
-				}
+				modResp := e.buildModuleResponsibility(m.ModuleId, m.Name, m.Path, extractor, &limitations)
 
 				// Include file responsibilities if requested
 				if opts.IncludeFiles {
@@ -119,21 +105,7 @@ func (e *Engine) GetModuleResponsibilities(ctx context.Context, opts GetModuleRe
 				break
 			}
 
-			resp, respErr := extractor.ExtractFromModule(m.Path)
-			if respErr != nil {
-				limitations = append(limitations, "Failed to extract from "+m.Path+": "+respErr.Error())
-				continue
-			}
-
-			modResp := ModuleResponsibility{
-				ModuleId:     m.ModuleId,
-				Name:         m.Name,
-				Path:         m.Path,
-				Summary:      resp.Summary,
-				Capabilities: resp.Capabilities,
-				Source:       resp.Source,
-				Confidence:   resp.Confidence,
-			}
+			modResp := e.buildModuleResponsibility(m.ModuleId, m.Name, m.Path, extractor, &limitations)
 
 			// Include file responsibilities if requested
 			if opts.IncludeFiles {
@@ -254,4 +226,72 @@ func isSourceFile(name string) bool {
 	}
 	ext := filepath.Ext(name)
 	return sourceExtensions[ext]
+}
+
+// buildModuleResponsibility creates a ModuleResponsibility, preferring declared annotations over inferred.
+// v6.5: Declared annotations take priority with higher confidence.
+func (e *Engine) buildModuleResponsibility(moduleId, name, path string, extractor *responsibilities.Extractor, limitations *[]string) ModuleResponsibility {
+	modResp := ModuleResponsibility{
+		ModuleId: moduleId,
+		Name:     name,
+		Path:     path,
+	}
+
+	// v6.5: Check for declared annotations first
+	annotations := e.getModuleAnnotations(moduleId)
+	if annotations == nil {
+		// Also try with path as moduleId (common pattern)
+		annotations = e.getModuleAnnotations(path)
+	}
+
+	// If we have declared annotations, use them with high confidence
+	if annotations != nil && annotations.Source == "declared" {
+		modResp.Summary = annotations.Responsibility
+		modResp.Capabilities = annotations.Capabilities
+		modResp.Source = "declared"
+		modResp.Confidence = annotations.Confidence
+		return modResp
+	}
+
+	// Fall back to inference
+	resp, respErr := extractor.ExtractFromModule(path)
+	if respErr != nil {
+		if limitations != nil {
+			*limitations = append(*limitations, "Failed to extract from "+path+": "+respErr.Error())
+		}
+		// Return what we have from annotations (if any)
+		if annotations != nil {
+			modResp.Summary = annotations.Responsibility
+			modResp.Capabilities = annotations.Capabilities
+			modResp.Source = annotations.Source
+			modResp.Confidence = annotations.Confidence
+		}
+		return modResp
+	}
+
+	// Use inferred data
+	modResp.Summary = resp.Summary
+	modResp.Capabilities = resp.Capabilities
+	modResp.Source = resp.Source
+	modResp.Confidence = resp.Confidence
+
+	// Merge with annotations if available (declared takes priority for specific fields)
+	if annotations != nil {
+		// If annotation has responsibility, prefer it
+		if annotations.Responsibility != "" {
+			modResp.Summary = annotations.Responsibility
+			// Boost confidence when we have both declared and inferred
+			modResp.Source = "declared+inferred"
+			modResp.Confidence = (annotations.Confidence + resp.Confidence) / 2
+			if modResp.Confidence < annotations.Confidence {
+				modResp.Confidence = annotations.Confidence
+			}
+		}
+		// Merge capabilities (annotations take priority)
+		if len(annotations.Capabilities) > 0 {
+			modResp.Capabilities = annotations.Capabilities
+		}
+	}
+
+	return modResp
 }

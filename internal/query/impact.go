@@ -25,18 +25,19 @@ type AnalyzeImpactOptions struct {
 
 // AnalyzeImpactResponse is the response for analyzeImpact.
 type AnalyzeImpactResponse struct {
-	Symbol            *SymbolInfo          `json:"symbol"`
-	Visibility        *VisibilityInfo      `json:"visibility"`
-	RiskScore         *RiskScore           `json:"riskScore"`
-	DirectImpact      []ImpactItem         `json:"directImpact"`
-	TransitiveImpact  []ImpactItem         `json:"transitiveImpact,omitempty"`
-	ModulesAffected   []ModuleImpact       `json:"modulesAffected"`
+	Symbol            *SymbolInfo           `json:"symbol"`
+	Visibility        *VisibilityInfo       `json:"visibility"`
+	RiskScore         *RiskScore            `json:"riskScore"`
+	DirectImpact      []ImpactItem          `json:"directImpact"`
+	TransitiveImpact  []ImpactItem          `json:"transitiveImpact,omitempty"`
+	ModulesAffected   []ModuleImpact        `json:"modulesAffected"`
 	ObservedUsage     *ObservedUsageSummary `json:"observedUsage,omitempty"`
-	BlendedConfidence float64              `json:"blendedConfidence,omitempty"`
-	Truncated         bool                 `json:"truncated,omitempty"`
-	TruncationInfo    *TruncationInfo      `json:"truncationInfo,omitempty"`
-	Provenance        *Provenance          `json:"provenance"`
-	Drilldowns        []output.Drilldown   `json:"drilldowns,omitempty"`
+	RelatedDecisions  []RelatedDecision     `json:"relatedDecisions,omitempty"` // v6.5: ADRs affecting impacted modules
+	BlendedConfidence float64               `json:"blendedConfidence,omitempty"`
+	Truncated         bool                  `json:"truncated,omitempty"`
+	TruncationInfo    *TruncationInfo       `json:"truncationInfo,omitempty"`
+	Provenance        *Provenance           `json:"provenance"`
+	Drilldowns        []output.Drilldown    `json:"drilldowns,omitempty"`
 }
 
 // ObservedUsageSummary contains telemetry-based usage information
@@ -305,6 +306,33 @@ func (e *Engine) AnalyzeImpact(ctx context.Context, opts AnalyzeImpactOptions) (
 		blendedConfidence = completeness.Score * 0.79
 	}
 
+	// v6.5: Gather related decisions for all affected modules
+	var relatedDecisions []RelatedDecision
+	seenDecisions := make(map[string]bool)
+
+	// Check symbol's own module first
+	if symbolInfo.ModuleId != "" {
+		for _, d := range e.getRelatedDecisions(symbolInfo.ModuleId) {
+			if !seenDecisions[d.ID] {
+				relatedDecisions = append(relatedDecisions, d)
+				seenDecisions[d.ID] = true
+			}
+		}
+	}
+
+	// Check affected modules (limit to avoid excessive lookups)
+	for i, mod := range modulesAffected {
+		if i >= 5 {
+			break
+		}
+		for _, d := range e.getRelatedDecisions(mod.ModuleId) {
+			if !seenDecisions[d.ID] {
+				relatedDecisions = append(relatedDecisions, d)
+				seenDecisions[d.ID] = true
+			}
+		}
+	}
+
 	return &AnalyzeImpactResponse{
 		Symbol:            symbolInfo,
 		Visibility:        visibility,
@@ -313,6 +341,7 @@ func (e *Engine) AnalyzeImpact(ctx context.Context, opts AnalyzeImpactOptions) (
 		TransitiveImpact:  transitiveImpact,
 		ModulesAffected:   modulesAffected,
 		ObservedUsage:     observedUsage,
+		RelatedDecisions:  relatedDecisions,
 		BlendedConfidence: blendedConfidence,
 		Truncated:         truncationInfo != nil,
 		TruncationInfo:    truncationInfo,
