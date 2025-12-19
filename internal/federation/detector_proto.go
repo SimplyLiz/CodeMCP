@@ -59,13 +59,13 @@ func (d *ProtoDetector) Detect(repoPath string, repoUID string, repoID string) (
 
 	// Parse each proto file
 	for _, protoPath := range protoFiles {
-		relPath, err := filepath.Rel(repoPath, protoPath)
-		if err != nil {
+		relPath, relErr := filepath.Rel(repoPath, protoPath)
+		if relErr != nil {
 			continue
 		}
 
-		contract, imports, err := d.parseProtoFile(protoPath, relPath, repoUID, repoID)
-		if err != nil {
+		contract, imports, parseErr := d.parseProtoFile(protoPath, relPath, repoUID, repoID)
+		if parseErr != nil {
 			continue
 		}
 
@@ -108,7 +108,7 @@ func (d *ProtoDetector) parseProtoFile(filePath, relPath, repoUID, repoID string
 	if err != nil {
 		return nil, nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	metadata := ProtoMetadata{
 		Imports:  []string{},
@@ -241,22 +241,22 @@ func (d *ProtoDetector) findGeneratedCodeConsumers(repoPath, repoUID, repoID str
 	var refs []OutgoingReference
 
 	// Find Go generated files (*.pb.go)
-	goFiles, err := findFiles(repoPath, "*.pb.go")
-	if err == nil {
+	goFiles, goErr := findFiles(repoPath, "*.pb.go")
+	if goErr == nil {
 		for _, goFile := range goFiles {
-			ref, err := d.parseGoGeneratedFile(goFile, repoPath, repoUID, repoID)
-			if err == nil && ref != nil {
+			ref, parseErr := d.parseGoGeneratedFile(goFile, repoPath, repoUID, repoID)
+			if parseErr == nil && ref != nil {
 				refs = append(refs, *ref)
 			}
 		}
 	}
 
 	// Find TypeScript generated files (*.pb.ts, *_pb.js)
-	tsFiles, err := findFiles(repoPath, "*.pb.ts")
-	if err == nil {
+	tsFiles, tsErr := findFiles(repoPath, "*.pb.ts")
+	if tsErr == nil {
 		for _, tsFile := range tsFiles {
-			ref, err := d.parseTSGeneratedFile(tsFile, repoPath, repoUID, repoID)
-			if err == nil && ref != nil {
+			ref, parseErr := d.parseTSGeneratedFile(tsFile, repoPath, repoUID, repoID)
+			if parseErr == nil && ref != nil {
 				refs = append(refs, *ref)
 			}
 		}
@@ -281,7 +281,7 @@ func (d *ProtoDetector) parseGoGeneratedFile(filePath, repoPath, repoUID, repoID
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	relPath, _ := filepath.Rel(repoPath, filePath)
 
@@ -315,7 +315,7 @@ func (d *ProtoDetector) parseTSGeneratedFile(filePath, repoPath, repoUID, repoID
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	relPath, _ := filepath.Rel(repoPath, filePath)
 
@@ -357,7 +357,7 @@ func (d *ProtoDetector) findBufDependencies(repoPath, repoUID, repoID string) ([
 	if err != nil {
 		return refs, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	inDeps := false

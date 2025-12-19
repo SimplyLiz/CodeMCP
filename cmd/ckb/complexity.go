@@ -98,28 +98,28 @@ func runComplexity(cmd *cobra.Command, args []string) {
 	fmt.Println(output)
 
 	logger.Debug("Complexity analysis completed", map[string]interface{}{
-		"file":           filePath,
-		"functionCount":  fc.FunctionCount,
-		"maxCyclomatic":  fc.MaxCyclomatic,
-		"maxCognitive":   fc.MaxCognitive,
-		"duration":       time.Since(start).Milliseconds(),
+		"file":          filePath,
+		"functionCount": fc.FunctionCount,
+		"maxCyclomatic": fc.MaxCyclomatic,
+		"maxCognitive":  fc.MaxCognitive,
+		"duration":      time.Since(start).Milliseconds(),
 	})
 }
 
 // ComplexityResponseCLI contains complexity results for CLI output
 type ComplexityResponseCLI struct {
-	File      string                   `json:"file"`
-	Language  string                   `json:"language"`
-	Summary   ComplexitySummaryCLI     `json:"summary"`
-	Functions []FunctionComplexityCLI  `json:"functions,omitempty"`
+	File      string                  `json:"file"`
+	Language  string                  `json:"language"`
+	Summary   ComplexitySummaryCLI    `json:"summary"`
+	Functions []FunctionComplexityCLI `json:"functions,omitempty"`
 }
 
 type ComplexitySummaryCLI struct {
-	FunctionCount    int `json:"functionCount"`
-	TotalCyclomatic  int `json:"totalCyclomatic"`
-	TotalCognitive   int `json:"totalCognitive"`
-	MaxCyclomatic    int `json:"maxCyclomatic"`
-	MaxCognitive     int `json:"maxCognitive"`
+	FunctionCount     int     `json:"functionCount"`
+	TotalCyclomatic   int     `json:"totalCyclomatic"`
+	TotalCognitive    int     `json:"totalCognitive"`
+	MaxCyclomatic     int     `json:"maxCyclomatic"`
+	MaxCognitive      int     `json:"maxCognitive"`
 	AverageCyclomatic float64 `json:"averageCyclomatic"`
 	AverageCognitive  float64 `json:"averageCognitive"`
 }

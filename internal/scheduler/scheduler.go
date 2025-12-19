@@ -186,17 +186,18 @@ func (s *Scheduler) executeSchedule(schedule *Schedule) {
 	}
 
 	// Update schedule
-	if err := schedule.MarkRun(err == nil, duration, errMsg); err != nil {
+	success := err == nil
+	if markErr := schedule.MarkRun(success, duration, errMsg); markErr != nil {
 		s.logger.Error("Failed to calculate next run time", map[string]interface{}{
 			"scheduleId": schedule.ID,
-			"error":      err.Error(),
+			"error":      markErr.Error(),
 		})
 	}
 
-	if err := s.store.UpdateSchedule(schedule); err != nil {
+	if updateErr := s.store.UpdateSchedule(schedule); updateErr != nil {
 		s.logger.Error("Failed to update schedule", map[string]interface{}{
 			"scheduleId": schedule.ID,
-			"error":      err.Error(),
+			"error":      updateErr.Error(),
 		})
 	}
 }
@@ -521,7 +522,7 @@ func (s *Store) ListSchedules(opts ListSchedulesOptions) (*ListSchedulesResponse
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var schedules []ScheduleSummary
 	for rows.Next() {
@@ -551,7 +552,7 @@ func (s *Store) GetDueSchedules() ([]*Schedule, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var schedules []*Schedule
 	for rows.Next() {

@@ -184,7 +184,7 @@ func (s *Storage) GetObservedUsage(symbolID string, periodFilter string) ([]Obse
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var usages []ObservedUsage
 	for rows.Next() {
@@ -221,7 +221,7 @@ func (s *Storage) GetObservedCallers(symbolID string, limit int) ([]ObservedCall
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var callers []ObservedCaller
 	for rows.Next() {
@@ -249,7 +249,7 @@ func (s *Storage) GetSymbolsWithZeroCalls(minPeriod string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var symbols []string
 	for rows.Next() {
@@ -415,7 +415,7 @@ func (s *Storage) GetCoverageSnapshots(days int) ([]CoverageSnapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var snapshots []CoverageSnapshot
 	for rows.Next() {
@@ -454,7 +454,7 @@ func (s *Storage) GetUnmappedServices(limit int) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var services []string
 	for rows.Next() {
@@ -497,7 +497,7 @@ func (s *Storage) GetActiveSourcesLast24h() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var sources []string
 	for rows.Next() {

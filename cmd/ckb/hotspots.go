@@ -11,11 +11,11 @@ import (
 )
 
 var (
-	hotspotsFormat     string
-	hotspotsScope      string
-	hotspotsLimit      int
-	hotspotsTimeStart  string
-	hotspotsTimeEnd    string
+	hotspotsFormat    string
+	hotspotsScope     string
+	hotspotsLimit     int
+	hotspotsTimeStart string
+	hotspotsTimeEnd   string
 )
 
 var hotspotsCmd = &cobra.Command{
@@ -97,13 +97,13 @@ type HotspotsResponseCLI struct {
 }
 
 type HotspotCLI struct {
-	FilePath   string            `json:"filePath"`
-	Role       string            `json:"role,omitempty"`
-	Language   string            `json:"language,omitempty"`
-	Churn      HotspotChurnCLI   `json:"churn"`
-	Recency    string            `json:"recency"`
-	RiskLevel  string            `json:"riskLevel"`
-	Score      float64           `json:"score"`
+	FilePath  string          `json:"filePath"`
+	Role      string          `json:"role,omitempty"`
+	Language  string          `json:"language,omitempty"`
+	Churn     HotspotChurnCLI `json:"churn"`
+	Recency   string          `json:"recency"`
+	RiskLevel string          `json:"riskLevel"`
+	Score     float64         `json:"score"`
 }
 
 type HotspotChurnCLI struct {
@@ -117,9 +117,9 @@ func convertHotspotsResponse(resp *query.GetHotspotsResponse) *HotspotsResponseC
 	hotspots := make([]HotspotCLI, 0, len(resp.Hotspots))
 	for _, h := range resp.Hotspots {
 		hotspot := HotspotCLI{
-			FilePath:  h.FilePath,
-			Role:      h.Role,
-			Language:  h.Language,
+			FilePath: h.FilePath,
+			Role:     h.Role,
+			Language: h.Language,
 			Churn: HotspotChurnCLI{
 				ChangeCount:    h.Churn.ChangeCount,
 				AuthorCount:    h.Churn.AuthorCount,

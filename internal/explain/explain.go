@@ -15,16 +15,16 @@ import (
 
 // Explainer provides symbol explanation functionality
 type Explainer struct {
-	repoRoot        string
-	logger          *logging.Logger
+	repoRoot         string
+	logger           *logging.Logger
 	couplingAnalyzer *coupling.Analyzer
 }
 
 // NewExplainer creates a new symbol explainer
 func NewExplainer(repoRoot string, logger *logging.Logger) *Explainer {
 	return &Explainer{
-		repoRoot:        repoRoot,
-		logger:          logger,
+		repoRoot:         repoRoot,
+		logger:           logger,
 		couplingAnalyzer: coupling.NewAnalyzer(repoRoot, logger),
 	}
 }

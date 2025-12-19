@@ -13,11 +13,11 @@ import (
 
 // IngestHandler handles telemetry ingestion requests
 type IngestHandler struct {
-	storage    *Storage
-	mapper     *ServiceMapper
-	matcher    *Matcher
-	config     config.TelemetryConfig
-	logger     *logging.Logger
+	storage *Storage
+	mapper  *ServiceMapper
+	matcher *Matcher
+	config  config.TelemetryConfig
+	logger  *logging.Logger
 }
 
 // NewIngestHandler creates a new ingestion handler
@@ -57,7 +57,7 @@ func (h *IngestHandler) HandleJSONIngest(w http.ResponseWriter, r *http.Request)
 
 	// Return response
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 // ProcessPayload processes an ingest payload and stores the results
@@ -174,7 +174,7 @@ func (h *IngestHandler) ProcessPayload(payload *IngestPayload) IngestResponse {
 	syncLog.EventsReceived = response.Accepted
 	syncLog.CoverageScore = coverage.Overall.Score
 	syncLog.CoverageLevel = string(coverage.Overall.Level)
-	h.storage.UpdateSyncLog(syncLog)
+	_ = h.storage.UpdateSyncLog(syncLog)
 
 	return response
 }

@@ -452,6 +452,9 @@ func TestCallGraphStructs(t *testing.T) {
 	if len(graph.Callees) != 1 {
 		t.Errorf("len(graph.Callees) = %d, expected 1", len(graph.Callees))
 	}
+	if len(graph.Callers) != 0 {
+		t.Errorf("len(graph.Callers) = %d, expected 0", len(graph.Callers))
+	}
 }
 
 func TestCallGraphOptionsDefaults(t *testing.T) {

@@ -160,7 +160,7 @@ func runContractsList(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open federation: %w", err)
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	opts := federation.ListContractsOptions{
 		RepoID:       contractsRepoID,
@@ -207,7 +207,7 @@ func runContractsImpact(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open federation: %w", err)
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	opts := federation.AnalyzeContractImpactOptions{
 		Federation:        fedName,
@@ -289,7 +289,7 @@ func runContractsDeps(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open federation: %w", err)
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	opts := federation.GetDependenciesOptions{
 		Federation:       fedName,
@@ -353,7 +353,7 @@ func runContractsSuppress(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open federation: %w", err)
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	if err := fed.SuppressContractEdge(contractsEdgeID, "cli", contractsSuppressReason); err != nil {
 		return fmt.Errorf("failed to suppress edge: %w", err)
@@ -375,7 +375,7 @@ func runContractsVerify(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open federation: %w", err)
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	if err := fed.VerifyContractEdge(contractsEdgeID, "cli"); err != nil {
 		return fmt.Errorf("failed to verify edge: %w", err)
@@ -397,7 +397,7 @@ func runContractsStats(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open federation: %w", err)
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	stats, err := fed.GetContractStats()
 	if err != nil {

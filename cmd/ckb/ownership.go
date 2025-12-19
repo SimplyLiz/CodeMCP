@@ -16,7 +16,7 @@ var (
 	ownershipIncludeHistory bool
 	ownershipFormat         string
 	// Drift subcommand flags
-	driftScope     string
+	driftScope     string //nolint:unused // reserved for future use
 	driftThreshold float64
 	driftLimit     int
 	driftFormat    string
@@ -143,9 +143,9 @@ func runOwnershipDrift(cmd *cobra.Command, args []string) {
 	fmt.Println(output)
 
 	logger.Debug("Ownership drift query completed", map[string]interface{}{
-		"scope":           scope,
-		"filesWithDrift":  response.Summary.FilesWithDrift,
-		"duration":        time.Since(start).Milliseconds(),
+		"scope":          scope,
+		"filesWithDrift": response.Summary.FilesWithDrift,
+		"duration":       time.Since(start).Milliseconds(),
 	})
 }
 

@@ -16,11 +16,11 @@ import (
 
 // AnalyzeImpactOptions contains options for analyzeImpact.
 type AnalyzeImpactOptions struct {
-	SymbolId            string
-	Depth               int
-	IncludeTests        bool
-	IncludeTelemetry    bool   // Include observed telemetry data
-	TelemetryPeriod     string // Time period for telemetry ("7d", "30d", "90d")
+	SymbolId         string
+	Depth            int
+	IncludeTests     bool
+	IncludeTelemetry bool   // Include observed telemetry data
+	TelemetryPeriod  string // Time period for telemetry ("7d", "30d", "90d")
 }
 
 // AnalyzeImpactResponse is the response for analyzeImpact.
@@ -42,13 +42,13 @@ type AnalyzeImpactResponse struct {
 
 // ObservedUsageSummary contains telemetry-based usage information
 type ObservedUsageSummary struct {
-	HasTelemetry      bool    `json:"hasTelemetry"`
-	TotalCalls        int64   `json:"totalCalls,omitempty"`
-	LastObserved      string  `json:"lastObserved,omitempty"`
-	MatchQuality      string  `json:"matchQuality,omitempty"`
-	ObservedConfidence float64 `json:"observedConfidence,omitempty"`
-	Trend             string  `json:"trend,omitempty"`
-	CallerServices    []string `json:"callerServices,omitempty"`
+	HasTelemetry       bool     `json:"hasTelemetry"`
+	TotalCalls         int64    `json:"totalCalls,omitempty"`
+	LastObserved       string   `json:"lastObserved,omitempty"`
+	MatchQuality       string   `json:"matchQuality,omitempty"`
+	ObservedConfidence float64  `json:"observedConfidence,omitempty"`
+	Trend              string   `json:"trend,omitempty"`
+	CallerServices     []string `json:"callerServices,omitempty"`
 }
 
 // RiskScore describes the risk of changing a symbol.

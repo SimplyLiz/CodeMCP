@@ -64,7 +64,7 @@ func (s *MCPServer) toolFederationStatus(params map[string]interface{}) (interfa
 	if err != nil {
 		return nil, fmt.Errorf("failed to open federation: %w", err)
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	config := fed.Config()
 	repos := fed.ListRepos()
@@ -134,7 +134,7 @@ func (s *MCPServer) toolFederationRepos(params map[string]interface{}) (interfac
 	if err != nil {
 		return nil, fmt.Errorf("failed to open federation: %w", err)
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	repos := fed.ListRepos()
 
@@ -144,8 +144,8 @@ func (s *MCPServer) toolFederationRepos(params map[string]interface{}) (interfac
 	}
 
 	if includeCompat {
-		checks, err := federation.CheckAllReposCompatibility(fed)
-		if err == nil {
+		checks, compatErr := federation.CheckAllReposCompatibility(fed)
+		if compatErr == nil {
 			result["compatibility"] = checks
 		}
 	}
@@ -187,7 +187,7 @@ func (s *MCPServer) toolFederationSearchModules(params map[string]interface{}) (
 	if err != nil {
 		return nil, fmt.Errorf("failed to open federation: %w", err)
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	opts := federation.SearchModulesOptions{
 		Query: query,
@@ -254,7 +254,7 @@ func (s *MCPServer) toolFederationSearchOwnership(params map[string]interface{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to open federation: %w", err)
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	opts := federation.SearchOwnershipOptions{
 		PathGlob: pathGlob,
@@ -315,7 +315,7 @@ func (s *MCPServer) toolFederationGetHotspots(params map[string]interface{}) (in
 	if err != nil {
 		return nil, fmt.Errorf("failed to open federation: %w", err)
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	opts := federation.GetHotspotsOptions{
 		Top:      top,
@@ -375,7 +375,7 @@ func (s *MCPServer) toolFederationSearchDecisions(params map[string]interface{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to open federation: %w", err)
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	opts := federation.SearchDecisionsOptions{
 		Query:          query,
@@ -440,7 +440,7 @@ func (s *MCPServer) toolFederationSync(params map[string]interface{}) (interface
 	if err != nil {
 		return nil, fmt.Errorf("failed to open federation: %w", err)
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	opts := federation.SyncOptions{
 		Force:  force,

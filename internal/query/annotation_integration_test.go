@@ -6,9 +6,9 @@ import (
 
 func TestComputeJustifyVerdictWithADR(t *testing.T) {
 	tests := []struct {
-		name           string
-		facts          ExplainSymbolFacts
-		expectedVerdict string
+		name             string
+		facts            ExplainSymbolFacts
+		expectedVerdict  string
 		expectADRMention bool
 	}{
 		{
@@ -21,7 +21,7 @@ func TestComputeJustifyVerdictWithADR(t *testing.T) {
 					},
 				},
 			},
-			expectedVerdict: "keep",
+			expectedVerdict:  "keep",
 			expectADRMention: false,
 		},
 		{
@@ -34,7 +34,7 @@ func TestComputeJustifyVerdictWithADR(t *testing.T) {
 					},
 				},
 			},
-			expectedVerdict: "investigate",
+			expectedVerdict:  "investigate",
 			expectADRMention: true,
 		},
 		{
@@ -47,7 +47,7 @@ func TestComputeJustifyVerdictWithADR(t *testing.T) {
 					},
 				},
 			},
-			expectedVerdict: "investigate",
+			expectedVerdict:  "investigate",
 			expectADRMention: true,
 		},
 		{
@@ -60,7 +60,7 @@ func TestComputeJustifyVerdictWithADR(t *testing.T) {
 					},
 				},
 			},
-			expectedVerdict: "remove-candidate",
+			expectedVerdict:  "remove-candidate",
 			expectADRMention: false,
 		},
 		{
@@ -69,7 +69,7 @@ func TestComputeJustifyVerdictWithADR(t *testing.T) {
 				Usage: &ExplainUsage{CallerCount: 0},
 				Flags: &ExplainSymbolFlags{IsPublicApi: true},
 			},
-			expectedVerdict: "investigate",
+			expectedVerdict:  "investigate",
 			expectADRMention: false,
 		},
 		{
@@ -77,7 +77,7 @@ func TestComputeJustifyVerdictWithADR(t *testing.T) {
 			facts: ExplainSymbolFacts{
 				Usage: &ExplainUsage{CallerCount: 0},
 			},
-			expectedVerdict: "remove-candidate",
+			expectedVerdict:  "remove-candidate",
 			expectADRMention: false,
 		},
 		{
@@ -89,7 +89,7 @@ func TestComputeJustifyVerdictWithADR(t *testing.T) {
 					},
 				},
 			},
-			expectedVerdict: "investigate",
+			expectedVerdict:  "investigate",
 			expectADRMention: true,
 		},
 	}
@@ -102,8 +102,7 @@ func TestComputeJustifyVerdictWithADR(t *testing.T) {
 				t.Errorf("expected verdict %q, got %q", tt.expectedVerdict, verdict)
 			}
 
-			hasADRMention := len(reasoning) > 0 && (
-				contains(reasoning, "ADR-") ||
+			hasADRMention := len(reasoning) > 0 && (contains(reasoning, "ADR-") ||
 				contains(reasoning, "related to"))
 
 			if tt.expectADRMention && !hasADRMention {

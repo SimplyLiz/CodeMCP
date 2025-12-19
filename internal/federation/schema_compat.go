@@ -87,7 +87,7 @@ func CheckSchemaCompatibility(repoID, repoPath string) (*CompatibilityCheck, err
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Try to get schema version from various possible tables
 	version := getSchemaVersion(db)

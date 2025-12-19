@@ -87,10 +87,10 @@ type TraceResponseCLI struct {
 }
 
 type UsagePathCLI struct {
-	PathType   string       `json:"pathType"`
+	PathType   string        `json:"pathType"`
 	Nodes      []PathNodeCLI `json:"nodes"`
-	Confidence float64      `json:"confidence"`
-	Score      float64      `json:"score"`
+	Confidence float64       `json:"confidence"`
+	Score      float64       `json:"score"`
 }
 
 type PathNodeCLI struct {

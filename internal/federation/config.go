@@ -171,7 +171,7 @@ func (c *Config) Save() error {
 	if err != nil {
 		return fmt.Errorf("failed to create config file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	encoder := toml.NewEncoder(f)
 	if err := encoder.Encode(c); err != nil {

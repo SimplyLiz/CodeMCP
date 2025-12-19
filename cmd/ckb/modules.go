@@ -12,16 +12,16 @@ import (
 )
 
 var (
-	modulesFormat           string
-	modulesPath             string
-	modulesName             string
-	annotateResponsibility  string
-	annotateCapabilities    string
-	annotateTags            string
-	annotatePublicPaths     string
-	annotateInternalPaths   string
+	modulesFormat          string
+	modulesPath            string //nolint:unused // reserved for future use
+	modulesName            string
+	annotateResponsibility string
+	annotateCapabilities   string
+	annotateTags           string
+	annotatePublicPaths    string
+	annotateInternalPaths  string
 	// Responsibilities subcommand flags
-	respModuleId     string
+	respModuleId     string //nolint:unused // reserved for future use
 	respIncludeFiles bool
 	respLimit        int
 	respFormat       string
@@ -243,13 +243,13 @@ func convertModuleOverviewResponse(resp *query.ModuleOverviewResponse) *ModuleOv
 
 // AnnotateModuleResponseCLI contains annotate result for CLI output
 type AnnotateModuleResponseCLI struct {
-	ModuleId       string                    `json:"moduleId"`
-	Responsibility string                    `json:"responsibility,omitempty"`
-	Capabilities   []string                  `json:"capabilities,omitempty"`
-	Tags           []string                  `json:"tags,omitempty"`
-	Boundaries     *AnnotateBoundariesCLI    `json:"boundaries,omitempty"`
-	Updated        bool                      `json:"updated"`
-	Created        bool                      `json:"created"`
+	ModuleId       string                 `json:"moduleId"`
+	Responsibility string                 `json:"responsibility,omitempty"`
+	Capabilities   []string               `json:"capabilities,omitempty"`
+	Tags           []string               `json:"tags,omitempty"`
+	Boundaries     *AnnotateBoundariesCLI `json:"boundaries,omitempty"`
+	Updated        bool                   `json:"updated"`
+	Created        bool                   `json:"created"`
 }
 
 type AnnotateBoundariesCLI struct {

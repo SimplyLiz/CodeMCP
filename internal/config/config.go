@@ -177,13 +177,13 @@ type WebhookConfig struct {
 
 // TelemetryConfig contains runtime telemetry configuration (v6.4)
 type TelemetryConfig struct {
-	Enabled         bool                          `json:"enabled" mapstructure:"enabled"`
-	ServiceMap      map[string]string             `json:"serviceMap" mapstructure:"serviceMap"`             // service name -> repo ID
-	ServicePatterns []TelemetryServicePattern     `json:"servicePatterns" mapstructure:"servicePatterns"`   // regex patterns
-	Aggregation     TelemetryAggregationConfig    `json:"aggregation" mapstructure:"aggregation"`
-	DeadCode        TelemetryDeadCodeConfig       `json:"deadCode" mapstructure:"deadCode"`
-	Privacy         TelemetryPrivacyConfig        `json:"privacy" mapstructure:"privacy"`
-	Attributes      TelemetryAttributesConfig     `json:"attributes" mapstructure:"attributes"`
+	Enabled         bool                       `json:"enabled" mapstructure:"enabled"`
+	ServiceMap      map[string]string          `json:"serviceMap" mapstructure:"serviceMap"`           // service name -> repo ID
+	ServicePatterns []TelemetryServicePattern  `json:"servicePatterns" mapstructure:"servicePatterns"` // regex patterns
+	Aggregation     TelemetryAggregationConfig `json:"aggregation" mapstructure:"aggregation"`
+	DeadCode        TelemetryDeadCodeConfig    `json:"deadCode" mapstructure:"deadCode"`
+	Privacy         TelemetryPrivacyConfig     `json:"privacy" mapstructure:"privacy"`
+	Attributes      TelemetryAttributesConfig  `json:"attributes" mapstructure:"attributes"`
 }
 
 // TelemetryServicePattern contains regex pattern for service mapping
@@ -194,7 +194,7 @@ type TelemetryServicePattern struct {
 
 // TelemetryAggregationConfig contains aggregation settings
 type TelemetryAggregationConfig struct {
-	BucketSize          string `json:"bucketSize" mapstructure:"bucketSize"`                   // "daily" | "weekly" | "monthly"
+	BucketSize          string `json:"bucketSize" mapstructure:"bucketSize"` // "daily" | "weekly" | "monthly"
 	RetentionDays       int    `json:"retentionDays" mapstructure:"retentionDays"`
 	MinCallsToStore     int    `json:"minCallsToStore" mapstructure:"minCallsToStore"`
 	StoreCallers        bool   `json:"storeCallers" mapstructure:"storeCallers"`
@@ -211,8 +211,8 @@ type TelemetryDeadCodeConfig struct {
 
 // TelemetryPrivacyConfig contains privacy settings
 type TelemetryPrivacyConfig struct {
-	RedactCallerNames   bool `json:"redactCallerNames" mapstructure:"redactCallerNames"`
-	LogUnmatchedEvents  bool `json:"logUnmatchedEvents" mapstructure:"logUnmatchedEvents"`
+	RedactCallerNames  bool `json:"redactCallerNames" mapstructure:"redactCallerNames"`
+	LogUnmatchedEvents bool `json:"logUnmatchedEvents" mapstructure:"logUnmatchedEvents"`
 }
 
 // TelemetryAttributesConfig contains attribute key mappings for OTEL compatibility

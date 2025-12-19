@@ -8,8 +8,8 @@ import (
 
 func TestMatchQualityConfidence(t *testing.T) {
 	tests := []struct {
-		quality    MatchQuality
-		wantConf   float64
+		quality  MatchQuality
+		wantConf float64
 	}{
 		{MatchExact, 0.95},
 		{MatchStrong, 0.85},
@@ -71,9 +71,9 @@ func TestCoverageLevelDetermination(t *testing.T) {
 
 func TestCoverageCanUseDeadCode(t *testing.T) {
 	tests := []struct {
-		name     string
-		level    CoverageLevel
-		wantCan  bool
+		name    string
+		level   CoverageLevel
+		wantCan bool
 	}{
 		{"high coverage", CoverageHigh, true},
 		{"medium coverage", CoverageMedium, true},
@@ -100,7 +100,7 @@ func TestCoverageCanUseDeadCode(t *testing.T) {
 func TestServiceMapperExactMatch(t *testing.T) {
 	cfg := config.TelemetryConfig{
 		ServiceMap: map[string]string{
-			"api-gateway": "repo-api",
+			"api-gateway":  "repo-api",
 			"user-service": "repo-users",
 		},
 	}
@@ -198,7 +198,7 @@ func TestDeadCodeDetectorExclusions(t *testing.T) {
 	}
 
 	tests := []struct {
-		symbol     SymbolInfo
+		symbol       SymbolInfo
 		wantExcluded bool
 	}{
 		{SymbolInfo{File: "src/main.go", Name: "HandleRequest"}, false},
@@ -233,11 +233,11 @@ func TestDeadCodeConfidenceComputation(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
-		matchQuality   MatchQuality
-		staticRefs     int
+		name            string
+		matchQuality    MatchQuality
+		staticRefs      int
 		observationDays int
-		wantConfAbove  float64
+		wantConfAbove   float64
 	}{
 		{"exact match, high coverage, few refs", MatchExact, 2, 180, 0.8},
 		{"strong match, high coverage, few refs", MatchStrong, 2, 180, 0.7},

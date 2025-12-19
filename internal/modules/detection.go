@@ -83,12 +83,12 @@ func DetectModulesWithDeclaration(repoRoot string, explicitRoots []string, ignor
 
 	// Step 1: Check explicit config
 	if len(explicitRoots) > 0 {
-		modules, err := detectExplicitModules(repoRoot, explicitRoots, stateId, logger)
-		if err != nil {
-			return nil, err
+		explicitModules, explicitErr := detectExplicitModules(repoRoot, explicitRoots, stateId, logger)
+		if explicitErr != nil {
+			return nil, explicitErr
 		}
 		return &DetectionResult{
-			Modules:         modules,
+			Modules:         explicitModules,
 			DetectionMethod: "explicit",
 		}, nil
 	}

@@ -4,24 +4,24 @@ package export
 
 // LLMExport is the main export structure
 type LLMExport struct {
-	Metadata ExportMetadata  `json:"metadata"`
-	Modules  []ExportModule  `json:"modules"`
+	Metadata ExportMetadata `json:"metadata"`
+	Modules  []ExportModule `json:"modules"`
 }
 
 // ExportMetadata contains metadata about the export
 type ExportMetadata struct {
-	Repo         string `json:"repo"`
-	Generated    string `json:"generated"` // ISO 8601 timestamp
-	SymbolCount  int    `json:"symbolCount"`
-	FileCount    int    `json:"fileCount"`
-	ModuleCount  int    `json:"moduleCount"`
+	Repo        string `json:"repo"`
+	Generated   string `json:"generated"` // ISO 8601 timestamp
+	SymbolCount int    `json:"symbolCount"`
+	FileCount   int    `json:"fileCount"`
+	ModuleCount int    `json:"moduleCount"`
 }
 
 // ExportModule represents a module in the export
 type ExportModule struct {
-	Path   string       `json:"path"`
-	Owner  string       `json:"owner,omitempty"`
-	Files  []ExportFile `json:"files"`
+	Path  string       `json:"path"`
+	Owner string       `json:"owner,omitempty"`
+	Files []ExportFile `json:"files"`
 }
 
 // ExportFile represents a file in the export
@@ -32,7 +32,7 @@ type ExportFile struct {
 
 // ExportSymbol represents a symbol in the export
 type ExportSymbol struct {
-	Type        string   `json:"type"`                  // "class" | "function" | "interface" | "constant"
+	Type        string   `json:"type"` // "class" | "function" | "interface" | "constant"
 	Name        string   `json:"name"`
 	Complexity  int      `json:"complexity,omitempty"`
 	CallsPerDay int      `json:"callsPerDay,omitempty"`

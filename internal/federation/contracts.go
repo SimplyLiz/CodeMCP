@@ -110,13 +110,13 @@ type ContractEdge struct {
 	DetectedAt   time.Time `json:"detectedAt"`
 
 	// Manual overrides
-	Suppressed         bool       `json:"suppressed,omitempty"`
-	SuppressedBy       string     `json:"suppressedBy,omitempty"`
-	SuppressedAt       *time.Time `json:"suppressedAt,omitempty"`
-	SuppressionReason  string     `json:"suppressionReason,omitempty"`
-	Verified           bool       `json:"verified,omitempty"`
-	VerifiedBy         string     `json:"verifiedBy,omitempty"`
-	VerifiedAt         *time.Time `json:"verifiedAt,omitempty"`
+	Suppressed        bool       `json:"suppressed,omitempty"`
+	SuppressedBy      string     `json:"suppressedBy,omitempty"`
+	SuppressedAt      *time.Time `json:"suppressedAt,omitempty"`
+	SuppressionReason string     `json:"suppressionReason,omitempty"`
+	Verified          bool       `json:"verified,omitempty"`
+	VerifiedBy        string     `json:"verifiedBy,omitempty"`
+	VerifiedAt        *time.Time `json:"verifiedAt,omitempty"`
 }
 
 // ProtoImport represents an import relationship between proto contracts
@@ -256,7 +256,7 @@ func (idx *Index) GetContract(id string) (*Contract, error) {
 	}
 	c.VisibilityBasis = visibilityBasis.String
 	if importKeys.Valid && importKeys.String != "" {
-		json.Unmarshal([]byte(importKeys.String), &c.ImportKeys)
+		_ = json.Unmarshal([]byte(importKeys.String), &c.ImportKeys)
 	}
 	if t, err := time.Parse(time.RFC3339, indexedAt); err == nil {
 		c.IndexedAt = t
@@ -273,7 +273,7 @@ func (idx *Index) ResolveImportKey(importKey string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var contractIDs []string
 	for rows.Next() {
@@ -347,7 +347,7 @@ func (idx *Index) FindDirectConsumers(contractID string, includeTier EvidenceTie
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return scanContractEdges(rows)
 }
@@ -391,7 +391,7 @@ func (idx *Index) FindReverseImportClosure(contractID string, maxDepth int) ([]s
 		for rows.Next() {
 			c, err := scanContract(rows)
 			if err != nil {
-				rows.Close()
+				_ = rows.Close()
 				continue
 			}
 
@@ -404,7 +404,7 @@ func (idx *Index) FindReverseImportClosure(contractID string, maxDepth int) ([]s
 				}{Contract: *c, Depth: depth})
 			}
 		}
-		rows.Close()
+		_ = rows.Close()
 
 		frontier = newFrontier
 		depth++
@@ -452,7 +452,7 @@ func (idx *Index) ListContracts(opts ListContractsOptions) ([]Contract, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var contracts []Contract
 	for rows.Next() {
@@ -505,7 +505,7 @@ func scanContractEdges(rows *sql.Rows) ([]ContractEdge, error) {
 		}
 
 		if consumerPaths.Valid {
-			json.Unmarshal([]byte(consumerPaths.String), &e.ConsumerPaths)
+			_ = json.Unmarshal([]byte(consumerPaths.String), &e.ConsumerPaths)
 		}
 		if evidenceDetails.Valid {
 			e.EvidenceDetails = json.RawMessage(evidenceDetails.String)
@@ -550,7 +550,7 @@ func scanContract(rows *sql.Rows) (*Contract, error) {
 	}
 	c.VisibilityBasis = visibilityBasis.String
 	if importKeys.Valid && importKeys.String != "" {
-		json.Unmarshal([]byte(importKeys.String), &c.ImportKeys)
+		_ = json.Unmarshal([]byte(importKeys.String), &c.ImportKeys)
 	}
 	if t, err := time.Parse(time.RFC3339, indexedAt); err == nil {
 		c.IndexedAt = t

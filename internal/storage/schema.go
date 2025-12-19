@@ -311,6 +311,8 @@ func createSymbolAliasesTable(tx *sql.Tx) error {
 }
 
 // createModulesTable creates the modules table
+//
+//nolint:unused // reserved for future use
 func createModulesTable(tx *sql.Tx) error {
 	_, err := tx.Exec(`
 		CREATE TABLE IF NOT EXISTS modules (

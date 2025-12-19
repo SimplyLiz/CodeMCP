@@ -11,10 +11,10 @@ import (
 )
 
 var (
-	prSummaryFormat        string
-	prSummaryBaseBranch    string
-	prSummaryHeadBranch    string
-	prSummaryNoOwnership   bool // --no-ownership flag (default false, so ownership is ON by default)
+	prSummaryFormat      string
+	prSummaryBaseBranch  string
+	prSummaryHeadBranch  string
+	prSummaryNoOwnership bool // --no-ownership flag (default false, so ownership is ON by default)
 )
 
 var prSummaryCmd = &cobra.Command{
@@ -84,12 +84,12 @@ func runPrSummary(cmd *cobra.Command, args []string) {
 
 // PRSummaryResponseCLI contains PR summary for CLI output
 type PRSummaryResponseCLI struct {
-	Summary         PRSummaryCLI          `json:"summary"`
-	ChangedFiles    []PRFileChangeCLI     `json:"changedFiles"`
-	ModulesAffected []PRModuleImpactCLI   `json:"modulesAffected"`
-	RiskAssessment  PRRiskAssessmentCLI   `json:"riskAssessment"`
-	Reviewers       []SuggestedReviewCLI  `json:"suggestedReviewers,omitempty"`
-	Provenance      *ProvenanceCLI        `json:"provenance,omitempty"`
+	Summary         PRSummaryCLI         `json:"summary"`
+	ChangedFiles    []PRFileChangeCLI    `json:"changedFiles"`
+	ModulesAffected []PRModuleImpactCLI  `json:"modulesAffected"`
+	RiskAssessment  PRRiskAssessmentCLI  `json:"riskAssessment"`
+	Reviewers       []SuggestedReviewCLI `json:"suggestedReviewers,omitempty"`
+	Provenance      *ProvenanceCLI       `json:"provenance,omitempty"`
 }
 
 type PRSummaryCLI struct {

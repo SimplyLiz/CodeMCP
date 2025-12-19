@@ -96,7 +96,7 @@ func (f *Federation) SearchModules(opts SearchModulesOptions) (*SearchModulesRes
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var modules []ModuleResult
 	for rows.Next() {
@@ -210,7 +210,7 @@ func (f *Federation) SearchOwnership(opts SearchOwnershipOptions) (*SearchOwners
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var matches []OwnershipResult
 	for rows.Next() {
@@ -307,7 +307,7 @@ func (f *Federation) GetHotspots(opts GetHotspotsOptions) (*GetHotspotsResult, e
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var hotspots []HotspotResult
 	for rows.Next() {
@@ -449,7 +449,7 @@ func (f *Federation) SearchDecisions(opts SearchDecisionsOptions) (*SearchDecisi
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var decisions []DecisionResult
 	for rows.Next() {

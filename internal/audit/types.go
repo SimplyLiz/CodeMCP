@@ -7,19 +7,19 @@ import "time"
 
 // RiskAnalysis is the result of a risk audit
 type RiskAnalysis struct {
-	Repo       string       `json:"repo"`
-	AnalyzedAt time.Time    `json:"analyzedAt"`
-	Items      []RiskItem   `json:"items"`
-	Summary    RiskSummary  `json:"summary"`
-	QuickWins  []QuickWin   `json:"quickWins"`
+	Repo       string      `json:"repo"`
+	AnalyzedAt time.Time   `json:"analyzedAt"`
+	Items      []RiskItem  `json:"items"`
+	Summary    RiskSummary `json:"summary"`
+	QuickWins  []QuickWin  `json:"quickWins"`
 }
 
 // RiskItem represents a single file/module with risk assessment
 type RiskItem struct {
 	File           string       `json:"file"`
 	Module         string       `json:"module,omitempty"`
-	RiskScore      float64      `json:"riskScore"`      // 0-100
-	RiskLevel      string       `json:"riskLevel"`      // "critical" | "high" | "medium" | "low"
+	RiskScore      float64      `json:"riskScore"` // 0-100
+	RiskLevel      string       `json:"riskLevel"` // "critical" | "high" | "medium" | "low"
 	Factors        []RiskFactor `json:"factors"`
 	Recommendation string       `json:"recommendation,omitempty"`
 }
@@ -34,11 +34,11 @@ type RiskFactor struct {
 
 // RiskSummary provides aggregate statistics
 type RiskSummary struct {
-	Critical       int              `json:"critical"`
-	High           int              `json:"high"`
-	Medium         int              `json:"medium"`
-	Low            int              `json:"low"`
-	TopRiskFactors []TopRiskFactor  `json:"topRiskFactors"`
+	Critical       int             `json:"critical"`
+	High           int             `json:"high"`
+	Medium         int             `json:"medium"`
+	Low            int             `json:"low"`
+	TopRiskFactors []TopRiskFactor `json:"topRiskFactors"`
 }
 
 // TopRiskFactor represents a commonly occurring risk factor
@@ -66,14 +66,14 @@ type AuditOptions struct {
 
 // RiskFactorType constants
 const (
-	FactorComplexity         = "complexity"
-	FactorTestCoverage       = "test_coverage"
-	FactorBusFactor          = "bus_factor"
-	FactorStaleness          = "staleness"
-	FactorSecuritySensitive  = "security_sensitive"
-	FactorErrorRate          = "error_rate"
-	FactorCoChangeCoupling   = "co_change_coupling"
-	FactorChurn              = "churn"
+	FactorComplexity        = "complexity"
+	FactorTestCoverage      = "test_coverage"
+	FactorBusFactor         = "bus_factor"
+	FactorStaleness         = "staleness"
+	FactorSecuritySensitive = "security_sensitive"
+	FactorErrorRate         = "error_rate"
+	FactorCoChangeCoupling  = "co_change_coupling"
+	FactorChurn             = "churn"
 )
 
 // RiskLevel constants

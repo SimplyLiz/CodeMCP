@@ -5,8 +5,8 @@ func ComputeCoverage(events []CallAggregate, matches []SymbolMatch, federationRe
 	if len(events) == 0 {
 		return TelemetryCoverage{
 			Overall: OverallCoverage{
-				Score: 0,
-				Level: CoverageInsufficient,
+				Score:    0,
+				Level:    CoverageInsufficient,
 				Warnings: []string{"No telemetry events received"},
 			},
 		}
@@ -186,10 +186,10 @@ func (c TelemetryCoverage) CanUseHotspotWeighting() bool {
 
 // CoverageRequirement describes a coverage requirement for a feature
 type CoverageRequirement struct {
-	Feature           string
-	MinCoverageLevel  CoverageLevel
-	MinEffectiveRate  float64
-	Description       string
+	Feature          string
+	MinCoverageLevel CoverageLevel
+	MinEffectiveRate float64
+	Description      string
 }
 
 // DefaultCoverageRequirements returns the default coverage requirements for features

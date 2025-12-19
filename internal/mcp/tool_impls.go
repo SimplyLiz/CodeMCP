@@ -2386,7 +2386,7 @@ func (s *MCPServer) toolGetJobStatus(params map[string]interface{}) (interface{}
 		},
 	}
 
-	jobMap := result["job"].(map[string]interface{})
+	jobMap, _ := result["job"].(map[string]interface{})
 
 	if job.StartedAt != nil {
 		jobMap["startedAt"] = job.StartedAt.Format("2006-01-02T15:04:05Z")
@@ -2403,7 +2403,7 @@ func (s *MCPServer) toolGetJobStatus(params map[string]interface{}) (interface{}
 	if job.Result != "" {
 		// Parse result JSON if possible
 		var resultData interface{}
-		if err := json.Unmarshal([]byte(job.Result), &resultData); err == nil {
+		if unmarshalErr := json.Unmarshal([]byte(job.Result), &resultData); unmarshalErr == nil {
 			jobMap["result"] = resultData
 		} else {
 			jobMap["result"] = job.Result

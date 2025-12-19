@@ -39,12 +39,12 @@ func init() {
 
 // languageInfo describes a language and its SCIP indexer.
 type languageInfo struct {
-	name         string
-	markers      []string // Files that indicate this language
-	indexerCmd   string   // Command to check if indexer is installed
-	indexCmd     []string // Full command to run indexer
-	installHint  string   // How to install the indexer
-	outputFile   string   // Default output file name
+	name        string
+	markers     []string // Files that indicate this language
+	indexerCmd  string   // Command to check if indexer is installed
+	indexCmd    []string // Full command to run indexer
+	installHint string   // How to install the indexer
+	outputFile  string   // Default output file name
 }
 
 var supportedLanguages = []languageInfo{

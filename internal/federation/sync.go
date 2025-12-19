@@ -122,7 +122,7 @@ func (f *Federation) syncRepo(repo RepoConfig, opts SyncOptions) SyncResult {
 		result.Duration = time.Since(startTime)
 		return result
 	}
-	defer repoDb.Close()
+	defer func() { _ = repoDb.Close() }()
 
 	// Clear existing data for this repo
 	if err := f.index.ClearRepoData(repo.RepoUID); err != nil {
@@ -231,14 +231,14 @@ func (f *Federation) syncContracts(repo RepoConfig) (int, int, error) {
 	}
 	if protoResult != nil {
 		for _, contract := range protoResult.Contracts {
-			if err := f.index.UpsertContract(&contract); err == nil {
+			if upsertErr := f.index.UpsertContract(&contract); upsertErr == nil {
 				contractsSynced++
 			}
 		}
 
 		// Store proto imports for transitivity
 		for _, pi := range protoResult.ProtoImports {
-			f.index.UpsertProtoImport(&pi)
+			_ = f.index.UpsertProtoImport(&pi)
 		}
 	}
 
@@ -317,7 +317,7 @@ func (f *Federation) syncContracts(repo RepoConfig) (int, int, error) {
 						ImportedContractID: importedID,
 						ImportPath:         imp,
 					}
-					f.index.UpsertProtoImport(pi)
+					_ = f.index.UpsertProtoImport(pi)
 				}
 			}
 		}
@@ -342,7 +342,7 @@ func (f *Federation) syncModules(repoDb *sql.DB, repo RepoConfig) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	synced := 0
 	now := time.Now().Format(time.RFC3339)
@@ -369,7 +369,7 @@ func (f *Federation) syncModules(repoDb *sql.DB, repo RepoConfig) (int, error) {
 	}
 
 	// Rebuild FTS index
-	f.index.DB().Exec("INSERT INTO federated_modules_fts(federated_modules_fts) VALUES('rebuild')")
+	_, _ = f.index.DB().Exec("INSERT INTO federated_modules_fts(federated_modules_fts) VALUES('rebuild')")
 
 	return synced, rows.Err()
 }
@@ -390,7 +390,7 @@ func (f *Federation) syncOwnership(repoDb *sql.DB, repo RepoConfig) (int, error)
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	synced := 0
 	now := time.Now().Format(time.RFC3339)
@@ -438,7 +438,7 @@ func (f *Federation) syncHotspots(repoDb *sql.DB, repo RepoConfig) (int, error) 
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	synced := 0
 	now := time.Now().Format(time.RFC3339)
@@ -483,7 +483,7 @@ func (f *Federation) syncDecisions(repoDb *sql.DB, repo RepoConfig) (int, error)
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	synced := 0
 	now := time.Now().Format(time.RFC3339)
@@ -508,7 +508,7 @@ func (f *Federation) syncDecisions(repoDb *sql.DB, repo RepoConfig) (int, error)
 	}
 
 	// Rebuild FTS index
-	f.index.DB().Exec("INSERT INTO federated_decisions_fts(federated_decisions_fts) VALUES('rebuild')")
+	_, _ = f.index.DB().Exec("INSERT INTO federated_decisions_fts(federated_decisions_fts) VALUES('rebuild')")
 
 	return synced, rows.Err()
 }

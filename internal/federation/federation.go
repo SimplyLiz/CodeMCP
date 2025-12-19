@@ -57,8 +57,8 @@ func Create(name, description string, logger *logging.Logger) (*Federation, erro
 
 	// Create config
 	config := NewConfig(name, description)
-	if err := config.Save(); err != nil {
-		return nil, fmt.Errorf("failed to save config: %w", err)
+	if saveErr := config.Save(); saveErr != nil {
+		return nil, fmt.Errorf("failed to save config: %w", saveErr)
 	}
 
 	// Create index

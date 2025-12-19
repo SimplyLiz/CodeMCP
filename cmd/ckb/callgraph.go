@@ -82,10 +82,10 @@ func runCallgraph(cmd *cobra.Command, args []string) {
 
 // CallgraphResponseCLI contains call graph results for CLI output
 type CallgraphResponseCLI struct {
-	Root       string              `json:"root"`
-	Nodes      []CallgraphNodeCLI  `json:"nodes"`
-	Edges      []CallgraphEdgeCLI  `json:"edges"`
-	Provenance *ProvenanceCLI      `json:"provenance,omitempty"`
+	Root       string             `json:"root"`
+	Nodes      []CallgraphNodeCLI `json:"nodes"`
+	Edges      []CallgraphEdgeCLI `json:"edges"`
+	Provenance *ProvenanceCLI     `json:"provenance,omitempty"`
 }
 
 // CallgraphNodeCLI represents a node in the call graph

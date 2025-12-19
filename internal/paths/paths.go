@@ -350,7 +350,7 @@ func ListFederations() ([]string, error) {
 	}
 
 	// If the federations directory doesn't exist, return empty list
-	if _, err := os.Stat(federationsDir); os.IsNotExist(err) {
+	if _, statErr := os.Stat(federationsDir); os.IsNotExist(statErr) {
 		return []string{}, nil
 	}
 

@@ -233,6 +233,18 @@ func TestExportSymbolStructure(t *testing.T) {
 	if sym.Type != SymbolTypeFunction {
 		t.Errorf("ExportSymbol.Type = %q, want %q", sym.Type, SymbolTypeFunction)
 	}
+	if sym.Name != "TestFunc" {
+		t.Errorf("ExportSymbol.Name = %q, want %q", sym.Name, "TestFunc")
+	}
+	if sym.Complexity != 15 {
+		t.Errorf("ExportSymbol.Complexity = %d, want %d", sym.Complexity, 15)
+	}
+	if sym.CallsPerDay != 1000 {
+		t.Errorf("ExportSymbol.CallsPerDay = %d, want %d", sym.CallsPerDay, 1000)
+	}
+	if sym.Importance != 2 {
+		t.Errorf("ExportSymbol.Importance = %d, want %d", sym.Importance, 2)
+	}
 	if sym.IsExported != true {
 		t.Error("ExportSymbol.IsExported should be true")
 	}

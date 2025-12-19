@@ -262,7 +262,7 @@ func runFedCreate(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create federation: %w", err)
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	fmt.Printf("Created federation: %s\n", name)
 	return nil
@@ -345,7 +345,7 @@ func runFedStatus(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	config := fed.Config()
 	repos := fed.ListRepos()
@@ -417,7 +417,7 @@ func runFedAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check path exists
-	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+	if _, statErr := os.Stat(absPath); os.IsNotExist(statErr) {
 		return fmt.Errorf("path does not exist: %s", absPath)
 	}
 
@@ -430,7 +430,7 @@ func runFedAdd(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	// Parse tags
 	var tags []string
@@ -478,7 +478,7 @@ func runFedRemove(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	if err := fed.RemoveRepo(repoID); err != nil {
 		return fmt.Errorf("failed to remove repo: %w", err)
@@ -502,7 +502,7 @@ func runFedRename(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	if err := fed.RenameRepo(oldID, newID); err != nil {
 		return fmt.Errorf("failed to rename repo: %w", err)
@@ -524,7 +524,7 @@ func runFedRepos(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	repos := fed.ListRepos()
 
@@ -562,7 +562,7 @@ func runFedSync(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	opts := federation.SyncOptions{
 		Force:  fedForce,
@@ -622,7 +622,7 @@ func runFedSearchModules(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open federation: %w", err)
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	opts := federation.SearchModulesOptions{
 		Query: fedSearchQuery,
@@ -680,7 +680,7 @@ func runFedSearchOwnership(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open federation: %w", err)
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	opts := federation.SearchOwnershipOptions{
 		PathGlob: fedSearchPath,
@@ -741,7 +741,7 @@ func runFedHotspots(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open federation: %w", err)
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	opts := federation.GetHotspotsOptions{
 		Top:      fedSearchTop,
@@ -792,7 +792,7 @@ func runFedSearchDecisions(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open federation: %w", err)
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	opts := federation.SearchDecisionsOptions{
 		Query:          fedSearchQuery,

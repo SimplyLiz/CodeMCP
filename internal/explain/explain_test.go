@@ -81,6 +81,12 @@ func TestOriginStructure(t *testing.T) {
 	if origin.Author != "Test User" {
 		t.Errorf("Origin.Author = %q, want %q", origin.Author, "Test User")
 	}
+	if origin.Date.IsZero() {
+		t.Error("Origin.Date should not be zero")
+	}
+	if origin.CommitMessage != "Initial commit" {
+		t.Errorf("Origin.CommitMessage = %q, want %q", origin.CommitMessage, "Initial commit")
+	}
 }
 
 func TestEvolutionCalculation(t *testing.T) {
@@ -92,6 +98,9 @@ func TestEvolutionCalculation(t *testing.T) {
 
 	if evolution.TotalCommits != 10 {
 		t.Errorf("Evolution.TotalCommits = %d, want %d", evolution.TotalCommits, 10)
+	}
+	if len(evolution.Timeline) != 0 {
+		t.Errorf("Evolution.Timeline length = %d, want 0", len(evolution.Timeline))
 	}
 }
 
@@ -108,6 +117,9 @@ func TestWarningStructure(t *testing.T) {
 	if warning.Severity != SeverityWarning {
 		t.Errorf("Warning.Severity = %q, want %q", warning.Severity, SeverityWarning)
 	}
+	if warning.Message != "Only one contributor" {
+		t.Errorf("Warning.Message = %q, want %q", warning.Message, "Only one contributor")
+	}
 }
 
 func TestReferencesStructure(t *testing.T) {
@@ -122,6 +134,9 @@ func TestReferencesStructure(t *testing.T) {
 	}
 	if len(refs.PRs) != 1 {
 		t.Errorf("len(PRs) = %d, want %d", len(refs.PRs), 1)
+	}
+	if len(refs.JiraTickets) != 1 || refs.JiraTickets[0] != "PROJ-123" {
+		t.Errorf("JiraTickets = %v, want [PROJ-123]", refs.JiraTickets)
 	}
 }
 
@@ -140,6 +155,9 @@ func TestSymbolExplanationStructure(t *testing.T) {
 
 	if exp.Symbol != "TestFunc" {
 		t.Errorf("SymbolExplanation.Symbol = %q, want %q", exp.Symbol, "TestFunc")
+	}
+	if exp.File != "test.go" {
+		t.Errorf("SymbolExplanation.File = %q, want %q", exp.File, "test.go")
 	}
 	if len(exp.Warnings) != 1 {
 		t.Errorf("len(Warnings) = %d, want %d", len(exp.Warnings), 1)

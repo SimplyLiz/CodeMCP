@@ -102,35 +102,35 @@ type ObservedCaller struct {
 
 // UnmatchedEvent represents a telemetry event that couldn't be matched
 type UnmatchedEvent struct {
-	ServiceName    string `json:"serviceName"`
-	FunctionName   string `json:"functionName"`
-	Namespace      string `json:"namespace,omitempty"`
-	FilePath       string `json:"filePath,omitempty"`
-	Period         string `json:"period"`
-	PeriodType     string `json:"periodType"`
-	CallCount      int64  `json:"callCount"`
-	ErrorCount     int64  `json:"errorCount"`
-	UnmatchReason  string `json:"unmatchReason"` // "no_repo_mapping" | "ambiguous" | "not_found"
-	Source         string `json:"source"`
-	IngestedAt     time.Time `json:"ingestedAt"`
+	ServiceName   string    `json:"serviceName"`
+	FunctionName  string    `json:"functionName"`
+	Namespace     string    `json:"namespace,omitempty"`
+	FilePath      string    `json:"filePath,omitempty"`
+	Period        string    `json:"period"`
+	PeriodType    string    `json:"periodType"`
+	CallCount     int64     `json:"callCount"`
+	ErrorCount    int64     `json:"errorCount"`
+	UnmatchReason string    `json:"unmatchReason"` // "no_repo_mapping" | "ambiguous" | "not_found"
+	Source        string    `json:"source"`
+	IngestedAt    time.Time `json:"ingestedAt"`
 }
 
 // SyncLog represents a telemetry sync operation log entry
 type SyncLog struct {
-	ID                   int64     `json:"id"`
-	Source               string    `json:"source"`
-	StartedAt            time.Time `json:"startedAt"`
-	CompletedAt          *time.Time `json:"completedAt,omitempty"`
-	Status               string    `json:"status"` // "success" | "failed" | "partial"
-	EventsReceived       int       `json:"eventsReceived"`
-	EventsMatchedExact   int       `json:"eventsMatchedExact"`
-	EventsMatchedStrong  int       `json:"eventsMatchedStrong"`
-	EventsMatchedWeak    int       `json:"eventsMatchedWeak"`
-	EventsUnmatched      int       `json:"eventsUnmatched"`
-	ServiceVersions      map[string]string `json:"serviceVersions,omitempty"` // service -> version
-	CoverageScore        float64   `json:"coverageScore"`
-	CoverageLevel        string    `json:"coverageLevel"`
-	Error                string    `json:"error,omitempty"`
+	ID                  int64             `json:"id"`
+	Source              string            `json:"source"`
+	StartedAt           time.Time         `json:"startedAt"`
+	CompletedAt         *time.Time        `json:"completedAt,omitempty"`
+	Status              string            `json:"status"` // "success" | "failed" | "partial"
+	EventsReceived      int               `json:"eventsReceived"`
+	EventsMatchedExact  int               `json:"eventsMatchedExact"`
+	EventsMatchedStrong int               `json:"eventsMatchedStrong"`
+	EventsMatchedWeak   int               `json:"eventsMatchedWeak"`
+	EventsUnmatched     int               `json:"eventsUnmatched"`
+	ServiceVersions     map[string]string `json:"serviceVersions,omitempty"` // service -> version
+	CoverageScore       float64           `json:"coverageScore"`
+	CoverageLevel       string            `json:"coverageLevel"`
+	Error               string            `json:"error,omitempty"`
 }
 
 // CoverageSnapshot represents a point-in-time coverage measurement
@@ -156,10 +156,10 @@ type TelemetryCoverage struct {
 
 // AttributeCoverage shows what percentage of events have required attributes
 type AttributeCoverage struct {
-	WithFilePath    float64 `json:"withFilePath"`
-	WithNamespace   float64 `json:"withNamespace"`
-	WithLineNumber  float64 `json:"withLineNumber"`
-	Overall         float64 `json:"overall"`
+	WithFilePath   float64 `json:"withFilePath"`
+	WithNamespace  float64 `json:"withNamespace"`
+	WithLineNumber float64 `json:"withLineNumber"`
+	Overall        float64 `json:"overall"`
 }
 
 // MatchCoverage shows match quality distribution
@@ -173,9 +173,9 @@ type MatchCoverage struct {
 
 // ServiceCoverage shows service reporting coverage
 type ServiceCoverage struct {
-	ServicesReporting   int     `json:"servicesReporting"`
-	ServicesInFederation int    `json:"servicesInFederation"`
-	CoverageRate        float64 `json:"coverageRate"`
+	ServicesReporting    int     `json:"servicesReporting"`
+	ServicesInFederation int     `json:"servicesInFederation"`
+	CoverageRate         float64 `json:"coverageRate"`
 }
 
 // SamplingInfo indicates if sampling was detected
@@ -194,20 +194,20 @@ type OverallCoverage struct {
 
 // DeadCodeCandidate represents a symbol that may be dead code
 type DeadCodeCandidate struct {
-	SymbolID          string       `json:"symbolId"`
-	Name              string       `json:"name"`
-	File              string       `json:"file"`
-	StaticRefs        int          `json:"staticRefs"`        // compile-time references
-	ObservedCalls     int64        `json:"observedCalls"`     // runtime calls (should be 0)
-	LastObserved      *time.Time   `json:"lastObserved,omitempty"`
-	ObservationWindow int          `json:"observationWindow"` // days of telemetry data
-	Confidence        float64      `json:"confidence"`
-	ConfidenceBasis   []string     `json:"confidenceBasis"`
-	MatchQuality      MatchQuality `json:"matchQuality"`
+	SymbolID          string        `json:"symbolId"`
+	Name              string        `json:"name"`
+	File              string        `json:"file"`
+	StaticRefs        int           `json:"staticRefs"`    // compile-time references
+	ObservedCalls     int64         `json:"observedCalls"` // runtime calls (should be 0)
+	LastObserved      *time.Time    `json:"lastObserved,omitempty"`
+	ObservationWindow int           `json:"observationWindow"` // days of telemetry data
+	Confidence        float64       `json:"confidence"`
+	ConfidenceBasis   []string      `json:"confidenceBasis"`
+	MatchQuality      MatchQuality  `json:"matchQuality"`
 	CoverageLevel     CoverageLevel `json:"coverageLevel"`
-	CoverageWarnings  []string     `json:"coverageWarnings,omitempty"`
-	Excluded          bool         `json:"excluded"`
-	ExcludeReason     string       `json:"excludeReason,omitempty"`
+	CoverageWarnings  []string      `json:"coverageWarnings,omitempty"`
+	Excluded          bool          `json:"excluded"`
+	ExcludeReason     string        `json:"excludeReason,omitempty"`
 }
 
 // BlendedConfidence represents confidence from both static and observed sources
@@ -230,44 +230,44 @@ const (
 
 // IngestPayload represents the JSON ingest format (for testing/dev)
 type IngestPayload struct {
-	Source          string          `json:"source"`
-	ServiceVersion  string          `json:"serviceVersion,omitempty"`
-	Timestamp       time.Time       `json:"timestamp"`
-	Calls           []CallAggregate `json:"calls"`
+	Source         string          `json:"source"`
+	ServiceVersion string          `json:"serviceVersion,omitempty"`
+	Timestamp      time.Time       `json:"timestamp"`
+	Calls          []CallAggregate `json:"calls"`
 }
 
 // IngestResponse represents the response from the ingest endpoint
 type IngestResponse struct {
-	Accepted        int      `json:"accepted"`
-	Matched         int      `json:"matched"`
-	Unmatched       int      `json:"unmatched"`
-	Errors          []string `json:"errors,omitempty"`
-	CoverageScore   float64  `json:"coverageScore"`
-	CoverageLevel   string   `json:"coverageLevel"`
+	Accepted      int      `json:"accepted"`
+	Matched       int      `json:"matched"`
+	Unmatched     int      `json:"unmatched"`
+	Errors        []string `json:"errors,omitempty"`
+	CoverageScore float64  `json:"coverageScore"`
+	CoverageLevel string   `json:"coverageLevel"`
 }
 
 // TelemetryStatus represents the current telemetry system status
 type TelemetryStatus struct {
-	Enabled           bool             `json:"enabled"`
-	LastSync          *time.Time       `json:"lastSync,omitempty"`
-	EventsLast24h     int64            `json:"eventsLast24h"`
-	SourcesActive     []string         `json:"sourcesActive"`
-	Coverage          TelemetryCoverage `json:"coverage"`
-	ServiceMapMapped  int              `json:"serviceMapMapped"`
-	ServiceMapUnmapped int             `json:"serviceMapUnmapped"`
-	UnmappedServices  []string         `json:"unmappedServices,omitempty"`
-	Recommendations   []string         `json:"recommendations,omitempty"`
+	Enabled            bool              `json:"enabled"`
+	LastSync           *time.Time        `json:"lastSync,omitempty"`
+	EventsLast24h      int64             `json:"eventsLast24h"`
+	SourcesActive      []string          `json:"sourcesActive"`
+	Coverage           TelemetryCoverage `json:"coverage"`
+	ServiceMapMapped   int               `json:"serviceMapMapped"`
+	ServiceMapUnmapped int               `json:"serviceMapUnmapped"`
+	UnmappedServices   []string          `json:"unmappedServices,omitempty"`
+	Recommendations    []string          `json:"recommendations,omitempty"`
 }
 
 // ObservedUsageResponse represents the response for getObservedUsage
 type ObservedUsageResponse struct {
-	SymbolID           string             `json:"symbolId"`
-	SymbolName         string             `json:"symbolName"`
-	Usage              *UsageData         `json:"usage,omitempty"`
-	Callers            []CallerBreakdown  `json:"callers,omitempty"`
-	StaticRefs         int                `json:"staticRefs"`
-	BlendedConfidence  float64            `json:"blendedConfidence"`
-	Coverage           TelemetryCoverage  `json:"coverage"`
+	SymbolID          string            `json:"symbolId"`
+	SymbolName        string            `json:"symbolName"`
+	Usage             *UsageData        `json:"usage,omitempty"`
+	Callers           []CallerBreakdown `json:"callers,omitempty"`
+	StaticRefs        int               `json:"staticRefs"`
+	BlendedConfidence float64           `json:"blendedConfidence"`
+	Coverage          TelemetryCoverage `json:"coverage"`
 }
 
 // UsageData represents observed usage metrics
@@ -289,10 +289,10 @@ type CallerBreakdown struct {
 
 // DeadCodeResponse represents the response for findDeadCodeCandidates
 type DeadCodeResponse struct {
-	Candidates   []DeadCodeCandidate `json:"candidates"`
-	Summary      DeadCodeSummary     `json:"summary"`
-	Coverage     TelemetryCoverage   `json:"coverage"`
-	Limitations  []Limitation        `json:"limitations,omitempty"`
+	Candidates  []DeadCodeCandidate `json:"candidates"`
+	Summary     DeadCodeSummary     `json:"summary"`
+	Coverage    TelemetryCoverage   `json:"coverage"`
+	Limitations []Limitation        `json:"limitations,omitempty"`
 }
 
 // DeadCodeSummary provides aggregate stats about dead code candidates

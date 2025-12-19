@@ -364,9 +364,7 @@ func (f *Federation) gatherOwnership(contract *Contract, consumers []Consumer) I
 	}
 
 	// Approval required: definition owners + top consumer owners
-	for _, o := range ownership.DefinitionOwners {
-		ownership.ApprovalRequired = append(ownership.ApprovalRequired, o)
-	}
+	ownership.ApprovalRequired = append(ownership.ApprovalRequired, ownership.DefinitionOwners...)
 
 	// Add top N consumer owners (limit to 5)
 	topN := 5
@@ -406,7 +404,7 @@ func (f *Federation) queryOwnership(repoUID, path string) []Owner {
 	if err != nil {
 		return owners
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var pattern, ownersJSON, scope, source string
@@ -672,7 +670,7 @@ func (f *Federation) GetDependencies(opts GetDependenciesOptions) (*GetDependenc
 		if err != nil {
 			return nil, err
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 
 		for rows.Next() {
 			var dep DependencyEntry
@@ -746,7 +744,7 @@ func (f *Federation) GetContractEdge(edgeID int64) (*ContractEdge, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	edges, err := scanContractEdges(rows)
 	if err != nil {
@@ -770,7 +768,7 @@ func (f *Federation) GetContractEdgeByKey(edgeKey string) (*ContractEdge, error)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	edges, err := scanContractEdges(rows)
 	if err != nil {
@@ -808,12 +806,12 @@ func (f *Federation) GetContractStats() (*ContractStats, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var contractType, visibility string
 		var count int
-		if err := rows.Scan(&contractType, &visibility, &count); err != nil {
+		if scanErr := rows.Scan(&contractType, &visibility, &count); scanErr != nil {
 			continue
 		}
 
@@ -837,7 +835,7 @@ func (f *Federation) GetContractStats() (*ContractStats, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows2.Close()
+	defer func() { _ = rows2.Close() }()
 
 	for rows2.Next() {
 		var tier string

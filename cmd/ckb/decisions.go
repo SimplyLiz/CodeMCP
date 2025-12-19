@@ -13,11 +13,11 @@ import (
 )
 
 var (
-	decisionsStatus   string
-	decisionsModule   string
-	decisionsSearch   string
-	decisionsLimit    int
-	decisionsFormat   string
+	decisionsStatus      string
+	decisionsModule      string
+	decisionsSearch      string
+	decisionsLimit       int
+	decisionsFormat      string
 	decisionsInteractive bool
 )
 

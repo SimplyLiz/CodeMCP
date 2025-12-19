@@ -62,9 +62,9 @@ func (a *Analyzer) Analyze(ctx context.Context, opts AnalyzeOptions) (*CouplingA
 	if len(targetCommits) == 0 {
 		return &CouplingAnalysis{
 			Target: struct {
-				Symbol         string    `json:"symbol,omitempty"`
-				File           string    `json:"file"`
-				CommitCount    int       `json:"commitCount"`
+				Symbol         string `json:"symbol,omitempty"`
+				File           string `json:"file"`
+				CommitCount    int    `json:"commitCount"`
 				AnalysisWindow struct {
 					From time.Time `json:"from"`
 					To   time.Time `json:"to"`

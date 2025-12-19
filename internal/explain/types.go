@@ -46,10 +46,10 @@ type Origin struct {
 
 // Evolution represents how a symbol evolved over time
 type Evolution struct {
-	TotalCommits  int           `json:"totalCommits"`
-	Contributors  []Contributor `json:"contributors"`
-	LastTouched   time.Time     `json:"lastTouched"`
-	LastTouchedBy string        `json:"lastTouchedBy"`
+	TotalCommits  int             `json:"totalCommits"`
+	Contributors  []Contributor   `json:"contributors"`
+	LastTouched   time.Time       `json:"lastTouched"`
+	LastTouchedBy string          `json:"lastTouchedBy"`
 	Timeline      []TimelineEntry `json:"timeline,omitempty"`
 }
 
@@ -103,18 +103,18 @@ type ObservedUsage struct {
 
 // Warning represents a warning about the symbol
 type Warning struct {
-	Type     string `json:"type"`     // "temporary_code" | "bus_factor" | "high_coupling" | "stale" | "complex"
+	Type     string `json:"type"` // "temporary_code" | "bus_factor" | "high_coupling" | "stale" | "complex"
 	Message  string `json:"message"`
 	Severity string `json:"severity"` // "info" | "warning" | "critical"
 }
 
 // ExplainOptions configures the symbol explanation
 type ExplainOptions struct {
-	RepoRoot      string // Repository root path
-	Symbol        string // Symbol name or file:line
-	IncludeUsage  bool   // Include telemetry data (default: true)
-	IncludeCoChange bool // Include co-change analysis (default: true)
-	HistoryLimit  int    // Number of timeline entries (default: 10)
+	RepoRoot        string // Repository root path
+	Symbol          string // Symbol name or file:line
+	IncludeUsage    bool   // Include telemetry data (default: true)
+	IncludeCoChange bool   // Include co-change analysis (default: true)
+	HistoryLimit    int    // Number of timeline entries (default: 10)
 }
 
 // WarningSeverity constants

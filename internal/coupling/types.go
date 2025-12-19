@@ -12,9 +12,9 @@ type Correlation struct {
 	FilePath string `json:"filePath,omitempty"` // Full path
 
 	// Correlation strength
-	Correlation  float64 `json:"correlation"`  // 0-1
-	CoChangeCount int    `json:"coChangeCount"` // times changed together
-	TotalChanges  int    `json:"totalChanges"`  // times target changed
+	Correlation   float64 `json:"correlation"`   // 0-1
+	CoChangeCount int     `json:"coChangeCount"` // times changed together
+	TotalChanges  int     `json:"totalChanges"`  // times target changed
 
 	// Direction (optional)
 	Direction string `json:"direction,omitempty"` // "bidirectional" | "target_leads" | "target_follows"
@@ -26,9 +26,9 @@ type Correlation struct {
 // CouplingAnalysis represents the result of a coupling analysis
 type CouplingAnalysis struct {
 	Target struct {
-		Symbol         string    `json:"symbol,omitempty"`
-		File           string    `json:"file"`
-		CommitCount    int       `json:"commitCount"`
+		Symbol         string `json:"symbol,omitempty"`
+		File           string `json:"file"`
+		CommitCount    int    `json:"commitCount"`
 		AnalysisWindow struct {
 			From time.Time `json:"from"`
 			To   time.Time `json:"to"`

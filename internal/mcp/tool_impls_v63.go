@@ -31,7 +31,7 @@ func (s *MCPServer) toolListContracts(params map[string]interface{}) (interface{
 	if err != nil {
 		return nil, fmt.Errorf("failed to open federation: %w", err)
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	opts := federation.ListContractsOptions{}
 
@@ -94,7 +94,7 @@ func (s *MCPServer) toolAnalyzeContractImpact(params map[string]interface{}) (in
 	if err != nil {
 		return nil, fmt.Errorf("failed to open federation: %w", err)
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	opts := federation.AnalyzeContractImpactOptions{
 		Federation: fedName,
@@ -158,7 +158,7 @@ func (s *MCPServer) toolGetContractDependencies(params map[string]interface{}) (
 	if err != nil {
 		return nil, fmt.Errorf("failed to open federation: %w", err)
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	opts := federation.GetDependenciesOptions{
 		Federation: fedName,
@@ -216,7 +216,7 @@ func (s *MCPServer) toolSuppressContractEdge(params map[string]interface{}) (int
 	if err != nil {
 		return nil, fmt.Errorf("failed to open federation: %w", err)
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	if err := fed.SuppressContractEdge(int64(edgeID), "user", reason); err != nil {
 		return nil, fmt.Errorf("failed to suppress edge: %w", err)
@@ -256,7 +256,7 @@ func (s *MCPServer) toolVerifyContractEdge(params map[string]interface{}) (inter
 	if err != nil {
 		return nil, fmt.Errorf("failed to open federation: %w", err)
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	if err := fed.VerifyContractEdge(int64(edgeID), "user"); err != nil {
 		return nil, fmt.Errorf("failed to verify edge: %w", err)
@@ -290,7 +290,7 @@ func (s *MCPServer) toolGetContractStats(params map[string]interface{}) (interfa
 	if err != nil {
 		return nil, fmt.Errorf("failed to open federation: %w", err)
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	stats, err := fed.GetContractStats()
 	if err != nil {

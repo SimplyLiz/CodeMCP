@@ -30,7 +30,7 @@ type Manager struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
-	mu     sync.RWMutex
+	mu     sync.RWMutex //nolint:unused // reserved for future thread-safety
 
 	// Config
 	workerCount   int
@@ -258,7 +258,7 @@ func (m *Manager) deliver(delivery *Delivery) {
 		m.handleDeliveryError(delivery, webhook, err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Read response body (limited)
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 10*1024))
@@ -343,7 +343,7 @@ func (m *Manager) formatJSON(event *Event) (string, error) {
 		"event_type": event.Type,
 		"timestamp":  event.Timestamp.Format(time.RFC3339),
 		"source":     event.Source,
-		"data":       json.RawMessage(event.Data),
+		"data":       event.Data,
 	}
 
 	data, err := json.Marshal(payload)
@@ -420,7 +420,7 @@ func (m *Manager) formatPagerDuty(event *Event) (string, error) {
 			"custom_details": map[string]interface{}{
 				"event_id": event.ID,
 				"source":   event.Source,
-				"data":     json.RawMessage(event.Data),
+				"data":     event.Data,
 			},
 		},
 	}
@@ -764,7 +764,7 @@ func (s *Store) ListWebhooks() ([]*Webhook, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var webhooks []*Webhook
 	for rows.Next() {
@@ -864,7 +864,7 @@ func (s *Store) GetPendingRetries() ([]*Delivery, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var deliveries []*Delivery
 	for rows.Next() {
@@ -928,7 +928,7 @@ func (s *Store) ListDeliveries(opts ListDeliveriesOptions) (*ListDeliveriesRespo
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var deliveries []Delivery
 	for rows.Next() {
@@ -995,7 +995,7 @@ func (s *Store) GetDeadLetters(webhookID string, limit int) ([]DeadLetter, error
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var deadLetters []DeadLetter
 	for rows.Next() {
@@ -1060,8 +1060,8 @@ func (s *Store) RetryDeadLetter(deadLetterID string) error {
 		CreatedAt: time.Now(),
 	}
 
-	if err := s.CreateDelivery(delivery); err != nil {
-		return err
+	if createErr := s.CreateDelivery(delivery); createErr != nil {
+		return createErr
 	}
 
 	// Delete dead letter

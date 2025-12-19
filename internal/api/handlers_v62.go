@@ -70,7 +70,7 @@ func (s *Server) handleFederationRoutes(w http.ResponseWriter, r *http.Request) 
 		WriteError(w, err, http.StatusInternalServerError)
 		return
 	}
-	defer fed.Close()
+	defer func() { _ = fed.Close() }()
 
 	switch action {
 	case "repos":

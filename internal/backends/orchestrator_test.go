@@ -159,6 +159,7 @@ func (m *mockBackend) Close() error {
 	return nil
 }
 
+//nolint:unused // test helper for future use
 func (m *mockBackend) getCalls() (symbol, search, ref int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

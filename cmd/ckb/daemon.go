@@ -221,8 +221,8 @@ func runDaemonBackground() error {
 	}
 
 	// Ensure daemon directory exists
-	if _, err := paths.EnsureDaemonDir(); err != nil {
-		return fmt.Errorf("failed to create daemon directory: %w", err)
+	if _, dirErr := paths.EnsureDaemonDir(); dirErr != nil {
+		return fmt.Errorf("failed to create daemon directory: %w", dirErr)
 	}
 
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
@@ -234,11 +234,11 @@ func runDaemonBackground() error {
 	cmd.Stderr = logFile
 
 	if err := cmd.Start(); err != nil {
-		logFile.Close()
+		_ = logFile.Close()
 		return fmt.Errorf("failed to start daemon: %w", err)
 	}
 
-	logFile.Close()
+	_ = logFile.Close()
 
 	fmt.Printf("Daemon started (PID: %d)\n", cmd.Process.Pid)
 	fmt.Printf("Listening on %s:%d\n", daemonBind, daemonPort)
@@ -327,7 +327,7 @@ func showLastLines(path string, n int) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Simple implementation: read all lines and show last N
 	var lines []string
@@ -352,7 +352,7 @@ func followLogs(path string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Seek to end
 	file.Seek(0, 2)

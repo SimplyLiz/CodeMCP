@@ -56,9 +56,9 @@ Examples:
 
 // Webhook flags
 var (
-	webhooksFormat          string
-	webhooksDeliveryStatus  string
-	webhooksDeliveryLimit   int
+	webhooksFormat         string
+	webhooksDeliveryStatus string
+	webhooksDeliveryLimit  int
 )
 
 func init() {

@@ -607,6 +607,8 @@ func TestMCPServerVersion(t *testing.T) {
 }
 
 // Helper function to create test server with custom version
+//
+//nolint:unused // test helper for future use
 func newTestMCPServerWithVersion(t *testing.T, ver string) *MCPServer {
 	t.Helper()
 

@@ -193,6 +193,8 @@ func (e *Engine) getAnnotationContext(moduleID string) *AnnotationContext {
 
 // getDecisionForSymbol checks if there's an ADR that mentions this symbol should be kept
 // Returns (hasDecision, decisionID, decisionTitle)
+//
+//nolint:unused // reserved for future enhancement
 func (e *Engine) getDecisionForSymbol(moduleID string, symbolName string) (bool, string, string) {
 	relatedDecisions := e.getRelatedDecisions(moduleID)
 	if len(relatedDecisions) == 0 {
@@ -211,6 +213,8 @@ func (e *Engine) getDecisionForSymbol(moduleID string, symbolName string) (bool,
 }
 
 // parseDecisionFromFile reads full decision content from file
+//
+//nolint:unused // reserved for future enhancement
 func (e *Engine) parseDecisionFromFile(filePath string) *decisions.ArchitecturalDecision {
 	if filePath == "" {
 		return nil

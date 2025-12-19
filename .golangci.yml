@@ -31,3 +31,52 @@ issues:
   exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
+  exclude-rules:
+    # Ignore unchecked errors for defer cleanup in tests
+    - path: _test\.go
+      linters:
+        - errcheck
+      text: "os.RemoveAll"
+    # Ignore shadow declarations in tests (common pattern with err)
+    - path: _test\.go
+      linters:
+        - govet
+      text: "shadow"
+    # Ignore unusedwrite in tests (struct initialization for testing)
+    - path: _test\.go
+      linters:
+        - govet
+      text: "unusedwrite"
+    # Ignore fmt.Sscanf errors (used for optional parsing)
+    - linters:
+        - errcheck
+      text: "fmt.Sscanf"
+    # Ignore fmt output functions in CLI code (stdout/stderr errors are rarely actionable)
+    - path: cmd/
+      linters:
+        - errcheck
+      text: "fmt\\.(Fprintf|Fprintln|Fprint)"
+    # Ignore tabwriter.Flush in CLI code
+    - path: cmd/
+      linters:
+        - errcheck
+      text: "Flush"
+    # Ignore r.Body.Close in HTTP handlers (already deferred, error is for info only)
+    - linters:
+        - errcheck
+      text: "Body\\.Close"
+    # Ignore MarkFlagRequired in CLI commands (panic on error is acceptable)
+    - path: cmd/
+      linters:
+        - errcheck
+      text: "MarkFlagRequired"
+    # Ignore fmt.Scanln in CLI commands (stdin errors are rarely actionable)
+    - path: cmd/
+      linters:
+        - errcheck
+      text: "fmt\\.Scanln"
+    # Ignore file.Seek in daemon logs (best effort positioning)
+    - path: cmd/ckb/daemon\.go
+      linters:
+        - errcheck
+      text: "Seek"

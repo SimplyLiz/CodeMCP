@@ -12,11 +12,11 @@ import (
 
 // Telemetry command flags
 var (
-	telemetryFormat   string
-	usagePeriod       string
-	usageIncludeCallers bool
+	telemetryFormat       string
+	usagePeriod           string
+	usageIncludeCallers   bool
 	deadCodeMinConfidence float64
-	deadCodeLimit     int
+	deadCodeLimit         int
 )
 
 var telemetryCmd = &cobra.Command{
@@ -290,8 +290,8 @@ func runTelemetryUsage(cmd *cobra.Command, args []string) {
 
 	// Get callers if requested
 	if usageIncludeCallers && cfg.Telemetry.Aggregation.StoreCallers {
-		callers, err := storage.GetObservedCallers(symbolID, 10)
-		if err == nil {
+		callers, callersErr := storage.GetObservedCallers(symbolID, 10)
+		if callersErr == nil {
 			for _, c := range callers {
 				response.Callers = append(response.Callers, CallerInfoCLI{
 					Service:   c.CallerService,
@@ -540,15 +540,15 @@ func runDeadCode(cmd *cobra.Command, args []string) {
 
 // TelemetryStatusCLI is the CLI response for telemetry status
 type TelemetryStatusCLI struct {
-	Enabled           bool                   `json:"enabled"`
-	LastSync          *time.Time             `json:"lastSync,omitempty"`
-	EventsLast24h     int64                  `json:"eventsLast24h,omitempty"`
-	SourcesActive     int                    `json:"sourcesActive,omitempty"`
-	Coverage          *TelemetryCoverageCLI  `json:"coverage,omitempty"`
-	ServiceMapMapped  int                    `json:"serviceMapMapped,omitempty"`
+	Enabled            bool                  `json:"enabled"`
+	LastSync           *time.Time            `json:"lastSync,omitempty"`
+	EventsLast24h      int64                 `json:"eventsLast24h,omitempty"`
+	SourcesActive      int                   `json:"sourcesActive,omitempty"`
+	Coverage           *TelemetryCoverageCLI `json:"coverage,omitempty"`
+	ServiceMapMapped   int                   `json:"serviceMapMapped,omitempty"`
 	ServiceMapUnmapped int                   `json:"serviceMapUnmapped,omitempty"`
-	UnmappedServices  []string               `json:"unmappedServices,omitempty"`
-	Recommendations   []string               `json:"recommendations,omitempty"`
+	UnmappedServices   []string              `json:"unmappedServices,omitempty"`
+	Recommendations    []string              `json:"recommendations,omitempty"`
 }
 
 // TelemetryCoverageCLI is coverage info for CLI

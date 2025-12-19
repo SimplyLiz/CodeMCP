@@ -254,7 +254,7 @@ func (s *Store) ListJobs(opts ListJobsOptions) (*ListJobsResponse, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to list jobs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var jobs []JobSummary
 	for rows.Next() {
@@ -287,7 +287,7 @@ func (s *Store) GetPendingJobs() ([]*Job, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pending jobs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var jobs []*Job
 	for rows.Next() {
@@ -468,7 +468,7 @@ func (s *Store) GetAllChecksums() (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	checksums := make(map[string]string)
 	for rows.Next() {

@@ -240,8 +240,8 @@ func OpenIndex(federationName string) (*Index, error) {
 	}
 
 	// Ensure the federation directory exists
-	if _, err := paths.EnsureFederationDir(federationName); err != nil {
-		return nil, fmt.Errorf("failed to create federation directory: %w", err)
+	if _, dirErr := paths.EnsureFederationDir(federationName); dirErr != nil {
+		return nil, fmt.Errorf("failed to create federation directory: %w", dirErr)
 	}
 
 	db, err := sql.Open("sqlite", indexPath+"?_journal_mode=WAL&_foreign_keys=ON")
@@ -256,7 +256,7 @@ func OpenIndex(federationName string) (*Index, error) {
 
 	// Initialize schema
 	if err := idx.initSchema(); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
@@ -270,19 +270,19 @@ func (idx *Index) initSchema() error {
 	err := idx.db.QueryRow("SELECT version FROM schema_version LIMIT 1").Scan(&version)
 	if err == sql.ErrNoRows {
 		// New database, create schema
-		if _, err := idx.db.Exec(indexSchema); err != nil {
-			return fmt.Errorf("failed to create schema: %w", err)
+		if _, execErr := idx.db.Exec(indexSchema); execErr != nil {
+			return fmt.Errorf("failed to create schema: %w", execErr)
 		}
-		if _, err := idx.db.Exec("INSERT INTO schema_version (version) VALUES (?)", currentSchemaVersion); err != nil {
-			return fmt.Errorf("failed to set schema version: %w", err)
+		if _, versionErr := idx.db.Exec("INSERT INTO schema_version (version) VALUES (?)", currentSchemaVersion); versionErr != nil {
+			return fmt.Errorf("failed to set schema version: %w", versionErr)
 		}
 	} else if err != nil {
 		// Table might not exist, try creating schema
-		if _, err := idx.db.Exec(indexSchema); err != nil {
-			return fmt.Errorf("failed to create schema: %w", err)
+		if _, execErr := idx.db.Exec(indexSchema); execErr != nil {
+			return fmt.Errorf("failed to create schema: %w", execErr)
 		}
-		if _, err := idx.db.Exec("INSERT OR REPLACE INTO schema_version (version) VALUES (?)", currentSchemaVersion); err != nil {
-			return fmt.Errorf("failed to set schema version: %w", err)
+		if _, versionErr := idx.db.Exec("INSERT OR REPLACE INTO schema_version (version) VALUES (?)", currentSchemaVersion); versionErr != nil {
+			return fmt.Errorf("failed to set schema version: %w", versionErr)
 		}
 	} else if version < currentSchemaVersion {
 		// Run migrations
@@ -402,7 +402,7 @@ func (idx *Index) ListRepos() ([]*FederatedRepo, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var repos []*FederatedRepo
 	for rows.Next() {
@@ -437,7 +437,7 @@ func (idx *Index) ClearRepoData(repoUID string) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	tables := []string{
 		"federated_modules",

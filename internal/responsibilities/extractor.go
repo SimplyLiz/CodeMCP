@@ -140,7 +140,7 @@ func (e *Extractor) parseReadme(path string) (string, []string) {
 	if err != nil {
 		return "", nil
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	var summary string
@@ -229,7 +229,7 @@ func (e *Extractor) parseGoDocComment(path string) (string, []string) {
 	if err != nil {
 		return "", nil
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	var docLines []string
@@ -288,7 +288,7 @@ func (e *Extractor) extractFileDocComment(path string) string {
 	if err != nil {
 		return ""
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	var docLines []string
@@ -356,7 +356,7 @@ func (e *Extractor) inferFromExports(dirPath string) (string, []string) {
 				}
 			}
 		}
-		file.Close()
+		_ = file.Close()
 
 		if len(exports) >= 10 {
 			break
