@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -429,11 +430,24 @@ func (c *Config) Save(repoRoot string) error {
 	return os.WriteFile(configPath, data, 0644)
 }
 
+// SupportedConfigVersions lists config schema versions this code can handle
+var SupportedConfigVersions = []int{5, 6}
+
 // Validate checks if the configuration is valid
 func (c *Config) Validate() error {
-	// Basic validation
-	if c.Version != 5 {
-		return &ConfigError{Field: "version", Message: "unsupported config version"}
+	// Check version is supported
+	supported := false
+	for _, v := range SupportedConfigVersions {
+		if c.Version == v {
+			supported = true
+			break
+		}
+	}
+	if !supported {
+		return &ConfigError{
+			Field:   "version",
+			Message: fmt.Sprintf("unsupported config version %d, supported versions: %v", c.Version, SupportedConfigVersions),
+		}
 	}
 
 	// Add more validation as needed

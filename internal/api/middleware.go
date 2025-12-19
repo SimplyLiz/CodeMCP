@@ -80,19 +80,147 @@ func RecoveryMiddleware(logger *logging.Logger) func(http.Handler) http.Handler 
 	}
 }
 
-// CORSMiddleware adds CORS headers for local development
-func CORSMiddleware() func(http.Handler) http.Handler {
+// CORSConfig contains CORS configuration
+type CORSConfig struct {
+	AllowedOrigins []string // Empty or ["*"] means allow all
+	AllowedMethods []string
+	AllowedHeaders []string
+}
+
+// DefaultCORSConfig returns a restrictive default CORS configuration
+func DefaultCORSConfig() CORSConfig {
+	return CORSConfig{
+		AllowedOrigins: []string{}, // Empty = no CORS (same-origin only)
+		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders: []string{"Content-Type", "Authorization", "X-Request-ID"},
+	}
+}
+
+// CORSMiddleware adds CORS headers based on configuration
+func CORSMiddleware(config CORSConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Set CORS headers
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-ID")
-			w.Header().Set("Access-Control-Max-Age", "86400")
+			origin := r.Header.Get("Origin")
+
+			// Determine allowed origin
+			allowedOrigin := ""
+			if len(config.AllowedOrigins) == 0 {
+				// No CORS configured - don't set any CORS headers (same-origin only)
+			} else if len(config.AllowedOrigins) == 1 && config.AllowedOrigins[0] == "*" {
+				// Allow all origins
+				allowedOrigin = "*"
+			} else {
+				// Check if origin is in allowed list
+				for _, allowed := range config.AllowedOrigins {
+					if allowed == origin {
+						allowedOrigin = origin
+						break
+					}
+				}
+			}
+
+			// Set CORS headers only if origin is allowed
+			if allowedOrigin != "" {
+				w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+				if allowedOrigin != "*" {
+					w.Header().Set("Vary", "Origin")
+				}
+
+				methods := "GET, POST, PUT, DELETE, OPTIONS"
+				if len(config.AllowedMethods) > 0 {
+					methods = ""
+					for i, m := range config.AllowedMethods {
+						if i > 0 {
+							methods += ", "
+						}
+						methods += m
+					}
+				}
+				w.Header().Set("Access-Control-Allow-Methods", methods)
+
+				headers := "Content-Type, Authorization, X-Request-ID"
+				if len(config.AllowedHeaders) > 0 {
+					headers = ""
+					for i, h := range config.AllowedHeaders {
+						if i > 0 {
+							headers += ", "
+						}
+						headers += h
+					}
+				}
+				w.Header().Set("Access-Control-Allow-Headers", headers)
+				w.Header().Set("Access-Control-Max-Age", "86400")
+			}
 
 			// Handle preflight requests
 			if r.Method == "OPTIONS" {
-				w.WriteHeader(http.StatusOK)
+				if allowedOrigin != "" {
+					w.WriteHeader(http.StatusOK)
+				} else {
+					w.WriteHeader(http.StatusForbidden)
+				}
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// AuthConfig contains authentication configuration
+type AuthConfig struct {
+	Enabled bool
+	Token   string
+}
+
+// AuthMiddleware enforces token-based authentication for mutating requests
+func AuthMiddleware(config AuthConfig, logger *logging.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Skip auth if disabled
+			if !config.Enabled {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// Allow read-only methods without auth
+			if r.Method == "GET" || r.Method == "HEAD" || r.Method == "OPTIONS" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// Check Authorization header
+			authHeader := r.Header.Get("Authorization")
+			if authHeader == "" {
+				logger.Warn("Missing authorization header", map[string]interface{}{
+					"path":      r.URL.Path,
+					"method":    r.Method,
+					"requestID": GetRequestID(r.Context()),
+				})
+				http.Error(w, `{"error":"unauthorized","message":"missing Authorization header"}`, http.StatusUnauthorized)
+				return
+			}
+
+			// Expect "Bearer <token>" format
+			const bearerPrefix = "Bearer "
+			if len(authHeader) < len(bearerPrefix) || authHeader[:len(bearerPrefix)] != bearerPrefix {
+				logger.Warn("Invalid authorization format", map[string]interface{}{
+					"path":      r.URL.Path,
+					"method":    r.Method,
+					"requestID": GetRequestID(r.Context()),
+				})
+				http.Error(w, `{"error":"unauthorized","message":"invalid Authorization format, expected 'Bearer <token>'"}`, http.StatusUnauthorized)
+				return
+			}
+
+			token := authHeader[len(bearerPrefix):]
+			if token != config.Token {
+				logger.Warn("Invalid auth token", map[string]interface{}{
+					"path":      r.URL.Path,
+					"method":    r.Method,
+					"requestID": GetRequestID(r.Context()),
+				})
+				http.Error(w, `{"error":"forbidden","message":"invalid token"}`, http.StatusForbidden)
 				return
 			}
 

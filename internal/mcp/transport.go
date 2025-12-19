@@ -7,11 +7,17 @@ import (
 	"io"
 )
 
+// MaxMessageSize is the maximum size for a single MCP message (1MB).
+// This accommodates large tool responses and batch operations.
+const MaxMessageSize = 1024 * 1024
+
 // readMessage reads a JSON-RPC message from the input stream
 func (s *MCPServer) readMessage() (*MCPMessage, error) {
 	// Lazily initialize the scanner on first use
 	if s.scanner == nil {
 		s.scanner = bufio.NewScanner(s.stdin)
+		// Increase buffer size beyond default 64KB to handle large messages
+		s.scanner.Buffer(make([]byte, MaxMessageSize), MaxMessageSize)
 	}
 
 	if !s.scanner.Scan() {

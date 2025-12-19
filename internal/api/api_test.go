@@ -52,8 +52,10 @@ func newTestServer(t *testing.T) *Server {
 		t.Fatalf("Failed to create query engine: %v", err)
 	}
 
-	// Create server
-	server := NewServer(":0", engine, logger)
+	// Create server with auth disabled for testing
+	serverConfig := DefaultServerConfig()
+	serverConfig.Auth.Enabled = false
+	server := NewServer(":0", engine, logger, serverConfig)
 
 	return server
 }

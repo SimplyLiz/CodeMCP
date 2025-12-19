@@ -10,6 +10,23 @@ import (
 	"ckb/internal/query"
 )
 
+// ServerConfig contains configuration for the HTTP server
+type ServerConfig struct {
+	Auth AuthConfig
+	CORS CORSConfig
+}
+
+// DefaultServerConfig returns default server configuration
+func DefaultServerConfig() ServerConfig {
+	return ServerConfig{
+		Auth: AuthConfig{
+			Enabled: true,
+			Token:   "", // Must be set explicitly
+		},
+		CORS: DefaultCORSConfig(),
+	}
+}
+
 // Server represents the HTTP API server
 type Server struct {
 	router *http.ServeMux
@@ -17,15 +34,17 @@ type Server struct {
 	addr   string
 	logger *logging.Logger
 	engine *query.Engine
+	config ServerConfig
 }
 
 // NewServer creates a new HTTP server instance
-func NewServer(addr string, engine *query.Engine, logger *logging.Logger) *Server {
+func NewServer(addr string, engine *query.Engine, logger *logging.Logger, config ServerConfig) *Server {
 	s := &Server{
 		addr:   addr,
 		logger: logger,
 		engine: engine,
 		router: http.NewServeMux(),
+		config: config,
 	}
 
 	// Register routes
@@ -77,9 +96,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // applyMiddleware wraps the handler with middleware in the correct order
 func (s *Server) applyMiddleware(handler http.Handler) http.Handler {
 	// Apply middleware in reverse order (last one wraps first)
+	// Order: CORS -> RequestID -> Auth -> Logging -> Recovery
+	// (Recovery is outermost, CORS is innermost before handler)
 	handler = RecoveryMiddleware(s.logger)(handler)
 	handler = LoggingMiddleware(s.logger)(handler)
+	handler = AuthMiddleware(s.config.Auth, s.logger)(handler)
 	handler = RequestIDMiddleware()(handler)
-	handler = CORSMiddleware()(handler)
+	handler = CORSMiddleware(s.config.CORS)(handler)
 	return handler
 }

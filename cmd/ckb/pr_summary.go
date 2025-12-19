@@ -11,10 +11,10 @@ import (
 )
 
 var (
-	prSummaryFormat           string
-	prSummaryBaseBranch       string
-	prSummaryHeadBranch       string
-	prSummaryIncludeOwnership bool
+	prSummaryFormat        string
+	prSummaryBaseBranch    string
+	prSummaryHeadBranch    string
+	prSummaryNoOwnership   bool // --no-ownership flag (default false, so ownership is ON by default)
 )
 
 var prSummaryCmd = &cobra.Command{
@@ -40,8 +40,7 @@ func init() {
 	prSummaryCmd.Flags().StringVar(&prSummaryFormat, "format", "json", "Output format (json, human)")
 	prSummaryCmd.Flags().StringVar(&prSummaryBaseBranch, "base", "main", "Base branch to compare against")
 	prSummaryCmd.Flags().StringVar(&prSummaryHeadBranch, "head", "", "Head branch (default: current branch)")
-	prSummaryCmd.Flags().BoolVar(&prSummaryIncludeOwnership, "ownership", true, "Include ownership analysis for reviewer suggestions")
-	prSummaryCmd.Flags().BoolVar(&prSummaryIncludeOwnership, "no-ownership", false, "Disable ownership analysis")
+	prSummaryCmd.Flags().BoolVar(&prSummaryNoOwnership, "no-ownership", false, "Disable ownership analysis (ownership is included by default)")
 	rootCmd.AddCommand(prSummaryCmd)
 }
 
@@ -53,16 +52,10 @@ func runPrSummary(cmd *cobra.Command, args []string) {
 	engine := mustGetEngine(repoRoot, logger)
 	ctx := newContext()
 
-	// Handle --no-ownership flag
-	includeOwnership := prSummaryIncludeOwnership
-	if cmd.Flags().Changed("no-ownership") {
-		includeOwnership = false
-	}
-
 	opts := query.SummarizePROptions{
 		BaseBranch:       prSummaryBaseBranch,
 		HeadBranch:       prSummaryHeadBranch,
-		IncludeOwnership: includeOwnership,
+		IncludeOwnership: !prSummaryNoOwnership, // Default true, --no-ownership sets to false
 	}
 	response, err := engine.SummarizePR(ctx, opts)
 	if err != nil {

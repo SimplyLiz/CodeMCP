@@ -54,9 +54,31 @@ func formatHuman(resp interface{}) (string, error) {
 		return formatArchHuman(v)
 	case *ImpactResponseCLI:
 		return formatImpactHuman(v)
+	case *PRSummaryResponseCLI:
+		return formatPRSummaryHuman(v)
+	case *CallgraphResponseCLI:
+		return formatCallgraphHuman(v)
+	case *ModuleOverviewResponseCLI:
+		return formatModuleOverviewHuman(v)
+	case *JustifyResponseCLI:
+		return formatJustifyHuman(v)
+	case *HotspotsResponseCLI:
+		return formatHotspotsHuman(v)
+	case *ComplexityResponseCLI:
+		return formatComplexityHuman(v)
+	case *EntrypointsResponseCLI:
+		return formatEntrypointsHuman(v)
+	case *TraceResponseCLI:
+		return formatTraceHuman(v)
+	case *JobsListResponseCLI:
+		return formatJobsListHuman(v)
 	default:
-		// For unknown types, fall back to JSON
-		return formatJSON(resp)
+		// For types without human formatters, output JSON with a note
+		json, err := formatJSON(resp)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("(Human format not available for this command, showing JSON)\n\n%s", json), nil
 	}
 }
 
@@ -390,4 +412,319 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// formatPRSummaryHuman formats a PRSummaryResponseCLI in human-readable format
+func formatPRSummaryHuman(resp *PRSummaryResponseCLI) (string, error) {
+	var b strings.Builder
+
+	b.WriteString("PR Summary\n")
+	b.WriteString(strings.Repeat("=", 60) + "\n\n")
+
+	// Summary stats
+	b.WriteString(fmt.Sprintf("Files Changed: %d (+%d/-%d)\n",
+		resp.Summary.TotalFiles, resp.Summary.TotalAdditions, resp.Summary.TotalDeletions))
+	b.WriteString(fmt.Sprintf("Modules Affected: %d\n", resp.Summary.TotalModules))
+	if resp.Summary.HotspotsTouched > 0 {
+		b.WriteString(fmt.Sprintf("Hotspots Touched: %d ⚠\n", resp.Summary.HotspotsTouched))
+	}
+	if len(resp.Summary.Languages) > 0 {
+		b.WriteString(fmt.Sprintf("Languages: %s\n", strings.Join(resp.Summary.Languages, ", ")))
+	}
+	b.WriteString("\n")
+
+	// Risk Assessment
+	riskIcon := "✓"
+	if resp.RiskAssessment.Level == "high" {
+		riskIcon = "⚠"
+	} else if resp.RiskAssessment.Level == "critical" {
+		riskIcon = "✗"
+	}
+	b.WriteString(fmt.Sprintf("%s Risk Level: %s (score: %.1f)\n", riskIcon, resp.RiskAssessment.Level, resp.RiskAssessment.Score))
+	if len(resp.RiskAssessment.Factors) > 0 {
+		b.WriteString("  Factors:\n")
+		for _, f := range resp.RiskAssessment.Factors {
+			b.WriteString(fmt.Sprintf("    - %s\n", f))
+		}
+	}
+	b.WriteString("\n")
+
+	// Modules affected
+	if len(resp.ModulesAffected) > 0 {
+		b.WriteString("Modules Affected:\n")
+		for _, m := range resp.ModulesAffected {
+			b.WriteString(fmt.Sprintf("  %s: %d files (%s risk)\n", m.Name, m.FilesChanged, m.RiskLevel))
+		}
+		b.WriteString("\n")
+	}
+
+	// Suggested reviewers
+	if len(resp.Reviewers) > 0 {
+		b.WriteString("Suggested Reviewers:\n")
+		for _, r := range resp.Reviewers {
+			b.WriteString(fmt.Sprintf("  %s - %s (%.0f%% coverage)\n", r.Owner, r.Reason, r.Coverage*100))
+		}
+		b.WriteString("\n")
+	}
+
+	// Changed files (summarized)
+	if len(resp.ChangedFiles) > 0 {
+		b.WriteString(fmt.Sprintf("Changed Files (%d total):\n", len(resp.ChangedFiles)))
+		shown := min(10, len(resp.ChangedFiles))
+		for _, f := range resp.ChangedFiles[:shown] {
+			hotspot := ""
+			if f.IsHotspot {
+				hotspot = " [hotspot]"
+			}
+			b.WriteString(fmt.Sprintf("  %s %s (+%d/-%d)%s\n", f.Status, f.Path, f.Additions, f.Deletions, hotspot))
+		}
+		if len(resp.ChangedFiles) > shown {
+			b.WriteString(fmt.Sprintf("  ... and %d more files\n", len(resp.ChangedFiles)-shown))
+		}
+	}
+
+	return b.String(), nil
+}
+
+// formatCallgraphHuman formats a CallgraphResponseCLI in human-readable format
+func formatCallgraphHuman(resp *CallgraphResponseCLI) (string, error) {
+	var b strings.Builder
+
+	b.WriteString(fmt.Sprintf("Call Graph for: %s\n", resp.Root))
+	b.WriteString(strings.Repeat("=", 60) + "\n\n")
+
+	b.WriteString(fmt.Sprintf("Nodes: %d, Edges: %d\n\n", len(resp.Nodes), len(resp.Edges)))
+
+	// Group by callers and callees based on depth
+	callers := make([]CallgraphNodeCLI, 0)
+	callees := make([]CallgraphNodeCLI, 0)
+
+	for _, n := range resp.Nodes {
+		if n.Depth < 0 {
+			callers = append(callers, n)
+		} else if n.Depth > 0 {
+			callees = append(callees, n)
+		}
+	}
+
+	if len(callers) > 0 {
+		b.WriteString("Callers (who calls this):\n")
+		for _, n := range callers[:min(15, len(callers))] {
+			b.WriteString(fmt.Sprintf("  %s (%s)\n", n.Name, n.Role))
+		}
+		if len(callers) > 15 {
+			b.WriteString(fmt.Sprintf("  ... and %d more\n", len(callers)-15))
+		}
+		b.WriteString("\n")
+	}
+
+	if len(callees) > 0 {
+		b.WriteString("Callees (what this calls):\n")
+		for _, n := range callees[:min(15, len(callees))] {
+			b.WriteString(fmt.Sprintf("  %s (%s)\n", n.Name, n.Role))
+		}
+		if len(callees) > 15 {
+			b.WriteString(fmt.Sprintf("  ... and %d more\n", len(callees)-15))
+		}
+	}
+
+	return b.String(), nil
+}
+
+// formatModuleOverviewHuman formats a ModuleOverviewResponseCLI in human-readable format
+func formatModuleOverviewHuman(resp *ModuleOverviewResponseCLI) (string, error) {
+	var b strings.Builder
+
+	b.WriteString("Module Overview\n")
+	b.WriteString(strings.Repeat("=", 60) + "\n\n")
+
+	b.WriteString(fmt.Sprintf("Module: %s\n", resp.Module.Name))
+	b.WriteString(fmt.Sprintf("Path: %s\n", resp.Module.Path))
+	b.WriteString(fmt.Sprintf("Files: %d, Symbols: %d\n\n", resp.Size.FileCount, resp.Size.SymbolCount))
+
+	if len(resp.RecentCommits) > 0 {
+		b.WriteString("Recent Commits:\n")
+		for _, c := range resp.RecentCommits[:min(5, len(resp.RecentCommits))] {
+			b.WriteString(fmt.Sprintf("  %s\n", c))
+		}
+	}
+
+	return b.String(), nil
+}
+
+// formatJustifyHuman formats a JustifyResponseCLI in human-readable format
+func formatJustifyHuman(resp *JustifyResponseCLI) (string, error) {
+	var b strings.Builder
+
+	b.WriteString(fmt.Sprintf("Symbol Justification: %s\n", resp.SymbolId))
+	b.WriteString(strings.Repeat("=", 60) + "\n\n")
+
+	// Verdict
+	verdictIcon := "?"
+	switch resp.Verdict {
+	case "keep":
+		verdictIcon = "✓"
+	case "investigate":
+		verdictIcon = "⚠"
+	case "remove":
+		verdictIcon = "✗"
+	}
+	b.WriteString(fmt.Sprintf("%s Verdict: %s (confidence: %.0f%%)\n\n", verdictIcon, resp.Verdict, resp.Confidence*100))
+
+	b.WriteString(fmt.Sprintf("Reasoning: %s\n", resp.Reasoning))
+
+	return b.String(), nil
+}
+
+// formatHotspotsHuman formats a HotspotsResponseCLI in human-readable format
+func formatHotspotsHuman(resp *HotspotsResponseCLI) (string, error) {
+	var b strings.Builder
+
+	b.WriteString("Code Hotspots\n")
+	b.WriteString(strings.Repeat("=", 60) + "\n\n")
+
+	b.WriteString(fmt.Sprintf("Total Hotspots: %d (period: %s)\n\n", resp.TotalCount, resp.TimeWindow))
+
+	for i, h := range resp.Hotspots {
+		b.WriteString(fmt.Sprintf("%d. %s\n", i+1, h.FilePath))
+		b.WriteString(fmt.Sprintf("   Score: %.2f, Risk: %s\n", h.Score, h.RiskLevel))
+		b.WriteString(fmt.Sprintf("   Changes: %d, Authors: %d\n", h.Churn.ChangeCount, h.Churn.AuthorCount))
+		b.WriteString("\n")
+	}
+
+	return b.String(), nil
+}
+
+// formatComplexityHuman formats a ComplexityResponseCLI in human-readable format
+func formatComplexityHuman(resp *ComplexityResponseCLI) (string, error) {
+	var b strings.Builder
+
+	b.WriteString("Complexity Analysis\n")
+	b.WriteString(strings.Repeat("=", 60) + "\n\n")
+
+	b.WriteString(fmt.Sprintf("File: %s (%s)\n\n", resp.File, resp.Language))
+
+	// Summary
+	b.WriteString(fmt.Sprintf("Functions: %d\n", resp.Summary.FunctionCount))
+	b.WriteString(fmt.Sprintf("Average Cyclomatic: %.2f\n", resp.Summary.AverageCyclomatic))
+	b.WriteString(fmt.Sprintf("Average Cognitive: %.2f\n", resp.Summary.AverageCognitive))
+	b.WriteString(fmt.Sprintf("Max Cyclomatic: %d\n", resp.Summary.MaxCyclomatic))
+	b.WriteString(fmt.Sprintf("Max Cognitive: %d\n\n", resp.Summary.MaxCognitive))
+
+	if len(resp.Functions) > 0 {
+		b.WriteString("Functions by Complexity:\n")
+		for i, f := range resp.Functions[:min(20, len(resp.Functions))] {
+			riskMarker := ""
+			if f.Risk == "high" {
+				riskMarker = " ⚠"
+			}
+			b.WriteString(fmt.Sprintf("  %d. %s: cyclomatic=%d, cognitive=%d%s\n",
+				i+1, f.Name, f.Cyclomatic, f.Cognitive, riskMarker))
+			b.WriteString(fmt.Sprintf("     Lines %d-%d\n", f.StartLine, f.EndLine))
+		}
+		if len(resp.Functions) > 20 {
+			b.WriteString(fmt.Sprintf("  ... and %d more\n", len(resp.Functions)-20))
+		}
+	}
+
+	return b.String(), nil
+}
+
+// formatEntrypointsHuman formats an EntrypointsResponseCLI in human-readable format
+func formatEntrypointsHuman(resp *EntrypointsResponseCLI) (string, error) {
+	var b strings.Builder
+
+	b.WriteString("Entrypoints\n")
+	b.WriteString(strings.Repeat("=", 60) + "\n\n")
+
+	b.WriteString(fmt.Sprintf("Total Entrypoints: %d\n\n", resp.TotalCount))
+
+	// Group by type
+	byType := make(map[string][]EntrypointDetailCLI)
+	for _, ep := range resp.Entrypoints {
+		byType[ep.Type] = append(byType[ep.Type], ep)
+	}
+
+	for epType, eps := range byType {
+		b.WriteString(fmt.Sprintf("%s (%d):\n", epType, len(eps)))
+		for _, ep := range eps[:min(10, len(eps))] {
+			b.WriteString(fmt.Sprintf("  %s\n", ep.Name))
+			if ep.Location != nil {
+				b.WriteString(fmt.Sprintf("    %s:%d\n", ep.Location.FileID, ep.Location.StartLine))
+			}
+		}
+		if len(eps) > 10 {
+			b.WriteString(fmt.Sprintf("  ... and %d more\n", len(eps)-10))
+		}
+		b.WriteString("\n")
+	}
+
+	return b.String(), nil
+}
+
+// formatTraceHuman formats a TraceResponseCLI in human-readable format
+func formatTraceHuman(resp *TraceResponseCLI) (string, error) {
+	var b strings.Builder
+
+	b.WriteString(fmt.Sprintf("Usage Trace: %s\n", resp.TargetSymbol))
+	b.WriteString(strings.Repeat("=", 60) + "\n\n")
+
+	b.WriteString(fmt.Sprintf("Found %d usage path(s)\n\n", resp.TotalPathsFound))
+
+	for i, path := range resp.Paths {
+		b.WriteString(fmt.Sprintf("Path %d (%s):\n", i+1, path.PathType))
+		for j, node := range path.Nodes {
+			indent := strings.Repeat("  ", j)
+			kind := ""
+			if node.Kind != "" {
+				kind = fmt.Sprintf(" (%s)", node.Kind)
+			}
+			b.WriteString(fmt.Sprintf("%s→ %s%s\n", indent, node.Name, kind))
+		}
+		b.WriteString("\n")
+	}
+
+	return b.String(), nil
+}
+
+// formatJobsListHuman formats a JobsListResponseCLI in human-readable format
+func formatJobsListHuman(resp *JobsListResponseCLI) (string, error) {
+	var b strings.Builder
+
+	b.WriteString("Background Jobs\n")
+	b.WriteString(strings.Repeat("=", 60) + "\n\n")
+
+	b.WriteString(fmt.Sprintf("Total Jobs: %d\n\n", resp.TotalCount))
+
+	if len(resp.Jobs) == 0 {
+		b.WriteString("No jobs found.\n")
+		return b.String(), nil
+	}
+
+	for _, job := range resp.Jobs {
+		statusIcon := "○"
+		switch job.Status {
+		case "completed":
+			statusIcon = "✓"
+		case "failed":
+			statusIcon = "✗"
+		case "running":
+			statusIcon = "◐"
+		case "cancelled":
+			statusIcon = "⊘"
+		}
+		// Handle short job IDs safely
+		jobIDShort := job.ID
+		if len(job.ID) > 8 {
+			jobIDShort = job.ID[:8]
+		}
+		b.WriteString(fmt.Sprintf("%s [%s] %s (%s)\n", statusIcon, jobIDShort, job.Type, job.Status))
+		b.WriteString(fmt.Sprintf("  Created: %s\n", job.CreatedAt))
+		if job.Progress > 0 && job.Progress < 100 {
+			b.WriteString(fmt.Sprintf("  Progress: %d%%\n", job.Progress))
+		}
+		b.WriteString("\n")
+	}
+
+	return b.String(), nil
 }

@@ -345,7 +345,7 @@ CKB configuration is stored in `.ckb/config.json`:
 
 ```json
 {
-  "version": 6,
+  "version": 5,
   "backends": {
     "scip": { "enabled": true, "indexPath": "index.scip" },
     "lsp": { "enabled": true },

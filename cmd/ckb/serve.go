@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -15,8 +16,10 @@ import (
 )
 
 var (
-	servePort string
-	serveHost string
+	servePort      string
+	serveHost      string
+	serveAuthToken string
+	serveCORSAllow string
 )
 
 var serveCmd = &cobra.Command{
@@ -34,6 +37,8 @@ func init() {
 	// Define flags
 	serveCmd.Flags().StringVar(&servePort, "port", "8080", "Port to listen on")
 	serveCmd.Flags().StringVar(&serveHost, "host", "localhost", "Host to bind to")
+	serveCmd.Flags().StringVar(&serveAuthToken, "auth-token", "", "Auth token for mutating requests (env: CKB_AUTH_TOKEN)")
+	serveCmd.Flags().StringVar(&serveCORSAllow, "cors-allow", "", "Comma-separated allowed CORS origins (empty=same-origin only, '*'=all)")
 }
 
 func runServe(cmd *cobra.Command, args []string) error {
@@ -50,8 +55,38 @@ func runServe(cmd *cobra.Command, args []string) error {
 	repoRoot := mustGetRepoRoot()
 	engine := mustGetEngine(repoRoot, logger)
 
+	// Build server config
+	serverConfig := api.DefaultServerConfig()
+
+	// Auth token: flag > env > disabled
+	authToken := serveAuthToken
+	if authToken == "" {
+		authToken = os.Getenv("CKB_AUTH_TOKEN")
+	}
+	if authToken != "" {
+		serverConfig.Auth.Enabled = true
+		serverConfig.Auth.Token = authToken
+	} else {
+		// No token = disable auth (with warning for non-localhost)
+		serverConfig.Auth.Enabled = false
+		if serveHost != "localhost" && serveHost != "127.0.0.1" {
+			logger.Warn("Auth disabled on non-localhost bind - consider setting --auth-token or CKB_AUTH_TOKEN", map[string]interface{}{
+				"host": serveHost,
+			})
+		}
+	}
+
+	// CORS origins
+	if serveCORSAllow != "" {
+		origins := strings.Split(serveCORSAllow, ",")
+		for i := range origins {
+			origins[i] = strings.TrimSpace(origins[i])
+		}
+		serverConfig.CORS.AllowedOrigins = origins
+	}
+
 	// Create server
-	server := api.NewServer(addr, engine, logger)
+	server := api.NewServer(addr, engine, logger, serverConfig)
 
 	// Setup graceful shutdown
 	shutdown := make(chan os.Signal, 1)

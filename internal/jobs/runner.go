@@ -32,19 +32,24 @@ type Runner struct {
 	// Metrics
 	processedCount int64
 	failedCount    int64
+
+	// Recovery settings
+	recoveryInterval time.Duration
 }
 
 // RunnerConfig contains configuration for the job runner.
 type RunnerConfig struct {
-	QueueSize   int
-	WorkerCount int
+	QueueSize        int
+	WorkerCount      int
+	RecoveryInterval time.Duration // How often to check for orphaned jobs
 }
 
 // DefaultRunnerConfig returns the default runner configuration.
 func DefaultRunnerConfig() RunnerConfig {
 	return RunnerConfig{
-		QueueSize:   100,
-		WorkerCount: 1, // Single worker for v6.1
+		QueueSize:        100,
+		WorkerCount:      1, // Single worker for v6.1
+		RecoveryInterval: 30 * time.Second,
 	}
 }
 
@@ -56,16 +61,20 @@ func NewRunner(store *Store, logger *logging.Logger, config RunnerConfig) *Runne
 	if config.WorkerCount <= 0 {
 		config.WorkerCount = 1
 	}
+	if config.RecoveryInterval <= 0 {
+		config.RecoveryInterval = 30 * time.Second
+	}
 
 	return &Runner{
-		store:       store,
-		logger:      logger,
-		handlers:    make(map[JobType]JobHandler),
-		queue:       make(chan *Job, config.QueueSize),
-		queueSize:   config.QueueSize,
-		workerCount: config.WorkerCount,
-		done:        make(chan struct{}),
-		cancel:      make(map[string]context.CancelFunc),
+		store:            store,
+		logger:           logger,
+		handlers:         make(map[JobType]JobHandler),
+		queue:            make(chan *Job, config.QueueSize),
+		queueSize:        config.QueueSize,
+		workerCount:      config.WorkerCount,
+		done:             make(chan struct{}),
+		cancel:           make(map[string]context.CancelFunc),
+		recoveryInterval: config.RecoveryInterval,
 	}
 }
 
@@ -82,8 +91,9 @@ func (r *Runner) RegisterHandler(jobType JobType, handler JobHandler) {
 // Start begins processing jobs.
 func (r *Runner) Start() error {
 	r.logger.Info("Starting job runner", map[string]interface{}{
-		"workers":   r.workerCount,
-		"queueSize": r.queueSize,
+		"workers":          r.workerCount,
+		"queueSize":        r.queueSize,
+		"recoveryInterval": r.recoveryInterval.String(),
 	})
 
 	// Start workers
@@ -92,28 +102,65 @@ func (r *Runner) Start() error {
 		go r.worker(i)
 	}
 
-	// Recover pending jobs from database
+	// Start recovery goroutine to periodically check for orphaned jobs
+	r.wg.Add(1)
+	go r.recoveryLoop()
+
+	// Recover pending jobs from database on startup
+	r.recoverPendingJobs()
+
+	return nil
+}
+
+// recoveryLoop periodically checks for orphaned jobs in the database
+func (r *Runner) recoveryLoop() {
+	defer r.wg.Done()
+
+	ticker := time.NewTicker(r.recoveryInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			r.recoverPendingJobs()
+		case <-r.done:
+			r.logger.Debug("Recovery loop stopping", nil)
+			return
+		}
+	}
+}
+
+// recoverPendingJobs loads pending jobs from the database and enqueues them
+func (r *Runner) recoverPendingJobs() {
 	pending, err := r.store.GetPendingJobs()
 	if err != nil {
 		r.logger.Warn("Failed to recover pending jobs", map[string]interface{}{
 			"error": err.Error(),
 		})
-	} else if len(pending) > 0 {
-		r.logger.Info("Recovering pending jobs", map[string]interface{}{
-			"count": len(pending),
-		})
-		for _, job := range pending {
-			select {
-			case r.queue <- job:
-			default:
-				r.logger.Warn("Queue full, cannot recover job", map[string]interface{}{
-					"jobId": job.ID,
-				})
-			}
+		return
+	}
+
+	if len(pending) == 0 {
+		return
+	}
+
+	recovered := 0
+	for _, job := range pending {
+		select {
+		case r.queue <- job:
+			recovered++
+		default:
+			// Queue still full, will retry on next interval
+			break
 		}
 	}
 
-	return nil
+	if recovered > 0 {
+		r.logger.Info("Recovered pending jobs", map[string]interface{}{
+			"recovered": recovered,
+			"remaining": len(pending) - recovered,
+		})
+	}
 }
 
 // Stop gracefully shuts down the runner.
