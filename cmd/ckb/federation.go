@@ -32,6 +32,16 @@ var (
 	fedForce       bool
 	fedDryRun      bool
 	fedJSONOutput  bool
+	// Search flags
+	fedSearchQuery    string
+	fedSearchRepos    string
+	fedSearchTags     string
+	fedSearchLimit    int
+	fedSearchPath     string
+	fedSearchModule   string
+	fedSearchStatus   string
+	fedSearchTop      int
+	fedSearchMinScore float64
 )
 
 var fedCreateCmd = &cobra.Command{
@@ -105,6 +115,66 @@ CKB database and stores summaries in the federation index for cross-repo queries
 	RunE: runFedSync,
 }
 
+var fedSearchModulesCmd = &cobra.Command{
+	Use:   "search-modules <federation>",
+	Short: "Search modules across federation",
+	Long: `Search for modules across all repositories in a federation.
+
+Uses full-text search on module names, paths, and responsibilities.
+
+Examples:
+  ckb federation search-modules my-org --query=auth
+  ckb federation search-modules my-org --tags=core,infrastructure
+  ckb federation search-modules my-org --repos=api,web --limit=20`,
+	Args: cobra.ExactArgs(1),
+	RunE: runFedSearchModules,
+}
+
+var fedSearchOwnershipCmd = &cobra.Command{
+	Use:   "search-ownership <federation>",
+	Short: "Search ownership across federation",
+	Long: `Search for file ownership across all repositories in a federation.
+
+Uses glob patterns to match file paths.
+
+Examples:
+  ckb federation search-ownership my-org --path="**/auth/**"
+  ckb federation search-ownership my-org --repos=api,web
+  ckb federation search-ownership my-org --limit=50`,
+	Args: cobra.ExactArgs(1),
+	RunE: runFedSearchOwnership,
+}
+
+var fedHotspotsCmd = &cobra.Command{
+	Use:   "hotspots <federation>",
+	Short: "Get hotspots across federation",
+	Long: `Get the hottest files (high churn + complexity) across all repositories.
+
+Returns files ranked by hotspot score across the entire federation.
+
+Examples:
+  ckb federation hotspots my-org
+  ckb federation hotspots my-org --top=50 --min-score=0.5
+  ckb federation hotspots my-org --repos=api,web`,
+	Args: cobra.ExactArgs(1),
+	RunE: runFedHotspots,
+}
+
+var fedSearchDecisionsCmd = &cobra.Command{
+	Use:   "search-decisions <federation>",
+	Short: "Search decisions across federation",
+	Long: `Search for architectural decisions (ADRs) across all repositories.
+
+Uses full-text search on decision titles and content.
+
+Examples:
+  ckb federation search-decisions my-org --query=database
+  ckb federation search-decisions my-org --module=internal/api
+  ckb federation search-decisions my-org --status=accepted,proposed`,
+	Args: cobra.ExactArgs(1),
+	RunE: runFedSearchDecisions,
+}
+
 func init() {
 	rootCmd.AddCommand(federationCmd)
 
@@ -147,6 +217,37 @@ func init() {
 	fedSyncCmd.Flags().BoolVar(&fedDryRun, "dry-run", false, "Show what would be synced")
 	fedSyncCmd.Flags().BoolVar(&fedJSONOutput, "json", false, "Output as JSON")
 	federationCmd.AddCommand(fedSyncCmd)
+
+	// Search modules command
+	fedSearchModulesCmd.Flags().StringVar(&fedSearchQuery, "query", "", "Search query (FTS)")
+	fedSearchModulesCmd.Flags().StringVar(&fedSearchRepos, "repos", "", "Comma-separated repo IDs to filter")
+	fedSearchModulesCmd.Flags().StringVar(&fedSearchTags, "tags", "", "Comma-separated tags to filter")
+	fedSearchModulesCmd.Flags().IntVar(&fedSearchLimit, "limit", 50, "Maximum results")
+	fedSearchModulesCmd.Flags().BoolVar(&fedJSONOutput, "json", false, "Output as JSON")
+	federationCmd.AddCommand(fedSearchModulesCmd)
+
+	// Search ownership command
+	fedSearchOwnershipCmd.Flags().StringVar(&fedSearchPath, "path", "", "Glob pattern to match paths")
+	fedSearchOwnershipCmd.Flags().StringVar(&fedSearchRepos, "repos", "", "Comma-separated repo IDs to filter")
+	fedSearchOwnershipCmd.Flags().IntVar(&fedSearchLimit, "limit", 50, "Maximum results")
+	fedSearchOwnershipCmd.Flags().BoolVar(&fedJSONOutput, "json", false, "Output as JSON")
+	federationCmd.AddCommand(fedSearchOwnershipCmd)
+
+	// Hotspots command
+	fedHotspotsCmd.Flags().IntVar(&fedSearchTop, "top", 20, "Number of top hotspots")
+	fedHotspotsCmd.Flags().Float64Var(&fedSearchMinScore, "min-score", 0.3, "Minimum hotspot score")
+	fedHotspotsCmd.Flags().StringVar(&fedSearchRepos, "repos", "", "Comma-separated repo IDs to filter")
+	fedHotspotsCmd.Flags().BoolVar(&fedJSONOutput, "json", false, "Output as JSON")
+	federationCmd.AddCommand(fedHotspotsCmd)
+
+	// Search decisions command
+	fedSearchDecisionsCmd.Flags().StringVar(&fedSearchQuery, "query", "", "Search query (FTS)")
+	fedSearchDecisionsCmd.Flags().StringVar(&fedSearchModule, "module", "", "Filter by affected module")
+	fedSearchDecisionsCmd.Flags().StringVar(&fedSearchStatus, "status", "", "Comma-separated status filter")
+	fedSearchDecisionsCmd.Flags().StringVar(&fedSearchRepos, "repos", "", "Comma-separated repo IDs to filter")
+	fedSearchDecisionsCmd.Flags().IntVar(&fedSearchLimit, "limit", 50, "Maximum results")
+	fedSearchDecisionsCmd.Flags().BoolVar(&fedJSONOutput, "json", false, "Output as JSON")
+	federationCmd.AddCommand(fedSearchDecisionsCmd)
 }
 
 func runFedCreate(cmd *cobra.Command, args []string) error {
@@ -507,4 +608,246 @@ func runFedSync(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func runFedSearchModules(cmd *cobra.Command, args []string) error {
+	name := args[0]
+
+	logger := logging.NewLogger(logging.Config{
+		Format: logging.HumanFormat,
+		Level:  logging.WarnLevel,
+	})
+
+	fed, err := federation.Open(name, logger)
+	if err != nil {
+		return fmt.Errorf("failed to open federation: %w", err)
+	}
+	defer fed.Close()
+
+	opts := federation.SearchModulesOptions{
+		Query: fedSearchQuery,
+		Limit: fedSearchLimit,
+	}
+
+	if fedSearchRepos != "" {
+		opts.RepoIDs = splitAndTrimStrings(fedSearchRepos)
+	}
+	if fedSearchTags != "" {
+		opts.Tags = splitAndTrimStrings(fedSearchTags)
+	}
+
+	result, err := fed.SearchModules(opts)
+	if err != nil {
+		return fmt.Errorf("search failed: %w", err)
+	}
+
+	if fedJSONOutput {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(result)
+	}
+
+	// Human output
+	if len(result.Modules) == 0 {
+		fmt.Println("No modules found")
+		return nil
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "REPO\tMODULE\tRESPONSIBILITY\tCONFIDENCE")
+	for _, m := range result.Modules {
+		resp := m.Responsibility
+		if len(resp) > 50 {
+			resp = resp[:47] + "..."
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%.2f\n", m.RepoID, m.ModuleID, resp, m.Confidence)
+	}
+	w.Flush()
+
+	fmt.Printf("\nFound %d modules (total: %d)\n", len(result.Modules), result.Total)
+	return nil
+}
+
+func runFedSearchOwnership(cmd *cobra.Command, args []string) error {
+	name := args[0]
+
+	logger := logging.NewLogger(logging.Config{
+		Format: logging.HumanFormat,
+		Level:  logging.WarnLevel,
+	})
+
+	fed, err := federation.Open(name, logger)
+	if err != nil {
+		return fmt.Errorf("failed to open federation: %w", err)
+	}
+	defer fed.Close()
+
+	opts := federation.SearchOwnershipOptions{
+		PathGlob: fedSearchPath,
+		Limit:    fedSearchLimit,
+	}
+
+	if fedSearchRepos != "" {
+		opts.RepoIDs = splitAndTrimStrings(fedSearchRepos)
+	}
+
+	result, err := fed.SearchOwnership(opts)
+	if err != nil {
+		return fmt.Errorf("search failed: %w", err)
+	}
+
+	if fedJSONOutput {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(result)
+	}
+
+	// Human output
+	if len(result.Matches) == 0 {
+		fmt.Println("No ownership entries found")
+		return nil
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "REPO\tPATTERN\tOWNERS\tSCOPE")
+	for _, e := range result.Matches {
+		owners := ""
+		for i, o := range e.Owners {
+			if i > 0 {
+				owners += ", "
+			}
+			owners += o.ID
+		}
+		if len(owners) > 40 {
+			owners = owners[:37] + "..."
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", e.RepoID, e.Pattern, owners, e.Scope)
+	}
+	w.Flush()
+
+	fmt.Printf("\nFound %d entries (total: %d)\n", len(result.Matches), result.Total)
+	return nil
+}
+
+func runFedHotspots(cmd *cobra.Command, args []string) error {
+	name := args[0]
+
+	logger := logging.NewLogger(logging.Config{
+		Format: logging.HumanFormat,
+		Level:  logging.WarnLevel,
+	})
+
+	fed, err := federation.Open(name, logger)
+	if err != nil {
+		return fmt.Errorf("failed to open federation: %w", err)
+	}
+	defer fed.Close()
+
+	opts := federation.GetHotspotsOptions{
+		Top:      fedSearchTop,
+		MinScore: fedSearchMinScore,
+	}
+
+	if fedSearchRepos != "" {
+		opts.RepoIDs = splitAndTrimStrings(fedSearchRepos)
+	}
+
+	result, err := fed.GetHotspots(opts)
+	if err != nil {
+		return fmt.Errorf("query failed: %w", err)
+	}
+
+	if fedJSONOutput {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(result)
+	}
+
+	// Human output
+	if len(result.Hotspots) == 0 {
+		fmt.Println("No hotspots found")
+		return nil
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "REPO\tTARGET\tSCORE\tCHURN\tCOMPLEXITY")
+	for _, h := range result.Hotspots {
+		fmt.Fprintf(w, "%s\t%s\t%.2f\t%d\t%.1f\n", h.RepoID, h.TargetID, h.Score, h.ChurnCommits30d, h.ComplexityCyclomatic)
+	}
+	w.Flush()
+
+	fmt.Printf("\nFound %d hotspots (total: %d)\n", len(result.Hotspots), result.Total)
+	return nil
+}
+
+func runFedSearchDecisions(cmd *cobra.Command, args []string) error {
+	name := args[0]
+
+	logger := logging.NewLogger(logging.Config{
+		Format: logging.HumanFormat,
+		Level:  logging.WarnLevel,
+	})
+
+	fed, err := federation.Open(name, logger)
+	if err != nil {
+		return fmt.Errorf("failed to open federation: %w", err)
+	}
+	defer fed.Close()
+
+	opts := federation.SearchDecisionsOptions{
+		Query:          fedSearchQuery,
+		AffectedModule: fedSearchModule,
+		Limit:          fedSearchLimit,
+	}
+
+	if fedSearchRepos != "" {
+		opts.RepoIDs = splitAndTrimStrings(fedSearchRepos)
+	}
+	if fedSearchStatus != "" {
+		opts.Status = splitAndTrimStrings(fedSearchStatus)
+	}
+
+	result, err := fed.SearchDecisions(opts)
+	if err != nil {
+		return fmt.Errorf("search failed: %w", err)
+	}
+
+	if fedJSONOutput {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(result)
+	}
+
+	// Human output
+	if len(result.Decisions) == 0 {
+		fmt.Println("No decisions found")
+		return nil
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "REPO\tID\tTITLE\tSTATUS\tAUTHOR")
+	for _, d := range result.Decisions {
+		title := d.Title
+		if len(title) > 40 {
+			title = title[:37] + "..."
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", d.RepoID, d.DecisionID, title, d.Status, d.Author)
+	}
+	w.Flush()
+
+	fmt.Printf("\nFound %d decisions (total: %d)\n", len(result.Decisions), result.Total)
+	return nil
+}
+
+// splitAndTrimStrings splits a comma-separated string and trims whitespace
+func splitAndTrimStrings(s string) []string {
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
 }
