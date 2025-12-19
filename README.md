@@ -1,66 +1,63 @@
 # CKB — Code Knowledge Backend
 
-**Give your AI assistant superpowers for understanding code.**
+**The missing link between your codebase and AI assistants.**
 
-CKB is a code intelligence layer that gives AI assistants (like Claude Code) deep understanding of your codebase. Instead of grepping through files, your AI can now *navigate* code like a senior engineer would—with knowledge of who owns what, what's risky to change, and how everything connects.
+CKB gives AI assistants deep understanding of your code. Instead of grepping through files, your AI can now *navigate* code like a senior engineer—with knowledge of who owns what, what's risky to change, and how everything connects.
 
-## What It Does
+> CKB analyzes and explains your code but never modifies it. Think of it as a librarian who knows everything about the books but never rewrites them.
 
-### Symbol Navigation
-Find any function, class, or variable across your entire codebase in milliseconds. Filter by type, scope to specific modules, and get full metadata.
+## The Problem
 
-### Call Flow & Tracing
-Trace how code is reached from API endpoints, CLI commands, or jobs. See the full call chain, not just direct callers.
+### AI Assistants Are Blind to Code Structure
 
-### Impact Analysis
-Before refactoring, know exactly what breaks. Get a risk score, see all affected code paths, and identify hotspots.
+When you ask an AI "what calls this function?", it typically:
+1. Searches for text patterns (error-prone)
+2. Reads random files hoping to find context (inefficient)
+3. Gives up and asks you to provide more context (frustrating)
 
-### Architecture Maps
-Understand how modules connect. See dependency graphs, module responsibilities, and key domain concepts.
+### Existing Tools Don't Talk to Each Other
 
-### Ownership Intelligence
-Know who owns what code—from CODEOWNERS rules and git blame with time-weighted analysis. Get reviewer suggestions for any path.
+Your codebase has valuable intelligence scattered across SCIP indexes, language servers, git history, and CODEOWNERS files. Each speaks a different language. None are optimized for AI consumption.
 
-### Hotspot Detection
-Identify volatile areas before they become problems. Track churn trends and get 30-day risk projections.
+### Context Windows Are Limited
 
-### Architectural Decisions
-Record and query Architectural Decision Records (ADRs). Link decisions to affected modules with full-text search.
+Even with 100K+ token context, you can't dump your entire codebase into an LLM. You need relevant information only, properly compressed, with smart truncation.
 
-### Dead Code Detection
-Get keep/investigate/remove verdicts on symbols based on usage analysis.
+## What CKB Gives You
 
-### Background Jobs (v6.1)
-Run long operations asynchronously. Queue architecture refreshes, track progress, and cancel jobs.
+```
+You: "What's the impact of changing UserService.authenticate()?"
 
-### CI/CD Integration (v6.1)
-Analyze PRs for risk assessment and reviewer suggestions. Detect ownership drift between CODEOWNERS and actual contributors.
+CKB provides:
+├── Symbol details (signature, visibility, location)
+├── 12 direct callers across 4 modules
+├── Risk score: HIGH (public API, many dependents)
+├── Affected modules: auth, api, admin, tests
+├── Code owners: @security-team, @api-team
+└── Suggested drilldowns for deeper analysis
+```
 
-### Federation (v6.2)
-Query across multiple repositories. Group related repos into federations and search modules, ownership, hotspots, and decisions organization-wide.
+```
+You: "Show me the architecture of this codebase"
 
-### Daemon Mode (v6.2.1)
-Always-on service with HTTP API, scheduled tasks (cron/intervals), file watching for git changes, and webhooks to Slack/PagerDuty/Discord.
+CKB provides:
+├── Module dependency graph
+├── Key symbols per module
+├── Module responsibilities and ownership
+├── Import/export relationships
+└── Compressed to fit LLM context
+```
 
-### Tree-sitter Complexity (v6.2.2)
-Language-agnostic complexity metrics for Go, JavaScript, TypeScript, Python, Rust, Java, and Kotlin. Computes cyclomatic and cognitive complexity to feed into hotspot risk scores.
+```
+You: "Is it safe to rename this function?"
 
-### Contract-Aware Impact Analysis (v6.3)
-Cross-repo intelligence through explicit API boundaries. Detect protobuf and OpenAPI contracts, track consumer dependencies with evidence tiers, and answer "What breaks if I change this shared API?"
-
-### Runtime Telemetry (v6.4)
-From "maybe used" to "actually used". Integrate OpenTelemetry metrics to see real call counts, detect dead code with confidence scores, and enrich impact analysis with observed callers.
-
-### Developer Intelligence (v6.5)
-Understand *why* code exists, not just *what* it does. Explain symbol origins with git history, find co-change coupling patterns, export codebase structure for LLMs, and audit risk with 8 weighted factors (complexity, test coverage, bus factor, security, staleness, error rate, coupling, churn).
-
-## Three Ways to Use It
-
-| Interface | Best For |
-|-----------|----------|
-| **Claude Code (MCP)** | AI-assisted development — Claude can query your codebase directly |
-| **CLI** | Quick lookups from terminal |
-| **HTTP API** | IDE plugins, CI integration, custom tooling |
+CKB provides:
+├── All references (not just text matches)
+├── Cross-module dependencies
+├── Test coverage of affected code
+├── Hotspot risk assessment
+└── Breaking change warnings
+```
 
 ## Quick Start
 
@@ -88,13 +85,72 @@ Now Claude can answer questions like:
 - *"What's the blast radius if I change UserService?"*
 - *"Who owns the internal/api module?"*
 - *"Is this legacy code still used?"*
-- *"Summarize PR #123 by risk level"*
+
+## Why CKB?
+
+| Without CKB | With CKB |
+|-------------|----------|
+| AI greps for patterns | AI navigates semantically |
+| "I found 47 matches for Handler" | "HandleRequest is called by 3 routes via CheckoutService" |
+| Guessing at impact | Knowing the blast radius with risk scores |
+| Reading entire files for context | Getting exactly what's relevant |
+| "Who owns this?" → search CODEOWNERS | Instant ownership with reviewer suggestions |
+| "Is this safe to change?" → hope | Hotspot trends + impact analysis |
+
+## Three Ways to Use It
+
+| Interface | Best For |
+|-----------|----------|
+| **Claude Code (MCP)** | AI-assisted development — Claude queries your codebase directly |
+| **CLI** | Quick lookups from terminal, scripting |
+| **HTTP API** | IDE plugins, CI integration, custom tooling |
+
+## Features
+
+### Core Intelligence
+- **Symbol Navigation** — Find any function, class, or variable in milliseconds
+- **Call Flow & Tracing** — Trace how code is reached from API endpoints, CLI commands, or jobs
+- **Impact Analysis** — Know exactly what breaks before refactoring, with risk scores
+- **Architecture Maps** — Module dependency graphs, responsibilities, domain concepts
+- **Dead Code Detection** — Keep/investigate/remove verdicts based on usage analysis
+
+### Ownership & Risk
+- **Ownership Intelligence** — CODEOWNERS + git blame with time-weighted analysis
+- **Hotspot Detection** — Track churn trends, get 30-day risk projections
+- **Architectural Decisions** — Record and query ADRs with full-text search
+
+### Production Ready (v6.1)
+- **Background Jobs** — Queue long operations, track progress, cancel jobs
+- **CI/CD Integration** — PR risk analysis, ownership drift detection
+
+### Cross-Repository (v6.2+)
+- **Federation** — Query across multiple repos organization-wide
+- **Daemon Mode** — Always-on service with HTTP API, scheduled tasks, file watching, webhooks
+- **Tree-sitter Complexity** — Language-agnostic cyclomatic/cognitive complexity for 7 languages
+
+### Contract-Aware (v6.3)
+- **API Boundary Detection** — Protobuf and OpenAPI contract discovery
+- **Consumer Tracking** — Three evidence tiers for cross-repo dependencies
+- **Cross-Repo Impact** — "What breaks if I change this shared API?"
+
+### Runtime Observability (v6.4)
+- **OpenTelemetry Integration** — See real call counts, not just static analysis
+- **Dead Code Confidence** — Find symbols with zero runtime calls
+- **Observed Callers** — Enrich impact analysis with production data
+
+### Developer Intelligence (v6.5)
+- **Symbol Origins** — Why does this code exist? Git history, linked issues/PRs
+- **Co-change Coupling** — Find files that historically change together
+- **LLM Export** — Token-efficient codebase summaries with importance ranking
+- **Risk Audit** — 8-factor scoring (complexity, coverage, bus factor, security, staleness, errors, coupling, churn)
 
 ## MCP Tools (58 Available)
 
 CKB exposes code intelligence through the Model Context Protocol:
 
-### v5.1 — Core Navigation
+<details>
+<summary><strong>v5.1 — Core Navigation</strong></summary>
+
 | Tool | Purpose |
 |------|---------|
 | `searchSymbols` | Find symbols by name with filtering |
@@ -108,7 +164,11 @@ CKB exposes code intelligence through the Model Context Protocol:
 | `getStatus` | System health |
 | `doctor` | Diagnostics |
 
-### v5.2 — Discovery & Flow
+</details>
+
+<details>
+<summary><strong>v5.2 — Discovery & Flow</strong></summary>
+
 | Tool | Purpose |
 |------|---------|
 | `traceUsage` | How is this symbol reached? |
@@ -121,7 +181,11 @@ CKB exposes code intelligence through the Model Context Protocol:
 | `listKeyConcepts` | Domain concepts in codebase |
 | `recentlyRelevant` | What matters now? |
 
-### v6.0 — Architectural Memory
+</details>
+
+<details>
+<summary><strong>v6.0 — Architectural Memory</strong></summary>
+
 | Tool | Purpose |
 |------|---------|
 | `getOwnership` | Who owns this code? |
@@ -131,7 +195,11 @@ CKB exposes code intelligence through the Model Context Protocol:
 | `annotateModule` | Add module metadata |
 | `refreshArchitecture` | Rebuild architectural model |
 
-### v6.1 — Production Ready
+</details>
+
+<details>
+<summary><strong>v6.1 — Production Ready</strong></summary>
+
 | Tool | Purpose |
 |------|---------|
 | `getJobStatus` | Query background job status |
@@ -140,88 +208,33 @@ CKB exposes code intelligence through the Model Context Protocol:
 | `summarizePr` | PR risk analysis & reviewers |
 | `getOwnershipDrift` | CODEOWNERS vs actual ownership |
 
-### v6.2 — Federation
+</details>
+
+<details>
+<summary><strong>v6.2+ — Federation, Daemon, Contracts, Telemetry, Intelligence</strong></summary>
+
 | Tool | Purpose |
 |------|---------|
 | `listFederations` | List all federations |
 | `federationStatus` | Get federation status |
-| `federationRepos` | List repos in federation |
 | `federationSearchModules` | Cross-repo module search |
 | `federationSearchOwnership` | Cross-repo ownership search |
 | `federationGetHotspots` | Merged hotspots across repos |
-| `federationSearchDecisions` | Cross-repo decision search |
-| `federationSync` | Sync federation index |
-
-### v6.2.1 — Daemon Mode
-| Tool | Purpose |
-|------|---------|
 | `daemonStatus` | Daemon health and stats |
 | `listSchedules` | List scheduled tasks |
-| `runSchedule` | Run a schedule immediately |
 | `listWebhooks` | List configured webhooks |
-| `testWebhook` | Send test webhook |
-| `webhookDeliveries` | Get delivery history |
-
-### v6.2.2 — Tree-sitter Complexity
-| Tool | Purpose |
-|------|---------|
-| `getFileComplexity` | Cyclomatic/cognitive complexity metrics |
-
-### v6.3 — Contract-Aware Impact Analysis
-| Tool | Purpose |
-|------|---------|
+| `getFileComplexity` | Cyclomatic/cognitive complexity |
 | `listContracts` | List contracts in federation |
-| `analyzeContractImpact` | Analyze impact of contract changes |
-| `getContractDependencies` | Get contract deps for a repo |
-| `suppressContractEdge` | Suppress false positive edge |
-| `verifyContractEdge` | Verify an edge |
-| `getContractStats` | Contract statistics |
-
-### v6.4 — Runtime Telemetry
-| Tool | Purpose |
-|------|---------|
+| `analyzeContractImpact` | Contract change impact |
 | `getTelemetryStatus` | Coverage metrics and sync status |
 | `getObservedUsage` | Observed usage for a symbol |
-| `findDeadCodeCandidates` | Find symbols with zero runtime calls |
+| `findDeadCodeCandidates` | Zero runtime call detection |
+| `explainOrigin` | Why does this code exist? |
+| `analyzeCoupling` | Co-change analysis |
+| `exportForLLM` | LLM-friendly export |
+| `auditRisk` | Multi-signal risk audit |
 
-### v6.5 — Developer Intelligence
-| Tool | Purpose |
-|------|---------|
-| `explainOrigin` | Why does this code exist? (origin, evolution, warnings) |
-| `analyzeCoupling` | Find files/symbols that change together |
-| `exportForLLM` | LLM-friendly codebase export |
-| `auditRisk` | Multi-signal risk audit (8 factors) |
-
-## Documentation
-
-📚 **[Full Documentation Wiki](https://github.com/SimplyLiz/CodeMCP/wiki)**
-
-| Page | Description |
-|------|-------------|
-| **[Quick Start](https://github.com/SimplyLiz/CodeMCP/wiki/Quick-Start)** | Step-by-step installation for Windows, macOS, Linux |
-| **[Prompt Cookbook](https://github.com/SimplyLiz/CodeMCP/wiki/Prompt-Cookbook)** | Real prompts for real problems — start here! |
-| **[Practical Limits](https://github.com/SimplyLiz/CodeMCP/wiki/Practical-Limits)** | Accuracy notes, blind spots, validation tips |
-| [User Guide](https://github.com/SimplyLiz/CodeMCP/wiki/User-Guide) | CLI commands and best practices |
-| [Daemon Mode](https://github.com/SimplyLiz/CodeMCP/wiki/Daemon-Mode) | Always-on service, scheduler, webhooks (v6.2.1) |
-| [Federation](https://github.com/SimplyLiz/CodeMCP/wiki/Federation) | Cross-repository queries & contracts (v6.3) |
-| [CI/CD Integration](https://github.com/SimplyLiz/CodeMCP/wiki/CI-CD-Integration) | GitHub Actions, PR analysis (v6.1) |
-| [API Reference](https://github.com/SimplyLiz/CodeMCP/wiki/API-Reference) | HTTP API documentation |
-| [MCP Integration](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration) | Claude Code / AI assistant setup (58 tools) |
-| [Architecture](https://github.com/SimplyLiz/CodeMCP/wiki/Architecture) | System design and components |
-| [Configuration](https://github.com/SimplyLiz/CodeMCP/wiki/Configuration) | All options including MODULES.toml |
-| [Performance](https://github.com/SimplyLiz/CodeMCP/wiki/Performance) | Latency targets and benchmarks |
-| [Contributing](https://github.com/SimplyLiz/CodeMCP/wiki/Contributing) | Development guidelines |
-
-## Why CKB?
-
-| Without CKB | With CKB |
-|-------------|----------|
-| AI greps for patterns | AI navigates semantically |
-| "I found 47 matches for Handler" | "HandleRequest is called by 3 routes via CheckoutService" |
-| Guessing at impact | Knowing the blast radius with risk scores |
-| Reading entire files for context | Getting exactly what's relevant |
-| "Who owns this?" → search CODEOWNERS | Instant ownership with reviewer suggestions |
-| "Is this safe to change?" → hope | Hotspot trends + impact analysis |
+</details>
 
 ## CLI Usage
 
@@ -247,51 +260,47 @@ ckb ownership internal/api/handler.go
 # List architectural decisions
 ckb decisions
 
-# Refresh architectural model
-ckb refresh
-
 # Run diagnostics
 ckb doctor
 
-# Federation commands (v6.2)
+# Start MCP server for AI assistants
+ckb mcp
+```
+
+<details>
+<summary><strong>More CLI commands</strong></summary>
+
+```bash
+# Federation (v6.2)
 ckb federation create platform --description "Our microservices"
 ckb federation add platform --repo-id=api --path=/code/api
 ckb federation status platform
 ckb federation sync platform
 
-# Daemon commands (v6.2.1)
+# Daemon (v6.2.1)
 ckb daemon start [--port=9120]
 ckb daemon status
 ckb daemon logs --follow
 ckb daemon stop
 
-# Scheduler commands
-ckb daemon schedule list
-ckb daemon schedule run <schedule-id>
-
-# Webhook commands
-ckb webhooks list
-ckb webhooks test <webhook-id>
-ckb webhooks deliveries <webhook-id>
-
-# Contract commands (v6.3)
+# Contracts (v6.3)
 ckb contracts list platform
 ckb contracts impact platform --repo=api --path=proto/api/v1/user.proto
 ckb contracts deps platform --repo=api
-ckb contracts stats platform
 
-# Telemetry commands (v6.4)
+# Telemetry (v6.4)
 ckb telemetry status
 ckb telemetry usage --symbol="internal/api/handler.go:HandleRequest"
-ckb telemetry unmapped
 ckb dead-code --min-confidence=0.7
 
-# Developer Intelligence commands (v6.5)
+# Developer Intelligence (v6.5)
 ckb explain internal/api/handler.go:42
 ckb coupling internal/query/engine.go --min-correlation=0.5
 ckb export --min-complexity=10 --max-symbols=200
 ckb audit --min-score=60 --quick-wins
 ```
+
+</details>
 
 ## HTTP API
 
@@ -299,31 +308,25 @@ ckb audit --min-score=60 --quick-wins
 # Start the HTTP server
 ckb serve --port 8080
 
-# Example API calls
+# Example calls
 curl http://localhost:8080/health
 curl http://localhost:8080/status
 curl http://localhost:8080/search?q=NewServer
 curl http://localhost:8080/architecture
 curl "http://localhost:8080/ownership?path=internal/api"
 curl http://localhost:8080/hotspots
-curl http://localhost:8080/decisions
-
-# Telemetry endpoints (v6.4)
-curl http://localhost:8080/telemetry/status
-curl "http://localhost:8080/telemetry/usage/ckb:repo:sym:abc123"
-curl http://localhost:8080/telemetry/dead-code
 ```
 
-## MCP Server (Claude Code Integration)
+## MCP Server (Claude Code)
 
 ```bash
 # Add to current project
 claude mcp add --transport stdio ckb --scope project -- /path/to/ckb mcp
 
-# Or add globally for all projects
+# Or add globally
 claude mcp add --transport stdio ckb --scope user -- /path/to/ckb mcp
 
-# Verify configuration
+# Verify
 claude mcp list
 ```
 
@@ -339,47 +342,6 @@ Or manually add to `.mcp.json`:
 }
 ```
 
-## Configuration
-
-CKB configuration is stored in `.ckb/config.json`:
-
-```json
-{
-  "version": 5,
-  "backends": {
-    "scip": { "enabled": true, "indexPath": "index.scip" },
-    "lsp": { "enabled": true },
-    "git": { "enabled": true }
-  },
-  "ownership": {
-    "enabled": true,
-    "codeownersPath": ".github/CODEOWNERS",
-    "gitBlameEnabled": true,
-    "timeDecayHalfLife": 90
-  },
-  "decisions": {
-    "enabled": true,
-    "directories": ["docs/decisions", "docs/adr"]
-  },
-  "modules": {
-    "detectStrategy": "auto",
-    "declarationFile": "MODULES.toml"
-  },
-  "daemon": {
-    "port": 9120,
-    "bind": "localhost",
-    "auth": { "enabled": true, "token": "${CKB_DAEMON_TOKEN}" },
-    "watch": { "enabled": true, "debounceMs": 5000 }
-  },
-  "telemetry": {
-    "enabled": true,
-    "service_map": { "my-service": "this-repo" }
-  }
-}
-```
-
-See [Configuration Guide](https://github.com/SimplyLiz/CodeMCP/wiki/Configuration) for all options.
-
 ## Under the Hood
 
 CKB orchestrates multiple code intelligence backends:
@@ -390,71 +352,36 @@ CKB orchestrates multiple code intelligence backends:
 
 Results are merged intelligently and compressed for LLM context limits.
 
-### Architectural Memory
-
-CKB maintains persistent knowledge:
-- **Module Registry** — Boundaries, responsibilities, tags (from MODULES.toml or inference)
+Persistent knowledge survives across sessions:
+- **Module Registry** — Boundaries, responsibilities, tags
 - **Ownership Registry** — CODEOWNERS + git-blame with time decay
 - **Hotspot Tracker** — Historical snapshots with trend analysis
 - **Decision Log** — ADRs with full-text search
 
-## Project Structure
+## Who Should Use CKB?
 
-```
-.
-├── cmd/ckb/              # CLI commands
-├── internal/
-│   ├── api/              # HTTP API server
-│   ├── audit/            # Risk audit with weighted factors (v6.5)
-│   ├── backends/
-│   │   ├── git/          # Git backend (blame, history)
-│   │   ├── lsp/          # LSP backend adapter
-│   │   └── scip/         # SCIP backend adapter
-│   ├── complexity/       # Tree-sitter complexity metrics (v6.2.2)
-│   ├── config/           # Configuration management
-│   ├── coupling/         # Co-change coupling analysis (v6.5)
-│   ├── daemon/           # Daemon process lifecycle (v6.2.1)
-│   ├── decisions/        # ADR parsing and storage
-│   ├── explain/          # Symbol origin explanation (v6.5)
-│   ├── export/           # LLM-friendly export (v6.5)
-│   ├── federation/       # Cross-repo federation (v6.2)
-│   ├── hotspots/         # Hotspot tracking and trends
-│   ├── identity/         # Symbol identity and aliasing
-│   ├── jobs/             # Background job queue (v6.1)
-│   ├── mcp/              # MCP server for Claude Code
-│   ├── modules/          # Module detection
-│   ├── ownership/        # Ownership tracking
-│   ├── query/            # Query engine
-│   ├── responsibilities/ # Module responsibility extraction
-│   ├── scheduler/        # Cron/interval task scheduler (v6.2.1)
-│   ├── storage/          # SQLite storage layer
-│   ├── telemetry/        # Runtime telemetry integration (v6.4)
-│   ├── watcher/          # File system watcher (v6.2.1)
-│   └── webhooks/         # Webhook delivery (v6.2.1)
-└── .ckb/                 # CKB data directory
-    ├── config.json       # Configuration
-    └── ckb.db            # SQLite database
-```
+- **Developers using AI assistants** — Give your AI tools superpowers
+- **Teams with large codebases** — Navigate complexity efficiently
+- **Anyone doing refactoring** — Understand impact before changing
+- **Code reviewers** — See the full picture of changes
+- **Tech leads** — Track architectural health over time
+
+## Documentation
+
+See the **[Full Documentation Wiki](https://github.com/SimplyLiz/CodeMCP/wiki)** for:
+
+- [Quick Start](https://github.com/SimplyLiz/CodeMCP/wiki/Quick-Start) — Step-by-step installation
+- [Prompt Cookbook](https://github.com/SimplyLiz/CodeMCP/wiki/Prompt-Cookbook) — Real prompts for real problems
+- [Practical Limits](https://github.com/SimplyLiz/CodeMCP/wiki/Practical-Limits) — Accuracy notes, blind spots
+- [User Guide](https://github.com/SimplyLiz/CodeMCP/wiki/User-Guide) — CLI commands and best practices
+- [API Reference](https://github.com/SimplyLiz/CodeMCP/wiki/API-Reference) — HTTP API documentation
+- [Configuration](https://github.com/SimplyLiz/CodeMCP/wiki/Configuration) — All options including MODULES.toml
 
 ## Requirements
 
 - Go 1.21+
-- Git (for repository operations)
-- Optional: gopls (for LSP support)
-- Optional: scip-go (for SCIP indexing)
-
-## Development
-
-```bash
-# Run tests
-go test ./...
-
-# Build
-go build -o ckb ./cmd/ckb
-
-# Regenerate SCIP index
-scip-go --repository-root=.
-```
+- Git
+- Optional: gopls (for LSP support), scip-go (for SCIP indexing)
 
 ## License
 
