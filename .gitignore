@@ -2,6 +2,7 @@
 .ckb/
 .scip/
 bin/
+!npm/bin/
 
 # Binaries
 /ckb
