@@ -61,22 +61,39 @@ CKB provides:
 
 ## Quick Start
 
+### Option 1: npm (Recommended)
+
 ```bash
-# 1. Build
+# Install globally
+npm install -g @tastehub/ckb
+
+# Or run directly with npx (no install needed)
+npx @tastehub/ckb init
+```
+
+### Option 2: Build from Source
+
+```bash
 git clone https://github.com/SimplyLiz/CodeMCP.git
 cd CodeMCP
 go build -o ckb ./cmd/ckb
+```
 
-# 2. Initialize in your project
+### Setup
+
+```bash
+# 1. Initialize in your project
 cd /path/to/your/project
-/path/to/ckb init
+ckb init   # or: npx @tastehub/ckb init
 
-# 3. Generate index (Go example)
-go install github.com/sourcegraph/scip-go/cmd/scip-go@latest
-scip-go --repository-root=.
+# 2. Generate SCIP index (optional but recommended)
+ckb index  # auto-detects language and runs appropriate indexer
 
-# 4. Connect to Claude Code
-claude mcp add --transport stdio ckb -- /path/to/ckb mcp
+# 3. Connect to Claude Code
+ckb setup  # creates .mcp.json automatically
+
+# Or manually:
+claude mcp add --transport stdio ckb -- npx @tastehub/ckb mcp
 ```
 
 Now Claude can answer questions like:
@@ -143,6 +160,12 @@ Now Claude can answer questions like:
 - **Co-change Coupling** — Find files that historically change together
 - **LLM Export** — Token-efficient codebase summaries with importance ranking
 - **Risk Audit** — 8-factor scoring (complexity, coverage, bus factor, security, staleness, errors, coupling, churn)
+
+### Zero-Friction UX (v7.0)
+- **npm Distribution** — `npm install -g @tastehub/ckb` or `npx @tastehub/ckb`
+- **Auto-Setup** — `ckb setup` configures Claude Code integration automatically
+- **Auto-Index** — `ckb index` detects language and runs the right SCIP indexer
+- **Analysis Tiers** — Works without SCIP index (basic mode), better with it (enhanced mode)
 
 ## MCP Tools (58 Available)
 
@@ -320,11 +343,11 @@ curl http://localhost:8080/hotspots
 ## MCP Server (Claude Code)
 
 ```bash
-# Add to current project
-claude mcp add --transport stdio ckb --scope project -- /path/to/ckb mcp
+# Easiest: auto-configure for current project
+npx @tastehub/ckb setup
 
-# Or add globally
-claude mcp add --transport stdio ckb --scope user -- /path/to/ckb mcp
+# Or add globally for all projects
+npx @tastehub/ckb setup --global
 
 # Verify
 claude mcp list
@@ -335,8 +358,8 @@ Or manually add to `.mcp.json`:
 {
   "mcpServers": {
     "ckb": {
-      "command": "/path/to/ckb",
-      "args": ["mcp"]
+      "command": "npx",
+      "args": ["@tastehub/ckb", "mcp"]
     }
   }
 }
@@ -379,9 +402,16 @@ See the **[Full Documentation Wiki](https://github.com/SimplyLiz/CodeMCP/wiki)**
 
 ## Requirements
 
+**Using npm (recommended):**
+- Node.js 16+
+- Git
+
+**Building from source:**
 - Go 1.21+
 - Git
-- Optional: gopls (for LSP support), scip-go (for SCIP indexing)
+
+**Optional (for enhanced analysis):**
+- SCIP indexer for your language (scip-go, scip-typescript, etc.) — run `ckb index` to auto-install
 
 ## License
 
