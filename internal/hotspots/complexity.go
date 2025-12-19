@@ -21,6 +21,11 @@ func NewComplexityAnalyzer() *ComplexityAnalyzer {
 // GetFileComplexity returns complexity metrics for a file.
 // Returns cyclomatic and cognitive complexity, or (0, 0) for unsupported files.
 func (ca *ComplexityAnalyzer) GetFileComplexity(ctx context.Context, path string) (cyclomatic, cognitive float64, err error) {
+	if ca.analyzer == nil {
+		// CGO not available, return 0 without error
+		return 0, 0, nil
+	}
+
 	fc, err := ca.analyzer.AnalyzeFile(ctx, path)
 	if err != nil {
 		return 0, 0, err
@@ -36,7 +41,15 @@ func (ca *ComplexityAnalyzer) GetFileComplexity(ctx context.Context, path string
 
 // GetFileComplexityFull returns the full complexity analysis for a file.
 func (ca *ComplexityAnalyzer) GetFileComplexityFull(ctx context.Context, path string) (*complexity.FileComplexity, error) {
+	if ca.analyzer == nil {
+		return &complexity.FileComplexity{Path: path, Error: "complexity analysis unavailable (requires CGO)"}, nil
+	}
 	return ca.analyzer.AnalyzeFile(ctx, path)
+}
+
+// IsAvailable returns whether complexity analysis is available.
+func (ca *ComplexityAnalyzer) IsAvailable() bool {
+	return ca.analyzer != nil
 }
 
 // IsSupported returns true if complexity analysis is available for the file extension.

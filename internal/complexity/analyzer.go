@@ -1,3 +1,5 @@
+//go:build cgo
+
 package complexity
 
 import (
@@ -253,4 +255,10 @@ func contains(slice []string, item string) bool {
 		}
 	}
 	return false
+}
+
+// IsAvailable returns whether complexity analysis is available.
+// Returns true when CGO is enabled.
+func IsAvailable() bool {
+	return true
 }

@@ -64,6 +64,13 @@ func runComplexity(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
+	// Check if complexity analysis is available (requires CGO)
+	if !complexity.IsAvailable() {
+		fmt.Fprintf(os.Stderr, "Error: complexity analysis requires CGO (tree-sitter)\n")
+		fmt.Fprintf(os.Stderr, "This binary was built without CGO support.\n")
+		os.Exit(1)
+	}
+
 	// Create complexity analyzer
 	analyzer := complexity.NewAnalyzer()
 	ctx := context.Background()

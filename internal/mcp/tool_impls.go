@@ -2663,6 +2663,14 @@ func (s *MCPServer) toolGetFileComplexity(params map[string]interface{}) (interf
 		return nil, fmt.Errorf("file not found: %s", filePath)
 	}
 
+	// Check if complexity analysis is available
+	if !complexity.IsAvailable() {
+		return map[string]interface{}{
+			"path":  filePath,
+			"error": "complexity analysis unavailable (requires CGO)",
+		}, nil
+	}
+
 	// Analyze the file
 	analyzer := complexity.NewAnalyzer()
 	result, err := analyzer.AnalyzeFile(ctx, absPath)
