@@ -30,6 +30,33 @@ func TestHotspotSnapshotBasics(t *testing.T) {
 		t.Errorf("Expected TargetType 'file', got '%s'", snapshot.TargetType)
 	}
 
+	if snapshot.SnapshotDate.IsZero() {
+		t.Error("Expected SnapshotDate to be set")
+	}
+	if snapshot.ChurnCommits30d != 15 {
+		t.Errorf("Expected ChurnCommits30d 15, got %d", snapshot.ChurnCommits30d)
+	}
+	if snapshot.ChurnCommits90d != 45 {
+		t.Errorf("Expected ChurnCommits90d 45, got %d", snapshot.ChurnCommits90d)
+	}
+	if snapshot.ChurnAuthors30d != 3 {
+		t.Errorf("Expected ChurnAuthors30d 3, got %d", snapshot.ChurnAuthors30d)
+	}
+	if snapshot.ComplexityCyclomatic != 12.5 {
+		t.Errorf("Expected ComplexityCyclomatic 12.5, got %f", snapshot.ComplexityCyclomatic)
+	}
+	if snapshot.ComplexityCognitive != 18.2 {
+		t.Errorf("Expected ComplexityCognitive 18.2, got %f", snapshot.ComplexityCognitive)
+	}
+	if snapshot.CouplingAfferent != 5 {
+		t.Errorf("Expected CouplingAfferent 5, got %d", snapshot.CouplingAfferent)
+	}
+	if snapshot.CouplingEfferent != 10 {
+		t.Errorf("Expected CouplingEfferent 10, got %d", snapshot.CouplingEfferent)
+	}
+	if snapshot.CouplingInstability != 0.667 {
+		t.Errorf("Expected CouplingInstability 0.667, got %f", snapshot.CouplingInstability)
+	}
 	if snapshot.Score != 0.75 {
 		t.Errorf("Expected Score 0.75, got %f", snapshot.Score)
 	}

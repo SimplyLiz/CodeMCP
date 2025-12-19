@@ -250,7 +250,16 @@ func TestExportMetadataStructure(t *testing.T) {
 	if meta.Repo != "test-repo" {
 		t.Errorf("ExportMetadata.Repo = %q, want %q", meta.Repo, "test-repo")
 	}
+	if meta.Generated != "2024-01-01T00:00:00Z" {
+		t.Errorf("ExportMetadata.Generated = %q, want %q", meta.Generated, "2024-01-01T00:00:00Z")
+	}
 	if meta.SymbolCount != 100 {
 		t.Errorf("ExportMetadata.SymbolCount = %d, want %d", meta.SymbolCount, 100)
+	}
+	if meta.FileCount != 20 {
+		t.Errorf("ExportMetadata.FileCount = %d, want %d", meta.FileCount, 20)
+	}
+	if meta.ModuleCount != 5 {
+		t.Errorf("ExportMetadata.ModuleCount = %d, want %d", meta.ModuleCount, 5)
 	}
 }

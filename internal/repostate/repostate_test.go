@@ -264,8 +264,23 @@ func TestRepoStateStructure(t *testing.T) {
 	if state.RepoStateID != "abc123" {
 		t.Errorf("RepoStateID = %s, expected abc123", state.RepoStateID)
 	}
+	if state.HeadCommit != "def456" {
+		t.Errorf("HeadCommit = %s, expected def456", state.HeadCommit)
+	}
+	if state.StagedDiffHash != EmptyHash {
+		t.Errorf("StagedDiffHash = %s, expected EmptyHash", state.StagedDiffHash)
+	}
+	if state.WorkingTreeDiffHash != EmptyHash {
+		t.Errorf("WorkingTreeDiffHash = %s, expected EmptyHash", state.WorkingTreeDiffHash)
+	}
+	if state.UntrackedListHash != EmptyHash {
+		t.Errorf("UntrackedListHash = %s, expected EmptyHash", state.UntrackedListHash)
+	}
 	if state.Dirty != false {
 		t.Error("Dirty should be false")
+	}
+	if state.ComputedAt != "2024-01-01T00:00:00Z" {
+		t.Errorf("ComputedAt = %s, expected 2024-01-01T00:00:00Z", state.ComputedAt)
 	}
 }
 
