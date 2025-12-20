@@ -119,8 +119,8 @@ Now Claude can answer questions like:
 | Interface | Best For |
 |-----------|----------|
 | **[MCP](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration)** | AI-assisted development — Claude, Cursor, Windsurf, VS Code, OpenCode |
-| **CLI** | Quick lookups from terminal, scripting |
-| **HTTP API** | IDE plugins, CI integration, custom tooling |
+| **[CLI](https://github.com/SimplyLiz/CodeMCP/wiki/User-Guide)** | Quick lookups from terminal, scripting |
+| **[HTTP API](https://github.com/SimplyLiz/CodeMCP/wiki/API-Reference)** | IDE plugins, CI integration, custom tooling |
 
 ## Features
 
