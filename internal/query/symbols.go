@@ -15,7 +15,6 @@ import (
 	"ckb/internal/compression"
 	"ckb/internal/errors"
 	"ckb/internal/output"
-	"ckb/internal/symbols"
 )
 
 // GetSymbolOptions contains options for getSymbol.
@@ -860,29 +859,4 @@ func inferVisibility(name, kind string) string {
 	}
 
 	return "internal"
-}
-
-// convertTreesitterSymbol converts a tree-sitter symbol to a search result item.
-func convertTreesitterSymbol(sym symbols.Symbol, repoRoot string) SearchResultItem {
-	relPath, _ := filepath.Rel(repoRoot, sym.Path)
-	if relPath == "" {
-		relPath = sym.Path
-	}
-
-	return SearchResultItem{
-		StableId: generateTreesitterSymbolId(relPath, sym.Name, sym.Kind, sym.Line),
-		Name:     sym.Name,
-		Kind:     sym.Kind,
-		ModuleId: filepath.Dir(relPath),
-		Location: &LocationInfo{
-			FileId:    relPath,
-			StartLine: sym.Line,
-			EndLine:   sym.EndLine,
-		},
-		Visibility: &VisibilityInfo{
-			Visibility: inferVisibility(sym.Name, sym.Kind),
-			Confidence: 0.5,
-			Source:     "treesitter",
-		},
-	}
 }

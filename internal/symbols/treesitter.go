@@ -94,9 +94,9 @@ func (e *Extractor) ExtractSource(ctx context.Context, path string, source []byt
 func (e *Extractor) ExtractDirectory(ctx context.Context, root string, filter func(string) bool) ([]Symbol, error) {
 	var allSymbols []Symbol
 
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil // Skip errors
+	err := filepath.Walk(root, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return nil //nolint:nilerr // Intentionally skip walk errors and continue
 		}
 		if info.IsDir() {
 			// Skip hidden directories and common non-source directories
@@ -118,9 +118,9 @@ func (e *Extractor) ExtractDirectory(ctx context.Context, root string, filter fu
 			return nil
 		}
 
-		symbols, err := e.ExtractFile(ctx, path)
-		if err != nil {
-			return nil // Skip files with errors
+		symbols, extractErr := e.ExtractFile(ctx, path)
+		if extractErr != nil {
+			return nil //nolint:nilerr // Intentionally skip files with parse errors
 		}
 
 		allSymbols = append(allSymbols, symbols...)
