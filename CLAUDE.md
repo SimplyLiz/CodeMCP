@@ -22,6 +22,9 @@ go test -v ./...
 
 # Run with coverage
 go test -cover ./...
+
+# Lint (if golangci-lint installed)
+golangci-lint run
 ```
 
 ## Running the Application
@@ -29,6 +32,9 @@ go test -cover ./...
 ```bash
 # Initialize CKB in a project directory
 ./ckb init
+
+# Generate SCIP index (auto-detects language)
+./ckb index
 
 # Check system status
 ./ckb status
@@ -41,33 +47,56 @@ go test -cover ./...
 
 # Start MCP server (for Claude Code integration)
 ./ckb mcp
+
+# Auto-configure Claude Code integration
+./ckb setup
+```
+
+## npm Distribution (v7.0)
+
+CKB is also available via npm:
+
+```bash
+# Install globally
+npm install -g @tastehub/ckb
+
+# Or run directly with npx
+npx @tastehub/ckb init
+npx @tastehub/ckb setup
 ```
 
 ## MCP Integration with Claude Code
 
-CKB provides code intelligence tools via MCP. To enable in Claude Code:
+CKB provides 58 code intelligence tools via MCP. To enable:
 
 ```bash
-# Add CKB MCP server to your project (creates .mcp.json)
-claude mcp add --transport stdio ckb --scope project -- /path/to/ckb mcp
+# Auto-configure (recommended)
+ckb setup              # project-level
+ckb setup --global     # user-level for all projects
 
-# Or add globally for all projects
-claude mcp add --transport stdio ckb --scope user -- /path/to/ckb mcp
-
-# Verify it's configured
-claude mcp list
+# Or manually add to .mcp.json
+claude mcp add ckb -- npx @tastehub/ckb mcp
 ```
 
-Once configured, Claude Code will have access to these tools:
-- `searchSymbols` - Find symbols by name
-- `getSymbol` - Get symbol details
-- `findReferences` - Find all usages
-- `getArchitecture` - Codebase structure
-- `analyzeImpact` - Change impact analysis
-- `explainSymbol` - AI-friendly symbol overview
-- `justifySymbol` - Keep/investigate/remove verdict
-- `getCallGraph` - Caller/callee relationships
-- `getModuleOverview` - Module statistics
+### Key MCP Tools
+
+**Navigation:** `searchSymbols`, `getSymbol`, `findReferences`, `getCallGraph`, `traceUsage`, `listEntrypoints`
+
+**Understanding:** `explainSymbol`, `explainFile`, `explainPath`, `getArchitecture`, `listKeyConcepts`
+
+**Impact & Risk:** `analyzeImpact`, `justifySymbol`, `getHotspots`, `summarizeDiff`, `summarizePr`
+
+**Ownership:** `getOwnership`, `getModuleResponsibilities`, `getOwnershipDrift`
+
+**Decisions:** `recordDecision`, `getDecisions`, `annotateModule`
+
+**Federation (v6.2+):** `listFederations`, `federationSearchModules`, `federationGetHotspots`
+
+**Contracts (v6.3):** `listContracts`, `analyzeContractImpact`, `getContractDependencies`
+
+**Telemetry (v6.4):** `getTelemetryStatus`, `getObservedUsage`, `findDeadCodeCandidates`
+
+**Intelligence (v6.5):** `explainOrigin`, `analyzeCoupling`, `exportForLLM`, `auditRisk`
 
 ## Architecture Overview
 
@@ -89,12 +118,22 @@ Storage Layer (internal/storage/) - SQLite for caching and symbol mappings
 
 ### Key Packages
 
-- **internal/query/**: Central query engine that coordinates all operations. `Engine` is the main entry point.
-- **internal/backends/**: Backend abstraction layer. `Orchestrator` routes queries to SCIP/LSP/Git backends based on `QueryPolicy`.
-- **internal/identity/**: Stable symbol ID generation that survives refactoring. Uses fingerprinting and alias chains.
-- **internal/compression/**: Response budget enforcement for LLM-optimized output. Handles truncation and drilldown suggestions.
+- **internal/query/**: Central query engine. `Engine` is the main entry point for all operations.
+- **internal/backends/**: Backend abstraction. `Orchestrator` routes to SCIP/LSP/Git based on `QueryPolicy`.
+- **internal/identity/**: Stable symbol IDs that survive refactoring. Uses fingerprinting and alias chains.
+- **internal/compression/**: Response budget enforcement for LLM-optimized output.
 - **internal/impact/**: Change impact analysis with visibility detection and risk scoring.
-- **internal/mcp/**: Model Context Protocol server implementation for AI assistant integration.
+- **internal/mcp/**: Model Context Protocol server (58 tools).
+- **internal/ownership/**: CODEOWNERS parsing + git-blame analysis with time decay.
+- **internal/responsibilities/**: Module responsibility extraction from READMEs and code.
+- **internal/hotspots/**: Churn tracking with trend analysis and projections.
+- **internal/decisions/**: Architectural Decision Records (ADRs) with full-text search.
+- **internal/federation/**: Cross-repository queries and unified visibility.
+- **internal/daemon/**: Background service with scheduler, file watcher, webhooks.
+- **internal/complexity/**: Tree-sitter based cyclomatic/cognitive complexity.
+- **internal/telemetry/**: OpenTelemetry integration for runtime observability.
+- **internal/audit/**: Multi-factor risk scoring (8 weighted factors).
+- **internal/coupling/**: Co-change analysis from git history.
 
 ### Data Flow
 
@@ -120,3 +159,13 @@ Symbols get stable IDs: `ckb:<repo>:sym:<fingerprint>`
 Fingerprint = hash(container + name + kind + signature)
 
 When symbols are renamed, alias chains redirect old IDs to new ones (max depth: 3).
+
+### Language Support
+
+CKB works at different quality levels depending on available tooling:
+
+- **Enhanced tier** (SCIP index): Go, TypeScript, Python, Rust, Java, Kotlin, C++, Dart, Ruby, C#
+- **Basic tier** (LSP only): Any language with a language server
+- **Minimal tier** (heuristics): Git-based features work for all languages
+
+Run `ckb index` to auto-detect and run the appropriate SCIP indexer.
