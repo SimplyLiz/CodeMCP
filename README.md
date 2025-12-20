@@ -118,7 +118,7 @@ Now Claude can answer questions like:
 
 | Interface | Best For |
 |-----------|----------|
-| **Claude Code (MCP)** | AI-assisted development — Claude queries your codebase directly |
+| **[MCP](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration)** | AI-assisted development — Claude, Cursor, Windsurf, VS Code, OpenCode |
 | **CLI** | Quick lookups from terminal, scripting |
 | **HTTP API** | IDE plugins, CI integration, custom tooling |
 
