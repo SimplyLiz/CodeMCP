@@ -334,7 +334,7 @@ ckb serve --port 8080
 # Example calls
 curl http://localhost:8080/health
 curl http://localhost:8080/status
-curl http://localhost:8080/search?q=NewServer
+curl "http://localhost:8080/search?q=NewServer"
 curl http://localhost:8080/architecture
 curl "http://localhost:8080/ownership?path=internal/api"
 curl http://localhost:8080/hotspots
