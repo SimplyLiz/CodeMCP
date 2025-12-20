@@ -22,6 +22,7 @@ import (
 	"ckb/internal/logging"
 	"ckb/internal/output"
 	"ckb/internal/storage"
+	"ckb/internal/symbols"
 	"ckb/internal/tier"
 )
 
@@ -47,6 +48,9 @@ type Engine struct {
 
 	// Complexity analyzer for hotspots
 	complexityAnalyzer *hotspots.ComplexityAnalyzer
+
+	// Tree-sitter symbol extractor for fallback search
+	treesitterExtractor *symbols.Extractor
 
 	// Tier detector for capability gating
 	tierDetector *tier.Detector
@@ -90,17 +94,24 @@ func NewEngine(repoRoot string, db *storage.DB, logger *logging.Logger, cfg *con
 	// Create cache
 	cache := storage.NewCache(db)
 
+	// Initialize tree-sitter extractor if available
+	var tsExtractor *symbols.Extractor
+	if symbols.IsAvailable() {
+		tsExtractor = symbols.NewExtractor()
+	}
+
 	engine := &Engine{
-		db:                 db,
-		logger:             logger,
-		config:             cfg,
-		compressor:         compressor,
-		resolver:           resolver,
-		repoRoot:           repoRoot,
-		orchestrator:       orchestrator,
-		cache:              cache,
-		complexityAnalyzer: hotspots.NewComplexityAnalyzer(),
-		tierDetector:       tier.NewDetector(),
+		db:                  db,
+		logger:              logger,
+		config:              cfg,
+		compressor:          compressor,
+		resolver:            resolver,
+		repoRoot:            repoRoot,
+		orchestrator:        orchestrator,
+		cache:               cache,
+		complexityAnalyzer:  hotspots.NewComplexityAnalyzer(),
+		treesitterExtractor: tsExtractor,
+		tierDetector:        tier.NewDetector(),
 	}
 
 	// Initialize backends

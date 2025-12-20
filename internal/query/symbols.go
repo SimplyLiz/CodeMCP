@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"ckb/internal/compression"
 	"ckb/internal/errors"
 	"ckb/internal/output"
+	"ckb/internal/symbols"
 )
 
 // GetSymbolOptions contains options for getSymbol.
@@ -411,6 +413,24 @@ func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (
 				Reason: string(searchResult.Completeness.Reason),
 			}
 		}
+	} else if e.treesitterExtractor != nil {
+		// Tree-sitter fallback when SCIP not available
+		tsResults, err := e.searchWithTreesitter(ctx, opts)
+		if err == nil && len(tsResults) > 0 {
+			results = tsResults
+			backendContribs = append(backendContribs, BackendContribution{
+				BackendId:    "treesitter",
+				Available:    true,
+				Used:         true,
+				ResultCount:  len(tsResults),
+				Completeness: 0.7,
+			})
+			completeness = CompletenessInfo{
+				Score:   0.7,
+				Reason:  "treesitter-fallback",
+				Details: "Using tree-sitter analysis. Run 'ckb index' for cross-file references.",
+			}
+		}
 	}
 
 	// If no results, return empty response
@@ -733,4 +753,136 @@ func sortReferences(refs []ReferenceInfo) {
 		}
 		return refs[i].Location.StartColumn < refs[j].Location.StartColumn
 	})
+}
+
+// searchWithTreesitter performs symbol search using tree-sitter as fallback.
+func (e *Engine) searchWithTreesitter(ctx context.Context, opts SearchSymbolsOptions) ([]SearchResultItem, error) {
+	if e.treesitterExtractor == nil {
+		return nil, nil
+	}
+
+	// Determine search scope
+	searchRoot := e.repoRoot
+	if opts.Scope != "" {
+		searchRoot = filepath.Join(e.repoRoot, opts.Scope)
+	}
+
+	// Extract all symbols from the directory
+	allSymbols, err := e.treesitterExtractor.ExtractDirectory(ctx, searchRoot, nil)
+	if err != nil {
+		e.logger.Warn("Tree-sitter extraction failed", map[string]interface{}{
+			"error": err.Error(),
+			"root":  searchRoot,
+		})
+		return nil, err
+	}
+
+	// Filter by query string and kinds
+	queryLower := strings.ToLower(opts.Query)
+	var results []SearchResultItem
+
+	for _, sym := range allSymbols {
+		// Name matching
+		nameLower := strings.ToLower(sym.Name)
+		if !strings.Contains(nameLower, queryLower) {
+			continue
+		}
+
+		// Kind filtering
+		if len(opts.Kinds) > 0 {
+			matchesKind := false
+			for _, k := range opts.Kinds {
+				if strings.EqualFold(sym.Kind, k) {
+					matchesKind = true
+					break
+				}
+			}
+			if !matchesKind {
+				continue
+			}
+		}
+
+		// Convert to relative path for moduleId
+		relPath, _ := filepath.Rel(e.repoRoot, sym.Path)
+		if relPath == "" {
+			relPath = sym.Path
+		}
+
+		// Generate a stable ID based on path and position
+		stableId := generateTreesitterSymbolId(relPath, sym.Name, sym.Kind, sym.Line)
+
+		results = append(results, SearchResultItem{
+			StableId: stableId,
+			Name:     sym.Name,
+			Kind:     sym.Kind,
+			ModuleId: filepath.Dir(relPath),
+			Location: &LocationInfo{
+				FileId:    relPath,
+				StartLine: sym.Line,
+				EndLine:   sym.EndLine,
+			},
+			Visibility: &VisibilityInfo{
+				Visibility: inferVisibility(sym.Name, sym.Kind),
+				Confidence: 0.5, // Lower confidence for inferred visibility
+				Source:     "treesitter",
+			},
+		})
+	}
+
+	return results, nil
+}
+
+// generateTreesitterSymbolId creates a stable ID for tree-sitter extracted symbols.
+func generateTreesitterSymbolId(path, name, kind string, line int) string {
+	key := fmt.Sprintf("%s:%s:%s:%d", path, name, kind, line)
+	hash := sha256.Sum256([]byte(key))
+	return "ts-" + hex.EncodeToString(hash[:8])
+}
+
+// inferVisibility guesses visibility from naming conventions.
+func inferVisibility(name, kind string) string {
+	if name == "" {
+		return "unknown"
+	}
+
+	// Go convention: lowercase = package-private, uppercase = exported
+	firstChar := rune(name[0])
+	if firstChar >= 'A' && firstChar <= 'Z' {
+		return "public"
+	}
+
+	// Python/JS convention: underscore prefix = private
+	if strings.HasPrefix(name, "_") {
+		if strings.HasPrefix(name, "__") {
+			return "private"
+		}
+		return "internal"
+	}
+
+	return "internal"
+}
+
+// convertTreesitterSymbol converts a tree-sitter symbol to a search result item.
+func convertTreesitterSymbol(sym symbols.Symbol, repoRoot string) SearchResultItem {
+	relPath, _ := filepath.Rel(repoRoot, sym.Path)
+	if relPath == "" {
+		relPath = sym.Path
+	}
+
+	return SearchResultItem{
+		StableId: generateTreesitterSymbolId(relPath, sym.Name, sym.Kind, sym.Line),
+		Name:     sym.Name,
+		Kind:     sym.Kind,
+		ModuleId: filepath.Dir(relPath),
+		Location: &LocationInfo{
+			FileId:    relPath,
+			StartLine: sym.Line,
+			EndLine:   sym.EndLine,
+		},
+		Visibility: &VisibilityInfo{
+			Visibility: inferVisibility(sym.Name, sym.Kind),
+			Confidence: 0.5,
+			Source:     "treesitter",
+		},
+	}
 }

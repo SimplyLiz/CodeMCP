@@ -1,194 +1,290 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
+
+	"ckb/internal/project"
 )
 
 var (
+	indexForce  bool
 	indexDryRun bool
 	indexLang   string
 )
 
 var indexCmd = &cobra.Command{
 	Use:   "index",
-	Short: "Generate SCIP index for the repository",
-	Long: `Automatically detects the project language and runs the appropriate SCIP indexer.
+	Short: "Build SCIP index for full code intelligence",
+	Long: `Auto-detects project language and runs the appropriate SCIP indexer.
+
+This command enables enhanced code intelligence features like findReferences,
+getCallGraph, and analyzeImpact.
 
 Supported languages:
   - Go (scip-go)
   - TypeScript/JavaScript (scip-typescript)
   - Python (scip-python)
   - Rust (rust-analyzer)
-  - Java (scip-java)
+  - Java/Kotlin (scip-java, scip-kotlin)
 
-The generated index enables precise cross-references, call graphs, and impact analysis.`,
-	RunE: runIndex,
+Examples:
+  ckb index              # Auto-detect language and index
+  ckb index --dry-run    # Show what would be run without executing
+  ckb index --force      # Re-index even if index.scip exists
+  ckb index --lang go    # Force specific language`,
+	Run: runIndex,
 }
 
 func init() {
+	indexCmd.Flags().BoolVar(&indexForce, "force", false, "Re-index even if index.scip exists")
 	indexCmd.Flags().BoolVar(&indexDryRun, "dry-run", false, "Show what would be run without executing")
-	indexCmd.Flags().StringVar(&indexLang, "lang", "", "Force specific language (go, typescript, python, rust, java)")
+	indexCmd.Flags().StringVar(&indexLang, "lang", "", "Force specific language (go, typescript, python, rust, java, kotlin)")
 	rootCmd.AddCommand(indexCmd)
 }
 
-// languageInfo describes a language and its SCIP indexer.
-type languageInfo struct {
-	name        string
-	markers     []string // Files that indicate this language
-	indexerCmd  string   // Command to check if indexer is installed
-	indexCmd    []string // Full command to run indexer
-	installHint string   // How to install the indexer
-	outputFile  string   // Default output file name
-}
+func runIndex(cmd *cobra.Command, args []string) {
+	repoRoot := mustGetRepoRoot()
 
-var supportedLanguages = []languageInfo{
-	{
-		name:        "go",
-		markers:     []string{"go.mod", "go.sum"},
-		indexerCmd:  "scip-go",
-		indexCmd:    []string{"scip-go"},
-		installHint: "go install github.com/sourcegraph/scip-go/cmd/scip-go@latest",
-		outputFile:  "index.scip",
-	},
-	{
-		name:        "typescript",
-		markers:     []string{"tsconfig.json", "package.json"},
-		indexerCmd:  "scip-typescript",
-		indexCmd:    []string{"scip-typescript", "index"},
-		installHint: "npm install -g @sourcegraph/scip-typescript",
-		outputFile:  "index.scip",
-	},
-	{
-		name:        "python",
-		markers:     []string{"pyproject.toml", "setup.py", "requirements.txt"},
-		indexerCmd:  "scip-python",
-		indexCmd:    []string{"scip-python", "index", "."},
-		installHint: "pip install scip-python",
-		outputFile:  "index.scip",
-	},
-	{
-		name:        "rust",
-		markers:     []string{"Cargo.toml"},
-		indexerCmd:  "rust-analyzer",
-		indexCmd:    []string{"rust-analyzer", "scip", "."},
-		installHint: "See https://rust-analyzer.github.io/manual.html#installation",
-		outputFile:  "index.scip",
-	},
-	{
-		name:        "java",
-		markers:     []string{"pom.xml", "build.gradle", "build.gradle.kts"},
-		indexerCmd:  "scip-java",
-		indexCmd:    []string{"scip-java", "index"},
-		installHint: "See https://sourcegraph.github.io/scip-java/",
-		outputFile:  "index.scip",
-	},
-}
+	// Check if .ckb directory exists, auto-init if not
+	ckbDir := filepath.Join(repoRoot, ".ckb")
+	if _, err := os.Stat(ckbDir); os.IsNotExist(err) {
+		fmt.Println("No .ckb directory found. Initializing...")
+		if err := os.MkdirAll(ckbDir, 0755); err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating .ckb directory: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("  Created .ckb/")
+		fmt.Println()
+	}
 
-func runIndex(cmd *cobra.Command, args []string) error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("failed to get current directory: %w", err)
+	// Check if index already exists
+	indexPath := filepath.Join(repoRoot, "index.scip")
+	if !indexForce {
+		if info, err := os.Stat(indexPath); err == nil {
+			fmt.Printf("SCIP index already exists: %s (%.2f MB)\n", indexPath, float64(info.Size())/1024/1024)
+			fmt.Println("Run 'ckb index --force' to re-index")
+			os.Exit(0)
+		}
 	}
 
 	// Detect or use specified language
-	var lang *languageInfo
+	var lang project.Language
+	var manifest string
+	var found bool
+
 	if indexLang != "" {
-		lang = findLanguageByName(indexLang)
-		if lang == nil {
-			return fmt.Errorf("unsupported language: %s\nSupported: go, typescript, python, rust, java", indexLang)
+		lang = parseLanguageFlag(indexLang)
+		if lang == project.LangUnknown {
+			fmt.Fprintf(os.Stderr, "Unsupported language: %s\n", indexLang)
+			fmt.Fprintln(os.Stderr, "Supported: go, typescript, javascript, python, rust, java, kotlin")
+			os.Exit(1)
 		}
+		manifest = "(specified via --lang)"
+		found = true
 	} else {
-		lang = detectLanguage(cwd)
-		if lang == nil {
-			fmt.Println("Could not auto-detect project language.")
-			fmt.Println("Supported languages: go, typescript, python, rust, java")
-			fmt.Println("\nUse --lang to specify manually:")
-			fmt.Println("  ckb index --lang go")
-			return nil
-		}
+		lang, manifest, found = project.DetectLanguage(repoRoot)
 	}
 
-	fmt.Printf("Detected language: %s\n", lang.name)
+	if !found {
+		fmt.Fprintln(os.Stderr, "Could not detect project language.")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Supported manifest files:")
+		fmt.Fprintln(os.Stderr, "  Go:         go.mod")
+		fmt.Fprintln(os.Stderr, "  TypeScript: package.json + tsconfig.json")
+		fmt.Fprintln(os.Stderr, "  Python:     pyproject.toml, requirements.txt, setup.py")
+		fmt.Fprintln(os.Stderr, "  Rust:       Cargo.toml")
+		fmt.Fprintln(os.Stderr, "  Java:       pom.xml, build.gradle")
+		fmt.Fprintln(os.Stderr, "  Kotlin:     build.gradle.kts")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Or specify manually: ckb index --lang go")
+		os.Exit(1)
+	}
+
+	fmt.Printf("Detected %s project (from %s)\n", project.LanguageDisplayName(lang), manifest)
+
+	// Get indexer info
+	indexer := project.GetIndexerInfo(lang)
+	if indexer == nil {
+		fmt.Fprintf(os.Stderr, "No SCIP indexer available for %s\n", project.LanguageDisplayName(lang))
+		os.Exit(1)
+	}
 
 	// Check if indexer is installed
-	if !isCommandAvailable(lang.indexerCmd) {
-		fmt.Printf("\nIndexer '%s' not found.\n", lang.indexerCmd)
-		fmt.Println("Install it with:")
-		fmt.Printf("  %s\n", lang.installHint)
-		return nil
+	if !isIndexerInstalled(indexer.CheckCommand) {
+		fmt.Println()
+		fmt.Printf("Indexer not found: %s\n", indexer.CheckCommand)
+		fmt.Println()
+		fmt.Println("Install with:")
+		fmt.Printf("  %s\n", indexer.InstallCommand)
+		os.Exit(1)
 	}
 
-	fmt.Printf("Indexer: %s\n", lang.indexerCmd)
-	fmt.Printf("Command: %s\n", strings.Join(lang.indexCmd, " "))
+	fmt.Printf("Indexer: %s\n", indexer.CheckCommand)
+	fmt.Printf("Command: %s\n", indexer.Command)
 
+	// Dry run - show command without executing
 	if indexDryRun {
-		fmt.Println("\n[dry-run] Would execute the above command")
-		return nil
+		fmt.Println()
+		fmt.Println("[dry-run] Would execute the above command")
+		os.Exit(0)
 	}
-
-	fmt.Println("\nGenerating SCIP index...")
 
 	// Run the indexer
-	execCmd := exec.Command(lang.indexCmd[0], lang.indexCmd[1:]...)
-	execCmd.Dir = cwd
-	execCmd.Stdout = os.Stdout
-	execCmd.Stderr = os.Stderr
+	fmt.Println()
+	fmt.Println("Generating SCIP index...")
+	fmt.Println()
 
-	if err := execCmd.Run(); err != nil {
+	start := time.Now()
+	err := runIndexerCommand(repoRoot, indexer.Command)
+	duration := time.Since(start)
+
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Indexing failed.")
+		fmt.Fprintln(os.Stderr, "")
+		showTroubleshooting(lang)
+		os.Exit(1)
+	}
+
+	// Verify index was created
+	info, err := os.Stat(indexPath)
+	if os.IsNotExist(err) {
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Warning: Indexer completed but index.scip was not created.")
+		fmt.Fprintln(os.Stderr, "Check the indexer output above for errors.")
+		os.Exit(1)
+	}
+
+	// Save project config
+	config := &project.ProjectConfig{
+		Language:     lang,
+		Indexer:      indexer.CheckCommand,
+		ManifestPath: manifest,
+		DetectedAt:   time.Now(),
+	}
+	if saveErr := project.SaveConfig(repoRoot, config); saveErr != nil {
+		// Non-fatal, just warn
+		fmt.Fprintf(os.Stderr, "Warning: Could not save project config: %v\n", saveErr)
+	}
+
+	// Success message
+	fmt.Println()
+	fmt.Printf("Done! Indexed in %.1fs\n", duration.Seconds())
+	fmt.Printf("Index: %s (%.2f MB)\n", indexPath, float64(info.Size())/1024/1024)
+	fmt.Println()
+	fmt.Println("Full code intelligence now available:")
+	fmt.Println("  findReferences - Find all usages of a symbol")
+	fmt.Println("  getCallGraph   - Trace caller/callee relationships")
+	fmt.Println("  analyzeImpact  - Assess change impact")
+	fmt.Println()
+	fmt.Println("Run 'ckb status' to verify.")
+}
+
+// parseLanguageFlag converts a language flag to a Language type.
+func parseLanguageFlag(flag string) project.Language {
+	flag = strings.ToLower(flag)
+	switch flag {
+	case "go", "golang":
+		return project.LangGo
+	case "ts", "typescript":
+		return project.LangTypeScript
+	case "js", "javascript":
+		return project.LangJavaScript
+	case "py", "python":
+		return project.LangPython
+	case "rs", "rust":
+		return project.LangRust
+	case "java":
+		return project.LangJava
+	case "kt", "kotlin":
+		return project.LangKotlin
+	default:
+		return project.LangUnknown
+	}
+}
+
+// isIndexerInstalled checks if the indexer command is available.
+func isIndexerInstalled(command string) bool {
+	// Extract just the binary name (first word)
+	parts := strings.Fields(command)
+	if len(parts) == 0 {
+		return false
+	}
+	binary := parts[0]
+
+	// Try to find in PATH
+	_, err := exec.LookPath(binary)
+	return err == nil
+}
+
+// runIndexerCommand runs the indexer and streams output.
+func runIndexerCommand(dir, command string) error {
+	// Split command into parts
+	parts := strings.Fields(command)
+	if len(parts) == 0 {
+		return fmt.Errorf("empty command")
+	}
+
+	cmd := exec.Command(parts[0], parts[1:]...)
+	cmd.Dir = dir
+
+	// Capture stderr for error messages, stream both
+	var stderr bytes.Buffer
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	if err != nil {
+		// Print captured stderr
+		if stderr.Len() > 0 {
+			fmt.Fprintln(os.Stderr, "Indexer output:")
+			fmt.Fprintln(os.Stderr, stderr.String())
+		}
 		return fmt.Errorf("indexer failed: %w", err)
 	}
 
-	// Check if output file was created
-	outputPath := filepath.Join(cwd, lang.outputFile)
-	if info, statErr := os.Stat(outputPath); statErr == nil {
-		fmt.Printf("\nIndex created: %s (%.2f MB)\n", outputPath, float64(info.Size())/1024/1024)
-	}
-
-	fmt.Println("\nDone! CKB now has access to precise cross-references.")
-	fmt.Println("Run 'ckb status' to verify the index is loaded.")
-
 	return nil
 }
 
-func findLanguageByName(name string) *languageInfo {
-	name = strings.ToLower(name)
-	// Handle common aliases
-	switch name {
-	case "ts", "js", "javascript":
-		name = "typescript"
-	case "py":
-		name = "python"
-	case "rs":
-		name = "rust"
-	}
+// showTroubleshooting shows language-specific troubleshooting tips.
+func showTroubleshooting(lang project.Language) {
+	switch lang {
+	case project.LangGo:
+		fmt.Fprintln(os.Stderr, "Troubleshooting for Go:")
+		fmt.Fprintln(os.Stderr, "  1. Ensure your code compiles: go build ./...")
+		fmt.Fprintln(os.Stderr, "  2. Check for missing dependencies: go mod tidy")
+		fmt.Fprintln(os.Stderr, "  3. Try updating scip-go: go install github.com/sourcegraph/scip-go@latest")
 
-	for i := range supportedLanguages {
-		if supportedLanguages[i].name == name {
-			return &supportedLanguages[i]
-		}
-	}
-	return nil
-}
+	case project.LangTypeScript, project.LangJavaScript:
+		fmt.Fprintln(os.Stderr, "Troubleshooting for TypeScript/JavaScript:")
+		fmt.Fprintln(os.Stderr, "  1. Ensure dependencies are installed: npm install")
+		fmt.Fprintln(os.Stderr, "  2. Check for TypeScript errors: npx tsc --noEmit")
+		fmt.Fprintln(os.Stderr, "  3. Ensure tsconfig.json exists for TypeScript projects")
 
-func detectLanguage(root string) *languageInfo {
-	for i := range supportedLanguages {
-		lang := &supportedLanguages[i]
-		for _, marker := range lang.markers {
-			if _, err := os.Stat(filepath.Join(root, marker)); err == nil {
-				return lang
-			}
-		}
-	}
-	return nil
-}
+	case project.LangPython:
+		fmt.Fprintln(os.Stderr, "Troubleshooting for Python:")
+		fmt.Fprintln(os.Stderr, "  1. Ensure dependencies are installed: pip install -r requirements.txt")
+		fmt.Fprintln(os.Stderr, "  2. Check for syntax errors: python -m py_compile *.py")
 
-func isCommandAvailable(cmd string) bool {
-	_, err := exec.LookPath(cmd)
-	return err == nil
+	case project.LangRust:
+		fmt.Fprintln(os.Stderr, "Troubleshooting for Rust:")
+		fmt.Fprintln(os.Stderr, "  1. Ensure your code compiles: cargo build")
+		fmt.Fprintln(os.Stderr, "  2. Check rust-analyzer is installed: rustup component add rust-analyzer")
+
+	case project.LangJava, project.LangKotlin:
+		fmt.Fprintln(os.Stderr, "Troubleshooting for Java/Kotlin:")
+		fmt.Fprintln(os.Stderr, "  1. Ensure your code compiles with your build tool")
+		fmt.Fprintln(os.Stderr, "  2. Check scip-java is properly installed via Coursier")
+
+	default:
+		fmt.Fprintln(os.Stderr, "Check that the project compiles without errors first.")
+	}
 }
