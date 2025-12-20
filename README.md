@@ -340,17 +340,19 @@ curl "http://localhost:8080/ownership?path=internal/api"
 curl http://localhost:8080/hotspots
 ```
 
-## MCP Server (Claude Code)
+## MCP Integration
+
+CKB works with any MCP-compatible AI coding tool.
+
+<details>
+<summary><strong>Claude Code</strong> (recommended)</summary>
 
 ```bash
-# Easiest: auto-configure for current project
+# Auto-configure for current project
 npx @tastehub/ckb setup
 
 # Or add globally for all projects
 npx @tastehub/ckb setup --global
-
-# Verify
-claude mcp list
 ```
 
 Or manually add to `.mcp.json`:
@@ -364,6 +366,115 @@ Or manually add to `.mcp.json`:
   }
 }
 ```
+
+</details>
+
+<details>
+<summary><strong>Cursor</strong></summary>
+
+Add to `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` (project):
+```json
+{
+  "mcpServers": {
+    "ckb": {
+      "command": "npx",
+      "args": ["@tastehub/ckb", "mcp"]
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><strong>Windsurf</strong></summary>
+
+Add to `~/.codeium/windsurf/mcp_config.json`:
+```json
+{
+  "mcpServers": {
+    "ckb": {
+      "command": "npx",
+      "args": ["@tastehub/ckb", "mcp"]
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><strong>VS Code</strong></summary>
+
+Add to your VS Code `settings.json`:
+```json
+{
+  "mcp": {
+    "servers": {
+      "ckb": {
+        "type": "stdio",
+        "command": "npx",
+        "args": ["@tastehub/ckb", "mcp"]
+      }
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><strong>OpenCode</strong></summary>
+
+Add to `opencode.json` in project root:
+```json
+{
+  "mcp": {
+    "ckb": {
+      "type": "local",
+      "command": ["npx", "@tastehub/ckb", "mcp"],
+      "enabled": true
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><strong>Claude Desktop</strong></summary>
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+```json
+{
+  "mcpServers": {
+    "ckb": {
+      "command": "npx",
+      "args": ["@tastehub/ckb", "mcp"],
+      "cwd": "/path/to/your/repo"
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><strong>Windows</strong></summary>
+
+Use `cmd /c` wrapper in any config above:
+```json
+{
+  "mcpServers": {
+    "ckb": {
+      "command": "cmd",
+      "args": ["/c", "npx", "@tastehub/ckb", "mcp"]
+    }
+  }
+}
+```
+
+</details>
 
 ## Under the Hood
 
