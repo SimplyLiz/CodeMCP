@@ -345,7 +345,7 @@ curl http://localhost:8080/hotspots
 CKB works with any MCP-compatible AI coding tool.
 
 <details>
-<summary><strong>Claude Code</strong> (recommended)</summary>
+<summary><strong>Claude Code</strong></summary>
 
 ```bash
 # Auto-configure for current project
