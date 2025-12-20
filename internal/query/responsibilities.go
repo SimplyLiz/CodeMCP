@@ -87,7 +87,10 @@ func (e *Engine) GetModuleResponsibilities(ctx context.Context, opts GetModuleRe
 	if opts.ModuleId != "" && archResp != nil {
 		for _, m := range archResp.Modules {
 			if m.ModuleId == opts.ModuleId || m.Path == opts.ModuleId {
-				modResp := e.buildModuleResponsibility(m.ModuleId, m.Name, m.Path, extractor, &limitations)
+				modResp, ok := e.buildModuleResponsibility(m.ModuleId, m.Name, m.Path, extractor, &limitations)
+				if !ok {
+					break // extraction failed and no annotations - skip
+				}
 
 				// Include file responsibilities if requested
 				if opts.IncludeFiles {
@@ -100,12 +103,15 @@ func (e *Engine) GetModuleResponsibilities(ctx context.Context, opts GetModuleRe
 		}
 	} else if archResp != nil {
 		// Get all modules
-		for i, m := range archResp.Modules {
-			if i >= opts.Limit {
+		for _, m := range archResp.Modules {
+			if len(moduleResponsibilities) >= opts.Limit {
 				break
 			}
 
-			modResp := e.buildModuleResponsibility(m.ModuleId, m.Name, m.Path, extractor, &limitations)
+			modResp, ok := e.buildModuleResponsibility(m.ModuleId, m.Name, m.Path, extractor, &limitations)
+			if !ok {
+				continue // extraction failed and no annotations - skip
+			}
 
 			// Include file responsibilities if requested
 			if opts.IncludeFiles {
@@ -230,7 +236,9 @@ func isSourceFile(name string) bool {
 
 // buildModuleResponsibility creates a ModuleResponsibility, preferring declared annotations over inferred.
 // v6.5: Declared annotations take priority with higher confidence.
-func (e *Engine) buildModuleResponsibility(moduleId, name, path string, extractor *responsibilities.Extractor, limitations *[]string) ModuleResponsibility {
+// Returns (result, ok) where ok=false means both extraction failed and no annotations exist,
+// so the caller should skip this module to avoid polluting results with empty entries.
+func (e *Engine) buildModuleResponsibility(moduleId, name, path string, extractor *responsibilities.Extractor, limitations *[]string) (ModuleResponsibility, bool) {
 	modResp := ModuleResponsibility{
 		ModuleId: moduleId,
 		Name:     name,
@@ -250,7 +258,7 @@ func (e *Engine) buildModuleResponsibility(moduleId, name, path string, extracto
 		modResp.Capabilities = annotations.Capabilities
 		modResp.Source = "declared"
 		modResp.Confidence = annotations.Confidence
-		return modResp
+		return modResp, true
 	}
 
 	// Fall back to inference
@@ -265,8 +273,10 @@ func (e *Engine) buildModuleResponsibility(moduleId, name, path string, extracto
 			modResp.Capabilities = annotations.Capabilities
 			modResp.Source = annotations.Source
 			modResp.Confidence = annotations.Confidence
+			return modResp, true
 		}
-		return modResp
+		// No annotations and extraction failed - skip this module
+		return modResp, false
 	}
 
 	// Use inferred data
@@ -293,5 +303,5 @@ func (e *Engine) buildModuleResponsibility(moduleId, name, path string, extracto
 		}
 	}
 
-	return modResp
+	return modResp, true
 }
