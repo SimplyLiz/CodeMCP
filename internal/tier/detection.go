@@ -12,26 +12,26 @@ import (
 
 // ToolStatus represents the status of a single tool check.
 type ToolStatus struct {
-	Name         string `json:"name"`
-	Found        bool   `json:"found"`
-	Path         string `json:"path,omitempty"`
-	Version      string `json:"version,omitempty"`
-	MinVersion   string `json:"minVersion,omitempty"`
-	VersionOK    bool   `json:"versionOk"`
-	Error        string `json:"error,omitempty"`
-	InstallCmd   string `json:"installCmd,omitempty"`
-	Provider     string `json:"provider,omitempty"`
+	Name         string   `json:"name"`
+	Found        bool     `json:"found"`
+	Path         string   `json:"path,omitempty"`
+	Version      string   `json:"version,omitempty"`
+	MinVersion   string   `json:"minVersion,omitempty"`
+	VersionOK    bool     `json:"versionOk"`
+	Error        string   `json:"error,omitempty"`
+	InstallCmd   string   `json:"installCmd,omitempty"`
+	Provider     string   `json:"provider,omitempty"`
 	Capabilities []string `json:"capabilities,omitempty"`
 }
 
 // LanguageToolStatus represents the tool status for a language.
 type LanguageToolStatus struct {
-	Language     Language       `json:"language"`
-	DisplayName  string         `json:"displayName"`
-	ToolTier     AnalysisTier   `json:"toolTier"`     // Based on installed tools
-	RuntimeTier  AnalysisTier   `json:"runtimeTier"`  // After attempting LSP/runtime checks
-	Tools        []ToolStatus   `json:"tools"`
-	Missing      []ToolStatus   `json:"missing,omitempty"`
+	Language     Language        `json:"language"`
+	DisplayName  string          `json:"displayName"`
+	ToolTier     AnalysisTier    `json:"toolTier"`    // Based on installed tools
+	RuntimeTier  AnalysisTier    `json:"runtimeTier"` // After attempting LSP/runtime checks
+	Tools        []ToolStatus    `json:"tools"`
+	Missing      []ToolStatus    `json:"missing,omitempty"`
 	Capabilities map[string]bool `json:"capabilities"`
 }
 
@@ -91,10 +91,10 @@ func (d *ToolDetector) CheckTool(ctx context.Context, req IndexerRequirement) To
 
 	// Get version if we have version args
 	if len(req.VersionArgs) > 0 {
-		ctx, cancel := context.WithTimeout(ctx, d.timeout)
+		timeoutCtx, cancel := context.WithTimeout(ctx, d.timeout)
 		defer cancel()
 
-		stdout, stderr, err := d.runner.Run(ctx, req.Binary, req.VersionArgs...)
+		stdout, stderr, err := d.runner.Run(timeoutCtx, req.Binary, req.VersionArgs...)
 		if err != nil {
 			// Tool exists but version check failed - still usable
 			status.Error = "version check failed"
@@ -236,10 +236,10 @@ func (d *ToolDetector) DetectAllLanguages(ctx context.Context, languages []Langu
 func parseVersion(output string) string {
 	// Try common patterns
 	patterns := []string{
-		`v?(\d+\.\d+\.\d+)`,       // 1.2.3 or v1.2.3
-		`(\d+\.\d+)`,              // 1.2
-		`version[:\s]+(\S+)`,      // version: x.y.z
-		`(\d+\.\d+\.\d+-[\w.]+)`,  // 1.2.3-beta.1
+		`v?(\d+\.\d+\.\d+)`,      // 1.2.3 or v1.2.3
+		`(\d+\.\d+)`,             // 1.2
+		`version[:\s]+(\S+)`,     // version: x.y.z
+		`(\d+\.\d+\.\d+-[\w.]+)`, // 1.2.3-beta.1
 	}
 
 	for _, pattern := range patterns {

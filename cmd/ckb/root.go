@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"ckb/internal/config"
@@ -51,16 +50,4 @@ func resolveTierMode(cfg *config.Config) (tier.TierMode, error) {
 
 	// 4. Auto-detect (default)
 	return tier.TierModeAuto, nil
-}
-
-// validateTierMode checks if the requested tier mode is valid.
-func validateTierMode() error {
-	if tierFlag == "" {
-		return nil
-	}
-	_, err := tier.ParseTierMode(tierFlag)
-	if err != nil {
-		return fmt.Errorf("invalid --tier value: %w", err)
-	}
-	return nil
 }

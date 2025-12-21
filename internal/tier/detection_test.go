@@ -16,7 +16,7 @@ func TestParseVersion(t *testing.T) {
 		{"version: 1.2.3", "1.2.3"},
 		{"gopls 0.15.3", "0.15.3"},
 		{"1.2", "1.2"},
-		{"v1.2.3-beta.1", "1.2.3"},  // Regex matches simpler pattern first
+		{"v1.2.3-beta.1", "1.2.3"}, // Regex matches simpler pattern first
 		{"", ""},
 		{"some random text", "some"},
 	}
@@ -45,8 +45,8 @@ func TestVersionAtLeast(t *testing.T) {
 		{"1.1.0", "1.2.3", false},
 		{"0.15.3", "0.15.0", true},
 		{"0.14.0", "0.15.0", false},
-		{"", "1.0.0", true},  // Empty version treated as OK
-		{"1.0.0", "", true},  // Empty min treated as OK
+		{"", "1.0.0", true}, // Empty version treated as OK
+		{"1.0.0", "", true}, // Empty min treated as OK
 		{"v1.2.3", "v1.2.0", true},
 		{"1.2.3-beta", "1.2.3", true},
 	}
@@ -70,10 +70,10 @@ func TestToolDetector_CheckTool_Found(t *testing.T) {
 	ctx := context.Background()
 
 	req := IndexerRequirement{
-		Name:        "scip-go",
-		Binary:      "scip-go",
-		VersionArgs: []string{"--version"},
-		Provider:    ProviderSCIP,
+		Name:         "scip-go",
+		Binary:       "scip-go",
+		VersionArgs:  []string{"--version"},
+		Provider:     ProviderSCIP,
 		Capabilities: []Capability{CapDefinitions, CapReferences},
 	}
 

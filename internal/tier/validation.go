@@ -44,17 +44,17 @@ type ValidationResult struct {
 
 // LanguageValidation contains validation results for a single language.
 type LanguageValidation struct {
-	Language      Language              `json:"language"`
-	DisplayName   string                `json:"displayName"`
-	RequestedTier AnalysisTier          `json:"requestedTier"`
-	ToolTier      AnalysisTier          `json:"toolTier"`
-	RuntimeTier   AnalysisTier          `json:"runtimeTier"`
-	Satisfied     bool                  `json:"satisfied"`
-	Tools         []ToolStatus          `json:"tools"`
-	Missing       []ToolStatus          `json:"missing,omitempty"`
-	Prerequisites []PrerequisiteStatus  `json:"prerequisites,omitempty"`
-	Capabilities  map[string]bool       `json:"capabilities"`
-	CapabilityProviders map[string]string `json:"capabilityProviders,omitempty"`
+	Language            Language             `json:"language"`
+	DisplayName         string               `json:"displayName"`
+	RequestedTier       AnalysisTier         `json:"requestedTier"`
+	ToolTier            AnalysisTier         `json:"toolTier"`
+	RuntimeTier         AnalysisTier         `json:"runtimeTier"`
+	Satisfied           bool                 `json:"satisfied"`
+	Tools               []ToolStatus         `json:"tools"`
+	Missing             []ToolStatus         `json:"missing,omitempty"`
+	Prerequisites       []PrerequisiteStatus `json:"prerequisites,omitempty"`
+	Capabilities        map[string]bool      `json:"capabilities"`
+	CapabilityProviders map[string]string    `json:"capabilityProviders,omitempty"`
 }
 
 // Validator validates tier requirements.
@@ -97,14 +97,14 @@ func (v *Validator) Validate(ctx context.Context, languages []Language) Validati
 		}
 
 		validation := LanguageValidation{
-			Language:           lang,
-			DisplayName:        lang.DisplayName(),
-			RequestedTier:      requestedTier,
-			ToolTier:           toolStatus.ToolTier,
-			RuntimeTier:        toolStatus.RuntimeTier,
-			Tools:              toolStatus.Tools,
-			Missing:            toolStatus.Missing,
-			Capabilities:       toolStatus.Capabilities,
+			Language:            lang,
+			DisplayName:         lang.DisplayName(),
+			RequestedTier:       requestedTier,
+			ToolTier:            toolStatus.ToolTier,
+			RuntimeTier:         toolStatus.RuntimeTier,
+			Tools:               toolStatus.Tools,
+			Missing:             toolStatus.Missing,
+			Capabilities:        toolStatus.Capabilities,
 			CapabilityProviders: make(map[string]string),
 		}
 

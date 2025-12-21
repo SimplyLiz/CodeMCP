@@ -544,9 +544,9 @@ func countSourceFiles(root string, lang project.Language) int {
 	}
 
 	count := 0
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return nil //nolint:nilerr // Skip errors, continue walking
 		}
 		if d.IsDir() {
 			// Skip common non-source directories
@@ -596,4 +596,5 @@ func getSourceExtensions(lang project.Language) []string {
 		return nil
 	}
 }
+
 // stale test

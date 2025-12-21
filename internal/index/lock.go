@@ -36,7 +36,7 @@ func AcquireLock(ckbDir string) (*Lock, error) {
 	// Try to acquire exclusive lock (non-blocking)
 	err = syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 
 		// Try to read existing lock info for better error message
 		if content, readErr := os.ReadFile(path); readErr == nil && len(content) > 0 {
@@ -48,20 +48,20 @@ func AcquireLock(ckbDir string) (*Lock, error) {
 
 	// Write our PID to the lock file
 	if err := file.Truncate(0); err != nil {
-		syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
-		file.Close()
+		_ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+		_ = file.Close()
 		return nil, fmt.Errorf("truncating lock file: %w", err)
 	}
 
 	if _, err := file.Seek(0, 0); err != nil {
-		syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
-		file.Close()
+		_ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+		_ = file.Close()
 		return nil, fmt.Errorf("seeking lock file: %w", err)
 	}
 
 	if _, err := file.WriteString(strconv.Itoa(os.Getpid())); err != nil {
-		syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
-		file.Close()
+		_ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+		_ = file.Close()
 		return nil, fmt.Errorf("writing PID to lock file: %w", err)
 	}
 
@@ -75,11 +75,11 @@ func (l *Lock) Release() {
 	}
 
 	// Release the flock
-	syscall.Flock(int(l.file.Fd()), syscall.LOCK_UN)
+	_ = syscall.Flock(int(l.file.Fd()), syscall.LOCK_UN)
 
 	// Close the file
-	l.file.Close()
+	_ = l.file.Close()
 
 	// Remove the lock file (best effort)
-	os.Remove(l.path)
+	_ = os.Remove(l.path)
 }

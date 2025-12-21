@@ -169,9 +169,9 @@ func findWithDepth(root, pattern string) []string {
 	// Check if pattern includes a path separator
 	hasPathSep := strings.Contains(pattern, "/") || strings.Contains(pattern, string(os.PathSeparator))
 
-	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil // Skip errors, continue walking
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return nil //nolint:nilerr // Skip errors, continue walking
 		}
 		if checked >= maxFilesToCheck {
 			return fs.SkipAll // Stop walk entirely

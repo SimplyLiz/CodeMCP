@@ -26,14 +26,14 @@ func TierSummaryOutput(w io.Writer, result ValidationResult, format OutputFormat
 }
 
 func tierSummaryHuman(w io.Writer, result ValidationResult) error {
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Tier Summary")
-	fmt.Fprintln(w, strings.Repeat("=", 60))
-	fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "Tier Summary")
+	_, _ = fmt.Fprintln(w, strings.Repeat("=", 60))
+	_, _ = fmt.Fprintln(w, "")
 
 	// Header
-	fmt.Fprintf(w, "%-12s %-10s %-10s %s\n", "Language", "Effective", "Requested", "Status")
-	fmt.Fprintln(w, strings.Repeat("-", 60))
+	_, _ = fmt.Fprintf(w, "%-12s %-10s %-10s %s\n", "Language", "Effective", "Requested", "Status")
+	_, _ = fmt.Fprintln(w, strings.Repeat("-", 60))
 
 	// Sort languages for deterministic output
 	validations := SortedLanguageValidations(result)
@@ -42,7 +42,7 @@ func tierSummaryHuman(w io.Writer, result ValidationResult) error {
 		effectiveTier := GetEffectiveTier(validation)
 		statusStr := formatValidationStatus(validation)
 
-		fmt.Fprintf(w, "%-12s %-10s %-10s %s\n",
+		_, _ = fmt.Fprintf(w, "%-12s %-10s %-10s %s\n",
 			validation.DisplayName,
 			tierDisplayName(effectiveTier),
 			tierDisplayName(validation.RequestedTier),
@@ -50,11 +50,11 @@ func tierSummaryHuman(w io.Writer, result ValidationResult) error {
 		)
 	}
 
-	fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "")
 
 	// Capability matrix
-	fmt.Fprintln(w, "Capabilities")
-	fmt.Fprintln(w, strings.Repeat("-", 60))
+	_, _ = fmt.Fprintln(w, "Capabilities")
+	_, _ = fmt.Fprintln(w, strings.Repeat("-", 60))
 
 	// Header row
 	caps := AllCapabilities()
@@ -62,7 +62,7 @@ func tierSummaryHuman(w io.Writer, result ValidationResult) error {
 	for i, cap := range caps {
 		capHeaders[i] = truncate(string(cap), 6)
 	}
-	fmt.Fprintf(w, "%-12s %s\n", "", strings.Join(capHeaders, "  "))
+	_, _ = fmt.Fprintf(w, "%-12s %s\n", "", strings.Join(capHeaders, "  "))
 
 	// Capability rows
 	for _, validation := range validations {
@@ -74,10 +74,10 @@ func tierSummaryHuman(w io.Writer, result ValidationResult) error {
 				capValues[i] = "  -   "
 			}
 		}
-		fmt.Fprintf(w, "%-12s %s\n", validation.DisplayName, strings.Join(capValues, ""))
+		_, _ = fmt.Fprintf(w, "%-12s %s\n", validation.DisplayName, strings.Join(capValues, ""))
 	}
 
-	fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "")
 
 	// Show missing tools if any
 	hasMissing := false
@@ -89,26 +89,26 @@ func tierSummaryHuman(w io.Writer, result ValidationResult) error {
 	}
 
 	if hasMissing {
-		fmt.Fprintln(w, "Missing Tools")
-		fmt.Fprintln(w, strings.Repeat("-", 60))
+		_, _ = fmt.Fprintln(w, "Missing Tools")
+		_, _ = fmt.Fprintln(w, strings.Repeat("-", 60))
 
 		for _, validation := range validations {
 			if len(validation.Missing) > 0 {
-				fmt.Fprintf(w, "%s:\n", validation.DisplayName)
+				_, _ = fmt.Fprintf(w, "%s:\n", validation.DisplayName)
 				for _, missing := range SortedTools(validation.Missing) {
-					fmt.Fprintf(w, "  - %s\n", missing.Name)
+					_, _ = fmt.Fprintf(w, "  - %s\n", missing.Name)
 					if missing.InstallCmd != "" {
-						fmt.Fprintf(w, "    Install: %s\n", missing.InstallCmd)
+						_, _ = fmt.Fprintf(w, "    Install: %s\n", missing.InstallCmd)
 					}
 				}
 			}
 		}
-		fmt.Fprintln(w, "")
+		_, _ = fmt.Fprintln(w, "")
 	}
 
 	// Footer hint
 	if result.Degraded {
-		fmt.Fprintln(w, "Run 'ckb doctor --tier <tier>' for detailed diagnostics.")
+		_, _ = fmt.Fprintln(w, "Run 'ckb doctor --tier <tier>' for detailed diagnostics.")
 	}
 
 	return nil
@@ -147,6 +147,14 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen]
 }
 
+// capitalizeFirst capitalizes the first letter of a string.
+func capitalizeFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
 func tierSummaryJSON(w io.Writer, result ValidationResult) error {
 	// Create a JSON-friendly structure
 	output := struct {
@@ -174,17 +182,17 @@ func tierSummaryJSON(w io.Writer, result ValidationResult) error {
 
 // LanguageValidationJSONOutput is the JSON-friendly output format.
 type LanguageValidationJSONOutput struct {
-	Language      string                `json:"language"`
-	DisplayName   string                `json:"displayName"`
-	RequestedTier string                `json:"requestedTier"`
-	EffectiveTier string                `json:"effectiveTier"`
-	ToolTier      string                `json:"toolTier"`
-	RuntimeTier   string                `json:"runtimeTier"`
-	Satisfied     bool                  `json:"satisfied"`
-	Tools         []ToolStatus          `json:"tools,omitempty"`
-	Missing       []MissingToolOutput   `json:"missing,omitempty"`
-	Prerequisites []PrerequisiteStatus  `json:"prerequisites,omitempty"`
-	Capabilities  map[string]bool       `json:"capabilities"`
+	Language      string               `json:"language"`
+	DisplayName   string               `json:"displayName"`
+	RequestedTier string               `json:"requestedTier"`
+	EffectiveTier string               `json:"effectiveTier"`
+	ToolTier      string               `json:"toolTier"`
+	RuntimeTier   string               `json:"runtimeTier"`
+	Satisfied     bool                 `json:"satisfied"`
+	Tools         []ToolStatus         `json:"tools,omitempty"`
+	Missing       []MissingToolOutput  `json:"missing,omitempty"`
+	Prerequisites []PrerequisiteStatus `json:"prerequisites,omitempty"`
+	Capabilities  map[string]bool      `json:"capabilities"`
 }
 
 // MissingToolOutput is the JSON output for a missing tool.
@@ -229,9 +237,9 @@ func DoctorOutput(w io.Writer, result ValidationResult, requestedTier AnalysisTi
 
 func doctorHuman(w io.Writer, result ValidationResult, requestedTier AnalysisTier) error {
 	tierName := tierDisplayName(requestedTier)
-	fmt.Fprintf(w, "CKB Doctor - %s Tier Requirements\n", strings.Title(tierName))
-	fmt.Fprintln(w, strings.Repeat("=", 45))
-	fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintf(w, "CKB Doctor - %s Tier Requirements\n", capitalizeFirst(tierName))
+	_, _ = fmt.Fprintln(w, strings.Repeat("=", 45))
+	_, _ = fmt.Fprintln(w, "")
 
 	readyCount := 0
 	totalCount := len(result.Languages)
@@ -243,9 +251,9 @@ func doctorHuman(w io.Writer, result ValidationResult, requestedTier AnalysisTie
 
 		if ready {
 			readyCount++
-			fmt.Fprintf(w, "%s: Y Ready\n", validation.DisplayName)
+			_, _ = fmt.Fprintf(w, "%s: Y Ready\n", validation.DisplayName)
 		} else {
-			fmt.Fprintf(w, "%s: N Not Ready\n", validation.DisplayName)
+			_, _ = fmt.Fprintf(w, "%s: N Not Ready\n", validation.DisplayName)
 		}
 
 		// Filter tools based on requested tier
@@ -257,14 +265,14 @@ func doctorHuman(w io.Writer, result ValidationResult, requestedTier AnalysisTie
 			if tool.Version != "" {
 				versionInfo = fmt.Sprintf(" v%s", tool.Version)
 			}
-			fmt.Fprintf(w, "  Y %s%s\n", tool.Name, versionInfo)
+			_, _ = fmt.Fprintf(w, "  Y %s%s\n", tool.Name, versionInfo)
 		}
 
 		// Show missing tools (only those needed for requested tier)
 		for _, missing := range SortedTools(relevantTools.missing) {
-			fmt.Fprintf(w, "  N %s not found\n", missing.Name)
+			_, _ = fmt.Fprintf(w, "  N %s not found\n", missing.Name)
 			if missing.InstallCmd != "" {
-				fmt.Fprintf(w, "    Suggested install: %s\n", missing.InstallCmd)
+				_, _ = fmt.Fprintf(w, "    Suggested install: %s\n", missing.InstallCmd)
 			}
 		}
 
@@ -272,18 +280,18 @@ func doctorHuman(w io.Writer, result ValidationResult, requestedTier AnalysisTie
 		if len(validation.Prerequisites) > 0 {
 			for _, prereq := range validation.Prerequisites {
 				if prereq.Required && !prereq.Found {
-					fmt.Fprintf(w, "  ! Missing %s\n", prereq.Name)
+					_, _ = fmt.Fprintf(w, "  ! Missing %s\n", prereq.Name)
 					if prereq.Hint != "" {
-						fmt.Fprintf(w, "    %s\n", prereq.Hint)
+						_, _ = fmt.Fprintf(w, "    %s\n", prereq.Hint)
 					}
 				}
 			}
 		}
 
-		fmt.Fprintln(w)
+		_, _ = fmt.Fprintln(w)
 	}
 
-	fmt.Fprintf(w, "Summary: %d/%d languages ready for %s tier.\n", readyCount, totalCount, tierName)
+	_, _ = fmt.Fprintf(w, "Summary: %d/%d languages ready for %s tier.\n", readyCount, totalCount, tierName)
 
 	return nil
 }
@@ -370,14 +378,14 @@ func CapabilityStatusOutput(w io.Writer, validation LanguageValidation, capabili
 		return nil // Capability is available, no output needed
 	}
 
-	fmt.Fprintf(w, "\nCapability '%s' is not available for %s.\n", capability, validation.DisplayName)
-	fmt.Fprintf(w, "Current tier: %s (requires: ", tierDisplayName(validation.ToolTier))
+	_, _ = fmt.Fprintf(w, "\nCapability '%s' is not available for %s.\n", capability, validation.DisplayName)
+	_, _ = fmt.Fprintf(w, "Current tier: %s (requires: ", tierDisplayName(validation.ToolTier))
 
 	// Find which tier provides this capability
 	for tier, caps := range TierCapabilities {
 		for _, cap := range caps {
 			if cap == capability {
-				fmt.Fprintf(w, "%s)\n", tierDisplayName(tier))
+				_, _ = fmt.Fprintf(w, "%s)\n", tierDisplayName(tier))
 				break
 			}
 		}
@@ -385,14 +393,14 @@ func CapabilityStatusOutput(w io.Writer, validation LanguageValidation, capabili
 
 	// Show what providers could enable this
 	if providers, ok := CapabilityProviders[capability]; ok {
-		fmt.Fprintf(w, "Providers: %s\n", strings.Join(providerStrings(providers), ", "))
+		_, _ = fmt.Fprintf(w, "Providers: %s\n", strings.Join(providerStrings(providers), ", "))
 	}
 
 	// Show install hint
 	for _, missing := range validation.Missing {
 		for _, cap := range missing.Capabilities {
 			if cap == string(capability) && missing.InstallCmd != "" {
-				fmt.Fprintf(w, "Install: %s\n", missing.InstallCmd)
+				_, _ = fmt.Fprintf(w, "Install: %s\n", missing.InstallCmd)
 				break
 			}
 		}

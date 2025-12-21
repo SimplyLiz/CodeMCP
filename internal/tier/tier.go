@@ -135,8 +135,8 @@ type TierInfo struct {
 	Current          AnalysisTier `json:"current"`
 	CurrentName      string       `json:"currentName"`
 	Description      string       `json:"description"`
-	Mode             string       `json:"mode"`                       // "auto" or explicit mode name
-	Explicit         bool         `json:"explicit"`                   // true if tier was explicitly set
+	Mode             string       `json:"mode"`     // "auto" or explicit mode name
+	Explicit         bool         `json:"explicit"` // true if tier was explicitly set
 	AvailableTools   []string     `json:"availableTools"`
 	UnavailableTools []string     `json:"unavailableTools"`
 	UpgradeHint      string       `json:"upgradeHint,omitempty"`

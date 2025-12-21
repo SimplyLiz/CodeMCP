@@ -333,11 +333,11 @@ func TestFindCompileCommands(t *testing.T) {
 
 func TestBuildCppCommand(t *testing.T) {
 	tests := []struct {
-		name            string
-		files           []string
-		overrideCompdb  string
-		wantCmd         string
-		wantErr         bool
+		name           string
+		files          []string
+		overrideCompdb string
+		wantCmd        string
+		wantErr        bool
 	}{
 		{
 			name:    "Auto-detect at root",
@@ -478,9 +478,9 @@ func TestValidatePHPSetup(t *testing.T) {
 
 func TestGetIndexerInfo(t *testing.T) {
 	tests := []struct {
-		lang         Language
-		wantNil      bool
-		wantCheck    string
+		lang      Language
+		wantNil   bool
+		wantCheck string
 	}{
 		{LangGo, false, "scip-go"},
 		{LangTypeScript, false, "scip-typescript"},

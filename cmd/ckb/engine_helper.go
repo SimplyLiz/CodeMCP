@@ -16,7 +16,6 @@ var (
 	engineOnce   sync.Once
 	sharedEngine *query.Engine
 	engineErr    error
-	engineCfg    *config.Config
 )
 
 // getEngine returns a shared Query Engine instance.
@@ -31,7 +30,6 @@ func getEngine(repoRoot string, logger *logging.Logger) (*query.Engine, error) {
 			})
 			cfg = config.DefaultConfig()
 		}
-		engineCfg = cfg
 
 		// Open storage
 		db, err := storage.Open(repoRoot, logger)
