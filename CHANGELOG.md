@@ -2,7 +2,7 @@
 
 All notable changes to CKB will be documented in this file.
 
-## [7.2.0] - Unreleased
+## [7.2.0] - 2024-12-21
 
 ### Added
 
