@@ -29,6 +29,23 @@ All notable changes to CKB will be documented in this file.
 - Bounded-depth glob scanning for nested project detection
 - Language-specific validation and prerequisite checks
 
+#### Smart Indexing
+- **Skip-if-fresh**: `ckb index` automatically skips reindexing when index matches current repo state
+- **Freshness tracking**: Detects commits behind HEAD and uncommitted changes to tracked files
+- **Index metadata**: Persists index info to `.ckb/index-meta.json` (commit hash, file count, duration)
+- **Lock file**: Prevents concurrent indexing with flock-based `.ckb/index.lock`
+
+#### `ckb status` - Index Freshness Display
+- New "Index Status" section showing freshness with commit hash
+- Shows stale reasons: "3 commit(s) behind HEAD", "uncommitted changes detected"
+- Displays file count for fresh indexes
+
+#### `ckb mcp --watch` - Auto-Reindex Mode
+- New `--watch` flag for poll-based auto-reindexing
+- Polls every 30 seconds, reindexes when stale
+- Uses lock file to prevent conflicts with manual `ckb index`
+- Logs reindex activity to stderr
+
 ### Changed
 
 - Multi-language detection now errors instead of silently defaulting to a language

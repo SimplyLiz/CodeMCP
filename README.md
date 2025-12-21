@@ -167,6 +167,13 @@ Now Claude can answer questions like:
 - **Auto-Index** — `ckb index` detects language and runs the right SCIP indexer
 - **Analysis Tiers** — Works without SCIP index (basic mode), better with it (enhanced mode)
 
+### Smart Indexing (v7.2)
+- **Skip-if-Fresh** — `ckb index` automatically skips if index is current with HEAD
+- **Freshness Tracking** — Tracks commits behind HEAD + uncommitted changes
+- **Index Status** — `ckb status` shows index freshness with commit hash
+- **Watch Mode** — `ckb mcp --watch` polls every 30s and auto-reindexes when stale
+- **Lock File** — Prevents concurrent indexing with flock-based locking
+
 ## MCP Tools (58 Available)
 
 CKB exposes code intelligence through the Model Context Protocol:

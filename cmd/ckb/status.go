@@ -3,10 +3,12 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"ckb/internal/index"
 	"ckb/internal/query"
 	"ckb/internal/tier"
 )
@@ -45,6 +47,10 @@ func runStatus(cmd *cobra.Command, args []string) {
 	// Convert to CLI response format
 	cliResponse := convertStatusResponse(response)
 
+	// Add index freshness status
+	ckbDir := filepath.Join(repoRoot, ".ckb")
+	cliResponse.IndexStatus = getIndexStatus(ckbDir, repoRoot)
+
 	// Format and output
 	output, err := FormatResponse(cliResponse, OutputFormat(statusFormat))
 	if err != nil {
@@ -62,12 +68,25 @@ func runStatus(cmd *cobra.Command, args []string) {
 
 // StatusResponseCLI contains the complete system status for CLI output
 type StatusResponseCLI struct {
-	CkbVersion string             `json:"ckbVersion"`
-	Tier       *tier.TierInfo     `json:"tier"`
-	RepoState  *query.RepoState   `json:"repoState"`
-	Backends   []BackendStatusCLI `json:"backends"`
-	Cache      CacheStatusCLI     `json:"cache"`
-	Healthy    bool               `json:"healthy"`
+	CkbVersion  string             `json:"ckbVersion"`
+	Tier        *tier.TierInfo     `json:"tier"`
+	RepoState   *query.RepoState   `json:"repoState"`
+	IndexStatus *IndexStatusCLI    `json:"indexStatus,omitempty"`
+	Backends    []BackendStatusCLI `json:"backends"`
+	Cache       CacheStatusCLI     `json:"cache"`
+	Healthy     bool               `json:"healthy"`
+}
+
+// IndexStatusCLI describes the state of the SCIP index
+type IndexStatusCLI struct {
+	Exists         bool      `json:"exists"`
+	Fresh          bool      `json:"fresh"`
+	Reason         string    `json:"reason,omitempty"`
+	CreatedAt      time.Time `json:"createdAt,omitempty"`
+	CommitHash     string    `json:"commitHash,omitempty"`
+	FileCount      int       `json:"fileCount,omitempty"`
+	CommitsBehind  int       `json:"commitsBehind,omitempty"`
+	HasUncommitted bool      `json:"hasUncommitted,omitempty"`
 }
 
 // BackendStatusCLI describes the status of a backend
@@ -116,5 +135,51 @@ func convertStatusResponse(resp *query.StatusResponse) *StatusResponseCLI {
 		Backends:   backends,
 		Cache:      cache,
 		Healthy:    resp.Healthy,
+	}
+}
+
+// getIndexStatus retrieves index freshness information
+func getIndexStatus(ckbDir, repoRoot string) *IndexStatusCLI {
+	indexPath := filepath.Join(repoRoot, "index.scip")
+
+	// Check if index file exists
+	if _, err := os.Stat(indexPath); os.IsNotExist(err) {
+		return &IndexStatusCLI{
+			Exists: false,
+			Fresh:  false,
+			Reason: "no index found - run 'ckb index' to create one",
+		}
+	}
+
+	// Load index metadata
+	meta, err := index.LoadMeta(ckbDir)
+	if err != nil {
+		return &IndexStatusCLI{
+			Exists: true,
+			Fresh:  false,
+			Reason: "could not read index metadata",
+		}
+	}
+
+	if meta == nil {
+		return &IndexStatusCLI{
+			Exists: true,
+			Fresh:  false,
+			Reason: "legacy index - run 'ckb index' to enable freshness tracking",
+		}
+	}
+
+	// Check freshness
+	freshness := meta.CheckFreshness(repoRoot)
+
+	return &IndexStatusCLI{
+		Exists:         true,
+		Fresh:          freshness.Fresh,
+		Reason:         freshness.Reason,
+		CreatedAt:      meta.CreatedAt,
+		CommitHash:     meta.CommitHash,
+		FileCount:      meta.FileCount,
+		CommitsBehind:  freshness.CommitsBehind,
+		HasUncommitted: freshness.HasUncommitted,
 	}
 }

@@ -206,9 +206,35 @@ func formatStatusHuman(resp *StatusResponseCLI) (string, error) {
 		b.WriteString(fmt.Sprintf("Repository: %s%s\n", headCommit, dirty))
 	}
 
+	// Index Status
+	if resp.IndexStatus != nil {
+		b.WriteString("\n")
+		b.WriteString("Index Status:\n")
+		if !resp.IndexStatus.Exists {
+			b.WriteString("  ✗ No index found\n")
+			b.WriteString("  Run 'ckb index' to create one.\n")
+		} else if resp.IndexStatus.Fresh {
+			commitInfo := ""
+			if resp.IndexStatus.CommitHash != "" {
+				hash := resp.IndexStatus.CommitHash
+				if len(hash) > 7 {
+					hash = hash[:7]
+				}
+				commitInfo = fmt.Sprintf(" (HEAD = %s)", hash)
+			}
+			b.WriteString(fmt.Sprintf("  ✓ Up to date%s\n", commitInfo))
+			if resp.IndexStatus.FileCount > 0 {
+				b.WriteString(fmt.Sprintf("  Files: %d\n", resp.IndexStatus.FileCount))
+			}
+		} else {
+			b.WriteString(fmt.Sprintf("  ⚠ %s\n", resp.IndexStatus.Reason))
+			b.WriteString("  Run 'ckb index' to refresh.\n")
+		}
+	}
+
 	// Cache (one-liner)
 	if resp.Cache.QueryCount > 0 {
-		b.WriteString(fmt.Sprintf("Cache: %d queries, %.0f%% hit rate, %s\n",
+		b.WriteString(fmt.Sprintf("\nCache: %d queries, %.0f%% hit rate, %s\n",
 			resp.Cache.QueryCount, resp.Cache.HitRate*100, formatBytes(resp.Cache.SizeBytes)))
 	}
 
