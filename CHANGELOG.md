@@ -46,7 +46,17 @@ All notable changes to CKB will be documented in this file.
 - Uses lock file to prevent conflicts with manual `ckb index`
 - Logs reindex activity to stderr
 
+#### Explicit Analysis Tiers
+- User-controllable analysis tiers: **fast**, **standard**, **full**
+- CLI flag: `ckb search "foo" --tier=fast`
+- Environment variable: `CKB_TIER=standard`
+- Config file: Add `"tier": "standard"` to `.ckb/config.json`
+- Tier display in `ckb status` shows mode (explicit vs auto-detected)
+- Precedence: CLI flag > env var > config > auto-detect
+
 ### Changed
+
+- Tier names rebranded: Basic → **Fast**, Enhanced → **Standard**, Full → **Full**
 
 - Multi-language detection now errors instead of silently defaulting to a language
 

@@ -256,6 +256,22 @@ func (e *Engine) GetTier() tier.AnalysisTier {
 	return e.tierDetector.DetectTier()
 }
 
+// SetTierMode sets the requested tier mode (fast, standard, full, or auto).
+// This affects how the tier is resolved for subsequent operations.
+func (e *Engine) SetTierMode(mode tier.TierMode) {
+	e.tierDetector.SetRequestedMode(mode)
+}
+
+// ValidateTierMode validates that the requested tier can be satisfied.
+// Returns an error if the tier requirements are not met.
+func (e *Engine) ValidateTierMode() error {
+	if e.scipAdapter != nil {
+		e.tierDetector.SetScipAvailable(e.scipAdapter.IsAvailable())
+	}
+	_, err := e.tierDetector.ResolveTier()
+	return err
+}
+
 // GetRepoState returns the current repository state.
 func (e *Engine) GetRepoState(ctx context.Context, mode string) (*RepoState, error) {
 	e.repoStateMu.RLock()

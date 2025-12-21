@@ -165,14 +165,15 @@ Now Claude can answer questions like:
 - **npm Distribution** — `npm install -g @tastehub/ckb` or `npx @tastehub/ckb`
 - **Auto-Setup** — `ckb setup` configures Claude Code integration automatically
 - **Auto-Index** — `ckb index` detects language and runs the right SCIP indexer
-- **Analysis Tiers** — Works without SCIP index (basic mode), better with it (enhanced mode)
+- **Analysis Tiers** — Works without SCIP index (fast mode), better with it (standard mode)
 
-### Smart Indexing (v7.2)
+### Smart Indexing & Explicit Tiers (v7.2)
 - **Skip-if-Fresh** — `ckb index` automatically skips if index is current with HEAD
 - **Freshness Tracking** — Tracks commits behind HEAD + uncommitted changes
 - **Index Status** — `ckb status` shows index freshness with commit hash
 - **Watch Mode** — `ckb mcp --watch` polls every 30s and auto-reindexes when stale
 - **Lock File** — Prevents concurrent indexing with flock-based locking
+- **Explicit Tiers** — Control analysis mode: `--tier=fast|standard|full` or `CKB_TIER` env var
 
 ## MCP Tools (58 Available)
 

@@ -151,14 +151,25 @@ func formatStatusHuman(resp *StatusResponseCLI) (string, error) {
 	if resp.Tier != nil {
 		tierIcon := "◐"
 		switch resp.Tier.CurrentName {
-		case "Basic":
+		case "Fast":
 			tierIcon = "○"
-		case "Enhanced":
+		case "Standard":
 			tierIcon = "◉"
 		case "Full":
 			tierIcon = "●"
 		}
-		b.WriteString(fmt.Sprintf("%s Analysis Tier: %s (%s)\n", tierIcon, resp.Tier.CurrentName, resp.Tier.Description))
+
+		// Show mode (explicit vs auto-detected)
+		modeInfo := ""
+		if resp.Tier.Mode != "" {
+			if resp.Tier.Explicit {
+				modeInfo = fmt.Sprintf(" [mode: %s]", resp.Tier.Mode)
+			} else {
+				modeInfo = " [auto-detected]"
+			}
+		}
+
+		b.WriteString(fmt.Sprintf("%s Analysis Tier: %s (%s)%s\n", tierIcon, resp.Tier.CurrentName, resp.Tier.Description, modeInfo))
 		b.WriteString(fmt.Sprintf("  Available Tools: %d of %d\n", len(resp.Tier.AvailableTools), len(resp.Tier.AvailableTools)+len(resp.Tier.UnavailableTools)))
 
 		if resp.Tier.UpgradeHint != "" {
