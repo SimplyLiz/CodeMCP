@@ -54,6 +54,15 @@ All notable changes to CKB will be documented in this file.
 - Tier display in `ckb status` shows mode (explicit vs auto-detected)
 - Precedence: CLI flag > env var > config > auto-detect
 
+#### `ckb doctor --tier` - Tier-Aware Diagnostics
+- New `--tier` flag for tier-specific tool requirement checks
+- Shows per-language tool status (installed, version, path)
+- Displays missing tools with OS-specific install commands
+- Validates prerequisites (go.mod, package.json, Cargo.toml, etc.)
+- Accepts both naming conventions: `basic`/`fast`, `enhanced`/`standard`, `full`
+- Capability matrix showing which features are available per language
+- JSON output with `--format json` for scripting
+
 ### Changed
 
 - Tier names rebranded: Basic → **Fast**, Enhanced → **Standard**, Full → **Full**
@@ -67,12 +76,32 @@ All notable changes to CKB will be documented in this file.
 
 ## [7.1.0] - 2024-12-XX
 
+Zero-Friction Operation - CKB v7.1 enables code intelligence without requiring a SCIP index upfront.
+
 ### Added
-- npm distribution via `@tastehub/ckb`
-- `ckb setup` command for Claude Code integration
+
+#### Tree-sitter Symbol Fallback
+- Symbol extraction for 8 languages (Go, TypeScript, JavaScript, TSX, Python, Rust, Java, Kotlin)
+- `searchSymbols` works without SCIP index
+- Results include `Source: "treesitter"` and `Confidence: 0.7` for transparency
+
+#### `ckb index` Command
+- Auto-detects project language from manifests (go.mod, package.json, Cargo.toml, etc.)
+- Checks if SCIP indexer is installed, shows install instructions if not
+- `--force` flag for re-indexing, `--dry-run` to preview
+- Language-specific troubleshooting tips on failure
+
+#### Universal MCP Documentation
+- Setup instructions for Claude Code, Cursor, Windsurf, VS Code, OpenCode, Claude Desktop
+- Windows `cmd /c` wrapper instructions
+
+### Files Added
+- `internal/symbols/treesitter.go` - Tree-sitter symbol extraction
+- `internal/symbols/treesitter_test.go` - Tests for all 8 languages
+- `internal/project/detect.go` - Language and indexer detection
 
 ## [7.0.0] - 2024-12-XX
 
 ### Added
-- Initial npm package release
+- Initial npm package release via `@tastehub/ckb`
 - 58 MCP tools for code intelligence

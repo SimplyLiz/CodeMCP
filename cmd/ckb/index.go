@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,13 +15,17 @@ import (
 	"ckb/internal/index"
 	"ckb/internal/project"
 	"ckb/internal/repostate"
+	"ckb/internal/tier"
 )
 
 var (
-	indexForce  bool
-	indexDryRun bool
-	indexLang   string
-	indexCompdb string // Path to compile_commands.json for C/C++
+	indexForce    bool
+	indexDryRun   bool
+	indexLang     string
+	indexCompdb   string // Path to compile_commands.json for C/C++
+	indexTier     string // Tier to validate (enhanced, full)
+	indexAllowFb  bool   // Allow fallback if tier not satisfied
+	indexShowTier bool   // Show tier summary after indexing
 )
 
 var indexCmd = &cobra.Command{
@@ -63,6 +68,9 @@ func init() {
 	indexCmd.Flags().BoolVar(&indexDryRun, "dry-run", false, "Show what would be run without executing")
 	indexCmd.Flags().StringVar(&indexLang, "lang", "", "Force specific language (go, ts, py, rs, java, cpp, dart, rb, cs, php)")
 	indexCmd.Flags().StringVar(&indexCompdb, "compdb", "", "Path to compile_commands.json (C/C++ only)")
+	indexCmd.Flags().StringVar(&indexTier, "tier", "", "Validate tier requirements before indexing (enhanced, full)")
+	indexCmd.Flags().BoolVar(&indexAllowFb, "allow-fallback", true, "Continue if tier requirements not met (default: true)")
+	indexCmd.Flags().BoolVar(&indexShowTier, "show-tier", true, "Show tier summary after indexing (default: true)")
 	rootCmd.AddCommand(indexCmd)
 }
 
@@ -311,7 +319,68 @@ func runIndex(cmd *cobra.Command, args []string) {
 	fmt.Println("  getCallGraph   - Trace caller/callee relationships")
 	fmt.Println("  analyzeImpact  - Assess change impact")
 	fmt.Println()
+
+	// Show tier summary if enabled
+	if indexShowTier {
+		showTierSummary(repoRoot, lang)
+	}
+
 	fmt.Println("Run 'ckb status' to verify.")
+}
+
+// showTierSummary displays the current tier status after indexing.
+func showTierSummary(repoRoot string, lang project.Language) {
+	// Convert project.Language to tier.Language
+	tierLang, ok := tier.ParseLanguage(string(lang))
+	if !ok {
+		return
+	}
+
+	ctx := context.Background()
+	runner := tier.NewCachingRunner(tier.NewRealRunner(5 * time.Second))
+	detector := tier.NewToolDetector(runner, 5*time.Second)
+
+	status := detector.DetectLanguageTier(ctx, tierLang)
+
+	fmt.Println("Tier Status:")
+	fmt.Printf("  %s: %s tier\n", status.DisplayName, tierDisplayNameShort(status.ToolTier))
+
+	// Show available capabilities
+	if len(status.Capabilities) > 0 {
+		fmt.Print("  Capabilities: ")
+		caps := []string{}
+		for cap, enabled := range status.Capabilities {
+			if enabled {
+				caps = append(caps, cap)
+			}
+		}
+		fmt.Println(strings.Join(caps, ", "))
+	}
+
+	// Show upgrade hint if not at full tier
+	if status.ToolTier < tier.TierFull {
+		switch status.ToolTier {
+		case tier.TierBasic:
+			fmt.Println("  Tip: Run 'ckb doctor --tier enhanced' to see what's needed for more features.")
+		case tier.TierEnhanced:
+			fmt.Println("  Tip: Run 'ckb doctor --tier full' to see what's needed for LSP features.")
+		}
+	}
+	fmt.Println()
+}
+
+// tierDisplayNameShort returns a short tier name.
+func tierDisplayNameShort(t tier.AnalysisTier) string {
+	switch t {
+	case tier.TierBasic:
+		return "basic"
+	case tier.TierEnhanced:
+		return "enhanced"
+	case tier.TierFull:
+		return "full"
+	default:
+		return "unknown"
+	}
 }
 
 // parseLanguageFlag converts a language flag to a Language type.

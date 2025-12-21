@@ -164,8 +164,12 @@ Now Claude can answer questions like:
 ### Zero-Friction UX (v7.0)
 - **npm Distribution** — `npm install -g @tastehub/ckb` or `npx @tastehub/ckb`
 - **Auto-Setup** — `ckb setup` configures Claude Code integration automatically
+
+### Zero-Index Operation (v7.1)
+- **Tree-sitter Fallback** — Symbol search works without SCIP index (8 languages)
 - **Auto-Index** — `ckb index` detects language and runs the right SCIP indexer
-- **Analysis Tiers** — Works without SCIP index (fast mode), better with it (standard mode)
+- **Install Guidance** — Shows indexer install commands when missing
+- **Universal MCP Docs** — Setup for Claude Code, Cursor, Windsurf, VS Code, OpenCode, Claude Desktop
 
 ### Smart Indexing & Explicit Tiers (v7.2)
 - **Skip-if-Fresh** — `ckb index` automatically skips if index is current with HEAD
@@ -174,6 +178,7 @@ Now Claude can answer questions like:
 - **Watch Mode** — `ckb mcp --watch` polls every 30s and auto-reindexes when stale
 - **Lock File** — Prevents concurrent indexing with flock-based locking
 - **Explicit Tiers** — Control analysis mode: `--tier=fast|standard|full` or `CKB_TIER` env var
+- **Tier Diagnostics** — `ckb doctor --tier enhanced` shows exactly what's missing and how to fix it
 
 ## MCP Tools (58 Available)
 
@@ -293,6 +298,9 @@ ckb decisions
 
 # Run diagnostics
 ckb doctor
+
+# Check tier-specific requirements
+ckb doctor --tier enhanced
 
 # Start MCP server for AI assistants
 ckb mcp
