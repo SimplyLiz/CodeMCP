@@ -45,6 +45,22 @@ func getEngine(repoRoot string, logger *logging.Logger) (*query.Engine, error) {
 			return
 		}
 
+		// Configure tier mode from CLI flag, env var, or config
+		tierMode, err := resolveTierMode(cfg)
+		if err != nil {
+			engineErr = fmt.Errorf("invalid tier configuration: %w", err)
+			return
+		}
+		engine.SetTierMode(tierMode)
+
+		// Validate that the tier requirements can be satisfied
+		if err := engine.ValidateTierMode(); err != nil {
+			// Log warning but don't fail - fall back to available tier
+			logger.Warn("Requested tier not available", map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+
 		sharedEngine = engine
 	})
 

@@ -45,11 +45,16 @@ golangci-lint run
 # Start HTTP API server
 ./ckb serve --port 8080
 
-# Start MCP server (for Claude Code integration)
+# Start MCP server (for AI tool integration)
 ./ckb mcp
 
-# Auto-configure Claude Code integration
+# Auto-configure AI tool integration (interactive)
 ./ckb setup
+
+# Configure for specific AI tools
+./ckb setup --tool=claude-code
+./ckb setup --tool=cursor
+./ckb setup --tool=vscode
 ```
 
 ## npm Distribution (v7.0)
@@ -65,14 +70,17 @@ npx @tastehub/ckb init
 npx @tastehub/ckb setup
 ```
 
-## MCP Integration with Claude Code
+## MCP Integration
 
-CKB provides 58 code intelligence tools via MCP. To enable:
+CKB provides 58 code intelligence tools via MCP. Supports Claude Code, Cursor, Windsurf, VS Code, OpenCode, and Claude Desktop.
 
 ```bash
-# Auto-configure (recommended)
-ckb setup              # project-level
-ckb setup --global     # user-level for all projects
+# Auto-configure (interactive)
+ckb setup
+
+# Configure for specific tool
+ckb setup --tool=claude-code
+ckb setup --tool=cursor --global
 
 # Or manually add to .mcp.json
 claude mcp add ckb -- npx @tastehub/ckb mcp

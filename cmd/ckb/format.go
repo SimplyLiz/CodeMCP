@@ -151,14 +151,25 @@ func formatStatusHuman(resp *StatusResponseCLI) (string, error) {
 	if resp.Tier != nil {
 		tierIcon := "◐"
 		switch resp.Tier.CurrentName {
-		case "Basic":
+		case "Fast":
 			tierIcon = "○"
-		case "Enhanced":
+		case "Standard":
 			tierIcon = "◉"
 		case "Full":
 			tierIcon = "●"
 		}
-		b.WriteString(fmt.Sprintf("%s Analysis Tier: %s (%s)\n", tierIcon, resp.Tier.CurrentName, resp.Tier.Description))
+
+		// Show mode (explicit vs auto-detected)
+		modeInfo := ""
+		if resp.Tier.Mode != "" {
+			if resp.Tier.Explicit {
+				modeInfo = fmt.Sprintf(" [mode: %s]", resp.Tier.Mode)
+			} else {
+				modeInfo = " [auto-detected]"
+			}
+		}
+
+		b.WriteString(fmt.Sprintf("%s Analysis Tier: %s (%s)%s\n", tierIcon, resp.Tier.CurrentName, resp.Tier.Description, modeInfo))
 		b.WriteString(fmt.Sprintf("  Available Tools: %d of %d\n", len(resp.Tier.AvailableTools), len(resp.Tier.AvailableTools)+len(resp.Tier.UnavailableTools)))
 
 		if resp.Tier.UpgradeHint != "" {
@@ -206,9 +217,35 @@ func formatStatusHuman(resp *StatusResponseCLI) (string, error) {
 		b.WriteString(fmt.Sprintf("Repository: %s%s\n", headCommit, dirty))
 	}
 
+	// Index Status
+	if resp.IndexStatus != nil {
+		b.WriteString("\n")
+		b.WriteString("Index Status:\n")
+		if !resp.IndexStatus.Exists {
+			b.WriteString("  ✗ No index found\n")
+			b.WriteString("  Run 'ckb index' to create one.\n")
+		} else if resp.IndexStatus.Fresh {
+			commitInfo := ""
+			if resp.IndexStatus.CommitHash != "" {
+				hash := resp.IndexStatus.CommitHash
+				if len(hash) > 7 {
+					hash = hash[:7]
+				}
+				commitInfo = fmt.Sprintf(" (HEAD = %s)", hash)
+			}
+			b.WriteString(fmt.Sprintf("  ✓ Up to date%s\n", commitInfo))
+			if resp.IndexStatus.FileCount > 0 {
+				b.WriteString(fmt.Sprintf("  Files: %d\n", resp.IndexStatus.FileCount))
+			}
+		} else {
+			b.WriteString(fmt.Sprintf("  ⚠ %s\n", resp.IndexStatus.Reason))
+			b.WriteString("  Run 'ckb index' to refresh.\n")
+		}
+	}
+
 	// Cache (one-liner)
 	if resp.Cache.QueryCount > 0 {
-		b.WriteString(fmt.Sprintf("Cache: %d queries, %.0f%% hit rate, %s\n",
+		b.WriteString(fmt.Sprintf("\nCache: %d queries, %.0f%% hit rate, %s\n",
 			resp.Cache.QueryCount, resp.Cache.HitRate*100, formatBytes(resp.Cache.SizeBytes)))
 	}
 

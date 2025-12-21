@@ -1,5 +1,8 @@
 # CKB — Code Knowledge Backend
 
+[![npm version](https://img.shields.io/npm/v/@tastehub/ckb.svg)](https://www.npmjs.com/package/@tastehub/ckb)
+[![Documentation](https://img.shields.io/badge/docs-wiki-blue.svg)](https://github.com/SimplyLiz/CodeMCP/wiki)
+
 **The missing link between your codebase and AI assistants.**
 
 CKB gives AI assistants deep understanding of your code. Instead of grepping through files, your AI can now *navigate* code like a senior engineer—with knowledge of who owns what, what's risky to change, and how everything connects.
@@ -164,8 +167,21 @@ Now Claude can answer questions like:
 ### Zero-Friction UX (v7.0)
 - **npm Distribution** — `npm install -g @tastehub/ckb` or `npx @tastehub/ckb`
 - **Auto-Setup** — `ckb setup` configures Claude Code integration automatically
+
+### Zero-Index Operation (v7.1)
+- **Tree-sitter Fallback** — Symbol search works without SCIP index (8 languages)
 - **Auto-Index** — `ckb index` detects language and runs the right SCIP indexer
-- **Analysis Tiers** — Works without SCIP index (basic mode), better with it (enhanced mode)
+- **Install Guidance** — Shows indexer install commands when missing
+- **Universal MCP Docs** — Setup for Claude Code, Cursor, Windsurf, VS Code, OpenCode, Claude Desktop
+
+### Smart Indexing & Explicit Tiers (v7.2)
+- **Skip-if-Fresh** — `ckb index` automatically skips if index is current with HEAD
+- **Freshness Tracking** — Tracks commits behind HEAD + uncommitted changes
+- **Index Status** — `ckb status` shows index freshness with commit hash
+- **Watch Mode** — `ckb mcp --watch` polls every 30s and auto-reindexes when stale
+- **Lock File** — Prevents concurrent indexing with flock-based locking
+- **Explicit Tiers** — Control analysis mode: `--tier=fast|standard|full` or `CKB_TIER` env var
+- **Tier Diagnostics** — `ckb doctor --tier enhanced` shows exactly what's missing and how to fix it
 
 ## MCP Tools (58 Available)
 
@@ -285,6 +301,9 @@ ckb decisions
 
 # Run diagnostics
 ckb doctor
+
+# Check tier-specific requirements
+ckb doctor --tier enhanced
 
 # Start MCP server for AI assistants
 ckb mcp

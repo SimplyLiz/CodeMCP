@@ -31,6 +31,10 @@ type Config struct {
 
 	// v6.4 Telemetry
 	Telemetry TelemetryConfig `json:"telemetry" mapstructure:"telemetry"`
+
+	// v7.2 Analysis tier
+	// Values: "auto", "fast", "standard", "full"
+	Tier string `json:"tier,omitempty" mapstructure:"tier"`
 }
 
 // BackendsConfig contains backend-specific configuration

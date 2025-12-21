@@ -3,8 +3,11 @@ package project
 
 import (
 	"encoding/json"
+	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -19,7 +22,18 @@ const (
 	LangRust       Language = "rust"
 	LangJava       Language = "java"
 	LangKotlin     Language = "kotlin"
+	LangCpp        Language = "cpp"
+	LangDart       Language = "dart"
+	LangRuby       Language = "ruby"
+	LangCSharp     Language = "csharp"
+	LangPHP        Language = "php"
 	LangUnknown    Language = "unknown"
+)
+
+// Detection scan limits
+const (
+	maxScanDepth    = 3
+	maxFilesToCheck = 100
 )
 
 // IndexerInfo contains information about a SCIP indexer.
@@ -38,38 +52,167 @@ type ProjectConfig struct {
 	DetectedAt   time.Time `json:"detectedAt"`
 }
 
+// manifestInfo maps marker files to languages
+type manifestInfo struct {
+	pattern string   // File pattern (can contain * for glob)
+	lang    Language // Language this indicates
+}
+
+// manifests in priority order - first match wins for primary language
+var manifests = []manifestInfo{
+	// Exact matches first (faster)
+	{"go.mod", LangGo},
+	{"package.json", LangTypeScript}, // Refined to JS/TS below
+	{"Cargo.toml", LangRust},
+	{"pyproject.toml", LangPython},
+	{"requirements.txt", LangPython},
+	{"setup.py", LangPython},
+	{"pom.xml", LangJava},
+	{"build.gradle", LangJava},
+	{"build.gradle.kts", LangKotlin},
+	{"pubspec.yaml", LangDart},
+	{"composer.json", LangPHP},
+	{"Gemfile", LangRuby},
+	// C/C++ - only detect if compile_commands.json exists
+	{"compile_commands.json", LangCpp},
+	{"build/compile_commands.json", LangCpp},
+	// Glob patterns (slower, searched with bounded depth)
+	{"*.gemspec", LangRuby},
+	{"*.csproj", LangCSharp},
+	{"*.sln", LangCSharp},
+}
+
 // DetectLanguage detects the primary language of a project from manifest files.
 // Returns the language, manifest path, and whether detection succeeded.
 func DetectLanguage(root string) (Language, string, bool) {
-	// Check for manifest files in priority order
-	manifests := []struct {
-		path string
-		lang Language
-	}{
-		{"go.mod", LangGo},
-		{"package.json", LangTypeScript}, // Assume TS for package.json, refine below
-		{"Cargo.toml", LangRust},
-		{"pyproject.toml", LangPython},
-		{"requirements.txt", LangPython},
-		{"setup.py", LangPython},
-		{"pom.xml", LangJava},
-		{"build.gradle", LangJava},
-		{"build.gradle.kts", LangKotlin},
+	lang, manifest, _ := DetectAllLanguages(root)
+	if lang == LangUnknown {
+		return LangUnknown, "", false
 	}
+	return lang, manifest, true
+}
+
+// DetectAllLanguages detects all languages present in a project.
+// Returns primary language, its manifest, and a list of all detected languages.
+func DetectAllLanguages(root string) (Language, string, []Language) {
+	detected := make(map[Language]string) // lang -> manifest path
 
 	for _, m := range manifests {
-		fullPath := filepath.Join(root, m.path)
-		if _, err := os.Stat(fullPath); err == nil {
-			lang := m.lang
-			// Refine TypeScript vs JavaScript check
-			if m.path == "package.json" {
-				lang = detectJSorTS(root)
+		if _, exists := detected[m.lang]; exists {
+			continue // Already found this language
+		}
+
+		if strings.Contains(m.pattern, "*") {
+			// Glob pattern - search with bounded depth
+			found := findWithDepth(root, m.pattern)
+			if len(found) > 0 {
+				relPath, _ := filepath.Rel(root, found[0])
+				detected[m.lang] = relPath
 			}
-			return lang, m.path, true
+		} else if strings.Contains(m.pattern, "/") {
+			// Path with directory - check exact location
+			fullPath := filepath.Join(root, m.pattern)
+			if _, err := os.Stat(fullPath); err == nil {
+				detected[m.lang] = m.pattern
+			}
+		} else {
+			// Exact filename - check root and src/
+			if _, err := os.Stat(filepath.Join(root, m.pattern)); err == nil {
+				detected[m.lang] = m.pattern
+			} else if _, err := os.Stat(filepath.Join(root, "src", m.pattern)); err == nil {
+				detected[m.lang] = "src/" + m.pattern
+			}
 		}
 	}
 
-	return LangUnknown, "", false
+	if len(detected) == 0 {
+		return LangUnknown, "", nil
+	}
+
+	// Build list preserving priority order
+	var allLangs []Language
+	var primaryLang Language
+	var primaryManifest string
+
+	for _, m := range manifests {
+		if manifest, ok := detected[m.lang]; ok {
+			if primaryLang == "" {
+				primaryLang = m.lang
+				primaryManifest = manifest
+				// Refine TypeScript vs JavaScript
+				if m.pattern == "package.json" {
+					primaryLang = detectJSorTS(root)
+				}
+			}
+			// Add to list if not already there
+			found := false
+			for _, l := range allLangs {
+				if l == m.lang {
+					found = true
+					break
+				}
+			}
+			if !found {
+				allLangs = append(allLangs, m.lang)
+			}
+		}
+	}
+
+	return primaryLang, primaryManifest, allLangs
+}
+
+// findWithDepth searches for files matching a glob pattern with bounded depth.
+func findWithDepth(root, pattern string) []string {
+	var results []string
+	checked := 0
+
+	// Check if pattern includes a path separator
+	hasPathSep := strings.Contains(pattern, "/") || strings.Contains(pattern, string(os.PathSeparator))
+
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return nil //nolint:nilerr // Skip errors, continue walking
+		}
+		if checked >= maxFilesToCheck {
+			return fs.SkipAll // Stop walk entirely
+		}
+
+		rel, _ := filepath.Rel(root, path)
+		depth := strings.Count(rel, string(os.PathSeparator))
+		if depth > maxScanDepth {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		// Skip common non-project dirs
+		if d.IsDir() {
+			switch d.Name() {
+			case "node_modules", ".git", "vendor", ".ckb", "__pycache__", ".venv", "venv":
+				return filepath.SkipDir
+			}
+		}
+
+		if !d.IsDir() {
+			checked++
+
+			var matched bool
+			if hasPathSep {
+				// Pattern has path component - match against relative path
+				matched, _ = filepath.Match(pattern, rel)
+			} else {
+				// Simple pattern - match against basename only
+				matched, _ = filepath.Match(pattern, d.Name())
+			}
+
+			if matched {
+				results = append(results, path)
+			}
+		}
+		return nil
+	})
+	return results
 }
 
 // detectJSorTS checks if a project is TypeScript or JavaScript.
@@ -147,10 +290,48 @@ func GetIndexerInfo(lang Language) *IndexerInfo {
 			OutputFile:     "index.scip",
 		}
 	case LangKotlin:
+		// Kotlin requires scip-java with Gradle integration
 		return &IndexerInfo{
-			Command:        "scip-kotlin index",
-			InstallCommand: "cs install scip-kotlin",
-			CheckCommand:   "scip-kotlin",
+			Command:        "scip-java index",
+			InstallCommand: "Kotlin requires scip-java with Gradle plugin. See: https://sourcegraph.github.io/scip-java/",
+			CheckCommand:   "scip-java",
+			OutputFile:     "index.scip",
+		}
+	case LangCpp:
+		// Command built dynamically based on compile_commands.json location
+		return &IndexerInfo{
+			Command:        "scip-clang",
+			InstallCommand: "Download from https://github.com/sourcegraph/scip-clang/releases",
+			CheckCommand:   "scip-clang",
+			OutputFile:     "index.scip",
+		}
+	case LangDart:
+		return &IndexerInfo{
+			Command:        "dart pub global run scip_dart ./",
+			InstallCommand: "dart pub global activate scip_dart\nThen run: dart pub get",
+			CheckCommand:   "dart",
+			OutputFile:     "index.scip",
+		}
+	case LangRuby:
+		// Command built dynamically based on Gemfile/sorbet presence
+		return &IndexerInfo{
+			Command:        "scip-ruby .",
+			InstallCommand: "Download from https://github.com/sourcegraph/scip-ruby/releases",
+			CheckCommand:   "scip-ruby",
+			OutputFile:     "index.scip",
+		}
+	case LangCSharp:
+		return &IndexerInfo{
+			Command:        "scip-dotnet index",
+			InstallCommand: "dotnet tool install --global scip-dotnet (requires .NET 8+)\nIf not found, ensure $HOME/.dotnet/tools is on PATH",
+			CheckCommand:   "scip-dotnet",
+			OutputFile:     "index.scip",
+		}
+	case LangPHP:
+		return &IndexerInfo{
+			Command:        "vendor/bin/scip-php",
+			InstallCommand: "composer require --dev davidrjenni/scip-php (requires PHP 8.2+)",
+			CheckCommand:   "vendor/bin/scip-php",
 			OutputFile:     "index.scip",
 		}
 	default:
@@ -206,7 +387,107 @@ func LanguageDisplayName(lang Language) string {
 		return "Java"
 	case LangKotlin:
 		return "Kotlin"
+	case LangCpp:
+		return "C/C++"
+	case LangDart:
+		return "Dart"
+	case LangRuby:
+		return "Ruby"
+	case LangCSharp:
+		return "C#"
+	case LangPHP:
+		return "PHP"
 	default:
 		return "Unknown"
 	}
+}
+
+// FindCompileCommands searches for compile_commands.json in common locations.
+// Returns the path relative to root, or empty string if not found.
+func FindCompileCommands(root string) string {
+	locations := []string{
+		"compile_commands.json",
+		"build/compile_commands.json",
+		"out/compile_commands.json",
+		"cmake-build-debug/compile_commands.json",
+		"cmake-build-release/compile_commands.json",
+	}
+	for _, loc := range locations {
+		path := filepath.Join(root, loc)
+		if _, err := os.Stat(path); err == nil {
+			return loc // Return relative path
+		}
+	}
+
+	// Try glob patterns: build/*/compile_commands.json, out/*/compile_commands.json
+	patterns := []string{
+		filepath.Join(root, "build", "*", "compile_commands.json"),
+		filepath.Join(root, "out", "*", "compile_commands.json"),
+	}
+	for _, pattern := range patterns {
+		matches, _ := filepath.Glob(pattern)
+		if len(matches) > 0 {
+			rel, _ := filepath.Rel(root, matches[0])
+			return rel
+		}
+	}
+
+	return ""
+}
+
+// BuildCppCommand builds the scip-clang command with the correct compdb path.
+// overrideCompdb allows specifying a custom path via --compdb flag.
+func BuildCppCommand(root, overrideCompdb string) (string, error) {
+	compdbPath := overrideCompdb
+	if compdbPath == "" {
+		compdbPath = FindCompileCommands(root)
+	}
+	if compdbPath == "" {
+		return "", nil // Will trigger error in caller
+	}
+
+	return "scip-clang --compdb-path=" + compdbPath, nil
+}
+
+// BuildRubyCommand builds the appropriate scip-ruby command based on project setup.
+func BuildRubyCommand(root string) (string, error) {
+	hasGemfile := fileExists(filepath.Join(root, "Gemfile"))
+	hasSorbetConfig := fileExists(filepath.Join(root, "sorbet", "config"))
+
+	if hasGemfile {
+		// Check bundle is available
+		if _, err := exec.LookPath("bundle"); err != nil {
+			return "", err // Will show install hint
+		}
+
+		if hasSorbetConfig {
+			return "bundle exec scip-ruby", nil
+		}
+		return "bundle exec scip-ruby .", nil
+	}
+	// No Gemfile - use direct binary
+	return "scip-ruby .", nil
+}
+
+// ValidatePHPSetup checks that PHP project is properly set up for indexing.
+func ValidatePHPSetup(root string) (warning string, err error) {
+	// composer.lock missing is a warning, not an error
+	composerLock := filepath.Join(root, "composer.lock")
+	if _, statErr := os.Stat(composerLock); os.IsNotExist(statErr) {
+		warning = "composer.lock not found. Consider running: composer install"
+	}
+
+	// vendor/bin/scip-php missing is a hard error
+	scipPhp := filepath.Join(root, "vendor", "bin", "scip-php")
+	if _, statErr := os.Stat(scipPhp); os.IsNotExist(statErr) {
+		return warning, os.ErrNotExist
+	}
+
+	return warning, nil
+}
+
+// fileExists is a helper to check if a file exists.
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
