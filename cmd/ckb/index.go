@@ -596,5 +596,3 @@ func getSourceExtensions(lang project.Language) []string {
 		return nil
 	}
 }
-
-// stale test

@@ -213,5 +213,3 @@ func humanDuration(d time.Duration) string {
 	}
 	return fmt.Sprintf("%d days", days)
 }
-
-// test comment

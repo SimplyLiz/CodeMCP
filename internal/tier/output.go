@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"unicode"
 )
 
 // OutputFormat represents the output format.
@@ -147,12 +148,14 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen]
 }
 
-// capitalizeFirst capitalizes the first letter of a string.
+// capitalizeFirst capitalizes the first rune of a string.
 func capitalizeFirst(s string) string {
 	if s == "" {
 		return s
 	}
-	return strings.ToUpper(s[:1]) + s[1:]
+	runes := []rune(s)
+	runes[0] = unicode.ToUpper(runes[0])
+	return string(runes)
 }
 
 func tierSummaryJSON(w io.Writer, result ValidationResult) error {
