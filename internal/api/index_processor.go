@@ -39,6 +39,7 @@ type ProcessResult struct {
 	SymbolCount int           `json:"symbol_count"`
 	RefCount    int           `json:"ref_count"`
 	CallEdges   int           `json:"call_edges"`
+	TotalFiles  int           `json:"total_files,omitempty"` // For delta uploads: total files in repo
 	Duration    time.Duration `json:"-"`
 	DurationMs  int64         `json:"duration_ms"`
 }
@@ -121,6 +122,246 @@ func (p *SCIPProcessor) ProcessUpload(repoID string, scipPath string, meta Uploa
 	})
 
 	return result, nil
+}
+
+// ProcessDeltaUpload processes a partial SCIP upload containing only changed files
+func (p *SCIPProcessor) ProcessDeltaUpload(repoID string, scipPath string, meta *DeltaUploadRequest) (*ProcessResult, error) {
+	start := time.Now()
+
+	// Load partial SCIP index
+	index, err := scip.LoadSCIPIndex(scipPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load SCIP index: %w", err)
+	}
+
+	p.logger.Info("Loaded delta SCIP index", map[string]interface{}{
+		"repo_id":       repoID,
+		"documents":     len(index.Documents),
+		"changed_files": len(meta.ChangedFiles),
+	})
+
+	// Open existing database
+	dbPath := p.storage.DBPath(repoID)
+	db, err := p.openDatabase(dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+	defer db.Close()
+
+	// Get total file count before changes
+	var totalFiles int
+	if err := db.QueryRow("SELECT COUNT(*) FROM indexed_files").Scan(&totalFiles); err != nil {
+		totalFiles = 0
+	}
+
+	result := &ProcessResult{
+		RepoID:     repoID,
+		Commit:     meta.TargetCommit,
+		Languages:  []string{},
+		TotalFiles: totalFiles,
+	}
+
+	// Process delta in transaction
+	if err := p.processDeltaIndex(db, index, meta, result); err != nil {
+		return nil, fmt.Errorf("failed to process delta: %w", err)
+	}
+
+	// Update index_meta with new commit
+	if err := p.updateMeta(db, result); err != nil {
+		p.logger.Warn("Failed to update index_meta", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
+
+	// Update storage metadata
+	if err := p.storage.UpdateLastUpload(repoID); err != nil {
+		p.logger.Warn("Failed to update storage metadata", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
+
+	result.Duration = time.Since(start)
+	result.DurationMs = result.Duration.Milliseconds()
+
+	p.logger.Info("Processed delta SCIP index", map[string]interface{}{
+		"repo_id":     repoID,
+		"files":       result.FileCount,
+		"symbols":     result.SymbolCount,
+		"call_edges":  result.CallEdges,
+		"duration_ms": result.DurationMs,
+	})
+
+	return result, nil
+}
+
+// processDeltaIndex applies changes from a partial SCIP index
+func (p *SCIPProcessor) processDeltaIndex(db *sql.DB, index *scip.SCIPIndex, meta *DeltaUploadRequest, result *ProcessResult) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Build change map for quick lookup
+	changeMap := make(map[string]*DeltaChangedFile)
+	for i := range meta.ChangedFiles {
+		cf := &meta.ChangedFiles[i]
+		changeMap[cf.Path] = cf
+		if cf.OldPath != "" {
+			changeMap[cf.OldPath] = cf
+		}
+	}
+
+	// Prepare statements
+	deleteSymbolsStmt, err := tx.Prepare("DELETE FROM symbol_mappings WHERE json_extract(location_json, '$.file_path') = ?")
+	if err != nil {
+		return err
+	}
+	defer deleteSymbolsStmt.Close()
+
+	deleteCallsStmt, err := tx.Prepare("DELETE FROM callgraph WHERE caller_file = ?")
+	if err != nil {
+		return err
+	}
+	defer deleteCallsStmt.Close()
+
+	deleteFileStmt, err := tx.Prepare("DELETE FROM indexed_files WHERE path = ?")
+	if err != nil {
+		return err
+	}
+	defer deleteFileStmt.Close()
+
+	symbolStmt, err := tx.Prepare(`
+		INSERT INTO symbol_mappings (
+			stable_id, state, backend_stable_id, fingerprint_json, location_json,
+			last_verified_at, last_verified_state_id
+		) VALUES (?, 'active', ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return err
+	}
+	defer symbolStmt.Close()
+
+	fileStmt, err := tx.Prepare(`
+		INSERT OR REPLACE INTO indexed_files (path, hash, indexed_at, symbol_count)
+		VALUES (?, ?, ?, ?)
+	`)
+	if err != nil {
+		return err
+	}
+	defer fileStmt.Close()
+
+	callStmt, err := tx.Prepare(`
+		INSERT OR IGNORE INTO callgraph (caller_id, callee_id, caller_file, call_line, call_col, call_end_col)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return err
+	}
+	defer callStmt.Close()
+
+	now := time.Now().Format(time.RFC3339)
+	langSet := make(map[string]bool)
+
+	// First, delete data for all changed files
+	for _, cf := range meta.ChangedFiles {
+		pathToDelete := cf.Path
+		if cf.OldPath != "" {
+			pathToDelete = cf.OldPath // For renames, delete old path
+		}
+
+		deleteSymbolsStmt.Exec(pathToDelete)
+		deleteCallsStmt.Exec(pathToDelete)
+		deleteFileStmt.Exec(pathToDelete)
+
+		// Also delete new path for renames/additions to avoid duplicates
+		if cf.OldPath != "" || cf.ChangeType == "modified" {
+			deleteSymbolsStmt.Exec(cf.Path)
+			deleteCallsStmt.Exec(cf.Path)
+			deleteFileStmt.Exec(cf.Path)
+		}
+	}
+
+	// Process documents from SCIP index (only contains changed files)
+	for _, doc := range index.Documents {
+		cf, isTracked := changeMap[doc.RelativePath]
+		if !isTracked {
+			// Skip files not in our change list
+			continue
+		}
+
+		// Skip if deleted (shouldn't have SCIP doc, but be safe)
+		if cf.ChangeType == "deleted" {
+			continue
+		}
+
+		if doc.Language != "" {
+			langSet[doc.Language] = true
+		}
+
+		fileSymbolCount := 0
+
+		// Build symbol info map for this document
+		symbolInfo := make(map[string]*scip.SymbolInformation)
+		for _, sym := range doc.Symbols {
+			symbolInfo[sym.Symbol] = sym
+		}
+
+		// Process occurrences
+		for _, occ := range doc.Occurrences {
+			if isLocalSymbol(occ.Symbol) {
+				continue
+			}
+
+			if occ.SymbolRoles&scip.SymbolRoleDefinition != 0 {
+				fingerprint := buildFingerprint(doc, occ, symbolInfo)
+				location := buildLocation(doc.RelativePath, occ)
+
+				_, err := symbolStmt.Exec(
+					occ.Symbol,
+					occ.Symbol,
+					fingerprint,
+					location,
+					now,
+					"delta-upload",
+				)
+				if err == nil {
+					result.SymbolCount++
+					fileSymbolCount++
+				}
+			} else {
+				result.RefCount++
+
+				if isCallableSymbol(occ.Symbol, symbolInfo) {
+					line, col, endCol := parseRange(occ.Range)
+					callerID := resolveCallerFromDoc(doc, line, symbolInfo)
+
+					_, err := callStmt.Exec(
+						nullString(callerID),
+						occ.Symbol,
+						doc.RelativePath,
+						line,
+						col,
+						nullInt(endCol),
+					)
+					if err == nil {
+						result.CallEdges++
+					}
+				}
+			}
+		}
+
+		// Insert/update file record
+		fileHash := computeFileHash(doc)
+		fileStmt.Exec(doc.RelativePath, fileHash, time.Now().Unix(), fileSymbolCount)
+		result.FileCount++
+	}
+
+	for lang := range langSet {
+		result.Languages = append(result.Languages, lang)
+	}
+
+	return tx.Commit()
 }
 
 // openDatabase opens or creates a SQLite database

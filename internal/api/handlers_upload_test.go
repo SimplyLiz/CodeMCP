@@ -264,3 +264,251 @@ func TestConfigValidationWithUpload(t *testing.T) {
 		}
 	})
 }
+
+// Phase 3 tests
+
+func TestPhase3ConfigValidation(t *testing.T) {
+	t.Run("valid_delta_threshold", func(t *testing.T) {
+		config := &IndexServerConfig{
+			Enabled:               true,
+			MaxPageSize:           1000,
+			AllowCreateRepo:       true,
+			DeltaThresholdPercent: 50,
+		}
+
+		err := config.Validate()
+		if err != nil {
+			t.Errorf("Validate() should pass with valid delta threshold: %v", err)
+		}
+	})
+
+	t.Run("invalid_delta_threshold_negative", func(t *testing.T) {
+		config := &IndexServerConfig{
+			Enabled:               true,
+			MaxPageSize:           1000,
+			AllowCreateRepo:       true,
+			DeltaThresholdPercent: -10,
+		}
+
+		err := config.Validate()
+		if err == nil {
+			t.Error("Validate() should fail with negative DeltaThresholdPercent")
+		}
+	})
+
+	t.Run("invalid_delta_threshold_over_100", func(t *testing.T) {
+		config := &IndexServerConfig{
+			Enabled:               true,
+			MaxPageSize:           1000,
+			AllowCreateRepo:       true,
+			DeltaThresholdPercent: 150,
+		}
+
+		err := config.Validate()
+		if err == nil {
+			t.Error("Validate() should fail with DeltaThresholdPercent > 100")
+		}
+	})
+
+	t.Run("valid_supported_encodings", func(t *testing.T) {
+		config := &IndexServerConfig{
+			Enabled:            true,
+			MaxPageSize:        1000,
+			AllowCreateRepo:    true,
+			SupportedEncodings: []string{"gzip", "zstd"},
+		}
+
+		err := config.Validate()
+		if err != nil {
+			t.Errorf("Validate() should pass with valid encodings: %v", err)
+		}
+	})
+
+	t.Run("invalid_supported_encoding", func(t *testing.T) {
+		config := &IndexServerConfig{
+			Enabled:            true,
+			MaxPageSize:        1000,
+			AllowCreateRepo:    true,
+			SupportedEncodings: []string{"gzip", "brotli"}, // brotli not supported
+		}
+
+		err := config.Validate()
+		if err == nil {
+			t.Error("Validate() should fail with unsupported encoding")
+		}
+	})
+}
+
+func TestIsEncodingSupported(t *testing.T) {
+	config := &IndexServerConfig{
+		EnableCompression:  true,
+		SupportedEncodings: []string{"gzip", "zstd"},
+	}
+
+	tests := []struct {
+		encoding  string
+		supported bool
+	}{
+		{"", true},         // No compression always supported
+		{"identity", true}, // Identity always supported
+		{"gzip", true},
+		{"zstd", true},
+		{"brotli", false},
+		{"deflate", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.encoding, func(t *testing.T) {
+			if got := config.IsEncodingSupported(tt.encoding); got != tt.supported {
+				t.Errorf("IsEncodingSupported(%q) = %v, want %v", tt.encoding, got, tt.supported)
+			}
+		})
+	}
+
+	// Test with compression disabled
+	t.Run("compression_disabled", func(t *testing.T) {
+		configDisabled := &IndexServerConfig{
+			EnableCompression:  false,
+			SupportedEncodings: []string{"gzip", "zstd"},
+		}
+
+		// gzip should not be supported when compression is disabled
+		if configDisabled.IsEncodingSupported("gzip") {
+			t.Error("gzip should not be supported when compression is disabled")
+		}
+
+		// But identity should still work
+		if !configDisabled.IsEncodingSupported("identity") {
+			t.Error("identity should always be supported")
+		}
+	})
+}
+
+func TestCountingReader(t *testing.T) {
+	data := []byte("hello world")
+	reader := &countingReader{
+		reader: &mockReader{data: data},
+	}
+
+	buf := make([]byte, 5)
+	n, _ := reader.Read(buf)
+	if n != 5 {
+		t.Errorf("Read() returned %d, want 5", n)
+	}
+	if reader.count != 5 {
+		t.Errorf("count = %d, want 5", reader.count)
+	}
+
+	n, _ = reader.Read(buf)
+	if n != 5 {
+		t.Errorf("Read() returned %d, want 5", n)
+	}
+	if reader.count != 10 {
+		t.Errorf("count = %d, want 10", reader.count)
+	}
+}
+
+// mockReader is a simple reader for testing
+type mockReader struct {
+	data []byte
+	pos  int
+}
+
+func (r *mockReader) Read(p []byte) (int, error) {
+	if r.pos >= len(r.data) {
+		return 0, nil
+	}
+	n := copy(p, r.data[r.pos:])
+	r.pos += n
+	return n, nil
+}
+
+func TestProgressWriter(t *testing.T) {
+	var progressCalls []int64
+	pw := &progressWriter{
+		writer:   &mockWriter{},
+		total:    100,
+		interval: 10,
+		callback: func(written, total int64) {
+			progressCalls = append(progressCalls, written)
+		},
+	}
+
+	// Write 25 bytes - should trigger 1 callback (single write exceeds interval)
+	// Note: callbacks only fire at end of Write, not in a loop
+	data := make([]byte, 25)
+	pw.Write(data)
+
+	if pw.written != 25 {
+		t.Errorf("written = %d, want 25", pw.written)
+	}
+	if len(progressCalls) != 1 {
+		t.Errorf("got %d progress callbacks, want 1", len(progressCalls))
+	}
+	if len(progressCalls) > 0 && progressCalls[0] != 25 {
+		t.Errorf("first callback got written=%d, want 25", progressCalls[0])
+	}
+
+	// Write another 15 bytes (total 40) - should trigger another callback
+	pw.Write(make([]byte, 15))
+	if pw.written != 40 {
+		t.Errorf("written = %d, want 40", pw.written)
+	}
+	if len(progressCalls) != 2 {
+		t.Errorf("got %d progress callbacks after second write, want 2", len(progressCalls))
+	}
+}
+
+// mockWriter discards all written data
+type mockWriter struct{}
+
+func (w *mockWriter) Write(p []byte) (int, error) {
+	return len(p), nil
+}
+
+func TestDeltaChangedFileChangeTypes(t *testing.T) {
+	tests := []struct {
+		changeType string
+		valid      bool
+	}{
+		{"added", true},
+		{"modified", true},
+		{"deleted", true},
+		{"renamed", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.changeType, func(t *testing.T) {
+			cf := DeltaChangedFile{
+				Path:       "src/main.go",
+				ChangeType: tt.changeType,
+			}
+			// Just verify we can create the struct - validation happens in handler
+			if cf.ChangeType != tt.changeType {
+				t.Errorf("ChangeType = %q, want %q", cf.ChangeType, tt.changeType)
+			}
+		})
+	}
+}
+
+func TestDeltaUploadRequestTypes(t *testing.T) {
+	req := DeltaUploadRequest{
+		BaseCommit:   "abc123",
+		TargetCommit: "def456",
+		ChangedFiles: []DeltaChangedFile{
+			{Path: "src/main.go", ChangeType: "modified"},
+			{Path: "src/old.go", OldPath: "src/renamed.go", ChangeType: "renamed"},
+			{Path: "src/deleted.go", ChangeType: "deleted"},
+		},
+	}
+
+	if req.BaseCommit != "abc123" {
+		t.Errorf("BaseCommit = %q, want %q", req.BaseCommit, "abc123")
+	}
+	if len(req.ChangedFiles) != 3 {
+		t.Errorf("len(ChangedFiles) = %d, want 3", len(req.ChangedFiles))
+	}
+	if req.ChangedFiles[1].OldPath != "src/renamed.go" {
+		t.Errorf("OldPath = %q, want %q", req.ChangedFiles[1].OldPath, "src/renamed.go")
+	}
+}

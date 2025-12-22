@@ -12,6 +12,9 @@ func (s *Server) handleIndexRepoRoutes(w http.ResponseWriter, r *http.Request) {
 
 	// Route based on path suffix and method
 	switch {
+	case strings.HasSuffix(path, "/upload/delta"):
+		// POST /index/repos/{repo}/upload/delta - Delta upload
+		s.HandleIndexDeltaUpload(w, r)
 	case strings.HasSuffix(path, "/upload"):
 		// POST /index/repos/{repo}/upload - Upload SCIP index
 		s.HandleIndexUpload(w, r)

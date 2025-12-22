@@ -1,11 +1,14 @@
 package api
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 // CreateRepoRequest is the request body for POST /index/repos
@@ -24,11 +27,14 @@ type CreateRepoResponse struct {
 
 // UploadResponse is the response for POST /index/repos/{repo}/upload
 type UploadResponse struct {
-	RepoID    string       `json:"repo_id"`
-	Commit    string       `json:"commit,omitempty"`
-	Languages []string     `json:"languages"`
-	Stats     UploadStats  `json:"stats"`
-	DurationMs int64       `json:"duration_ms"`
+	RepoID           string      `json:"repo_id"`
+	Commit           string      `json:"commit,omitempty"`
+	Languages        []string    `json:"languages"`
+	Stats            UploadStats `json:"stats"`
+	DurationMs       int64       `json:"duration_ms"`
+	UploadType       string      `json:"upload_type"`                 // "full" or "delta"
+	CompressedSize   int64       `json:"compressed_size,omitempty"`   // Original upload size if compressed
+	CompressionRatio float64     `json:"compression_ratio,omitempty"` // Ratio (e.g., 0.15 = 85% savings)
 }
 
 // UploadStats contains processing statistics
@@ -194,26 +200,31 @@ func (s *Server) HandleIndexUpload(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Stream upload to temp file
-	tempPath, size, err := s.streamUploadToFile(r, maxSize)
+	// Stream upload to temp file (with decompression if needed)
+	streamResult, err := s.streamUploadToFile(r, maxSize)
 	if err != nil {
 		writeIndexError(w, http.StatusBadRequest, "upload_failed", err.Error())
 		return
 	}
-	defer s.indexManager.Storage().CleanupUpload(tempPath)
+	defer s.indexManager.Storage().CleanupUpload(streamResult.Path)
 
-	s.logger.Info("Received upload", map[string]interface{}{
-		"repo_id": repoID,
-		"size":    size,
-		"path":    tempPath,
-	})
+	logFields := map[string]interface{}{
+		"repo_id":           repoID,
+		"decompressed_size": streamResult.DecompressedSize,
+		"path":              streamResult.Path,
+	}
+	if streamResult.Encoding != "" {
+		logFields["encoding"] = streamResult.Encoding
+		logFields["compressed_size"] = streamResult.CompressedSize
+	}
+	s.logger.Info("Received upload", logFields)
 
 	// Parse upload metadata from headers
 	meta := parseUploadMetaFromHeaders(r)
 
 	// Process the SCIP file
 	processor := s.indexManager.Processor()
-	result, err := processor.ProcessUpload(repoID, tempPath, meta)
+	result, err := processor.ProcessUpload(repoID, streamResult.Path, meta)
 	if err != nil {
 		writeIndexError(w, http.StatusBadRequest, "process_failed", err.Error())
 		return
@@ -227,8 +238,8 @@ func (s *Server) HandleIndexUpload(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// Build response
-	resp := NewIndexResponse(UploadResponse{
+	// Build response with compression stats
+	uploadResp := UploadResponse{
 		RepoID:    result.RepoID,
 		Commit:    result.Commit,
 		Languages: result.Languages,
@@ -239,45 +250,169 @@ func (s *Server) HandleIndexUpload(w http.ResponseWriter, r *http.Request) {
 			CallEdges: result.CallEdges,
 		},
 		DurationMs: result.DurationMs,
-	})
+		UploadType: "full",
+	}
+
+	// Add compression stats if compressed
+	if streamResult.CompressedSize > 0 {
+		uploadResp.CompressedSize = streamResult.CompressedSize
+		uploadResp.CompressionRatio = float64(streamResult.CompressedSize) / float64(streamResult.DecompressedSize)
+	}
+
+	resp := NewIndexResponse(uploadResp)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(resp)
 }
 
+// StreamResult contains the result of streaming an upload to a file
+type StreamResult struct {
+	Path             string // Path to temp file
+	DecompressedSize int64  // Size after decompression
+	CompressedSize   int64  // Original compressed size (0 if not compressed)
+	Encoding         string // Content-Encoding used ("gzip", "zstd", or "")
+}
+
+// countingReader wraps an io.Reader and counts bytes read
+type countingReader struct {
+	reader io.Reader
+	count  int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.reader.Read(p)
+	c.count += int64(n)
+	return n, err
+}
+
+// progressWriter wraps an io.Writer with progress callbacks
+type progressWriter struct {
+	writer     io.Writer
+	total      int64 // Expected total (-1 if unknown)
+	written    int64
+	callback   func(written, total int64)
+	interval   int64 // Report every N bytes
+	lastReport int64
+}
+
+func (pw *progressWriter) Write(p []byte) (int, error) {
+	n, err := pw.writer.Write(p)
+	pw.written += int64(n)
+
+	// Report progress at intervals
+	if pw.callback != nil && pw.written-pw.lastReport >= pw.interval {
+		pw.callback(pw.written, pw.total)
+		pw.lastReport = pw.written
+	}
+	return n, err
+}
+
 // streamUploadToFile streams the request body to a temp file
-func (s *Server) streamUploadToFile(r *http.Request, maxSize int64) (string, int64, error) {
+// Supports Content-Encoding: gzip, zstd, or identity (no compression)
+func (s *Server) streamUploadToFile(r *http.Request, maxSize int64) (*StreamResult, error) {
 	storage := s.indexManager.Storage()
 
 	// Create temp file
 	file, path, err := storage.CreateUploadFile()
 	if err != nil {
-		return "", 0, err
+		return nil, err
 	}
 	defer file.Close()
 
-	// Stream with size limit
-	limitReader := io.LimitReader(r.Body, maxSize+1)
-	written, err := io.Copy(file, limitReader)
-	if err != nil {
-		storage.CleanupUpload(path)
-		return "", 0, fmt.Errorf("failed to write upload: %w", err)
+	// Wrap body in counting reader to track compressed size
+	counter := &countingReader{reader: r.Body}
+	var reader io.Reader = counter
+
+	// Detect compression from Content-Encoding header
+	encoding := r.Header.Get("Content-Encoding")
+
+	// Check if encoding is supported (uses config if available)
+	if s.config.IndexServer != nil {
+		if !s.config.IndexServer.IsEncodingSupported(encoding) {
+			storage.CleanupUpload(path)
+			return nil, fmt.Errorf("Content-Encoding %q not supported (compression may be disabled)", encoding)
+		}
 	}
 
-	// Check if we hit the limit
+	switch encoding {
+	case "gzip":
+		gr, err := gzip.NewReader(reader)
+		if err != nil {
+			storage.CleanupUpload(path)
+			return nil, fmt.Errorf("invalid gzip stream: %w", err)
+		}
+		defer gr.Close()
+		reader = gr
+	case "zstd":
+		zr, err := zstd.NewReader(reader)
+		if err != nil {
+			storage.CleanupUpload(path)
+			return nil, fmt.Errorf("invalid zstd stream: %w", err)
+		}
+		defer zr.Close()
+		reader = zr
+	case "", "identity":
+		// No compression, use raw body
+		encoding = ""
+	default:
+		storage.CleanupUpload(path)
+		return nil, fmt.Errorf("unsupported Content-Encoding: %s", encoding)
+	}
+
+	// Create progress writer with logging callback
+	contentLength := r.ContentLength            // -1 if unknown
+	progressInterval := int64(10 * 1024 * 1024) // Log every 10MB
+	pw := &progressWriter{
+		writer:   file,
+		total:    contentLength,
+		interval: progressInterval,
+		callback: func(written, total int64) {
+			fields := map[string]interface{}{
+				"phase": "receiving",
+				"bytes": written,
+				"mb":    float64(written) / (1024 * 1024),
+			}
+			if total > 0 {
+				fields["total"] = total
+				fields["percent"] = float64(written) / float64(total) * 100
+			}
+			s.logger.Info("Upload progress", fields)
+		},
+	}
+
+	// Stream with size limit (applied to decompressed size)
+	limitReader := io.LimitReader(reader, maxSize+1)
+	written, err := io.Copy(pw, limitReader)
+	if err != nil {
+		storage.CleanupUpload(path)
+		return nil, fmt.Errorf("failed to write upload: %w", err)
+	}
+
+	// Check if decompressed size hit the limit
 	if written > maxSize {
 		storage.CleanupUpload(path)
-		return "", 0, fmt.Errorf("upload exceeds max size of %d bytes", maxSize)
+		return nil, fmt.Errorf("decompressed upload exceeds max size of %d bytes", maxSize)
 	}
 
 	// Check minimum size (SCIP files should be at least a few bytes)
 	if written < 10 {
 		storage.CleanupUpload(path)
-		return "", 0, fmt.Errorf("upload too small to be a valid SCIP index")
+		return nil, fmt.Errorf("upload too small to be a valid SCIP index")
 	}
 
-	return path, written, nil
+	result := &StreamResult{
+		Path:             path,
+		DecompressedSize: written,
+		Encoding:         encoding,
+	}
+
+	// Set compressed size if compression was used
+	if encoding != "" {
+		result.CompressedSize = counter.count
+	}
+
+	return result, nil
 }
 
 // parseUploadMetaFromHeaders extracts upload metadata from request headers
@@ -341,4 +476,3 @@ func extractRepoIDFromPath(path, prefix, suffix string) string {
 	}
 	return id
 }
-

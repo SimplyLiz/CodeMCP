@@ -27,8 +27,8 @@ type IndexRepoManager struct {
 	config    *IndexServerConfig
 	logger    *logging.Logger
 	cursor    *CursorManager
-	storage   *IndexStorage   // For uploaded repos (Phase 2)
-	processor *SCIPProcessor  // For processing uploads (Phase 2)
+	storage   *IndexStorage  // For uploaded repos (Phase 2)
+	processor *SCIPProcessor // For processing uploads (Phase 2)
 	mu        sync.RWMutex
 }
 
@@ -167,6 +167,19 @@ func (m *IndexRepoManager) GetRepo(id string) (*IndexRepoHandle, error) {
 		return nil, fmt.Errorf("repo not found: %s", id)
 	}
 	return handle, nil
+}
+
+// GetRepoCommit returns the current indexed commit for a repo
+func (m *IndexRepoManager) GetRepoCommit(id string) (string, error) {
+	handle, err := m.GetRepo(id)
+	if err != nil {
+		return "", err
+	}
+	meta := handle.Meta()
+	if meta == nil {
+		return "", nil
+	}
+	return meta.Commit, nil
 }
 
 // ListRepos returns all repo handles

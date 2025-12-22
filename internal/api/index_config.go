@@ -11,16 +11,22 @@ import (
 
 // IndexServerConfig configures remote index serving for federation
 type IndexServerConfig struct {
-	Enabled        bool                `toml:"enabled"`
-	Repos          []IndexRepoConfig   `toml:"repos"`
-	DefaultPrivacy IndexPrivacyConfig  `toml:"default_privacy"`
-	MaxPageSize    int                 `toml:"max_page_size"`    // Default 10000
-	CursorSecret   string              `toml:"cursor_secret"`    // HMAC key for cursors
+	Enabled        bool               `toml:"enabled"`
+	Repos          []IndexRepoConfig  `toml:"repos"`
+	DefaultPrivacy IndexPrivacyConfig `toml:"default_privacy"`
+	MaxPageSize    int                `toml:"max_page_size"` // Default 10000
+	CursorSecret   string             `toml:"cursor_secret"` // HMAC key for cursors
 
 	// Upload configuration (Phase 2)
 	DataDir         string `toml:"data_dir"`          // Server data directory for uploaded repos
 	MaxUploadSize   int64  `toml:"max_upload_size"`   // Max upload size in bytes (default 500MB)
 	AllowCreateRepo bool   `toml:"allow_create_repo"` // Allow creating repos via API (default true)
+
+	// Enhanced upload configuration (Phase 3)
+	EnableCompression     bool     `toml:"enable_compression"`      // Accept compressed uploads (default true)
+	SupportedEncodings    []string `toml:"supported_encodings"`     // Supported Content-Encoding values (default ["gzip", "zstd"])
+	EnableDeltaUpload     bool     `toml:"enable_delta_upload"`     // Enable incremental delta uploads (default true)
+	DeltaThresholdPercent int      `toml:"delta_threshold_percent"` // Suggest full upload if >N% files changed (default 50)
 }
 
 // RepoSource indicates how a repo was registered
@@ -45,10 +51,10 @@ type IndexRepoConfig struct {
 
 // IndexPrivacyConfig controls field redaction in API responses
 type IndexPrivacyConfig struct {
-	ExposePaths      bool   `toml:"expose_paths"`       // Default true - expose full file paths
-	ExposeDocs       bool   `toml:"expose_docs"`        // Default true - expose documentation strings
-	ExposeSignatures bool   `toml:"expose_signatures"`  // Default true - expose function signatures
-	PathPrefixStrip  string `toml:"path_prefix_strip"`  // Remove this prefix from paths
+	ExposePaths      bool   `toml:"expose_paths"`      // Default true - expose full file paths
+	ExposeDocs       bool   `toml:"expose_docs"`       // Default true - expose documentation strings
+	ExposeSignatures bool   `toml:"expose_signatures"` // Default true - expose function signatures
+	PathPrefixStrip  string `toml:"path_prefix_strip"` // Remove this prefix from paths
 }
 
 // DefaultIndexServerConfig returns default configuration for index server
@@ -66,6 +72,11 @@ func DefaultIndexServerConfig() *IndexServerConfig {
 		DataDir:         "~/.ckb-server",
 		MaxUploadSize:   500 * 1024 * 1024, // 500MB
 		AllowCreateRepo: true,
+		// Phase 3 defaults
+		EnableCompression:     true,
+		SupportedEncodings:    []string{"gzip", "zstd"},
+		EnableDeltaUpload:     true,
+		DeltaThresholdPercent: 50,
 	}
 }
 
@@ -154,6 +165,19 @@ func (c *IndexServerConfig) Validate() error {
 		return fmt.Errorf("max_upload_size cannot be negative")
 	}
 
+	// Validate Phase 3 options
+	if c.DeltaThresholdPercent < 0 || c.DeltaThresholdPercent > 100 {
+		return fmt.Errorf("delta_threshold_percent must be between 0 and 100")
+	}
+
+	// Validate supported encodings
+	validEncodings := map[string]bool{"gzip": true, "zstd": true}
+	for _, enc := range c.SupportedEncodings {
+		if !validEncodings[enc] {
+			return fmt.Errorf("unsupported encoding: %s (valid: gzip, zstd)", enc)
+		}
+	}
+
 	return nil
 }
 
@@ -179,4 +203,20 @@ func (c *IndexServerConfig) GetRepoConfig(repoID string) *IndexRepoConfig {
 		}
 	}
 	return nil
+}
+
+// IsEncodingSupported checks if a Content-Encoding is supported
+func (c *IndexServerConfig) IsEncodingSupported(encoding string) bool {
+	if encoding == "" || encoding == "identity" {
+		return true // Always support uncompressed
+	}
+	if !c.EnableCompression {
+		return false
+	}
+	for _, enc := range c.SupportedEncodings {
+		if enc == encoding {
+			return true
+		}
+	}
+	return false
 }

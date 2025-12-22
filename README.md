@@ -226,6 +226,27 @@ expose_docs = true
 expose_signatures = true
 ```
 
+### Index Upload (v7.3)
+- **HTTP Upload** — Push SCIP indexes to a central server via REST API
+- **Compression** — gzip and zstd support for 70-90% bandwidth savings
+- **Delta Updates** — Upload only changed files for incremental updates
+- **Progress Reporting** — Real-time logging for large uploads
+
+```bash
+# Upload a full index (with compression)
+gzip -c index.scip | curl -X POST http://server:8080/index/repos/my-org/my-repo/upload \
+  -H "Content-Encoding: gzip" \
+  -H "X-CKB-Commit: abc123" \
+  --data-binary @-
+
+# Delta upload (only changed files)
+curl -X POST http://server:8080/index/repos/my-org/my-repo/upload/delta \
+  -H "X-CKB-Base-Commit: abc123" \
+  -H "X-CKB-Target-Commit: def456" \
+  -H 'X-CKB-Changed-Files: [{"path":"src/main.go","change_type":"modified"}]' \
+  --data-binary @partial-index.scip
+```
+
 ## MCP Tools (64 Available)
 
 CKB exposes code intelligence through the Model Context Protocol:
@@ -423,6 +444,14 @@ curl http://localhost:8080/index/repos
 curl http://localhost:8080/index/repos/company%2Fcore-lib/meta
 curl "http://localhost:8080/index/repos/company%2Fcore-lib/symbols?limit=100"
 curl "http://localhost:8080/index/repos/company%2Fcore-lib/search/symbols?q=Handler"
+
+# Upload endpoints (with compression)
+curl -X POST http://localhost:8080/index/repos \
+  -H "Content-Type: application/json" \
+  -d '{"id":"my-org/my-repo","name":"My Repo"}'
+
+gzip -c index.scip | curl -X POST http://localhost:8080/index/repos/my-org%2Fmy-repo/upload \
+  -H "Content-Encoding: gzip" --data-binary @-
 ```
 
 ## MCP Integration

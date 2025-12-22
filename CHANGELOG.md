@@ -6,12 +6,53 @@ All notable changes to CKB will be documented in this file.
 
 ### Added
 
+#### Enhanced Uploads (v3 Federation Phase 3)
+Compression support, progress reporting, and incremental (delta) updates for the index upload system. Reduces upload sizes by 70-90% for typical updates.
+
+**Compression Support:**
+- **gzip** — `Content-Encoding: gzip` for 60-80% compression
+- **zstd** — `Content-Encoding: zstd` for 70-90% compression (faster than gzip)
+- Automatic decompression on the server
+- Response includes `compression_ratio` showing savings
+
+**Progress Reporting:**
+- Logs progress at 10MB intervals for large uploads
+- Includes bytes received, MB count, and percentage when Content-Length is known
+
+**Delta Uploads (Incremental):**
+- `POST /index/repos/{repo}/upload/delta` — Upload only changed files
+- Requires `X-CKB-Base-Commit` header matching current index
+- Returns 409 Conflict with `current_commit` if base doesn't match
+- Suggests full upload when >50% files changed (configurable)
+- Reuses existing incremental infrastructure for efficient processing
+
+**Configuration:**
+```toml
+[index_server]
+enable_compression = true           # Default true
+supported_encodings = ["gzip", "zstd"]
+enable_delta_upload = true          # Default true
+delta_threshold_percent = 50        # Suggest full upload if >N% changed
+```
+
+**Delta Upload Example:**
+```bash
+curl -X POST http://localhost:8080/index/repos/company/core-lib/upload/delta \
+  -H "Content-Type: application/octet-stream" \
+  -H "Content-Encoding: gzip" \
+  -H "X-CKB-Base-Commit: abc123" \
+  -H "X-CKB-Target-Commit: def456" \
+  -H 'X-CKB-Changed-Files: [{"path":"src/main.go","change_type":"modified"}]' \
+  --data-binary @partial-index.scip.gz
+```
+
 #### Index Upload (v3 Federation Phase 2)
 Push SCIP indexes to the index server via HTTP, eliminating the need for local filesystem paths. This transforms CKB from a "bring your database" model to a centralized index hosting service.
 
 **REST API Endpoints:**
 - `POST /index/repos` — Create a new repo ready for upload
-- `POST /index/repos/{repo}/upload` — Upload SCIP index file (replaces existing data)
+- `POST /index/repos/{repo}/upload` — Upload SCIP index file (supports gzip, zstd compression)
+- `POST /index/repos/{repo}/upload/delta` — Delta upload (incremental changes only)
 - `DELETE /index/repos/{repo}` — Delete an uploaded repo
 
 **Upload Features:**
@@ -19,6 +60,8 @@ Push SCIP indexes to the index server via HTTP, eliminating the need for local f
 - Auto-create repos on first upload (configurable)
 - Metadata headers: `X-CKB-Commit`, `X-CKB-Language`, `X-CKB-Indexer-Name`
 - Full SCIP processing: symbols, refs, call graph extraction
+- Compression support: gzip and zstd
+- Progress logging for large uploads
 
 **Configuration:**
 ```toml
@@ -27,6 +70,8 @@ enabled = true
 data_dir = "~/.ckb-server"      # Server data directory
 max_upload_size = 524288000     # 500MB default
 allow_create_repo = true        # Allow repo creation via API
+enable_compression = true       # Accept compressed uploads
+enable_delta_upload = true      # Enable incremental updates
 ```
 
 **Data Directory Structure:**
@@ -187,18 +232,19 @@ Tracks file-level dependencies and automatically queues dependent files for resc
 
 ### Files Added
 - `internal/api/` - Remote index serving and upload
-  - `index_config.go` — Configuration types and TOML loading
+  - `index_config.go` — Configuration types and TOML loading (Phase 3: compression, delta config)
   - `index_types.go` — API response types
   - `index_cursor.go` — HMAC-signed cursor pagination
-  - `index_repos.go` — Repository handle management (Phase 1 + 2 dynamic mgmt)
+  - `index_repos.go` — Repository handle management (Phase 1 + 2 + 3)
   - `index_redaction.go` — Privacy redaction logic
   - `index_queries.go` — Database queries for symbols, files, refs, callgraph
   - `index_storage.go` — Server data directory management (Phase 2)
-  - `index_processor.go` — SCIP processing pipeline (Phase 2)
+  - `index_processor.go` — SCIP processing pipeline (Phase 2 + 3 delta processing)
   - `handlers_index.go` — HTTP handlers for all index endpoints
-  - `handlers_upload.go` — HTTP handlers for create/delete/upload endpoints (Phase 2)
+  - `handlers_upload.go` — HTTP handlers with compression/progress (Phase 2 + 3)
+  - `handlers_upload_delta.go` — Delta upload handler (Phase 3)
   - `handlers_index_test.go` — Tests for cursors, redaction, handlers
-  - `handlers_upload_test.go` — Tests for upload functionality (Phase 2)
+  - `handlers_upload_test.go` — Tests for upload, compression, delta (Phase 2 + 3)
 - `internal/docs/` - New package for doc-symbol linking
   - `types.go` - Core types (Document, DocReference, StalenessReport, etc.)
   - `scanner.go` - Markdown scanning with backtick/directive/fence detection

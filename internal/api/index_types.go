@@ -85,8 +85,8 @@ type IndexSymbol struct {
 	ID            string `json:"id"`
 	Name          string `json:"name"`
 	Kind          string `json:"kind,omitempty"`
-	FilePath      string `json:"file_path,omitempty"`      // May be redacted
-	FileBasename  string `json:"file_basename,omitempty"`  // Filename only
+	FilePath      string `json:"file_path,omitempty"`     // May be redacted
+	FileBasename  string `json:"file_basename,omitempty"` // Filename only
 	Line          int    `json:"line,omitempty"`
 	Column        int    `json:"column,omitempty"`
 	Language      string `json:"language,omitempty"`
@@ -97,8 +97,8 @@ type IndexSymbol struct {
 
 // IndexFile represents a file in index-serving responses
 type IndexFile struct {
-	Path        string `json:"path,omitempty"`        // May be redacted
-	Basename    string `json:"basename,omitempty"`    // Filename only
+	Path        string `json:"path,omitempty"`     // May be redacted
+	Basename    string `json:"basename,omitempty"` // Filename only
 	Language    string `json:"language,omitempty"`
 	SymbolCount int    `json:"symbol_count"`
 	Hash        string `json:"hash,omitempty"`
