@@ -248,7 +248,7 @@ func (e *RemoteError) IsRateLimited() bool {
 // parseResponse parses a remote response and extracts the data.
 func parseResponse[T any](body []byte) (*T, *RemoteResponseMeta, error) {
 	var resp struct {
-		Data  T                  `json:"data"`
+		Data  T                   `json:"data"`
 		Meta  *RemoteResponseMeta `json:"meta,omitempty"`
 		Error *RemoteErrorInfo    `json:"error,omitempty"`
 	}

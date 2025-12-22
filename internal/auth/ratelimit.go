@@ -20,9 +20,9 @@ type RateLimitConfig struct {
 func DefaultRateLimitConfig() RateLimitConfig {
 	return RateLimitConfig{
 		Enabled:         false,
-		DefaultLimit:    60,   // 60 requests per minute
-		BurstSize:       10,   // Allow 10 request burst
-		CleanupInterval: 300,  // Clean up every 5 minutes
+		DefaultLimit:    60,  // 60 requests per minute
+		BurstSize:       10,  // Allow 10 request burst
+		CleanupInterval: 300, // Clean up every 5 minutes
 	}
 }
 

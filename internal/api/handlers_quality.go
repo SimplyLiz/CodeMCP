@@ -11,14 +11,14 @@ import (
 
 // LanguageQualityResponse represents the language quality API response.
 type LanguageQualityResponse struct {
-	Timestamp       time.Time                             `json:"timestamp"`
-	PrimaryLanguage string                                `json:"primaryLanguage"`
-	OverallQuality  string                                `json:"overallQuality"`
-	TotalSymbols    int                                   `json:"totalSymbols"`
-	TotalRefs       int                                   `json:"totalRefs"`
-	TotalCallEdges  int                                   `json:"totalCallEdges"`
-	Summary         string                                `json:"summary"`
-	Languages       map[string]*LanguageQualityInfo       `json:"languages"`
+	Timestamp       time.Time                       `json:"timestamp"`
+	PrimaryLanguage string                          `json:"primaryLanguage"`
+	OverallQuality  string                          `json:"overallQuality"`
+	TotalSymbols    int                             `json:"totalSymbols"`
+	TotalRefs       int                             `json:"totalRefs"`
+	TotalCallEdges  int                             `json:"totalCallEdges"`
+	Summary         string                          `json:"summary"`
+	Languages       map[string]*LanguageQualityInfo `json:"languages"`
 }
 
 // LanguageQualityInfo represents quality info for a single language.

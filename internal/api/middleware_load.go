@@ -59,7 +59,7 @@ type LoadShedder struct {
 	// Queue for waiting requests
 	queue chan struct{}
 
-	mu sync.RWMutex
+	mu sync.RWMutex //nolint:unused
 }
 
 // NewLoadShedder creates a new load shedder
@@ -138,25 +138,25 @@ func (ls *LoadShedder) Release(endpoint string) {
 func (ls *LoadShedder) Stats() LoadSheddingStats {
 	lastShed := ls.lastShedTime.Load().(time.Time)
 	return LoadSheddingStats{
-		InFlight:          atomic.LoadInt64(&ls.inFlight),
-		QueueLength:       atomic.LoadInt64(&ls.queueLength),
-		MaxConcurrent:     ls.config.MaxConcurrentRequests,
-		MaxQueue:          ls.config.QueueSize,
-		TotalShed:         atomic.LoadUint64(&ls.totalShed),
-		LastShedTime:      lastShed,
-		Enabled:           ls.config.Enabled,
+		InFlight:      atomic.LoadInt64(&ls.inFlight),
+		QueueLength:   atomic.LoadInt64(&ls.queueLength),
+		MaxConcurrent: ls.config.MaxConcurrentRequests,
+		MaxQueue:      ls.config.QueueSize,
+		TotalShed:     atomic.LoadUint64(&ls.totalShed),
+		LastShedTime:  lastShed,
+		Enabled:       ls.config.Enabled,
 	}
 }
 
 // LoadSheddingStats contains load shedding statistics
 type LoadSheddingStats struct {
-	InFlight       int64     `json:"inFlight"`
-	QueueLength    int64     `json:"queueLength"`
-	MaxConcurrent  int       `json:"maxConcurrent"`
-	MaxQueue       int       `json:"maxQueue"`
-	TotalShed      uint64    `json:"totalShed"`
-	LastShedTime   time.Time `json:"lastShedTime,omitempty"`
-	Enabled        bool      `json:"enabled"`
+	InFlight      int64     `json:"inFlight"`
+	QueueLength   int64     `json:"queueLength"`
+	MaxConcurrent int       `json:"maxConcurrent"`
+	MaxQueue      int       `json:"maxQueue"`
+	TotalShed     uint64    `json:"totalShed"`
+	LastShedTime  time.Time `json:"lastShedTime,omitempty"`
+	Enabled       bool      `json:"enabled"`
 }
 
 func (ls *LoadShedder) isPriorityEndpoint(endpoint string) bool {
@@ -268,7 +268,7 @@ func (als *AdaptiveLoadShedder) AcquireAdaptive(endpoint string, timeout time.Du
 
 // CircuitBreaker provides circuit breaker pattern for external dependencies
 type CircuitBreaker struct {
-	mu sync.RWMutex
+	mu sync.RWMutex //nolint:unused
 
 	// State
 	state           CircuitState

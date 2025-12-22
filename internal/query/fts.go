@@ -163,10 +163,10 @@ func (e *Engine) SearchSymbolsFTS(ctx context.Context, query string, limit int) 
 	// Get FTS manager
 	ftsManager := storage.NewFTSManager(e.db.Conn(), storage.DefaultFTSConfig())
 
-	// Check if FTS has data
-	stats, err := ftsManager.GetStats(ctx)
-	if err != nil {
-		return nil, nil
+	// Check if FTS has data (error means FTS not available, not a failure)
+	stats, statsErr := ftsManager.GetStats(ctx)
+	if statsErr != nil {
+		return nil, nil //nolint:nilerr // intentional: FTS unavailable = use fallback
 	}
 
 	indexedSymbols, ok := stats["indexed_symbols"].(int)

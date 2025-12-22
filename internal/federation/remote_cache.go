@@ -67,8 +67,8 @@ func (c *CachedRemoteClient) getFromCache(repoID, key string, target interface{}
 	if !found {
 		return false, nil
 	}
-	if err := json.Unmarshal(data, target); err != nil {
-		return false, nil // Treat unmarshal errors as cache miss
+	if unmarshalErr := json.Unmarshal(data, target); unmarshalErr != nil {
+		return false, nil //nolint:nilerr // intentional: unmarshal error = cache miss, not failure
 	}
 	return true, nil
 }

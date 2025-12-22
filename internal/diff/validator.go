@@ -90,11 +90,11 @@ func NewValidator(opts ...ValidatorOption) *Validator {
 
 // ValidationResult contains the outcome of validation
 type ValidationResult struct {
-	Valid           bool               `json:"valid"`
-	Errors          []ValidationError  `json:"errors,omitempty"`
-	Warnings        []ValidationError  `json:"warnings,omitempty"`
-	SpotChecked     int                `json:"spotChecked"`
-	SpotCheckPassed int                `json:"spotCheckPassed"`
+	Valid           bool              `json:"valid"`
+	Errors          []ValidationError `json:"errors,omitempty"`
+	Warnings        []ValidationError `json:"warnings,omitempty"`
+	SpotChecked     int               `json:"spotChecked"`
+	SpotCheckPassed int               `json:"spotCheckPassed"`
 }
 
 // Validate performs full validation of a delta artifact

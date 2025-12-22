@@ -21,7 +21,6 @@ var (
 	fedRemoteToken    string
 	fedRemoteCacheTTL string
 	fedRemoteTimeout  string
-	fedRemoteEnabled  bool
 )
 
 var fedAddRemoteCmd = &cobra.Command{

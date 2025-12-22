@@ -53,8 +53,8 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("/telemetry", s.handleTelemetryStatus)  // GET /telemetry (alias for /telemetry/status)
 
 	// v7.3 Language quality endpoints
-	s.router.HandleFunc("/meta/languages", s.handleLanguageQuality) // GET - language quality dashboard
-	s.router.HandleFunc("/meta/python-env", s.handlePythonEnv)      // GET - Python environment detection
+	s.router.HandleFunc("/meta/languages", s.handleLanguageQuality)      // GET - language quality dashboard
+	s.router.HandleFunc("/meta/python-env", s.handlePythonEnv)           // GET - Python environment detection
 	s.router.HandleFunc("/meta/typescript-monorepo", s.handleTSMonorepo) // GET - TypeScript monorepo detection
 
 	// Delta ingestion endpoints (incremental indexing)

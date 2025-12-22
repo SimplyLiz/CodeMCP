@@ -80,7 +80,7 @@ func (s *Server) handleDeltaIngest(w http.ResponseWriter, r *http.Request) {
 		// Return validation errors
 		errors := make([]ValidationMessage, len(result.Errors))
 		for i, e := range result.Errors {
-			errors[i] = ValidationMessage{Code: string(e.Code), Message: e.Message}
+			errors[i] = ValidationMessage{Code: e.Code, Message: e.Message}
 		}
 		resp := DeltaValidateResponse{
 			Valid:           false,
@@ -157,12 +157,12 @@ func (s *Server) handleDeltaValidate(w http.ResponseWriter, r *http.Request) {
 	// Build response
 	errors := make([]ValidationMessage, len(result.Errors))
 	for i, e := range result.Errors {
-		errors[i] = ValidationMessage{Code: string(e.Code), Message: e.Message}
+		errors[i] = ValidationMessage{Code: e.Code, Message: e.Message}
 	}
 
 	warnings := make([]ValidationMessage, len(result.Warnings))
 	for i, w := range result.Warnings {
-		warnings[i] = ValidationMessage{Code: string(w.Code), Message: w.Message}
+		warnings[i] = ValidationMessage{Code: w.Code, Message: w.Message}
 	}
 
 	response := DeltaValidateResponse{

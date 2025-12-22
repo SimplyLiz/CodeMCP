@@ -254,11 +254,11 @@ type HybridCallEdgeResult struct {
 
 // QuerySource represents a source that was queried.
 type QuerySource struct {
-	Name       string        `json:"name"`       // "local" or server name
-	URL        string        `json:"url"`        // Empty for local
-	Status     string        `json:"status"`     // "success", "error", "timeout", "unavailable"
-	ResultCount int          `json:"result_count"`
-	Latency    time.Duration `json:"latency"`
+	Name        string        `json:"name"`   // "local" or server name
+	URL         string        `json:"url"`    // Empty for local
+	Status      string        `json:"status"` // "success", "error", "timeout", "unavailable"
+	ResultCount int           `json:"result_count"`
+	Latency     time.Duration `json:"latency"`
 }
 
 // QueryError represents an error from a query source.

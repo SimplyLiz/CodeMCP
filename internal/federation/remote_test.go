@@ -428,11 +428,11 @@ func TestCacheKey(t *testing.T) {
 
 func TestRemoteErrorMethods(t *testing.T) {
 	tests := []struct {
-		name         string
-		err          *RemoteError
-		isNotFound   bool
-		isUnauth     bool
-		isForbidden  bool
+		name          string
+		err           *RemoteError
+		isNotFound    bool
+		isUnauth      bool
+		isForbidden   bool
 		isRateLimited bool
 	}{
 		{

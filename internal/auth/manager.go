@@ -14,9 +14,9 @@ import (
 // ManagerConfig configures the auth manager
 type ManagerConfig struct {
 	Enabled      bool              `toml:"enabled" json:"enabled"`
-	RequireAuth  bool              `toml:"require_auth" json:"require_auth"`     // If false, unauthenticated gets read-only
-	LegacyToken  string            `toml:"legacy_token" json:"legacy_token"`     // Backward compat single token
-	StaticKeys   []StaticKeyConfig `toml:"static_keys" json:"static_keys"`       // TOML-defined keys
+	RequireAuth  bool              `toml:"require_auth" json:"require_auth"` // If false, unauthenticated gets read-only
+	LegacyToken  string            `toml:"legacy_token" json:"legacy_token"` // Backward compat single token
+	StaticKeys   []StaticKeyConfig `toml:"static_keys" json:"static_keys"`   // TOML-defined keys
 	RateLimiting RateLimitConfig   `toml:"rate_limiting" json:"rate_limiting"`
 }
 
@@ -75,11 +75,11 @@ func NewManager(config ManagerConfig, db *sql.DB, logger *logging.Logger) (*Mana
 	}
 
 	logger.Info("Auth manager initialized", map[string]interface{}{
-		"enabled":        config.Enabled,
-		"require_auth":   config.RequireAuth,
-		"static_keys":    len(config.StaticKeys),
-		"has_legacy":     config.LegacyToken != "",
-		"rate_limiting":  config.RateLimiting.Enabled,
+		"enabled":       config.Enabled,
+		"require_auth":  config.RequireAuth,
+		"static_keys":   len(config.StaticKeys),
+		"has_legacy":    config.LegacyToken != "",
+		"rate_limiting": config.RateLimiting.Enabled,
 	})
 
 	return m, nil

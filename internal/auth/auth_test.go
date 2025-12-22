@@ -119,14 +119,14 @@ func TestAPIKeyCanAccessRepo(t *testing.T) {
 		repoID   string
 		expected bool
 	}{
-		{nil, "any/repo", true},                         // No patterns = all access
-		{[]string{}, "any/repo", true},                  // Empty patterns = all access
-		{[]string{"*"}, "any/repo", true},               // Wildcard
-		{[]string{"myorg/*"}, "myorg/repo", true},       // Org prefix
-		{[]string{"myorg/*"}, "other/repo", false},      // Wrong org
-		{[]string{"exact/match"}, "exact/match", true},  // Exact match
-		{[]string{"exact/match"}, "other/repo", false},  // No match
-		{[]string{"a/*", "b/*"}, "b/repo", true},        // Multiple patterns
+		{nil, "any/repo", true},                        // No patterns = all access
+		{[]string{}, "any/repo", true},                 // Empty patterns = all access
+		{[]string{"*"}, "any/repo", true},              // Wildcard
+		{[]string{"myorg/*"}, "myorg/repo", true},      // Org prefix
+		{[]string{"myorg/*"}, "other/repo", false},     // Wrong org
+		{[]string{"exact/match"}, "exact/match", true}, // Exact match
+		{[]string{"exact/match"}, "other/repo", false}, // No match
+		{[]string{"a/*", "b/*"}, "b/repo", true},       // Multiple patterns
 	}
 
 	for _, tt := range tests {

@@ -142,36 +142,36 @@ func matchGlob(pattern, value string) bool {
 
 // AuthResult represents the result of an authentication attempt
 type AuthResult struct {
-	Authenticated bool     `json:"authenticated"`            // Whether authentication succeeded
-	KeyID         string   `json:"key_id,omitempty"`         // ID of the authenticated key
-	KeyName       string   `json:"key_name,omitempty"`       // Name of the authenticated key
-	Scopes        []Scope  `json:"scopes,omitempty"`         // Scopes of the authenticated key
-	RepoPatterns  []string `json:"repo_patterns,omitempty"`  // Repo restrictions
-	RateLimited   bool     `json:"rate_limited"`             // Whether request is rate limited
-	RetryAfter    int      `json:"retry_after,omitempty"`    // Seconds until rate limit resets
-	ErrorCode     string   `json:"error_code,omitempty"`     // Error code if auth failed
-	ErrorMessage  string   `json:"error_message,omitempty"`  // Human-readable error message
+	Authenticated bool     `json:"authenticated"`           // Whether authentication succeeded
+	KeyID         string   `json:"key_id,omitempty"`        // ID of the authenticated key
+	KeyName       string   `json:"key_name,omitempty"`      // Name of the authenticated key
+	Scopes        []Scope  `json:"scopes,omitempty"`        // Scopes of the authenticated key
+	RepoPatterns  []string `json:"repo_patterns,omitempty"` // Repo restrictions
+	RateLimited   bool     `json:"rate_limited"`            // Whether request is rate limited
+	RetryAfter    int      `json:"retry_after,omitempty"`   // Seconds until rate limit resets
+	ErrorCode     string   `json:"error_code,omitempty"`    // Error code if auth failed
+	ErrorMessage  string   `json:"error_message,omitempty"` // Human-readable error message
 }
 
 // Error codes for authentication failures
 const (
-	ErrCodeMissingToken    = "missing_token"
-	ErrCodeInvalidToken    = "invalid_token"
-	ErrCodeExpiredToken    = "expired_token"
-	ErrCodeRevokedToken    = "revoked_token"
+	ErrCodeMissingToken      = "missing_token"
+	ErrCodeInvalidToken      = "invalid_token"
+	ErrCodeExpiredToken      = "expired_token"
+	ErrCodeRevokedToken      = "revoked_token"
 	ErrCodeInsufficientScope = "insufficient_scope"
-	ErrCodeRepoNotAllowed  = "repo_not_allowed"
-	ErrCodeRateLimited     = "rate_limited"
+	ErrCodeRepoNotAllowed    = "repo_not_allowed"
+	ErrCodeRateLimited       = "rate_limited"
 )
 
 // CreateKeyOptions contains options for creating a new API key
 type CreateKeyOptions struct {
-	Name         string    `json:"name"`
-	Scopes       []Scope   `json:"scopes"`
-	RepoPatterns []string  `json:"repo_patterns,omitempty"`
-	RateLimit    *int      `json:"rate_limit,omitempty"`
+	Name         string     `json:"name"`
+	Scopes       []Scope    `json:"scopes"`
+	RepoPatterns []string   `json:"repo_patterns,omitempty"`
+	RateLimit    *int       `json:"rate_limit,omitempty"`
 	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
-	CreatedBy    string    `json:"created_by,omitempty"`
+	CreatedBy    string     `json:"created_by,omitempty"`
 }
 
 // Validate checks if the options are valid
@@ -206,10 +206,10 @@ type AuditEvent struct {
 
 // Audit event types
 const (
-	AuditEventKeyCreated   = "key_created"
-	AuditEventKeyRevoked   = "key_revoked"
-	AuditEventKeyRotated   = "key_rotated"
-	AuditEventAuthSuccess  = "auth_success"
-	AuditEventAuthFailed   = "auth_failed"
-	AuditEventRateLimited  = "rate_limited"
+	AuditEventKeyCreated  = "key_created"
+	AuditEventKeyRevoked  = "key_revoked"
+	AuditEventKeyRotated  = "key_rotated"
+	AuditEventAuthSuccess = "auth_success"
+	AuditEventAuthFailed  = "auth_failed"
+	AuditEventRateLimited = "rate_limited"
 )

@@ -83,8 +83,8 @@ func (m *FTSManager) InitSchema() error {
 		"CREATE INDEX IF NOT EXISTS idx_symbols_fts_content_language ON symbols_fts_content(language)",
 	}
 	for _, idx := range indexes {
-		if _, err := m.db.Exec(idx); err != nil {
-			return fmt.Errorf("failed to create index: %w", err)
+		if _, execErr := m.db.Exec(idx); execErr != nil {
+			return fmt.Errorf("failed to create index: %w", execErr)
 		}
 	}
 
@@ -153,14 +153,14 @@ func (m *FTSManager) BulkInsert(ctx context.Context, symbols []SymbolFTSRecord) 
 		"DROP TRIGGER IF EXISTS symbols_fts_ad",
 	}
 	for _, drop := range triggerDrops {
-		if _, err := tx.ExecContext(ctx, drop); err != nil {
-			return fmt.Errorf("failed to drop trigger: %w", err)
+		if _, dropErr := tx.ExecContext(ctx, drop); dropErr != nil {
+			return fmt.Errorf("failed to drop trigger: %w", dropErr)
 		}
 	}
 
 	// Clear existing content (triggers are dropped, so this won't affect FTS yet)
-	if _, err := tx.ExecContext(ctx, "DELETE FROM symbols_fts_content"); err != nil {
-		return fmt.Errorf("failed to clear content: %w", err)
+	if _, delErr := tx.ExecContext(ctx, "DELETE FROM symbols_fts_content"); delErr != nil {
+		return fmt.Errorf("failed to clear content: %w", delErr)
 	}
 
 	// Prepare insert statement

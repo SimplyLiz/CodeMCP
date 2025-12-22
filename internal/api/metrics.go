@@ -28,7 +28,7 @@ func DefaultMetricsConfig() MetricsConfig {
 
 // MetricsCollector collects and exposes Prometheus metrics
 type MetricsCollector struct {
-	mu sync.RWMutex
+	mu sync.RWMutex //nolint:unused
 
 	// Counters
 	ingestionTotal     *Counter
@@ -72,7 +72,7 @@ type Histogram struct {
 }
 
 type histogramValue struct {
-	mu      sync.Mutex
+	mu sync.Mutex //nolint:unused
 	sum     float64
 	count   uint64
 	buckets []uint64

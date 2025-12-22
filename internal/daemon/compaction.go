@@ -48,23 +48,23 @@ func DefaultCompactionConfig() CompactionConfig {
 
 // CompactionResult contains the results of a compaction run
 type CompactionResult struct {
-	StartedAt           time.Time   `json:"startedAt"`
-	CompletedAt         time.Time   `json:"completedAt"`
-	DurationMs          int64       `json:"durationMs"`
-	SnapshotsDeleted    int         `json:"snapshotsDeleted"`
-	JournalEntriesPurged int        `json:"journalEntriesPurged"`
-	BytesReclaimed      int64       `json:"bytesReclaimed"`
-	FTSVacuumed         bool        `json:"ftsVacuumed"`
-	Errors              []string    `json:"errors,omitempty"`
-	DryRun              bool        `json:"dryRun"`
-	DeletedSnapshots    []string    `json:"deletedSnapshots,omitempty"`
+	StartedAt            time.Time `json:"startedAt"`
+	CompletedAt          time.Time `json:"completedAt"`
+	DurationMs           int64     `json:"durationMs"`
+	SnapshotsDeleted     int       `json:"snapshotsDeleted"`
+	JournalEntriesPurged int       `json:"journalEntriesPurged"`
+	BytesReclaimed       int64     `json:"bytesReclaimed"`
+	FTSVacuumed          bool      `json:"ftsVacuumed"`
+	Errors               []string  `json:"errors,omitempty"`
+	DryRun               bool      `json:"dryRun"`
+	DeletedSnapshots     []string  `json:"deletedSnapshots,omitempty"`
 }
 
 // Compactor handles database compaction operations
 type Compactor struct {
-	config  CompactionConfig
-	logger  *logging.Logger
-	ckbDir  string
+	config CompactionConfig
+	logger *logging.Logger
+	ckbDir string
 }
 
 // NewCompactor creates a new compactor
@@ -84,9 +84,9 @@ func (c *Compactor) Run(ctx context.Context) (*CompactionResult, error) {
 	}
 
 	c.logger.Info("Starting compaction", map[string]interface{}{
-		"dryRun":       c.config.DryRun,
+		"dryRun":        c.config.DryRun,
 		"keepSnapshots": c.config.KeepSnapshots,
-		"keepDays":     c.config.KeepDays,
+		"keepDays":      c.config.KeepDays,
 	})
 
 	// Step 1: Delete old snapshots
