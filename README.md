@@ -183,6 +183,14 @@ Now Claude can answer questions like:
 - **Explicit Tiers** — Control analysis mode: `--tier=fast|standard|full` or `CKB_TIER` env var
 - **Tier Diagnostics** — `ckb doctor --tier enhanced` shows exactly what's missing and how to fix it
 
+### Doc-Symbol Linking (v7.3)
+- **Backtick Detection** — Automatically detect `Symbol.Name` references in markdown
+- **Directive Support** — Explicit `<!-- ckb:symbol -->` and `<!-- ckb:module -->` directives
+- **Fence Scanning** — Extract symbols from fenced code blocks via tree-sitter (8 languages)
+- **Staleness Detection** — Find broken references when symbols are renamed or deleted
+- **Rename Awareness** — Suggest new names when documented symbols are renamed
+- **CI Enforcement** — `--fail-under` flag for documentation coverage thresholds
+
 ## MCP Tools (58 Available)
 
 CKB exposes code intelligence through the Model Context Protocol:
@@ -528,6 +536,7 @@ See the **[Full Documentation Wiki](https://github.com/SimplyLiz/CodeMCP/wiki)**
 - [Language Support](https://github.com/SimplyLiz/CodeMCP/wiki/Language-Support) — SCIP indexers and support tiers
 - [Practical Limits](https://github.com/SimplyLiz/CodeMCP/wiki/Practical-Limits) — Accuracy notes, blind spots
 - [User Guide](https://github.com/SimplyLiz/CodeMCP/wiki/User-Guide) — CLI commands and best practices
+- [Doc-Symbol Linking](https://github.com/SimplyLiz/CodeMCP/wiki/Doc-Symbol-Linking) — Symbol detection in docs, staleness checking
 - [MCP Integration](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration) — Claude Code setup, 58 tools
 - [API Reference](https://github.com/SimplyLiz/CodeMCP/wiki/API-Reference) — HTTP API documentation
 - [Configuration](https://github.com/SimplyLiz/CodeMCP/wiki/Configuration) — All options including MODULES.toml
