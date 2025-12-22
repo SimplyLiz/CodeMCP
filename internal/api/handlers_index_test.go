@@ -1394,3 +1394,182 @@ func TestHandleIndexDeleteConfigRepo(t *testing.T) {
 		t.Errorf("Expected status 403 for config-based repo, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+// === Delta Upload Handler Integration Tests ===
+
+func TestHandleIndexDeltaUploadDisabled(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "ckb-delta-disabled-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	server := createTestServerWithStorage(t, tmpDir)
+	server.config.IndexServer.EnableDeltaUpload = false
+
+	req := httptest.NewRequest(http.MethodPost, "/index/repos/test/repo/upload/delta", strings.NewReader("{}"))
+	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("X-CKB-Base-Commit", "abc123")
+	w := httptest.NewRecorder()
+
+	server.HandleIndexDeltaUpload(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("Expected status 403 when delta disabled, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp IndexResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err == nil && resp.Error != nil {
+		if resp.Error.Code != "delta_disabled" {
+			t.Errorf("Expected error code 'delta_disabled', got %q", resp.Error.Code)
+		}
+	}
+}
+
+func TestHandleIndexDeltaUploadRepoNotFound(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "ckb-delta-notfound-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	server := createTestServerWithStorage(t, tmpDir)
+	server.config.IndexServer.EnableDeltaUpload = true
+
+	req := httptest.NewRequest(http.MethodPost, "/index/repos/nonexistent/repo/upload/delta", strings.NewReader("{}"))
+	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("X-CKB-Base-Commit", "abc123")
+	w := httptest.NewRecorder()
+
+	server.HandleIndexDeltaUpload(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404 for nonexistent repo, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHandleIndexDeltaUploadMissingRepoID(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "ckb-delta-noid-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	server := createTestServerWithStorage(t, tmpDir)
+	server.config.IndexServer.EnableDeltaUpload = true
+
+	// Path without repo ID
+	req := httptest.NewRequest(http.MethodPost, "/index/repos//upload/delta", strings.NewReader("{}"))
+	req.Header.Set("Content-Type", "application/octet-stream")
+	w := httptest.NewRecorder()
+
+	server.HandleIndexDeltaUpload(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400 for missing repo ID, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHandleIndexDeltaUploadMissingBaseCommit(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "ckb-delta-nocommit-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	server := createTestServerWithStorage(t, tmpDir)
+	server.config.IndexServer.EnableDeltaUpload = true
+
+	// Create a repo first
+	if err := server.indexManager.CreateUploadedRepo("test/repo", "Test Repo", ""); err != nil {
+		t.Fatalf("Failed to create repo: %v", err)
+	}
+	server.indexManager.repos["test/repo"] = &IndexRepoHandle{
+		ID: "test/repo",
+		Config: &IndexRepoConfig{
+			ID:     "test/repo",
+			Source: RepoSourceUploaded,
+		},
+	}
+
+	// Request without X-CKB-Base-Commit header
+	req := httptest.NewRequest(http.MethodPost, "/index/repos/test/repo/upload/delta", strings.NewReader("{}"))
+	req.Header.Set("Content-Type", "application/octet-stream")
+	w := httptest.NewRecorder()
+
+	server.HandleIndexDeltaUpload(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400 for missing base commit, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHandleIndexDeltaUploadCommitMismatch(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "ckb-delta-mismatch-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	server := createTestServerWithStorage(t, tmpDir)
+	server.config.IndexServer.EnableDeltaUpload = true
+
+	// Create a repo with a known commit
+	if err := server.indexManager.CreateUploadedRepo("test/repo", "Test Repo", ""); err != nil {
+		t.Fatalf("Failed to create repo: %v", err)
+	}
+
+	// Create a mock handle with a commit set via meta (not db)
+	server.indexManager.repos["test/repo"] = &IndexRepoHandle{
+		ID: "test/repo",
+		Config: &IndexRepoConfig{
+			ID:     "test/repo",
+			Source: RepoSourceUploaded,
+		},
+		meta: &IndexRepoMetadata{
+			Commit: "current-commit-123", // This is what GetRepoCommit returns
+		},
+	}
+
+	// Request with mismatched base commit
+	req := httptest.NewRequest(http.MethodPost, "/index/repos/test/repo/upload/delta", strings.NewReader("{}"))
+	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("X-CKB-Base-Commit", "wrong-commit-456")
+	req.Header.Set("X-CKB-Target-Commit", "new-commit-789")
+	w := httptest.NewRecorder()
+
+	server.HandleIndexDeltaUpload(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Errorf("Expected status 409 for commit mismatch, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Check the response contains the current commit
+	var deltaResp DeltaErrorResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &deltaResp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	if deltaResp.Code != "base_commit_mismatch" {
+		t.Errorf("Expected code 'base_commit_mismatch', got %q", deltaResp.Code)
+	}
+	if deltaResp.CurrentCommit != "current-commit-123" {
+		t.Errorf("Expected current commit 'current-commit-123', got %q", deltaResp.CurrentCommit)
+	}
+}
+
+func TestHandleIndexDeltaUploadNoIndexManager(t *testing.T) {
+	server := &Server{
+		indexManager: nil, // No index manager
+		logger:       logging.NewLogger(logging.Config{Level: logging.ErrorLevel}),
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/index/repos/test/repo/upload/delta", strings.NewReader("{}"))
+	w := httptest.NewRecorder()
+
+	server.HandleIndexDeltaUpload(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("Expected status 503 when index server disabled, got %d: %s", w.Code, w.Body.String())
+	}
+}
