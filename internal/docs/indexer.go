@@ -8,11 +8,11 @@ import (
 
 // Indexer orchestrates document scanning, resolution, and storage.
 type Indexer struct {
-	scanner  *Scanner
-	resolver *Resolver
-	store    *Store
-	repoRoot string
-	config   IndexerConfig
+	scanner     *Scanner
+	symbolIndex SymbolIndex // v1.1: Store for per-document resolver creation
+	store       *Store
+	repoRoot    string
+	config      IndexerConfig
 }
 
 // IndexerConfig contains configuration for the indexer.
@@ -34,11 +34,11 @@ func DefaultIndexerConfig() IndexerConfig {
 // NewIndexer creates a new indexer.
 func NewIndexer(repoRoot string, symbolIndex SymbolIndex, store *Store, config IndexerConfig) *Indexer {
 	return &Indexer{
-		scanner:  NewScanner(repoRoot),
-		resolver: NewResolver(symbolIndex, store, DefaultResolverConfig()),
-		store:    store,
-		repoRoot: repoRoot,
-		config:   config,
+		scanner:     NewScanner(repoRoot),
+		symbolIndex: symbolIndex, // v1.1: Store for per-document resolver
+		store:       store,
+		repoRoot:    repoRoot,
+		config:      config,
 	}
 }
 
@@ -124,10 +124,21 @@ func (i *Indexer) indexFile(path string, force bool) (bool, error) {
 		return false, result.Error
 	}
 
+	// v1.1: Create per-document resolver with known symbols from directives
+	resolverConfig := DefaultResolverConfig()
+	resolverConfig.KnownSymbols = result.KnownSymbols
+	resolver := NewResolver(i.symbolIndex, i.store, resolverConfig)
+
 	// Resolve mentions to symbols
 	var references []DocReference
 	for _, mention := range result.Mentions {
-		resolution := i.resolver.Resolve(mention.RawText)
+		resolution := resolver.Resolve(mention.RawText)
+
+		// v1.1: Apply confidence multiplier for fence-detected symbols
+		confidence := resolution.Confidence
+		if mention.Method == DetectFence {
+			confidence *= 0.7 // Lower confidence for fence-detected symbols
+		}
 
 		ref := DocReference{
 			DocPath:         result.Doc.Path,
@@ -138,7 +149,7 @@ func (i *Indexer) indexFile(path string, force bool) (bool, error) {
 			Context:         mention.Context,
 			DetectionMethod: mention.Method,
 			Resolution:      resolution.Status,
-			Confidence:      resolution.Confidence,
+			Confidence:      confidence,
 			LastResolved:    time.Now(),
 		}
 

@@ -19,6 +19,7 @@ type DetectionMethod string
 const (
 	DetectBacktick  DetectionMethod = "backtick"  // `Symbol.Name`
 	DetectDirective DetectionMethod = "directive" // <!-- ckb:symbol Symbol.Name -->
+	DetectFence     DetectionMethod = "fence"     // v1.1: Identifier in fenced code block
 )
 
 // ResolutionStatus represents the result of symbol resolution.
@@ -39,6 +40,7 @@ const (
 	StalenessMissing   StalenessReason = "missing_symbol"   // Not in index at all
 	StalenessAmbiguous StalenessReason = "ambiguous_symbol" // Matches multiple
 	StalenessIndexGap  StalenessReason = "index_incomplete" // Language/tier not indexed
+	StalenessRenamed   StalenessReason = "symbol_renamed"   // Symbol was renamed/moved (v1.1)
 )
 
 // Document represents an indexed documentation file.
@@ -94,10 +96,11 @@ type ModuleLink struct {
 
 // ScanResult holds the result of scanning a document.
 type ScanResult struct {
-	Doc      Document     `json:"doc"`
-	Mentions []Mention    `json:"mentions"`
-	Modules  []ModuleLink `json:"modules"`
-	Error    error        `json:"-"`
+	Doc          Document     `json:"doc"`
+	Mentions     []Mention    `json:"mentions"`
+	Modules      []ModuleLink `json:"modules"`
+	KnownSymbols []string     `json:"known_symbols,omitempty"` // v1.1: From ckb:known_symbols directive
+	Error        error        `json:"-"`
 }
 
 // ResolutionResult holds the result of attempting to resolve a mention.
@@ -138,6 +141,7 @@ type StaleReference struct {
 	Reason      StalenessReason `json:"reason"`
 	Message     string          `json:"message"`
 	Suggestions []string        `json:"suggestions,omitempty"` // Possible matches
+	NewSymbolID *string         `json:"new_symbol_id,omitempty"` // If renamed, the new ID (v1.1)
 }
 
 // CoverageReport contains documentation coverage analysis.

@@ -106,6 +106,66 @@ func TestModuleDirectivePattern(t *testing.T) {
 	}
 }
 
+func TestKnownSymbolsPattern(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected []string // raw capture group (may include trailing space)
+	}{
+		{"<!-- ckb:known_symbols Engine, Start -->", []string{"Engine, Start "}},
+		{"<!-- ckb:known_symbols UserService -->", []string{"UserService "}},
+		{"<!--ckb:known_symbols Foo,Bar,Baz-->", []string{"Foo,Bar,Baz"}},
+		{"text <!-- ckb:known_symbols A, B --> more", []string{"A, B "}},
+
+		// Should not match
+		{"<!-- ckb:symbol Foo -->", nil},
+		{"<!-- ckb:module foo -->", nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			matches := knownSymbolsPattern.FindAllStringSubmatch(tt.input, -1)
+			if len(matches) != len(tt.expected) {
+				t.Errorf("expected %d matches, got %d", len(tt.expected), len(matches))
+				return
+			}
+			for i, m := range matches {
+				if m[1] != tt.expected[i] {
+					t.Errorf("match %d: expected %q, got %q", i, tt.expected[i], m[1])
+				}
+			}
+		})
+	}
+}
+
+func TestParseKnownSymbols(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected []string
+	}{
+		{"Engine, Start", []string{"Engine", "Start"}},
+		{"Foo,Bar,Baz", []string{"Foo", "Bar", "Baz"}},
+		{"  UserService  ", []string{"UserService"}},
+		{"A, B, C, D", []string{"A", "B", "C", "D"}},
+		{"", nil},
+		{"   ,   ,   ", nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := parseKnownSymbols(tt.input)
+			if len(result) != len(tt.expected) {
+				t.Errorf("expected %d symbols, got %d: %v", len(tt.expected), len(result), result)
+				return
+			}
+			for i, s := range result {
+				if s != tt.expected[i] {
+					t.Errorf("symbol %d: expected %q, got %q", i, tt.expected[i], s)
+				}
+			}
+		})
+	}
+}
+
 func TestFenceTracking(t *testing.T) {
 	// Create a temp file with fenced content
 	content := `# Test Doc

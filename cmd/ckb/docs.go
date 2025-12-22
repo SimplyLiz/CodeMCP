@@ -17,6 +17,7 @@ var (
 	docsAll         bool
 	docsExported    bool
 	docsLimit       int
+	docsFailUnder   float64
 )
 
 var docsCmd = &cobra.Command{
@@ -119,9 +120,12 @@ var docsCoverageCmd = &cobra.Command{
 Reports how many symbols are documented and which high-centrality
 symbols are missing documentation.
 
+Use --fail-under to enforce a minimum coverage threshold in CI.
+
 Examples:
   ckb docs coverage
-  ckb docs coverage --exported-only`,
+  ckb docs coverage --exported-only
+  ckb docs coverage --fail-under=80  # Exit 1 if coverage < 80%`,
 	Run: runDocsCoverage,
 }
 
@@ -149,6 +153,7 @@ func init() {
 	docsCoverageCmd.Flags().StringVar(&docsFormat, "format", "json", "Output format (json, human)")
 	docsCoverageCmd.Flags().BoolVar(&docsExported, "exported-only", false, "Only count exported symbols")
 	docsCoverageCmd.Flags().IntVar(&docsLimit, "top", 10, "Number of top undocumented symbols")
+	docsCoverageCmd.Flags().Float64Var(&docsFailUnder, "fail-under", 0, "Exit 1 if coverage below threshold (0-100)")
 
 	docsCmd.AddCommand(docsIndexCmd)
 	docsCmd.AddCommand(docsSymbolCmd)
@@ -382,6 +387,13 @@ func runDocsCoverage(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Println(output)
+
+	// Check threshold after output (so CI tools can parse results even on failure)
+	if docsFailUnder > 0 && report.CoveragePercent < docsFailUnder {
+		fmt.Fprintf(os.Stderr, "\nCoverage %.1f%% is below threshold %.1f%%\n",
+			report.CoveragePercent, docsFailUnder)
+		os.Exit(1)
+	}
 }
 
 // CLI Response types

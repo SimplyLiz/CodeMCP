@@ -1,13 +1,19 @@
 package docs
 
 import (
+	"fmt"
 	"time"
+
+	"ckb/internal/identity"
+	"ckb/internal/logging"
+	"ckb/internal/storage"
 )
 
 // StalenessChecker checks documents for stale symbol references.
 type StalenessChecker struct {
-	symbolIndex SymbolIndex
-	store       *Store
+	symbolIndex      SymbolIndex
+	store            *Store
+	identityResolver *identity.IdentityResolver // v1.1: For rename detection
 }
 
 // NewStalenessChecker creates a new staleness checker.
@@ -15,6 +21,15 @@ func NewStalenessChecker(symbolIndex SymbolIndex, store *Store) *StalenessChecke
 	return &StalenessChecker{
 		symbolIndex: symbolIndex,
 		store:       store,
+	}
+}
+
+// NewStalenessCheckerWithIdentity creates a staleness checker with rename detection support.
+func NewStalenessCheckerWithIdentity(symbolIndex SymbolIndex, store *Store, db *storage.DB, logger *logging.Logger) *StalenessChecker {
+	return &StalenessChecker{
+		symbolIndex:      symbolIndex,
+		store:            store,
+		identityResolver: identity.NewIdentityResolver(db, logger),
 	}
 }
 
@@ -89,12 +104,70 @@ func (c *StalenessChecker) diagnoseStale(ref DocReference) StaleReference {
 		return stale
 	}
 
+	// v1.1: Check for rename/move via alias chain
+	if ref.SymbolID != nil && *ref.SymbolID != "" {
+		if renameInfo := c.checkForRename(*ref.SymbolID); renameInfo != nil {
+			stale.Reason = StalenessRenamed
+			stale.Message = fmt.Sprintf("Symbol was %s", renameInfo.Reason)
+			stale.Suggestions = []string{renameInfo.NewName}
+			stale.NewSymbolID = &renameInfo.NewSymbolID
+			return stale
+		}
+	}
+
 	// Default: symbol is missing, offer suggestions
 	stale.Reason = StalenessMissing
 	stale.Message = "Symbol not found in index (may have been deleted or renamed)"
 	stale.Suggestions = c.findSuggestions(ref.NormalizedText)
 
 	return stale
+}
+
+// renameInfo holds information about a renamed symbol.
+type renameInfo struct {
+	NewSymbolID string
+	NewName     string
+	Reason      string
+	Confidence  float64
+}
+
+// checkForRename checks if a symbol was renamed/moved using the alias chain.
+func (c *StalenessChecker) checkForRename(oldSymbolID string) *renameInfo {
+	if c.identityResolver == nil {
+		return nil
+	}
+
+	resolved, err := c.identityResolver.ResolveSymbolId(oldSymbolID)
+	if err != nil {
+		return nil
+	}
+
+	// Check if we followed a redirect (alias chain)
+	if resolved.Redirected && resolved.Symbol != nil {
+		newName := getSymbolDisplayName(resolved.Symbol)
+		return &renameInfo{
+			NewSymbolID: resolved.Symbol.StableId,
+			NewName:     newName,
+			Reason:      string(resolved.RedirectReason),
+			Confidence:  resolved.RedirectConfidence,
+		}
+	}
+
+	return nil
+}
+
+// getSymbolDisplayName extracts a human-readable name from a SymbolMapping.
+func getSymbolDisplayName(sym *identity.SymbolMapping) string {
+	if sym.Fingerprint != nil {
+		if sym.Fingerprint.QualifiedContainer != "" && sym.Fingerprint.Name != "" {
+			return sym.Fingerprint.QualifiedContainer + "." + sym.Fingerprint.Name
+		}
+		if sym.Fingerprint.Name != "" {
+			return sym.Fingerprint.Name
+		}
+	}
+	// Fallback to StableId
+	return sym.StableId
 }
 
 // findSuggestions looks for symbols with similar suffix.

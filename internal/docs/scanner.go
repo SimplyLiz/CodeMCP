@@ -14,12 +14,16 @@ import (
 
 // Scanner scans markdown files for symbol mentions.
 type Scanner struct {
-	repoRoot string
+	repoRoot    string
+	fenceParser *FenceParser // v1.1: For fence symbol scanning
 }
 
 // NewScanner creates a new Scanner.
 func NewScanner(repoRoot string) *Scanner {
-	return &Scanner{repoRoot: repoRoot}
+	return &Scanner{
+		repoRoot:    repoRoot,
+		fenceParser: NewFenceParser(),
+	}
 }
 
 // Regex patterns for detection
@@ -41,6 +45,10 @@ var (
 
 	// Module directive: <!-- ckb:module internal/auth -->
 	moduleDirectivePattern = regexp.MustCompile(`<!--\s*ckb:module\s+([^\s>]+)\s*-->`)
+
+	// v1.1: Known symbols directive: <!-- ckb:known_symbols Engine, Start, UserService -->
+	// Allows single-segment symbol detection for listed symbols
+	knownSymbolsPattern = regexp.MustCompile(`<!--\s*ckb:known_symbols\s+([^>]+)\s*-->`)
 )
 
 // ScanFile scans a single markdown file for symbol mentions.
@@ -83,6 +91,10 @@ func (s *Scanner) ScanFile(path string) ScanResult {
 	fenceDelimiter := "" // Track which delimiter started the fence (``` or ~~~)
 	var lines []string
 
+	// v1.1: Track fence content for symbol extraction
+	var currentFence *Fence
+	var fenceContent []string
+
 	for scanner.Scan() {
 		lineNum++
 		line := scanner.Text()
@@ -93,6 +105,12 @@ func (s *Scanner) ScanFile(path string) ScanResult {
 			if match := fenceStartPattern.FindStringSubmatch(line); match != nil {
 				inFence = true
 				fenceDelimiter = match[1] // ``` or ~~~
+				// v1.1: Start tracking fence content
+				currentFence = &Fence{
+					Language:  match[2], // Language hint (go, python, etc.)
+					StartLine: lineNum,
+				}
+				fenceContent = nil
 				continue
 			}
 		} else {
@@ -101,8 +119,20 @@ func (s *Scanner) ScanFile(path string) ScanResult {
 				if match[1] == fenceDelimiter {
 					inFence = false
 					fenceDelimiter = ""
+					// v1.1: Process fence content for symbols
+					if currentFence != nil {
+						currentFence.EndLine = lineNum
+						currentFence.Content = strings.Join(fenceContent, "\n")
+						s.scanFenceSymbols(currentFence, &result)
+						currentFence = nil
+						fenceContent = nil
+					}
 				}
 				continue
+			}
+			// v1.1: Collect fence content
+			if currentFence != nil {
+				fenceContent = append(fenceContent, line)
 			}
 		}
 
@@ -153,6 +183,48 @@ func (s *Scanner) scanDirectives(line string, lineNum int, lines []string, resul
 				Line:     lineNum,
 			})
 		}
+	}
+
+	// v1.1: Known symbols directive (cumulative - can appear multiple times)
+	if matches := knownSymbolsPattern.FindAllStringSubmatch(line, -1); matches != nil {
+		for _, match := range matches {
+			// Parse comma-separated list: "Engine, Start, UserService"
+			symbols := parseKnownSymbols(match[1])
+			result.KnownSymbols = append(result.KnownSymbols, symbols...)
+		}
+	}
+}
+
+// parseKnownSymbols parses a comma-separated list of symbol names.
+func parseKnownSymbols(list string) []string {
+	var symbols []string
+	for _, s := range strings.Split(list, ",") {
+		s = strings.TrimSpace(s)
+		if s != "" {
+			symbols = append(symbols, s)
+		}
+	}
+	return symbols
+}
+
+// v1.1: scanFenceSymbols extracts symbol identifiers from a fenced code block.
+func (s *Scanner) scanFenceSymbols(fence *Fence, result *ScanResult) {
+	if s.fenceParser == nil {
+		return // CGO not available
+	}
+
+	identifiers := s.fenceParser.ExtractIdentifiers(*fence)
+	for _, id := range identifiers {
+		// Calculate absolute line number
+		absoluteLine := fence.StartLine + id.Line
+
+		result.Mentions = append(result.Mentions, Mention{
+			RawText: id.Name,
+			Line:    absoluteLine,
+			Column:  1, // Column is not available from tree-sitter in this context
+			Context: fmt.Sprintf("fence:%s", fence.Language),
+			Method:  DetectFence,
+		})
 	}
 }
 

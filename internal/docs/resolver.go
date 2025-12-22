@@ -21,8 +21,9 @@ type SymbolIndex interface {
 
 // ResolverConfig contains configuration for the resolver.
 type ResolverConfig struct {
-	MinSegments        int  // Minimum segments for suffix match (default: 2)
-	AllowSingleSegment bool // Allow single segment like "Authenticate" (default: false)
+	MinSegments        int      // Minimum segments for suffix match (default: 2)
+	AllowSingleSegment bool     // Allow single segment like "Authenticate" (default: false)
+	KnownSymbols       []string // v1.1: Symbols that bypass segment requirement
 }
 
 // DefaultResolverConfig returns the default resolver configuration.
@@ -30,6 +31,7 @@ func DefaultResolverConfig() ResolverConfig {
 	return ResolverConfig{
 		MinSegments:        2,
 		AllowSingleSegment: false,
+		KnownSymbols:       nil,
 	}
 }
 
@@ -54,13 +56,16 @@ func (r *Resolver) Resolve(rawText string) ResolutionResult {
 	normalized := Normalize(rawText)
 	segments := CountSegments(normalized)
 
-	// Enforce minimum segment requirement
+	// v1.1: Check if symbol is in known_symbols list (bypasses segment requirement)
+	isKnown := r.isKnownSymbol(normalized)
+
+	// Enforce minimum segment requirement (unless known or single segment allowed)
 	// This is NOT ambiguous - it's ineligible (never attempted matching)
-	if segments < r.config.MinSegments && !r.config.AllowSingleSegment {
+	if segments < r.config.MinSegments && !r.config.AllowSingleSegment && !isKnown {
 		return ResolutionResult{
 			Status:     ResolutionIneligible,
 			Confidence: 0.0,
-			Message:    "Single-segment names require directive. Use <!-- ckb:symbol full.path -->",
+			Message:    "Single-segment names require directive. Use <!-- ckb:symbol full.path --> or <!-- ckb:known_symbols Name -->",
 		}
 	}
 
@@ -90,11 +95,16 @@ func (r *Resolver) Resolve(rawText string) ResolutionResult {
 			Message: "Symbol not found in index",
 		}
 	case 1:
+		// v1.1: Lower confidence for known single-segment symbols (0.85 vs 0.95)
+		confidence := 0.95
+		if isKnown && segments == 1 {
+			confidence = 0.85
+		}
 		return ResolutionResult{
 			Status:     ResolutionSuffix,
 			SymbolID:   candidates[0],
 			SymbolName: r.symbolIndex.GetDisplayName(candidates[0]),
-			Confidence: 0.95,
+			Confidence: confidence,
 		}
 	default:
 		return ResolutionResult{
@@ -103,6 +113,21 @@ func (r *Resolver) Resolve(rawText string) ResolutionResult {
 			Message:    "Multiple matches. Add <!-- ckb:symbol full.path --> to disambiguate.",
 		}
 	}
+}
+
+// isKnownSymbol checks if the normalized text matches a known symbol.
+func (r *Resolver) isKnownSymbol(normalized string) bool {
+	for _, known := range r.config.KnownSymbols {
+		// Case-insensitive match for the symbol name
+		if strings.EqualFold(known, normalized) {
+			return true
+		}
+		// Also match if the known symbol is a suffix of the normalized name
+		if strings.HasSuffix(strings.ToLower(normalized), "."+strings.ToLower(known)) {
+			return true
+		}
+	}
+	return false
 }
 
 // SuffixIndex manages the suffix lookup table.

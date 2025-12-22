@@ -75,7 +75,8 @@ func (e *Engine) CheckDocStaleness(path string) (*docs.StalenessReport, error) {
 		return nil, fmt.Errorf("document not found: %s", path)
 	}
 
-	checker := docs.NewStalenessChecker(symbolIndex, store)
+	// v1.1: Use checker with identity support for rename detection
+	checker := docs.NewStalenessCheckerWithIdentity(symbolIndex, store, e.db, e.logger)
 	report := checker.CheckDocument(*doc)
 	return &report, nil
 }
@@ -85,7 +86,8 @@ func (e *Engine) CheckAllDocsStaleness() ([]docs.StalenessReport, error) {
 	store := docs.NewStore(e.db)
 	symbolIndex := &scipSymbolIndex{engine: e}
 
-	checker := docs.NewStalenessChecker(symbolIndex, store)
+	// v1.1: Use checker with identity support for rename detection
+	checker := docs.NewStalenessCheckerWithIdentity(symbolIndex, store, e.db, e.logger)
 	return checker.CheckAllDocuments()
 }
 
