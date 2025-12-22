@@ -142,15 +142,13 @@ func (s *SuffixIndex) Build(symbols []Symbol, version string) error {
 }
 
 // GenerateSuffixes creates all valid suffix forms of a canonical name.
-// For "internal/auth.UserService.Authenticate":
+// For "internal.auth.UserService.Authenticate" (already normalized):
 //   - "UserService.Authenticate" (2 segments)
 //   - "auth.UserService.Authenticate" (3 segments)
-//   - "internal.auth.UserService.Authenticate" (4 segments, full - normalized)
+//   - "internal.auth.UserService.Authenticate" (4 segments, full)
 func GenerateSuffixes(canonicalName string) []string {
-	// Normalize path separators to dots for consistent suffix matching
-	normalized := strings.ReplaceAll(canonicalName, "/", ".")
-
-	parts := strings.Split(normalized, ".")
+	// canonicalName should already be normalized (dots only, no backticks/slashes)
+	parts := strings.Split(canonicalName, ".")
 	if len(parts) == 0 {
 		return nil
 	}
@@ -168,8 +166,8 @@ func GenerateSuffixes(canonicalName string) []string {
 
 // ParseCanonicalName extracts the canonical name from a SCIP symbol ID.
 // SCIP format: "scip-{lang} {manager} {name} {version} {descriptor}"
-// Example: "scip-go gomod github.com/foo/ckb 1.0.0 internal/auth.UserService.Authenticate()."
-// Returns: "internal/auth.UserService.Authenticate"
+// Example: "scip-go gomod github.com/foo/ckb 1.0.0 `internal/auth`.UserService.Authenticate()."
+// Returns: "internal.auth.UserService.Authenticate"
 func ParseCanonicalName(scipSymbol string) string {
 	parts := strings.Split(scipSymbol, " ")
 	if len(parts) < 5 {
@@ -182,6 +180,14 @@ func ParseCanonicalName(scipSymbol string) string {
 	descriptor = strings.TrimSuffix(descriptor, "().")
 	descriptor = strings.TrimSuffix(descriptor, "()")
 	descriptor = strings.TrimSuffix(descriptor, ".")
+
+	// Normalize to match how doc references are processed:
+	// 1. Remove backticks (Go package delimiters in SCIP)
+	descriptor = strings.ReplaceAll(descriptor, "`", "")
+	// 2. Convert # to . (type#method -> type.method)
+	descriptor = strings.ReplaceAll(descriptor, "#", ".")
+	// 3. Convert / to . (path separators)
+	descriptor = strings.ReplaceAll(descriptor, "/", ".")
 
 	return descriptor
 }

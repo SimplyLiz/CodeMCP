@@ -3755,6 +3755,10 @@ func (e *Engine) getRelatedDocs(symbolID string, limit int) []RelatedDoc {
 			Path: ref.DocPath,
 			Line: ref.Line,
 		}
+		// Try to get the document title
+		if docInfo, err := e.GetDocumentInfo(ref.DocPath); err == nil && docInfo != nil {
+			doc.Title = docInfo.Title
+		}
 		// Add context if available (truncate to reasonable length)
 		if ref.Context != "" {
 			ctx := ref.Context

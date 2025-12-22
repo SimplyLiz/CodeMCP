@@ -54,20 +54,20 @@ type Document struct {
 
 // DocReference links a document location to a symbol mention.
 type DocReference struct {
-	ID              int64            `json:"id"`                         // Database ID
-	DocPath         string           `json:"doc_path"`                   // Path to document
-	RawText         string           `json:"raw_text"`                   // Exactly as written: `UserService.Auth`
-	NormalizedText  string           `json:"normalized_text"`            // Normalized: UserService.Auth
-	SymbolID        *string          `json:"symbol_id,omitempty"`        // Resolved SCIP symbol ID (nil if unresolved)
-	SymbolName      string           `json:"symbol_name,omitempty"`      // Human-friendly display name
-	Line            int              `json:"line"`                       // 1-indexed line number
-	Column          int              `json:"column"`                     // 1-indexed column
-	Context         string           `json:"context,omitempty"`          // Surrounding text snippet (±100 chars)
-	DetectionMethod DetectionMethod  `json:"detection_method"`           // How it was detected
-	Resolution      ResolutionStatus `json:"resolution"`                 // Resolution result
-	Candidates      []string         `json:"candidates,omitempty"`       // If ambiguous, list of candidate symbol IDs
-	Confidence      float64          `json:"confidence"`                 // 0.0-1.0
-	LastResolved    time.Time        `json:"last_resolved"`              // When resolution was last attempted
+	ID              int64            `json:"id"`                    // Database ID
+	DocPath         string           `json:"doc_path"`              // Path to document
+	RawText         string           `json:"raw_text"`              // Exactly as written: `UserService.Auth`
+	NormalizedText  string           `json:"normalized_text"`       // Normalized: UserService.Auth
+	SymbolID        *string          `json:"symbol_id,omitempty"`   // Resolved SCIP symbol ID (nil if unresolved)
+	SymbolName      string           `json:"symbol_name,omitempty"` // Human-friendly display name
+	Line            int              `json:"line"`                  // 1-indexed line number
+	Column          int              `json:"column"`                // 1-indexed column
+	Context         string           `json:"context,omitempty"`     // Surrounding text snippet (±100 chars)
+	DetectionMethod DetectionMethod  `json:"detection_method"`      // How it was detected
+	Resolution      ResolutionStatus `json:"resolution"`            // Resolution result
+	Candidates      []string         `json:"candidates,omitempty"`  // If ambiguous, list of candidate symbol IDs
+	Confidence      float64          `json:"confidence"`            // 0.0-1.0
+	LastResolved    time.Time        `json:"last_resolved"`         // When resolution was last attempted
 }
 
 // DocModuleLink represents a manual module↔doc link via directive.
@@ -142,12 +142,12 @@ type StaleReference struct {
 
 // CoverageReport contains documentation coverage analysis.
 type CoverageReport struct {
-	TotalSymbols     int             `json:"total_symbols"`
-	Documented       int             `json:"documented"`
-	Undocumented     int             `json:"undocumented"`
-	CoveragePercent  float64         `json:"coverage_percent"`
-	TopUndocumented  []UndocSymbol   `json:"top_undocumented,omitempty"`
-	ByModule         []ModuleCoverage `json:"by_module,omitempty"`
+	TotalSymbols    int              `json:"total_symbols"`
+	Documented      int              `json:"documented"`
+	Undocumented    int              `json:"undocumented"`
+	CoveragePercent float64          `json:"coverage_percent"`
+	TopUndocumented []UndocSymbol    `json:"top_undocumented,omitempty"`
+	ByModule        []ModuleCoverage `json:"by_module,omitempty"`
 }
 
 // UndocSymbol represents an undocumented symbol in coverage reports.

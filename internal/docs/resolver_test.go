@@ -14,7 +14,8 @@ func TestGenerateSuffixes(t *testing.T) {
 			[]string{"UserService.Authenticate"},
 		},
 		{
-			"internal/auth.UserService.Authenticate",
+			// Input should already be normalized (dots only)
+			"internal.auth.UserService.Authenticate",
 			[]string{
 				"UserService.Authenticate",
 				"auth.UserService.Authenticate",
@@ -53,8 +54,9 @@ func TestParseCanonicalName(t *testing.T) {
 		expected string
 	}{
 		{
+			// Slashes normalized to dots
 			"scip-go gomod github.com/foo/ckb 1.0.0 internal/auth.UserService.Authenticate().",
-			"internal/auth.UserService.Authenticate",
+			"internal.auth.UserService.Authenticate",
 		},
 		{
 			"scip-go gomod github.com/foo/ckb 1.0.0 pkg.Function().",
@@ -63,6 +65,16 @@ func TestParseCanonicalName(t *testing.T) {
 		{
 			"scip-go gomod github.com/foo/ckb 1.0.0 pkg.Variable.",
 			"pkg.Variable",
+		},
+		{
+			// Backticks removed, slashes normalized
+			"scip-go gomod ckb 1.0.0 `ckb/internal/query`.Engine#Start().",
+			"ckb.internal.query.Engine.Start",
+		},
+		{
+			// Hash normalized to dot
+			"scip-go gomod ckb 1.0.0 pkg.Type#Method().",
+			"pkg.Type.Method",
 		},
 		{
 			// Fallback for non-standard format

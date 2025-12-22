@@ -8,11 +8,11 @@ import (
 
 // Indexer orchestrates document scanning, resolution, and storage.
 type Indexer struct {
-	scanner     *Scanner
-	resolver    *Resolver
-	store       *Store
-	repoRoot    string
-	config      IndexerConfig
+	scanner  *Scanner
+	resolver *Resolver
+	store    *Store
+	repoRoot string
+	config   IndexerConfig
 }
 
 // IndexerConfig contains configuration for the indexer.

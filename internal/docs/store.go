@@ -100,7 +100,7 @@ func (s *Store) GetDocument(path string) (*Document, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get modules: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var modID string
@@ -125,7 +125,7 @@ func (s *Store) GetReferencesForDoc(path string) ([]DocReference, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to query references: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return s.scanReferences(rows)
 }
@@ -148,7 +148,7 @@ func (s *Store) GetDocsForSymbol(symbolID string, limit int) ([]DocReference, er
 	if err != nil {
 		return nil, fmt.Errorf("failed to query docs for symbol: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return s.scanReferences(rows)
 }
@@ -165,7 +165,7 @@ func (s *Store) GetDocsForModule(moduleID string) ([]Document, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to query docs for module: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var docs []Document
 	for rows.Next() {
@@ -190,7 +190,7 @@ func (s *Store) GetAllDocuments() ([]Document, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to query documents: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var docs []Document
 	for rows.Next() {
@@ -300,7 +300,7 @@ func (s *Store) SuffixMatch(suffix string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var candidates []string
 	for rows.Next() {
@@ -363,7 +363,7 @@ func (s *Store) GetStats() (*IndexStats, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var resolution string

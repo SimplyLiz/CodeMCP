@@ -240,12 +240,12 @@ func runDocsFile(cmd *cobra.Command, args []string) {
 	}
 
 	response := &DocsFileResponseCLI{
-		Path:            doc.Path,
-		Type:            string(doc.Type),
-		Title:           doc.Title,
-		ReferenceCount:  len(doc.References),
-		ModuleCount:     len(doc.Modules),
-		LastIndexed:     doc.LastIndexed.Format(time.RFC3339),
+		Path:           doc.Path,
+		Type:           string(doc.Type),
+		Title:          doc.Title,
+		ReferenceCount: len(doc.References),
+		ModuleCount:    len(doc.Modules),
+		LastIndexed:    doc.LastIndexed.Format(time.RFC3339),
 	}
 
 	if docsShowSymbols {
@@ -440,10 +440,10 @@ type DocsStaleResponseCLI struct {
 }
 
 type StaleReportCLI struct {
-	DocPath         string          `json:"docPath"`
-	TotalReferences int             `json:"totalReferences"`
-	Valid           int             `json:"valid"`
-	Stale           []StaleRefCLI   `json:"stale"`
+	DocPath         string        `json:"docPath"`
+	TotalReferences int           `json:"totalReferences"`
+	Valid           int           `json:"valid"`
+	Stale           []StaleRefCLI `json:"stale"`
 }
 
 type StaleRefCLI struct {

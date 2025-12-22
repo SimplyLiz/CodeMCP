@@ -29,6 +29,9 @@ var (
 	// Supports: Foo.Bar, crate::mod::Type, Class#method, pkg/sub.Func, Class->method
 	backtickPattern = regexp.MustCompile("`([A-Za-z_][A-Za-z0-9_]*(?:(?:::|->|[.#/])[A-Za-z_][A-Za-z0-9_]*)+)`")
 
+	// File extension pattern - used to filter out file paths from symbol detection
+	fileExtPattern = regexp.MustCompile(`\.(go|js|ts|tsx|jsx|py|rs|java|kt|rb|c|cpp|h|hpp|cs|swift|md|json|yaml|yml|toml|xml|html|css|scss|sql|sh|bash|zsh|scip|lock|sum|mod)$`)
+
 	// Fence start/end - allow leading whitespace, support ``` and ~~~
 	fenceStartPattern = regexp.MustCompile(`^\s*(` + "```" + `|~~~)(\w*)\s*$`)
 	fenceEndPattern   = regexp.MustCompile(`^\s*(` + "```" + `|~~~)\s*$`)
@@ -54,7 +57,7 @@ func (s *Scanner) ScanFile(path string) ScanResult {
 		result.Error = err
 		return result
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Compute hash
 	hash := sha256.New()
@@ -158,6 +161,13 @@ func (s *Scanner) scanBackticks(line string, lineNum int, lines []string, result
 	matches := backtickPattern.FindAllStringSubmatchIndex(line, -1)
 	for _, match := range matches {
 		rawText := line[match[0]:match[1]] // Include backticks
+		innerText := line[match[2]:match[3]]
+
+		// Skip file paths (things with file extensions)
+		if fileExtPattern.MatchString(innerText) {
+			continue
+		}
+
 		result.Mentions = append(result.Mentions, Mention{
 			RawText: rawText,
 			Line:    lineNum,
