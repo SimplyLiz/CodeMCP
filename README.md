@@ -191,6 +191,13 @@ Now Claude can answer questions like:
 - **Rename Awareness** — Suggest new names when documented symbols are renamed
 - **CI Enforcement** — `--fail-under` flag for documentation coverage thresholds
 
+### Incremental Indexing (v7.4)
+- **O(changed files)** — Index updates in seconds instead of full reindex (Go only)
+- **Git-based Detection** — Uses `git diff -z` for accurate change tracking with rename support
+- **Accuracy Guarantees** — Forward references always accurate; reverse refs may be stale
+- **Automatic Fallback** — Falls back to full reindex when >50% files changed or schema mismatch
+- **Index State Tracking** — Shows "partial" vs "full" state with staleness warnings
+
 ## MCP Tools (64 Available)
 
 CKB exposes code intelligence through the Model Context Protocol:
@@ -562,6 +569,7 @@ See the **[Full Documentation Wiki](https://github.com/SimplyLiz/CodeMCP/wiki)**
 - [Language Support](https://github.com/SimplyLiz/CodeMCP/wiki/Language-Support) — SCIP indexers and support tiers
 - [Practical Limits](https://github.com/SimplyLiz/CodeMCP/wiki/Practical-Limits) — Accuracy notes, blind spots
 - [User Guide](https://github.com/SimplyLiz/CodeMCP/wiki/User-Guide) — CLI commands and best practices
+- [Incremental Indexing](https://github.com/SimplyLiz/CodeMCP/wiki/Incremental-Indexing) — Fast index updates for Go projects
 - [Doc-Symbol Linking](https://github.com/SimplyLiz/CodeMCP/wiki/Doc-Symbol-Linking) — Symbol detection in docs, staleness checking
 - [MCP Integration](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration) — Claude Code setup, 58 tools
 - [API Reference](https://github.com/SimplyLiz/CodeMCP/wiki/API-Reference) — HTTP API documentation

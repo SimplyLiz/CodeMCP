@@ -12,9 +12,13 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"ckb/internal/config"
+	"ckb/internal/incremental"
 	"ckb/internal/index"
+	"ckb/internal/logging"
 	"ckb/internal/project"
 	"ckb/internal/repostate"
+	"ckb/internal/storage"
 	"ckb/internal/tier"
 )
 
@@ -89,7 +93,15 @@ func runIndex(cmd *cobra.Command, args []string) {
 		fmt.Println()
 	}
 
-	indexPath := filepath.Join(repoRoot, "index.scip")
+	// Get SCIP index path from config (default: .scip/index.scip)
+	indexPath := ".scip/index.scip"
+	if cfg, loadErr := config.LoadConfig(repoRoot); loadErr == nil && cfg.Backends.Scip.IndexPath != "" {
+		indexPath = cfg.Backends.Scip.IndexPath
+	}
+	// Make absolute if relative
+	if !filepath.IsAbs(indexPath) {
+		indexPath = filepath.Join(repoRoot, indexPath)
+	}
 
 	// Check index freshness (unless --force)
 	if !indexForce {
@@ -222,6 +234,16 @@ func runIndex(cmd *cobra.Command, args []string) {
 			fmt.Fprintln(os.Stderr, "  composer install")
 			os.Exit(1)
 		}
+
+	case project.LangGo:
+		// Ensure output directory exists
+		outputDir := filepath.Dir(indexPath)
+		if err := os.MkdirAll(outputDir, 0755); err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating index directory %s: %v\n", outputDir, err)
+			os.Exit(1)
+		}
+		// Add --output flag to use configured path
+		command = fmt.Sprintf("%s --output %s", command, indexPath)
 	}
 
 	// Check if indexer is installed
@@ -242,6 +264,15 @@ func runIndex(cmd *cobra.Command, args []string) {
 		fmt.Println()
 		fmt.Println("[dry-run] Would execute the above command")
 		os.Exit(0)
+	}
+
+	// Try incremental indexing for Go projects (unless --force)
+	if !indexForce && lang == project.LangGo {
+		if tryIncrementalIndex(repoRoot, ckbDir) {
+			// Incremental succeeded, we're done
+			return
+		}
+		// Fall through to full index
 	}
 
 	// Acquire lock to prevent concurrent indexing
@@ -307,6 +338,11 @@ func runIndex(cmd *cobra.Command, args []string) {
 
 	if saveErr := meta.Save(ckbDir); saveErr != nil {
 		fmt.Fprintf(os.Stderr, "Warning: Could not save index metadata: %v\n", saveErr)
+	}
+
+	// Populate incremental tracking tables (for Go projects)
+	if lang == project.LangGo {
+		populateIncrementalTracking(repoRoot)
 	}
 
 	// Success message
@@ -595,4 +631,121 @@ func getSourceExtensions(lang project.Language) []string {
 	default:
 		return nil
 	}
+}
+
+// tryIncrementalIndex attempts incremental indexing for Go projects.
+// Returns true if incremental succeeded (caller should return early).
+// Returns false if full reindex is needed.
+func tryIncrementalIndex(repoRoot, ckbDir string) bool {
+	dbPath := filepath.Join(ckbDir, "ckb.db")
+
+	// Check if database exists
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+		// No database = no previous index
+		return false
+	}
+
+	// Create logger (quiet for CLI - only errors)
+	logger := logging.NewLogger(logging.Config{
+		Format: logging.HumanFormat,
+		Level:  logging.ErrorLevel,
+	})
+
+	// Open database
+	db, err := storage.Open(repoRoot, logger)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Could not open database for incremental: %v\n", err)
+		return false
+	}
+	defer db.Close()
+
+	// Get SCIP index path from config (default: .scip/index.scip)
+	indexPath := ".scip/index.scip"
+	if cfg, loadErr := config.LoadConfig(repoRoot); loadErr == nil && cfg.Backends.Scip.IndexPath != "" {
+		indexPath = cfg.Backends.Scip.IndexPath
+	}
+
+	// Create incremental config with the configured index path
+	incConfig := &incremental.Config{
+		IndexPath:            indexPath,
+		IncrementalThreshold: 50,
+		IndexTests:           false,
+	}
+
+	// Create incremental indexer
+	indexer := incremental.NewIncrementalIndexer(repoRoot, db, incConfig, logger)
+
+	// Check if we need full reindex
+	needsFull, reason := indexer.NeedsFullReindex()
+	if needsFull {
+		fmt.Printf("Full reindex required: %s\n", reason)
+		return false
+	}
+
+	// Acquire lock to prevent concurrent indexing
+	lock, err := index.AcquireLock(ckbDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return false
+	}
+	defer lock.Release()
+
+	// Try incremental update
+	ctx := context.Background()
+	stats, err := indexer.IndexIncremental(ctx, "")
+	if err != nil {
+		fmt.Printf("Incremental failed: %v\n", err)
+		fmt.Println("Falling back to full reindex...")
+		return false
+	}
+
+	// Get current state for display
+	state := indexer.GetIndexState()
+
+	// Format and display results
+	fmt.Println(incremental.FormatStats(stats, state))
+
+	return true
+}
+
+// populateIncrementalTracking sets up tracking tables after a full index.
+// This enables subsequent incremental updates.
+func populateIncrementalTracking(repoRoot string) {
+	// Create logger (quiet for CLI - only errors)
+	logger := logging.NewLogger(logging.Config{
+		Format: logging.HumanFormat,
+		Level:  logging.ErrorLevel,
+	})
+
+	// Open database
+	db, err := storage.Open(repoRoot, logger)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Could not open database for incremental tracking: %v\n", err)
+		return
+	}
+	defer db.Close()
+
+	// Get SCIP index path from config (default: .scip/index.scip)
+	indexPath := ".scip/index.scip"
+	if cfg, loadErr := config.LoadConfig(repoRoot); loadErr == nil && cfg.Backends.Scip.IndexPath != "" {
+		indexPath = cfg.Backends.Scip.IndexPath
+	}
+
+	// Create incremental config with the configured index path
+	incConfig := &incremental.Config{
+		IndexPath:            indexPath,
+		IncrementalThreshold: 50,
+		IndexTests:           false,
+	}
+
+	// Create incremental indexer
+	indexer := incremental.NewIncrementalIndexer(repoRoot, db, incConfig, logger)
+
+	// Populate tracking tables from the full index
+	if err := indexer.PopulateAfterFullIndex(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Could not populate incremental tracking: %v\n", err)
+		return
+	}
+
+	fmt.Println("  Incremental tracking enabled for future updates")
 }

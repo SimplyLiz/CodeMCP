@@ -11,7 +11,8 @@ import (
 // v3: Telemetry (observed_usage, observed_callers, coverage_snapshots)
 // v4: Developer Intelligence (coupling_cache, risk_scores)
 // v5: Doc-Symbol Linking (docs, doc_references, doc_modules, symbol_suffixes)
-const currentSchemaVersion = 5
+// v6: Incremental Indexing (indexed_files, file_symbols, index_meta)
+const currentSchemaVersion = 6
 
 // initializeSchema creates all tables for a new database
 func (db *DB) initializeSchema() error {
@@ -73,6 +74,11 @@ func (db *DB) initializeSchema() error {
 			return err
 		}
 
+		// Create v6 Incremental Indexing tables
+		if err := createIncrementalIndexingTables(tx); err != nil {
+			return err
+		}
+
 		// Set initial schema version
 		if err := setSchemaVersion(tx, currentSchemaVersion); err != nil {
 			return err
@@ -128,6 +134,12 @@ func (db *DB) runMigrations() error {
 	if version < 5 {
 		if err := db.migrateToV5(); err != nil {
 			return fmt.Errorf("failed to migrate to v5: %w", err)
+		}
+	}
+
+	if version < 6 {
+		if err := db.migrateToV6(); err != nil {
+			return fmt.Errorf("failed to migrate to v6: %w", err)
 		}
 	}
 
@@ -1022,6 +1034,79 @@ func createDocsTables(tx *sql.Tx) error {
 	for _, idx := range indexes {
 		if _, err := tx.Exec(idx); err != nil {
 			return fmt.Errorf("failed to create docs index: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// ============================================================================
+// v6 Schema: Incremental Indexing Tables
+// ============================================================================
+
+// migrateToV6 migrates the database from v5 to v6 (Incremental Indexing)
+func (db *DB) migrateToV6() error {
+	return db.WithTx(func(tx *sql.Tx) error {
+		db.logger.Info("Migrating database to v6 (Incremental Indexing)", nil)
+
+		// Create new v6 incremental indexing tables
+		if err := createIncrementalIndexingTables(tx); err != nil {
+			return err
+		}
+
+		// Update schema version
+		if err := setSchemaVersion(tx, 6); err != nil {
+			return err
+		}
+
+		db.logger.Info("Database migrated to v6", nil)
+		return nil
+	})
+}
+
+// createIncrementalIndexingTables creates tables for incremental SCIP indexing
+func createIncrementalIndexingTables(tx *sql.Tx) error {
+	tables := []string{
+		// Track indexed files for change detection
+		`CREATE TABLE IF NOT EXISTS indexed_files (
+			path TEXT PRIMARY KEY,
+			hash TEXT NOT NULL,
+			mtime INTEGER,
+			indexed_at INTEGER NOT NULL,
+			scip_document_hash TEXT,
+			symbol_count INTEGER DEFAULT 0
+		)`,
+
+		// Map files to their symbols for fast invalidation
+		`CREATE TABLE IF NOT EXISTS file_symbols (
+			file_path TEXT NOT NULL,
+			symbol_id TEXT NOT NULL,
+			PRIMARY KEY (file_path, symbol_id)
+		)`,
+
+		// Key-value store for incremental index state
+		`CREATE TABLE IF NOT EXISTS index_meta (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL
+		)`,
+	}
+
+	for _, stmt := range tables {
+		if _, err := tx.Exec(stmt); err != nil {
+			return fmt.Errorf("failed to create incremental indexing table: %w", err)
+		}
+	}
+
+	// Create indexes for efficient queries
+	indexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_indexed_files_indexed ON indexed_files(indexed_at)",
+		"CREATE INDEX IF NOT EXISTS idx_file_symbols_file ON file_symbols(file_path)",
+		"CREATE INDEX IF NOT EXISTS idx_file_symbols_symbol ON file_symbols(symbol_id)",
+	}
+
+	for _, idx := range indexes {
+		if _, err := tx.Exec(idx); err != nil {
+			return fmt.Errorf("failed to create incremental indexing index: %w", err)
 		}
 	}
 
