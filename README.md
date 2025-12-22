@@ -156,10 +156,11 @@ Now Claude can answer questions like:
 - **Index Upload** — Push SCIP indexes with compression (gzip/zstd)
 - **Delta Updates** — Upload only changed files
 - **API Key Auth** — Scoped keys with rate limiting
+- **Remote Federation** — Connect to remote CKB servers and query alongside local repos
 
 📋 **[Full Changelog](https://github.com/SimplyLiz/CodeMCP/blob/main/CHANGELOG.md)** — Detailed version history from v5.1 to current
 
-## MCP Tools (64 Available)
+## MCP Tools (71 Available)
 
 CKB exposes code intelligence through the Model Context Protocol:
 
@@ -265,6 +266,21 @@ CKB exposes code intelligence through the Model Context Protocol:
 
 </details>
 
+<details>
+<summary><strong>v7.4 — Remote Federation</strong></summary>
+
+| Tool | Purpose |
+|------|---------|
+| `federationAddRemote` | Add a remote CKB index server |
+| `federationRemoveRemote` | Remove a remote server |
+| `federationListRemote` | List remote servers in federation |
+| `federationSyncRemote` | Sync metadata from remote servers |
+| `federationStatusRemote` | Check remote server connectivity |
+| `federationSearchSymbolsHybrid` | Search across local + remote |
+| `federationListAllRepos` | List repos from local and remote |
+
+</details>
+
 ## CLI Usage
 
 ```bash
@@ -308,6 +324,12 @@ ckb federation create platform --description "Our microservices"
 ckb federation add platform --repo-id=api --path=/code/api
 ckb federation status platform
 ckb federation sync platform
+
+# Remote Federation (v7.4)
+ckb federation add-remote platform prod --url=https://ckb.company.com --token=$CKB_TOKEN
+ckb federation list-remote platform
+ckb federation sync-remote platform
+ckb federation status-remote platform prod
 
 # Daemon (v6.2.1)
 ckb daemon start [--port=9120]
@@ -546,7 +568,7 @@ See the **[Full Documentation Wiki](https://github.com/SimplyLiz/CodeMCP/wiki)**
 - [User Guide](https://github.com/SimplyLiz/CodeMCP/wiki/User-Guide) — CLI commands and best practices
 - [Incremental Indexing](https://github.com/SimplyLiz/CodeMCP/wiki/Incremental-Indexing) — Fast index updates for Go projects
 - [Doc-Symbol Linking](https://github.com/SimplyLiz/CodeMCP/wiki/Doc-Symbol-Linking) — Symbol detection in docs, staleness checking
-- [MCP Integration](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration) — Claude Code setup, 64 tools
+- [MCP Integration](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration) — Claude Code setup, 71 tools
 - [API Reference](https://github.com/SimplyLiz/CodeMCP/wiki/API-Reference) — HTTP API documentation
 - [Configuration](https://github.com/SimplyLiz/CodeMCP/wiki/Configuration) — All options including MODULES.toml
 - [Telemetry](https://github.com/SimplyLiz/CodeMCP/wiki/Telemetry) — Runtime observability, dead code detection

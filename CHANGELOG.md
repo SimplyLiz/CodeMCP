@@ -6,6 +6,70 @@ All notable changes to CKB will be documented in this file.
 
 ### Added
 
+#### Remote Federation Client (v3 Federation Phase 5)
+Connect to remote CKB index servers and query them alongside local repositories—transforming federation from local-only aggregation to a distributed code intelligence network.
+
+**Core Features:**
+- **Remote Server Management** — Add, remove, enable, disable remote CKB index servers
+- **Hybrid Queries** — Search symbols across local federation repos AND remote servers in parallel
+- **Source Attribution** — Results show whether they came from "local" or a named remote server
+- **Graceful Degradation** — Queries succeed even when some remotes are unavailable
+
+**Caching:**
+- Repository list cached for 1 hour
+- Metadata cached for 1 hour
+- Symbol searches cached for 15 minutes
+- Refs and call graph always fresh (not cached)
+- Configurable per-server cache TTL
+
+**HTTP Client:**
+- Bearer token authentication with environment variable expansion (`${VAR}`)
+- Exponential backoff retry logic (max 3 retries)
+- Configurable timeouts per server
+- Response body limiting (10MB max)
+
+**CLI Commands:**
+```bash
+# Add a remote CKB index server
+ckb federation add-remote <federation> <name> --url=<url> [--token=<token>] [--cache-ttl=1h] [--timeout=30s]
+
+# Remove a remote server
+ckb federation remove-remote <federation> <name>
+
+# List remote servers
+ckb federation list-remote <federation> [--json]
+
+# Sync metadata from remote server(s)
+ckb federation sync-remote <federation> [name] [--json]
+
+# Check remote server status
+ckb federation status-remote <federation> <name> [--json]
+
+# Enable/disable remote server
+ckb federation enable-remote <federation> <name>
+ckb federation disable-remote <federation> <name>
+```
+
+**MCP Tools (7 new):**
+- `federationAddRemote` — Add a remote server to a federation
+- `federationRemoveRemote` — Remove a remote server
+- `federationListRemote` — List remote servers in a federation
+- `federationSyncRemote` — Sync metadata from remote servers
+- `federationStatusRemote` — Get status of a remote server
+- `federationSearchSymbolsHybrid` — Search symbols across local + remote
+- `federationListAllRepos` — List repos from local and remote sources
+
+**Configuration:**
+```toml
+[[remote_servers]]
+name = "prod"
+url = "https://ckb.company.com"
+token = "${CKB_PROD_TOKEN}"   # Environment variable expansion
+cache_ttl = "1h"
+timeout = "30s"
+enabled = true
+```
+
 #### Authentication & API Keys (v3 Federation Phase 4)
 Scoped API key authentication for the index server, enabling secure multi-tenant access with fine-grained permissions.
 
@@ -310,6 +374,15 @@ Tracks file-level dependencies and automatically queues dependent files for resc
 ```
 
 ### Files Added
+- `internal/federation/` - Remote federation client
+  - `remote_types.go` — Response types matching index server API
+  - `remote_config.go` — Remote server configuration and env var expansion
+  - `remote_client.go` — HTTP client with retry logic and all API methods
+  - `remote_cache.go` — Caching wrapper with TTL management
+  - `hybrid.go` — Local + remote query merging engine
+  - `remote_test.go` — Tests for remote client and configuration
+- `cmd/ckb/federation_remote.go` - CLI commands for remote federation
+- `internal/mcp/tool_impls_v74.go` - MCP tool implementations for remote federation
 - `internal/api/` - Remote index serving and upload
   - `index_config.go` — Configuration types and TOML loading (Phase 3: compression, delta config)
   - `index_types.go` — API response types
@@ -347,6 +420,9 @@ Tracks file-level dependencies and automatically queues dependent files for resc
   - `indexer_test.go`, `deps_test.go`, `types_test.go` — Tests
 
 ### Changed
+- `internal/federation/config.go` — Added RemoteServers field to Config struct
+- `internal/federation/index.go` — Schema v3 with remote_servers, remote_repos, remote_cache tables
+- `internal/mcp/tools.go` — Registered 7 new MCP tools for remote federation
 - `internal/api/server.go` — Added IndexRepoManager, NewServer now returns error
 - `internal/api/routes.go` — Added /index/* route registration
 - `cmd/ckb/serve.go` — Added --index-server and --index-config flags

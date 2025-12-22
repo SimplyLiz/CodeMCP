@@ -29,6 +29,9 @@ type Config struct {
 
 	// Repos is the list of repositories in this federation
 	Repos []RepoConfig `toml:"repos"`
+
+	// RemoteServers is the list of remote index servers (Phase 5)
+	RemoteServers []RemoteServer `toml:"remote_servers,omitempty"`
 }
 
 // RepoConfig represents a repository entry in the federation config
