@@ -1,7 +1,13 @@
 package incremental
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
+
+	"ckb/internal/logging"
+	"ckb/internal/storage"
 )
 
 func TestParseGitDiffNUL(t *testing.T) {
@@ -262,5 +268,395 @@ func TestIsExcluded(t *testing.T) {
 				t.Errorf("isExcluded(%q) = %v, want %v", tc.path, result, tc.expected)
 			}
 		})
+	}
+}
+
+func setupTestDetector(t *testing.T) (*ChangeDetector, *Store, string, func()) {
+	t.Helper()
+
+	// Create temp directory
+	tmpDir, err := os.MkdirTemp("", "incremental-detector-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+
+	// Create .ckb directory
+	ckbDir := filepath.Join(tmpDir, ".ckb")
+	if err := os.MkdirAll(ckbDir, 0755); err != nil {
+		os.RemoveAll(tmpDir)
+		t.Fatalf("failed to create .ckb dir: %v", err)
+	}
+
+	// Create logger
+	logger := logging.NewLogger(logging.Config{
+		Format: logging.HumanFormat,
+		Level:  logging.ErrorLevel,
+	})
+
+	// Open database
+	db, err := storage.Open(tmpDir, logger)
+	if err != nil {
+		os.RemoveAll(tmpDir)
+		t.Fatalf("failed to open database: %v", err)
+	}
+
+	store := NewStore(db, logger)
+	config := DefaultConfig()
+	detector := NewChangeDetector(tmpDir, store, config, logger)
+
+	cleanup := func() {
+		db.Close() //nolint:errcheck // Test cleanup
+		os.RemoveAll(tmpDir)
+	}
+
+	return detector, store, tmpDir, cleanup
+}
+
+func initGitRepo(t *testing.T, dir string) {
+	t.Helper()
+
+	cmd := exec.Command("git", "init")
+	cmd.Dir = dir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("git init failed: %v", err)
+	}
+
+	// Configure git user for commits
+	configCmd := exec.Command("git", "config", "user.email", "test@test.com")
+	configCmd.Dir = dir
+	configCmd.Run() //nolint:errcheck
+
+	configCmd2 := exec.Command("git", "config", "user.name", "Test")
+	configCmd2.Dir = dir
+	configCmd2.Run() //nolint:errcheck
+}
+
+func TestNewChangeDetector(t *testing.T) {
+	detector, _, _, cleanup := setupTestDetector(t)
+	defer cleanup()
+
+	if detector == nil {
+		t.Fatal("expected non-nil detector")
+	}
+	if detector.store == nil {
+		t.Error("expected non-nil store")
+	}
+	if detector.config == nil {
+		t.Error("expected non-nil config")
+	}
+}
+
+func TestNewChangeDetector_NilConfig(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "detector-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+
+	// Pass nil config
+	detector := NewChangeDetector(tmpDir, nil, nil, logger)
+
+	if detector.config == nil {
+		t.Fatal("expected non-nil config after initialization")
+	}
+}
+
+func TestIsGitRepo_NonGitDir(t *testing.T) {
+	detector, _, _, cleanup := setupTestDetector(t)
+	defer cleanup()
+
+	// Temp dir is not a git repo
+	if detector.isGitRepo() {
+		t.Error("expected isGitRepo=false for non-git directory")
+	}
+}
+
+func TestIsGitRepo_GitDir(t *testing.T) {
+	detector, _, tmpDir, cleanup := setupTestDetector(t)
+	defer cleanup()
+
+	// Initialize git repo
+	initGitRepo(t, tmpDir)
+
+	if !detector.isGitRepo() {
+		t.Error("expected isGitRepo=true for git directory")
+	}
+}
+
+func TestGetCurrentCommit_NonGitRepo(t *testing.T) {
+	detector, _, _, cleanup := setupTestDetector(t)
+	defer cleanup()
+
+	commit := detector.GetCurrentCommit()
+	if commit != "" {
+		t.Errorf("expected empty commit for non-git repo, got %q", commit)
+	}
+}
+
+func TestGetCurrentCommit_GitRepo(t *testing.T) {
+	detector, _, tmpDir, cleanup := setupTestDetector(t)
+	defer cleanup()
+
+	// Initialize git repo
+	initGitRepo(t, tmpDir)
+
+	// Create a file and commit it
+	testFile := filepath.Join(tmpDir, "test.go")
+	if err := os.WriteFile(testFile, []byte("package main"), 0644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	addCmd := exec.Command("git", "add", ".")
+	addCmd.Dir = tmpDir
+	if err := addCmd.Run(); err != nil {
+		t.Fatalf("git add failed: %v", err)
+	}
+
+	commitCmd := exec.Command("git", "commit", "-m", "initial")
+	commitCmd.Dir = tmpDir
+	if err := commitCmd.Run(); err != nil {
+		t.Fatalf("git commit failed: %v", err)
+	}
+
+	commit := detector.GetCurrentCommit()
+	if commit == "" {
+		t.Error("expected non-empty commit after git commit")
+	}
+	if len(commit) < 7 {
+		t.Errorf("expected commit hash, got %q", commit)
+	}
+}
+
+func TestDetectChanges_NonGitFallback(t *testing.T) {
+	detector, store, tmpDir, cleanup := setupTestDetector(t)
+	defer cleanup()
+
+	// Not a git repo, should fall back to hash-based detection
+	// Add a Go file
+	testFile := filepath.Join(tmpDir, "new.go")
+	if err := os.WriteFile(testFile, []byte("package main\nfunc main() {}"), 0644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	// No files in store, so the new file should be detected as added
+	changes, err := detector.DetectChanges("")
+	if err != nil {
+		t.Fatalf("DetectChanges failed: %v", err)
+	}
+
+	// Should find the new file
+	found := false
+	for _, c := range changes {
+		if c.Path == "new.go" && c.ChangeType == ChangeAdded {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected to detect new.go as added")
+	}
+
+	// Now simulate that the file was indexed
+	if err := store.SaveFileState(&IndexedFile{Path: "new.go", Hash: "somehash"}); err != nil {
+		t.Fatalf("SaveFileState failed: %v", err)
+	}
+
+	// Modify the file
+	if err := os.WriteFile(testFile, []byte("package main\nfunc main() { println(1) }"), 0644); err != nil {
+		t.Fatalf("failed to modify test file: %v", err)
+	}
+
+	changes, err = detector.DetectChanges("")
+	if err != nil {
+		t.Fatalf("DetectChanges failed: %v", err)
+	}
+
+	// Should find the file as modified
+	found = false
+	for _, c := range changes {
+		if c.Path == "new.go" && c.ChangeType == ChangeModified {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected to detect new.go as modified")
+	}
+}
+
+func TestDetectHashChanges_DeletedFile(t *testing.T) {
+	detector, store, _, cleanup := setupTestDetector(t)
+	defer cleanup()
+
+	// Simulate a file that was previously indexed
+	if err := store.SaveFileState(&IndexedFile{Path: "deleted.go", Hash: "abc"}); err != nil {
+		t.Fatalf("SaveFileState failed: %v", err)
+	}
+
+	// File doesn't exist on disk, should be detected as deleted
+	changes, err := detector.DetectChanges("")
+	if err != nil {
+		t.Fatalf("DetectChanges failed: %v", err)
+	}
+
+	found := false
+	for _, c := range changes {
+		if c.Path == "deleted.go" && c.ChangeType == ChangeDeleted {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected to detect deleted.go as deleted")
+	}
+}
+
+func TestDetectChanges_GitBased(t *testing.T) {
+	detector, store, tmpDir, cleanup := setupTestDetector(t)
+	defer cleanup()
+
+	// Initialize git repo
+	initGitRepo(t, tmpDir)
+
+	// Create and commit initial file
+	testFile := filepath.Join(tmpDir, "main.go")
+	if err := os.WriteFile(testFile, []byte("package main"), 0644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	addCmd := exec.Command("git", "add", ".")
+	addCmd.Dir = tmpDir
+	addCmd.Run() //nolint:errcheck
+
+	commitCmd := exec.Command("git", "commit", "-m", "initial")
+	commitCmd.Dir = tmpDir
+	commitCmd.Run() //nolint:errcheck
+
+	// Get commit hash
+	commit := detector.GetCurrentCommit()
+
+	// Set the indexed commit in store
+	if err := store.SetLastIndexedCommit(commit); err != nil {
+		t.Fatalf("SetLastIndexedCommit failed: %v", err)
+	}
+
+	// No changes yet
+	changes, err := detector.DetectChanges("")
+	if err != nil {
+		t.Fatalf("DetectChanges failed: %v", err)
+	}
+	if len(changes) != 0 {
+		t.Errorf("expected no changes, got %d", len(changes))
+	}
+
+	// Now modify the file (uncommitted)
+	if err := os.WriteFile(testFile, []byte("package main\n\nfunc main() {}"), 0644); err != nil {
+		t.Fatalf("failed to modify test file: %v", err)
+	}
+
+	// Should detect uncommitted change
+	changes, err = detector.DetectChanges("")
+	if err != nil {
+		t.Fatalf("DetectChanges failed: %v", err)
+	}
+
+	found := false
+	for _, c := range changes {
+		if c.Path == "main.go" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected to detect main.go as changed")
+	}
+}
+
+func TestHasDirtyWorkingTree(t *testing.T) {
+	detector, _, tmpDir, cleanup := setupTestDetector(t)
+	defer cleanup()
+
+	// Initialize git repo
+	initGitRepo(t, tmpDir)
+
+	// Create and commit a file
+	testFile := filepath.Join(tmpDir, "main.go")
+	if err := os.WriteFile(testFile, []byte("package main"), 0644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	addCmd := exec.Command("git", "add", ".")
+	addCmd.Dir = tmpDir
+	addCmd.Run() //nolint:errcheck
+
+	commitCmd := exec.Command("git", "commit", "-m", "initial")
+	commitCmd.Dir = tmpDir
+	commitCmd.Run() //nolint:errcheck
+
+	// Working tree should be clean
+	if detector.HasDirtyWorkingTree() {
+		t.Error("expected clean working tree after commit")
+	}
+
+	// Make a modification
+	if err := os.WriteFile(testFile, []byte("package main\n\nfunc foo() {}"), 0644); err != nil {
+		t.Fatalf("failed to modify test file: %v", err)
+	}
+
+	// Working tree should be dirty
+	if !detector.HasDirtyWorkingTree() {
+		t.Error("expected dirty working tree after modification")
+	}
+}
+
+func TestHashFile(t *testing.T) {
+	detector, _, tmpDir, cleanup := setupTestDetector(t)
+	defer cleanup()
+
+	testFile := filepath.Join(tmpDir, "test.go")
+	content := []byte("package main\n")
+	if err := os.WriteFile(testFile, content, 0644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	hash1, err := detector.hashFile(testFile)
+	if err != nil {
+		t.Fatalf("hashFile failed: %v", err)
+	}
+	if hash1 == "" {
+		t.Error("expected non-empty hash")
+	}
+
+	// Same content should give same hash
+	hash2, err := detector.hashFile(testFile)
+	if err != nil {
+		t.Fatalf("hashFile failed: %v", err)
+	}
+	if hash1 != hash2 {
+		t.Error("expected same hash for same content")
+	}
+
+	// Different content should give different hash
+	if err := os.WriteFile(testFile, []byte("package foo"), 0644); err != nil {
+		t.Fatalf("failed to modify test file: %v", err)
+	}
+	hash3, err := detector.hashFile(testFile)
+	if err != nil {
+		t.Fatalf("hashFile failed: %v", err)
+	}
+	if hash1 == hash3 {
+		t.Error("expected different hash for different content")
+	}
+}
+
+func TestHashFile_NonExistent(t *testing.T) {
+	detector, _, tmpDir, cleanup := setupTestDetector(t)
+	defer cleanup()
+
+	_, err := detector.hashFile(filepath.Join(tmpDir, "nonexistent.go"))
+	if err == nil {
+		t.Error("expected error for non-existent file")
 	}
 }
