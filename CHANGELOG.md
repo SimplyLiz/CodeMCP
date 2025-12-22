@@ -2,9 +2,273 @@
 
 All notable changes to CKB will be documented in this file.
 
-## [7.3.0] - 2024-12-22
+## [7.3.0]
 
 ### Added
+
+#### Remote Federation Client (v3 Federation Phase 5)
+Connect to remote CKB index servers and query them alongside local repositories—transforming federation from local-only aggregation to a distributed code intelligence network.
+
+**Core Features:**
+- **Remote Server Management** — Add, remove, enable, disable remote CKB index servers
+- **Hybrid Queries** — Search symbols across local federation repos AND remote servers in parallel
+- **Source Attribution** — Results show whether they came from "local" or a named remote server
+- **Graceful Degradation** — Queries succeed even when some remotes are unavailable
+
+**Caching:**
+- Repository list cached for 1 hour
+- Metadata cached for 1 hour
+- Symbol searches cached for 15 minutes
+- Refs and call graph always fresh (not cached)
+- Configurable per-server cache TTL
+
+**HTTP Client:**
+- Bearer token authentication with environment variable expansion (`${VAR}`)
+- Exponential backoff retry logic (max 3 retries)
+- Configurable timeouts per server
+- Response body limiting (10MB max)
+
+**CLI Commands:**
+```bash
+# Add a remote CKB index server
+ckb federation add-remote <federation> <name> --url=<url> [--token=<token>] [--cache-ttl=1h] [--timeout=30s]
+
+# Remove a remote server
+ckb federation remove-remote <federation> <name>
+
+# List remote servers
+ckb federation list-remote <federation> [--json]
+
+# Sync metadata from remote server(s)
+ckb federation sync-remote <federation> [name] [--json]
+
+# Check remote server status
+ckb federation status-remote <federation> <name> [--json]
+
+# Enable/disable remote server
+ckb federation enable-remote <federation> <name>
+ckb federation disable-remote <federation> <name>
+```
+
+**MCP Tools (7 new):**
+- `federationAddRemote` — Add a remote server to a federation
+- `federationRemoveRemote` — Remove a remote server
+- `federationListRemote` — List remote servers in a federation
+- `federationSyncRemote` — Sync metadata from remote servers
+- `federationStatusRemote` — Get status of a remote server
+- `federationSearchSymbolsHybrid` — Search symbols across local + remote
+- `federationListAllRepos` — List repos from local and remote sources
+
+**Configuration:**
+```toml
+[[remote_servers]]
+name = "prod"
+url = "https://ckb.company.com"
+token = "${CKB_PROD_TOKEN}"   # Environment variable expansion
+cache_ttl = "1h"
+timeout = "30s"
+enabled = true
+```
+
+#### Authentication & API Keys (v3 Federation Phase 4)
+Scoped API key authentication for the index server, enabling secure multi-tenant access with fine-grained permissions.
+
+**Scoped API Keys:**
+- **read** — GET requests, symbol lookup, search
+- **write** — POST requests, upload indexes, create repos
+- **admin** — Full access including token management and deletions
+
+**Per-Repository Restrictions:**
+- Limit keys to specific repos using glob patterns (e.g., `myorg/*`)
+- Prevents cross-tenant data access in shared deployments
+
+**Rate Limiting:**
+- Token bucket algorithm with configurable limits per key
+- Returns `429 Too Many Requests` with `Retry-After` header
+- Customizable default limits and burst sizes
+
+**Token Management CLI:**
+```bash
+# Create a new token
+ckb token create --name "CI Upload" --scopes write
+ckb token create --name "Read-only" --scopes read --repos "myorg/*"
+ckb token create --name "Admin" --scopes admin --expires 30d
+
+# List all tokens
+ckb token list
+ckb token list --show-revoked
+
+# Revoke a token
+ckb token revoke ckb_key_abc123
+
+# Rotate a token (new secret, same ID)
+ckb token rotate ckb_key_abc123
+```
+
+**Token Format:**
+- Token: `ckb_sk_` prefix + 64 hex chars (shown once at creation)
+- Key ID: `ckb_key_` prefix + 16 hex chars (used for management)
+- Secure bcrypt hashing for storage
+
+**Configuration:**
+```toml
+[index_server.auth]
+enabled = true
+require_auth = true                    # false = unauthenticated gets read-only
+legacy_token = "${CKB_LEGACY_TOKEN}"   # Backward compatibility
+
+[[index_server.auth.static_keys]]
+id = "ci-upload"
+name = "CI Upload Key"
+token = "${CI_CKB_TOKEN}"
+scopes = ["write"]
+repo_patterns = ["myorg/*"]
+rate_limit = 100
+
+[index_server.auth.rate_limiting]
+enabled = true
+default_limit = 60                     # Requests per minute
+burst_size = 10
+```
+
+**HTTP Headers:**
+- `Authorization: Bearer <token>` — Authentication
+- `X-RateLimit-Key: <key_id>` — Rate limit tracking (response)
+- `Retry-After: <seconds>` — When rate limited (response)
+
+**Error Responses:**
+- `401 Unauthorized` — Missing/invalid/expired/revoked token
+- `403 Forbidden` — Insufficient scope or repo not allowed
+- `429 Too Many Requests` — Rate limited
+
+**Backward Compatibility:**
+- Legacy single-token mode still works via `legacy_token` config
+- When `require_auth = false`, unauthenticated requests get read-only access
+
+#### Enhanced Uploads (v3 Federation Phase 3)
+Compression support, progress reporting, and incremental (delta) updates for the index upload system. Reduces upload sizes by 70-90% for typical updates.
+
+**Compression Support:**
+- **gzip** — `Content-Encoding: gzip` for 60-80% compression
+- **zstd** — `Content-Encoding: zstd` for 70-90% compression (faster than gzip)
+- Automatic decompression on the server
+- Response includes `compression_ratio` showing savings
+
+**Progress Reporting:**
+- Logs progress at 10MB intervals for large uploads
+- Includes bytes received, MB count, and percentage when Content-Length is known
+
+**Delta Uploads (Incremental):**
+- `POST /index/repos/{repo}/upload/delta` — Upload only changed files
+- Requires `X-CKB-Base-Commit` header matching current index
+- Returns 409 Conflict with `current_commit` if base doesn't match
+- Suggests full upload when >50% files changed (configurable)
+- Reuses existing incremental infrastructure for efficient processing
+
+**Configuration:**
+```toml
+[index_server]
+enable_compression = true           # Default true
+supported_encodings = ["gzip", "zstd"]
+enable_delta_upload = true          # Default true
+delta_threshold_percent = 50        # Suggest full upload if >N% changed
+```
+
+**Delta Upload Example:**
+```bash
+curl -X POST http://localhost:8080/index/repos/company/core-lib/upload/delta \
+  -H "Content-Type: application/octet-stream" \
+  -H "Content-Encoding: gzip" \
+  -H "X-CKB-Base-Commit: abc123" \
+  -H "X-CKB-Target-Commit: def456" \
+  -H 'X-CKB-Changed-Files: [{"path":"src/main.go","change_type":"modified"}]' \
+  --data-binary @partial-index.scip.gz
+```
+
+#### Index Upload (v3 Federation Phase 2)
+Push SCIP indexes to the index server via HTTP, eliminating the need for local filesystem paths. This transforms CKB from a "bring your database" model to a centralized index hosting service.
+
+**REST API Endpoints:**
+- `POST /index/repos` — Create a new repo ready for upload
+- `POST /index/repos/{repo}/upload` — Upload SCIP index file (supports gzip, zstd compression)
+- `POST /index/repos/{repo}/upload/delta` — Delta upload (incremental changes only)
+- `DELETE /index/repos/{repo}` — Delete an uploaded repo
+
+**Upload Features:**
+- Stream large files (100MB+) without memory issues
+- Auto-create repos on first upload (configurable)
+- Metadata headers: `X-CKB-Commit`, `X-CKB-Language`, `X-CKB-Indexer-Name`
+- Full SCIP processing: symbols, refs, call graph extraction
+- Compression support: gzip and zstd
+- Progress logging for large uploads
+
+**Configuration:**
+```toml
+[index_server]
+enabled = true
+data_dir = "~/.ckb-server"      # Server data directory
+max_upload_size = 524288000     # 500MB default
+allow_create_repo = true        # Allow repo creation via API
+enable_compression = true       # Accept compressed uploads
+enable_delta_upload = true      # Enable incremental updates
+```
+
+**Data Directory Structure:**
+```
+~/.ckb-server/
+├── repos/
+│   └── company-core-lib/
+│       ├── ckb.db        # SQLite database
+│       └── meta.json     # Repo metadata
+└── uploads/              # Temp directory for uploads
+```
+
+#### Remote Index Serving (v3 Federation Phase 1)
+Serve symbol indexes over HTTP for remote federation clients. This enables cross-repository code intelligence without requiring clients to have direct database access.
+
+**Core Features:**
+- **Index Server Mode** — New `--index-server` flag for `ckb serve` enables remote index endpoints
+- **Multi-Repo Support** — Serve multiple repositories from a single CKB instance
+- **TOML Configuration** — Configure repos, privacy settings, and pagination limits via config file
+- **Read-Only Connections** — Index server opens databases in read-only mode for safety
+
+**REST API Endpoints:**
+- `GET /index/repos` — List all indexed repositories
+- `GET /index/repos/{repo}/meta` — Repository metadata and capabilities
+- `GET /index/repos/{repo}/files` — List files with cursor pagination
+- `GET /index/repos/{repo}/symbols` — List symbols with filtering and pagination
+- `GET /index/repos/{repo}/symbols/{id}` — Get single symbol by ID
+- `POST /index/repos/{repo}/symbols:batchGet` — Batch get multiple symbols
+- `GET /index/repos/{repo}/refs` — List references (call edges) with pagination
+- `GET /index/repos/{repo}/callgraph` — List call graph edges with filtering
+- `GET /index/repos/{repo}/search/symbols` — Search symbols by name
+- `GET /index/repos/{repo}/search/files` — Search files by path
+
+**Security & Privacy:**
+- **HMAC-Signed Cursors** — Pagination cursors are signed to prevent tampering
+- **Privacy Redaction** — Per-repo controls for exposing paths, docs, and signatures
+- **Path Prefix Stripping** — Remove sensitive path prefixes from responses
+
+**CLI:**
+- `ckb serve --index-server` — Enable index-serving endpoints
+- `ckb serve --index-config <path>` — Load configuration from TOML file
+
+**Configuration Example:**
+```toml
+[index_server]
+enabled = true
+max_page_size = 10000
+
+[[repos]]
+id = "company/core-lib"
+name = "Core Library"
+path = "/repos/core-lib"
+
+[default_privacy]
+expose_paths = true
+expose_docs = true
+expose_signatures = true
+```
 
 #### Doc-Symbol Linking
 Bridge documentation and code with automatic symbol detection:
@@ -106,6 +370,29 @@ Tracks file-level dependencies and automatically queues dependent files for resc
 ```
 
 ### Files Added
+- `internal/federation/` - Remote federation client
+  - `remote_types.go` — Response types matching index server API
+  - `remote_config.go` — Remote server configuration and env var expansion
+  - `remote_client.go` — HTTP client with retry logic and all API methods
+  - `remote_cache.go` — Caching wrapper with TTL management
+  - `hybrid.go` — Local + remote query merging engine
+  - `remote_test.go` — Tests for remote client and configuration
+- `cmd/ckb/federation_remote.go` - CLI commands for remote federation
+- `internal/mcp/tool_impls_v74.go` - MCP tool implementations for remote federation
+- `internal/api/` - Remote index serving and upload
+  - `index_config.go` — Configuration types and TOML loading (Phase 3: compression, delta config)
+  - `index_types.go` — API response types
+  - `index_cursor.go` — HMAC-signed cursor pagination
+  - `index_repos.go` — Repository handle management (Phase 1 + 2 + 3)
+  - `index_redaction.go` — Privacy redaction logic
+  - `index_queries.go` — Database queries for symbols, files, refs, callgraph
+  - `index_storage.go` — Server data directory management (Phase 2)
+  - `index_processor.go` — SCIP processing pipeline (Phase 2 + 3 delta processing)
+  - `handlers_index.go` — HTTP handlers for all index endpoints
+  - `handlers_upload.go` — HTTP handlers with compression/progress (Phase 2 + 3)
+  - `handlers_upload_delta.go` — Delta upload handler (Phase 3)
+  - `handlers_index_test.go` — Tests for cursors, redaction, handlers
+  - `handlers_upload_test.go` — Tests for upload, compression, delta (Phase 2 + 3)
 - `internal/docs/` - New package for doc-symbol linking
   - `types.go` - Core types (Document, DocReference, StalenessReport, etc.)
   - `scanner.go` - Markdown scanning with backtick/directive/fence detection
@@ -129,10 +416,16 @@ Tracks file-level dependencies and automatically queues dependent files for resc
   - `indexer_test.go`, `deps_test.go`, `types_test.go` — Tests
 
 ### Changed
+- `internal/federation/config.go` — Added RemoteServers field to Config struct
+- `internal/federation/index.go` — Schema v3 with remote_servers, remote_repos, remote_cache tables
+- `internal/mcp/tools.go` — Registered 7 new MCP tools for remote federation
+- `internal/api/server.go` — Added IndexRepoManager, NewServer now returns error
+- `internal/api/routes.go` — Added /index/* route registration
+- `cmd/ckb/serve.go` — Added --index-server and --index-config flags
 - `internal/storage/schema.go` — Schema v8 with callgraph, file_deps, and rescan_queue tables
 - `cmd/ckb/index.go` — Incremental indexing flow with `--force` flag
 
-## [7.2.0] - 2024-12-21
+## [7.2.0]
 
 ### Added
 
@@ -235,3 +528,95 @@ Zero-Friction Operation - CKB v7.1 enables code intelligence without requiring a
 ### Added
 - Initial npm package release via `@tastehub/ckb`
 - 58 MCP tools for code intelligence
+
+## [6.5.0] - 2024-12-XX
+
+### Added
+
+#### Developer Intelligence
+- **Symbol Origins** — `explainOrigin`: Why does this code exist? Git history, linked issues/PRs
+- **Co-change Coupling** — `analyzeCoupling`: Find files that historically change together
+- **LLM Export** — `exportForLLM`: Token-efficient codebase summaries with importance ranking
+- **Risk Audit** — `auditRisk`: 8-factor scoring (complexity, coverage, bus factor, security, staleness, errors, coupling, churn)
+
+## [6.4.0] - 2024-12-XX
+
+### Added
+
+#### Runtime Observability
+- **OpenTelemetry Integration** — `getTelemetryStatus`: See real call counts, not just static analysis
+- **Dead Code Confidence** — `findDeadCodeCandidates`: Find symbols with zero runtime calls
+- **Observed Callers** — `getObservedUsage`: Enrich impact analysis with production data
+
+## [6.3.0] - 2024-12-XX
+
+### Added
+
+#### Contract-Aware Analysis
+- **API Boundary Detection** — `listContracts`: Protobuf and OpenAPI contract discovery
+- **Consumer Tracking** — Three evidence tiers for cross-repo dependencies
+- **Cross-Repo Impact** — `analyzeContractImpact`: "What breaks if I change this shared API?"
+- **Contract Dependencies** — `getContractDependencies`: See consumers and dependencies
+
+## [6.2.0] - 2024-12-XX
+
+### Added
+
+#### Federation & Cross-Repository
+- **Federation** — Query across multiple repos organization-wide
+- **Federation Tools** — `listFederations`, `federationStatus`, `federationSearchModules`, `federationSearchOwnership`, `federationGetHotspots`
+- **Daemon Mode** — Always-on service with HTTP API, scheduled tasks, file watching, webhooks
+- **Daemon Tools** — `daemonStatus`, `listSchedules`, `listWebhooks`
+- **Tree-sitter Complexity** — `getFileComplexity`: Language-agnostic cyclomatic/cognitive complexity for 7 languages
+
+## [6.1.0] - 2024-12-XX
+
+### Added
+
+#### Production Ready
+- **Background Jobs** — Queue long operations, track progress, cancel jobs
+- **Job Tools** — `getJobStatus`, `listJobs`, `cancelJob`
+- **CI/CD Integration** — `summarizePr`: PR risk analysis, ownership drift detection
+- **Ownership Drift** — `getOwnershipDrift`: CODEOWNERS vs actual ownership
+
+## [6.0.0] - 2024-12-XX
+
+### Added
+
+#### Architectural Memory
+- **Ownership Intelligence** — `getOwnership`: CODEOWNERS + git blame with time-weighted analysis
+- **Module Responsibilities** — `getModuleResponsibilities`: What does this module do?
+- **Architectural Decisions** — `recordDecision`, `getDecisions`: ADRs with full-text search
+- **Module Annotations** — `annotateModule`: Add module metadata
+- **Architecture Refresh** — `refreshArchitecture`: Rebuild architectural model
+
+## [5.2.0] - 2024-12-XX
+
+### Added
+
+#### Discovery & Flow
+- **Usage Tracing** — `traceUsage`: How is this symbol reached?
+- **Entrypoints** — `listEntrypoints`: System entrypoints (API, CLI, jobs)
+- **File Orientation** — `explainFile`: File-level orientation
+- **Path Explanation** — `explainPath`: Why does this path exist?
+- **Diff Summary** — `summarizeDiff`: What changed, what might break?
+- **Architecture Overview** — `getArchitecture`: Module dependency overview
+- **Hotspots** — `getHotspots`: Volatile areas with trends
+- **Key Concepts** — `listKeyConcepts`: Domain concepts in codebase
+- **Recently Relevant** — `recentlyRelevant`: What matters now?
+
+## [5.1.0] - 2024-12-XX
+
+### Added
+
+#### Core Navigation
+- **Symbol Search** — `searchSymbols`: Find symbols by name with filtering
+- **Symbol Details** — `getSymbol`: Get symbol details
+- **References** — `findReferences`: Find all usages
+- **Symbol Explanation** — `explainSymbol`: AI-friendly symbol explanation
+- **Symbol Justification** — `justifySymbol`: Keep/investigate/remove verdict
+- **Call Graph** — `getCallGraph`: Caller/callee relationships
+- **Module Overview** — `getModuleOverview`: Module statistics
+- **Impact Analysis** — `analyzeImpact`: Change risk analysis
+- **System Status** — `getStatus`: System health
+- **Diagnostics** — `doctor`: System diagnostics

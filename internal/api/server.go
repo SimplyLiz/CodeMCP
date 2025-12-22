@@ -6,14 +6,16 @@ import (
 	"net/http"
 	"time"
 
+	"ckb/internal/auth"
 	"ckb/internal/logging"
 	"ckb/internal/query"
 )
 
 // ServerConfig contains configuration for the HTTP server
 type ServerConfig struct {
-	Auth AuthConfig
-	CORS CORSConfig
+	Auth        AuthConfig
+	CORS        CORSConfig
+	IndexServer *IndexServerConfig // nil if index-server mode disabled
 }
 
 // DefaultServerConfig returns default server configuration
@@ -29,22 +31,52 @@ func DefaultServerConfig() ServerConfig {
 
 // Server represents the HTTP API server
 type Server struct {
-	router *http.ServeMux
-	server *http.Server
-	addr   string
-	logger *logging.Logger
-	engine *query.Engine
-	config ServerConfig
+	router       *http.ServeMux
+	server       *http.Server
+	addr         string
+	logger       *logging.Logger
+	engine       *query.Engine
+	config       ServerConfig
+	indexManager *IndexRepoManager // nil if index-server mode disabled
+	authManager  *auth.Manager     // nil if scoped auth disabled
 }
 
 // NewServer creates a new HTTP server instance
-func NewServer(addr string, engine *query.Engine, logger *logging.Logger, config ServerConfig) *Server {
+func NewServer(addr string, engine *query.Engine, logger *logging.Logger, config ServerConfig) (*Server, error) {
 	s := &Server{
 		addr:   addr,
 		logger: logger,
 		engine: engine,
 		router: http.NewServeMux(),
 		config: config,
+	}
+
+	// Initialize index server if enabled
+	if config.IndexServer != nil && config.IndexServer.Enabled {
+		mgr, err := NewIndexRepoManager(config.IndexServer, logger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize index server: %w", err)
+		}
+		s.indexManager = mgr
+		logger.Info("Index server enabled", map[string]interface{}{
+			"repo_count": len(config.IndexServer.Repos),
+		})
+
+		// Initialize auth manager if enabled
+		if config.IndexServer.Auth.Enabled {
+			// Note: We pass nil for db since static keys don't need database
+			// For dynamic key management, the database would be passed here
+			authMgr, err := auth.NewManager(config.IndexServer.Auth, nil, logger)
+			if err != nil {
+				return nil, fmt.Errorf("failed to initialize auth manager: %w", err)
+			}
+			s.authManager = authMgr
+			logger.Info("Scoped auth enabled", map[string]interface{}{
+				"static_keys":   len(config.IndexServer.Auth.StaticKeys),
+				"has_legacy":    config.IndexServer.Auth.LegacyToken != "",
+				"rate_limiting": config.IndexServer.Auth.RateLimiting.Enabled,
+			})
+		}
 	}
 
 	// Register routes
@@ -60,7 +92,7 @@ func NewServer(addr string, engine *query.Engine, logger *logging.Logger, config
 		IdleTimeout:  60 * time.Second,
 	}
 
-	return s
+	return s, nil
 }
 
 // Start starts the HTTP server
@@ -84,6 +116,15 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		return fmt.Errorf("failed to shutdown server: %w", err)
 	}
 
+	// Close index manager if enabled
+	if s.indexManager != nil {
+		if err := s.indexManager.Close(); err != nil {
+			s.logger.Warn("Failed to close index manager", map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+	}
+
 	s.logger.Info("Server shut down successfully", nil)
 	return nil
 }
@@ -100,7 +141,15 @@ func (s *Server) applyMiddleware(handler http.Handler) http.Handler {
 	// (Recovery is outermost, CORS is innermost before handler)
 	handler = RecoveryMiddleware(s.logger)(handler)
 	handler = LoggingMiddleware(s.logger)(handler)
-	handler = AuthMiddleware(s.config.Auth, s.logger)(handler)
+
+	// Use ScopedAuthMiddleware when auth manager is available (Phase 4),
+	// otherwise fall back to legacy AuthMiddleware
+	if s.authManager != nil {
+		handler = ScopedAuthMiddleware(s.authManager, s.logger)(handler)
+	} else {
+		handler = AuthMiddleware(s.config.Auth, s.logger)(handler)
+	}
+
 	handler = RequestIDMiddleware()(handler)
 	handler = CORSMiddleware(s.config.CORS)(handler)
 	return handler

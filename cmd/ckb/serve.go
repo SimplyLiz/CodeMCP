@@ -16,10 +16,12 @@ import (
 )
 
 var (
-	servePort      string
-	serveHost      string
-	serveAuthToken string
-	serveCORSAllow string
+	servePort        string
+	serveHost        string
+	serveAuthToken   string
+	serveCORSAllow   string
+	serveIndexServer bool
+	serveIndexConfig string
 )
 
 var serveCmd = &cobra.Command{
@@ -39,6 +41,8 @@ func init() {
 	serveCmd.Flags().StringVar(&serveHost, "host", "localhost", "Host to bind to")
 	serveCmd.Flags().StringVar(&serveAuthToken, "auth-token", "", "Auth token for mutating requests (env: CKB_AUTH_TOKEN)")
 	serveCmd.Flags().StringVar(&serveCORSAllow, "cors-allow", "", "Comma-separated allowed CORS origins (empty=same-origin only, '*'=all)")
+	serveCmd.Flags().BoolVar(&serveIndexServer, "index-server", false, "Enable index-serving endpoints for remote federation")
+	serveCmd.Flags().StringVar(&serveIndexConfig, "index-config", "", "Path to index server config file (TOML)")
 }
 
 func runServe(cmd *cobra.Command, args []string) error {
@@ -85,8 +89,27 @@ func runServe(cmd *cobra.Command, args []string) error {
 		serverConfig.CORS.AllowedOrigins = origins
 	}
 
+	// Index server config
+	if serveIndexServer {
+		if serveIndexConfig != "" {
+			indexConfig, err := api.LoadIndexServerConfig(serveIndexConfig)
+			if err != nil {
+				return fmt.Errorf("failed to load index config: %w", err)
+			}
+			serverConfig.IndexServer = indexConfig
+		} else {
+			// Use default config - user must still configure repos
+			serverConfig.IndexServer = api.DefaultIndexServerConfig()
+			logger.Warn("Index server enabled without config file - no repositories configured", nil)
+		}
+		serverConfig.IndexServer.Enabled = true
+	}
+
 	// Create server
-	server := api.NewServer(addr, engine, logger, serverConfig)
+	server, err := api.NewServer(addr, engine, logger, serverConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create server: %w", err)
+	}
 
 	// Setup graceful shutdown
 	shutdown := make(chan os.Signal, 1)
