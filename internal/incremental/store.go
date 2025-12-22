@@ -269,7 +269,25 @@ func (s *Store) GetIndexState() IndexState {
 	state.Commit = s.GetLastIndexedCommit()
 	state.State = baseState
 
+	// v2: Get pending rescan count
+	state.PendingRescans = s.GetPendingRescanCount()
+
+	// Adjust state if rescans are pending
+	if state.PendingRescans > 0 && baseState != "pending" {
+		state.State = "pending"
+	}
+
 	return state
+}
+
+// GetPendingRescanCount returns the number of files in the rescan queue
+func (s *Store) GetPendingRescanCount() int {
+	var count int
+	row := s.db.QueryRow(`SELECT COUNT(*) FROM rescan_queue`)
+	if err := row.Scan(&count); err != nil {
+		return 0
+	}
+	return count
 }
 
 // SetIndexStatePartial marks the index as partial (after incremental update)
