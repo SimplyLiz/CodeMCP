@@ -12,8 +12,9 @@ import (
 
 // ServerConfig contains configuration for the HTTP server
 type ServerConfig struct {
-	Auth AuthConfig
-	CORS CORSConfig
+	Auth        AuthConfig
+	CORS        CORSConfig
+	IndexServer *IndexServerConfig // nil if index-server mode disabled
 }
 
 // DefaultServerConfig returns default server configuration
@@ -29,22 +30,35 @@ func DefaultServerConfig() ServerConfig {
 
 // Server represents the HTTP API server
 type Server struct {
-	router *http.ServeMux
-	server *http.Server
-	addr   string
-	logger *logging.Logger
-	engine *query.Engine
-	config ServerConfig
+	router       *http.ServeMux
+	server       *http.Server
+	addr         string
+	logger       *logging.Logger
+	engine       *query.Engine
+	config       ServerConfig
+	indexManager *IndexRepoManager // nil if index-server mode disabled
 }
 
 // NewServer creates a new HTTP server instance
-func NewServer(addr string, engine *query.Engine, logger *logging.Logger, config ServerConfig) *Server {
+func NewServer(addr string, engine *query.Engine, logger *logging.Logger, config ServerConfig) (*Server, error) {
 	s := &Server{
 		addr:   addr,
 		logger: logger,
 		engine: engine,
 		router: http.NewServeMux(),
 		config: config,
+	}
+
+	// Initialize index server if enabled
+	if config.IndexServer != nil && config.IndexServer.Enabled {
+		mgr, err := NewIndexRepoManager(config.IndexServer, logger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize index server: %w", err)
+		}
+		s.indexManager = mgr
+		logger.Info("Index server enabled", map[string]interface{}{
+			"repo_count": len(config.IndexServer.Repos),
+		})
 	}
 
 	// Register routes
@@ -60,7 +74,7 @@ func NewServer(addr string, engine *query.Engine, logger *logging.Logger, config
 		IdleTimeout:  60 * time.Second,
 	}
 
-	return s
+	return s, nil
 }
 
 // Start starts the HTTP server
@@ -82,6 +96,15 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 	if err := s.server.Shutdown(ctx); err != nil {
 		return fmt.Errorf("failed to shutdown server: %w", err)
+	}
+
+	// Close index manager if enabled
+	if s.indexManager != nil {
+		if err := s.indexManager.Close(); err != nil {
+			s.logger.Warn("Failed to close index manager", map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
 	}
 
 	s.logger.Info("Server shut down successfully", nil)

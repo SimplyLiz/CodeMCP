@@ -203,6 +203,29 @@ Now Claude can answer questions like:
   - Budget-limited draining (max 200 files, 1500ms per drain)
   - Cascade depth control for BFS traversal
 
+### Remote Index Serving (v7.3)
+- **Index Server Mode** — Serve symbol indexes over HTTP for remote federation clients
+- **Multi-Repo Support** — Serve multiple repositories from a single server
+- **Cursor Pagination** — HMAC-signed cursors for efficient, secure pagination
+- **Privacy Controls** — Redact paths, documentation, and signatures per-repo
+- **REST API** — Standard endpoints for symbols, files, refs, callgraph, search
+
+```bash
+# Start with index server enabled
+ckb serve --index-server --index-config /path/to/config.toml
+
+# Example config (index-server.toml):
+[[repos]]
+id = "company/core-lib"
+name = "Core Library"
+path = "/repos/core-lib"
+
+[default_privacy]
+expose_paths = true
+expose_docs = true
+expose_signatures = true
+```
+
 ## MCP Tools (64 Available)
 
 CKB exposes code intelligence through the Model Context Protocol:
@@ -391,6 +414,15 @@ curl "http://localhost:8080/search?q=NewServer"
 curl http://localhost:8080/architecture
 curl "http://localhost:8080/ownership?path=internal/api"
 curl http://localhost:8080/hotspots
+
+# Index Server Mode (v7.3) - serve indexes to remote clients
+ckb serve --port 8080 --index-server --index-config config.toml
+
+# Index server endpoints
+curl http://localhost:8080/index/repos
+curl http://localhost:8080/index/repos/company%2Fcore-lib/meta
+curl "http://localhost:8080/index/repos/company%2Fcore-lib/symbols?limit=100"
+curl "http://localhost:8080/index/repos/company%2Fcore-lib/search/symbols?q=Handler"
 ```
 
 ## MCP Integration

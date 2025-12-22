@@ -6,6 +6,53 @@ All notable changes to CKB will be documented in this file.
 
 ### Added
 
+#### Remote Index Serving (v3 Federation Phase 1)
+Serve symbol indexes over HTTP for remote federation clients. This enables cross-repository code intelligence without requiring clients to have direct database access.
+
+**Core Features:**
+- **Index Server Mode** — New `--index-server` flag for `ckb serve` enables remote index endpoints
+- **Multi-Repo Support** — Serve multiple repositories from a single CKB instance
+- **TOML Configuration** — Configure repos, privacy settings, and pagination limits via config file
+- **Read-Only Connections** — Index server opens databases in read-only mode for safety
+
+**REST API Endpoints:**
+- `GET /index/repos` — List all indexed repositories
+- `GET /index/repos/{repo}/meta` — Repository metadata and capabilities
+- `GET /index/repos/{repo}/files` — List files with cursor pagination
+- `GET /index/repos/{repo}/symbols` — List symbols with filtering and pagination
+- `GET /index/repos/{repo}/symbols/{id}` — Get single symbol by ID
+- `POST /index/repos/{repo}/symbols:batchGet` — Batch get multiple symbols
+- `GET /index/repos/{repo}/refs` — List references (call edges) with pagination
+- `GET /index/repos/{repo}/callgraph` — List call graph edges with filtering
+- `GET /index/repos/{repo}/search/symbols` — Search symbols by name
+- `GET /index/repos/{repo}/search/files` — Search files by path
+
+**Security & Privacy:**
+- **HMAC-Signed Cursors** — Pagination cursors are signed to prevent tampering
+- **Privacy Redaction** — Per-repo controls for exposing paths, docs, and signatures
+- **Path Prefix Stripping** — Remove sensitive path prefixes from responses
+
+**CLI:**
+- `ckb serve --index-server` — Enable index-serving endpoints
+- `ckb serve --index-config <path>` — Load configuration from TOML file
+
+**Configuration Example:**
+```toml
+[index_server]
+enabled = true
+max_page_size = 10000
+
+[[repos]]
+id = "company/core-lib"
+name = "Core Library"
+path = "/repos/core-lib"
+
+[default_privacy]
+expose_paths = true
+expose_docs = true
+expose_signatures = true
+```
+
 #### Doc-Symbol Linking
 Bridge documentation and code with automatic symbol detection:
 
@@ -106,6 +153,15 @@ Tracks file-level dependencies and automatically queues dependent files for resc
 ```
 
 ### Files Added
+- `internal/api/` - Remote index serving
+  - `index_config.go` — Configuration types and TOML loading
+  - `index_types.go` — API response types
+  - `index_cursor.go` — HMAC-signed cursor pagination
+  - `index_repos.go` — Repository handle management
+  - `index_redaction.go` — Privacy redaction logic
+  - `index_queries.go` — Database queries for symbols, files, refs, callgraph
+  - `handlers_index.go` — HTTP handlers for all index endpoints
+  - `handlers_index_test.go` — Tests for cursors, redaction, handlers
 - `internal/docs/` - New package for doc-symbol linking
   - `types.go` - Core types (Document, DocReference, StalenessReport, etc.)
   - `scanner.go` - Markdown scanning with backtick/directive/fence detection
@@ -129,6 +185,9 @@ Tracks file-level dependencies and automatically queues dependent files for resc
   - `indexer_test.go`, `deps_test.go`, `types_test.go` — Tests
 
 ### Changed
+- `internal/api/server.go` — Added IndexRepoManager, NewServer now returns error
+- `internal/api/routes.go` — Added /index/* route registration
+- `cmd/ckb/serve.go` — Added --index-server and --index-config flags
 - `internal/storage/schema.go` — Schema v8 with callgraph, file_deps, and rescan_queue tables
 - `cmd/ckb/index.go` — Incremental indexing flow with `--force` flag
 

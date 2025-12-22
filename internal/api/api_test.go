@@ -55,7 +55,10 @@ func newTestServer(t *testing.T) *Server {
 	// Create server with auth disabled for testing
 	serverConfig := DefaultServerConfig()
 	serverConfig.Auth.Enabled = false
-	server := NewServer(":0", engine, logger, serverConfig)
+	server, err := NewServer(":0", engine, logger, serverConfig)
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
 
 	return server
 }
