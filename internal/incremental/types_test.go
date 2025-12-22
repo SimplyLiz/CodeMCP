@@ -128,9 +128,9 @@ func TestMetaKey_Constants(t *testing.T) {
 }
 
 func TestCurrentSchemaVersion(t *testing.T) {
-	// Schema version should be 8 for v2 transitive invalidation
-	if CurrentSchemaVersion != 8 {
-		t.Errorf("expected CurrentSchemaVersion 8, got %d", CurrentSchemaVersion)
+	// Schema version should be 9 for v7.3 incremental indexing
+	if CurrentSchemaVersion != 9 {
+		t.Errorf("expected CurrentSchemaVersion 9, got %d", CurrentSchemaVersion)
 	}
 }
 
