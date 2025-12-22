@@ -11,7 +11,8 @@ import (
 // v3: Telemetry (observed_usage, observed_callers, coverage_snapshots)
 // v4: Developer Intelligence (coupling_cache, risk_scores)
 // v5: Doc-Symbol Linking (docs, doc_references, doc_modules, symbol_suffixes)
-const currentSchemaVersion = 5
+// v6: FTS5 Symbol Search (symbols_fts_content, symbols_fts)
+const currentSchemaVersion = 6
 
 // initializeSchema creates all tables for a new database
 func (db *DB) initializeSchema() error {
@@ -73,6 +74,11 @@ func (db *DB) initializeSchema() error {
 			return err
 		}
 
+		// Create v6 FTS5 Symbol Search tables
+		if err := createSymbolFTSTables(tx); err != nil {
+			return err
+		}
+
 		// Set initial schema version
 		if err := setSchemaVersion(tx, currentSchemaVersion); err != nil {
 			return err
@@ -128,6 +134,12 @@ func (db *DB) runMigrations() error {
 	if version < 5 {
 		if err := db.migrateToV5(); err != nil {
 			return fmt.Errorf("failed to migrate to v5: %w", err)
+		}
+	}
+
+	if version < 6 {
+		if err := db.migrateToV6(); err != nil {
+			return fmt.Errorf("failed to migrate to v6: %w", err)
 		}
 	}
 
@@ -1026,4 +1038,100 @@ func createDocsTables(tx *sql.Tx) error {
 	}
 
 	return nil
+}
+
+// createSymbolFTSTables creates the FTS5 tables for symbol search
+func createSymbolFTSTables(tx *sql.Tx) error {
+	// Create the base content table for FTS5
+	if _, err := tx.Exec(`
+		CREATE TABLE IF NOT EXISTS symbols_fts_content (
+			rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+			id TEXT UNIQUE NOT NULL,
+			name TEXT NOT NULL,
+			kind TEXT,
+			documentation TEXT,
+			signature TEXT,
+			file_path TEXT,
+			language TEXT,
+			indexed_at TEXT NOT NULL DEFAULT (datetime('now'))
+		)
+	`); err != nil {
+		return fmt.Errorf("failed to create symbols_fts_content table: %w", err)
+	}
+
+	// Create indexes on content table
+	indexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_symbols_fts_content_id ON symbols_fts_content(id)",
+		"CREATE INDEX IF NOT EXISTS idx_symbols_fts_content_kind ON symbols_fts_content(kind)",
+		"CREATE INDEX IF NOT EXISTS idx_symbols_fts_content_language ON symbols_fts_content(language)",
+	}
+	for _, idx := range indexes {
+		if _, err := tx.Exec(idx); err != nil {
+			return fmt.Errorf("failed to create symbols_fts index: %w", err)
+		}
+	}
+
+	// Create FTS5 virtual table
+	if _, err := tx.Exec(`
+		CREATE VIRTUAL TABLE IF NOT EXISTS symbols_fts USING fts5(
+			name,
+			documentation,
+			signature,
+			content='symbols_fts_content',
+			content_rowid='rowid'
+		)
+	`); err != nil {
+		return fmt.Errorf("failed to create symbols_fts table: %w", err)
+	}
+
+	// Create triggers for automatic sync
+	triggers := []string{
+		// After INSERT trigger
+		`CREATE TRIGGER IF NOT EXISTS symbols_fts_ai AFTER INSERT ON symbols_fts_content BEGIN
+			INSERT INTO symbols_fts(rowid, name, documentation, signature)
+			VALUES (new.rowid, new.name, new.documentation, new.signature);
+		END`,
+
+		// After UPDATE trigger
+		`CREATE TRIGGER IF NOT EXISTS symbols_fts_au AFTER UPDATE ON symbols_fts_content BEGIN
+			INSERT INTO symbols_fts(symbols_fts, rowid, name, documentation, signature)
+			VALUES ('delete', old.rowid, old.name, old.documentation, old.signature);
+			INSERT INTO symbols_fts(rowid, name, documentation, signature)
+			VALUES (new.rowid, new.name, new.documentation, new.signature);
+		END`,
+
+		// After DELETE trigger
+		`CREATE TRIGGER IF NOT EXISTS symbols_fts_ad AFTER DELETE ON symbols_fts_content BEGIN
+			INSERT INTO symbols_fts(symbols_fts, rowid, name, documentation, signature)
+			VALUES ('delete', old.rowid, old.name, old.documentation, old.signature);
+		END`,
+	}
+
+	for _, trigger := range triggers {
+		if _, err := tx.Exec(trigger); err != nil {
+			return fmt.Errorf("failed to create symbols_fts trigger: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// migrateToV6 migrates the database from v5 to v6 (FTS5 Symbol Search)
+func (db *DB) migrateToV6() error {
+	return db.WithTx(func(tx *sql.Tx) error {
+		db.logger.Info("Migrating database to v6 (FTS5 Symbol Search)", nil)
+
+		// Create FTS5 tables
+		if err := createSymbolFTSTables(tx); err != nil {
+			return err
+		}
+
+		// Update schema version
+		if err := setSchemaVersion(tx, 6); err != nil {
+			return err
+		}
+
+		db.logger.Info("Database migrated to v6", nil)
+		return nil
+	})
 }
