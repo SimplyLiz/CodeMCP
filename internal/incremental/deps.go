@@ -288,6 +288,9 @@ func (t *DependencyTracker) DrainRescanQueue(rescanFunc func(filePath string) er
 	result := &DrainResult{}
 	startTime := time.Now()
 
+	// Track files that failed during this drain run to avoid infinite loops
+	failedThisRun := make(map[string]bool)
+
 	for {
 		// Check file budget
 		if t.config.MaxRescanFiles > 0 && result.FilesProcessed >= t.config.MaxRescanFiles {
@@ -312,15 +315,15 @@ func (t *DependencyTracker) DrainRescanQueue(rescanFunc func(filePath string) er
 			}
 		}
 
-		// Get next file to rescan
-		entry, err := t.GetNextRescan()
+		// Get next file to rescan (skip files that already failed this run)
+		entry, err := t.getNextRescanExcluding(failedThisRun)
 		if err != nil {
 			return result, fmt.Errorf("get next rescan: %w", err)
 		}
 
 		if entry == nil {
-			// Queue is drained
-			result.QueueDrained = true
+			// Queue is drained (or all remaining files failed this run)
+			result.QueueDrained = len(failedThisRun) == 0 || t.GetPendingRescanCount() == len(failedThisRun)
 			break
 		}
 
@@ -331,6 +334,8 @@ func (t *DependencyTracker) DrainRescanQueue(rescanFunc func(filePath string) er
 				"file":  entry.FilePath,
 				"error": err.Error(),
 			})
+			// Mark as failed this run to skip in subsequent iterations
+			failedThisRun[entry.FilePath] = true
 			// Increment attempts instead of removing
 			if err := t.IncrementAttempts(entry.FilePath); err != nil {
 				t.logger.Warn("Failed to increment attempts", map[string]interface{}{
@@ -359,6 +364,40 @@ func (t *DependencyTracker) DrainRescanQueue(rescanFunc func(filePath string) er
 	})
 
 	return result, nil
+}
+
+// getNextRescanExcluding returns the next file to rescan, excluding specified files
+func (t *DependencyTracker) getNextRescanExcluding(exclude map[string]bool) (*RescanQueueEntry, error) {
+	rows, err := t.db.Query(`
+		SELECT file_path, reason, depth, enqueued_at, attempts
+		FROM rescan_queue
+		ORDER BY enqueued_at, depth
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query rescan queue: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck
+
+	for rows.Next() {
+		var entry RescanQueueEntry
+		var reason string
+		var enqueuedAt int64
+
+		if err := rows.Scan(&entry.FilePath, &reason, &entry.Depth, &enqueuedAt, &entry.Attempts); err != nil {
+			return nil, fmt.Errorf("scan rescan entry: %w", err)
+		}
+
+		// Skip excluded files
+		if exclude[entry.FilePath] {
+			continue
+		}
+
+		entry.Reason = RescanReason(reason)
+		entry.EnqueuedAt = time.Unix(enqueuedAt, 0)
+		return &entry, nil
+	}
+
+	return nil, rows.Err()
 }
 
 // ============================================================================

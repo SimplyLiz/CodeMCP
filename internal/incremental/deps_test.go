@@ -2,6 +2,7 @@ package incremental
 
 import (
 	"database/sql"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -473,5 +474,330 @@ func TestDependencyTracker_BuildSymbolToFileMap(t *testing.T) {
 	}
 	if symbolToFile["sym2"] != "b.go" {
 		t.Errorf("Expected sym2 -> b.go, got %s", symbolToFile["sym2"])
+	}
+}
+
+func TestDependencyTracker_ClearFileDeps(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	store := NewStore(db, logger)
+	config := &TransitiveConfig{Enabled: true, Mode: InvalidationLazy, Depth: 1}
+	tracker := NewDependencyTracker(db, store, config, logger)
+
+	// Setup some dependencies
+	err := db.WithTx(func(tx *sql.Tx) error {
+		return tracker.UpdateFileDeps(tx, "a.go", []Reference{
+			{ToSymbolID: "sym_b"},
+		}, map[string]string{"sym_b": "b.go"})
+	})
+	if err != nil {
+		t.Fatalf("Setup deps failed: %v", err)
+	}
+
+	// Verify deps exist
+	deps, _ := tracker.GetDependencies("a.go")
+	if len(deps) != 1 {
+		t.Fatalf("Expected 1 dependency before clear, got %d", len(deps))
+	}
+
+	// Clear all deps
+	if err := tracker.ClearFileDeps(); err != nil {
+		t.Fatalf("ClearFileDeps failed: %v", err)
+	}
+
+	// Verify deps are gone
+	deps, _ = tracker.GetDependencies("a.go")
+	if len(deps) != 0 {
+		t.Errorf("Expected 0 dependencies after clear, got %d", len(deps))
+	}
+}
+
+func TestDependencyTracker_IncrementAttempts(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	store := NewStore(db, logger)
+	config := &TransitiveConfig{Enabled: true, Mode: InvalidationLazy, Depth: 1}
+	tracker := NewDependencyTracker(db, store, config, logger)
+
+	// Enqueue a file
+	if err := tracker.EnqueueRescan("test.go", RescanDepChange, 1); err != nil {
+		t.Fatalf("EnqueueRescan failed: %v", err)
+	}
+
+	// Check initial attempts
+	entry, _ := tracker.GetNextRescan()
+	if entry.Attempts != 0 {
+		t.Errorf("Expected 0 attempts initially, got %d", entry.Attempts)
+	}
+
+	// Increment attempts
+	if err := tracker.IncrementAttempts("test.go"); err != nil {
+		t.Fatalf("IncrementAttempts failed: %v", err)
+	}
+
+	// Check incremented
+	entry, _ = tracker.GetNextRescan()
+	if entry.Attempts != 1 {
+		t.Errorf("Expected 1 attempt after increment, got %d", entry.Attempts)
+	}
+
+	// Increment again
+	if err := tracker.IncrementAttempts("test.go"); err != nil {
+		t.Fatalf("IncrementAttempts (2nd) failed: %v", err)
+	}
+
+	entry, _ = tracker.GetNextRescan()
+	if entry.Attempts != 2 {
+		t.Errorf("Expected 2 attempts, got %d", entry.Attempts)
+	}
+}
+
+func TestDependencyTracker_EagerModeWithDepth(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	store := NewStore(db, logger)
+	config := &TransitiveConfig{
+		Enabled: true,
+		Mode:    InvalidationEager, // Eager mode cascades
+		Depth:   3,
+	}
+	tracker := NewDependencyTracker(db, store, config, logger)
+
+	// Setup dependency chain: a.go -> b.go -> c.go -> d.go
+	err := db.WithTx(func(tx *sql.Tx) error {
+		if err := tracker.UpdateFileDeps(tx, "a.go", []Reference{
+			{ToSymbolID: "sym_b"},
+		}, map[string]string{"sym_b": "b.go"}); err != nil {
+			return err
+		}
+		if err := tracker.UpdateFileDeps(tx, "b.go", []Reference{
+			{ToSymbolID: "sym_c"},
+		}, map[string]string{"sym_c": "c.go"}); err != nil {
+			return err
+		}
+		return tracker.UpdateFileDeps(tx, "c.go", []Reference{
+			{ToSymbolID: "sym_d"},
+		}, map[string]string{"sym_d": "d.go"})
+	})
+	if err != nil {
+		t.Fatalf("Setup deps failed: %v", err)
+	}
+
+	// Clear queue
+	if err := tracker.ClearRescanQueue(); err != nil {
+		t.Fatalf("ClearRescanQueue failed: %v", err)
+	}
+
+	// Invalidate from c.go - in eager mode with depth 3, should cascade
+	// c.go changed -> b.go depends on c.go -> a.go depends on b.go
+	enqueued, err := tracker.InvalidateDependents([]string{"c.go"})
+	if err != nil {
+		t.Fatalf("InvalidateDependents failed: %v", err)
+	}
+
+	// Should enqueue b.go (direct dependent of c.go), then a.go (transitive)
+	if enqueued != 2 {
+		t.Errorf("Expected 2 enqueued (eager cascade), got %d", enqueued)
+	}
+
+	count := tracker.GetPendingRescanCount()
+	if count != 2 {
+		t.Errorf("Expected 2 pending rescans, got %d", count)
+	}
+}
+
+func TestDependencyTracker_DrainWithRescanError(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	store := NewStore(db, logger)
+	config := &TransitiveConfig{
+		Enabled:        true,
+		Mode:           InvalidationEager,
+		Depth:          1,
+		MaxRescanFiles: 10,
+		MaxRescanMs:    0,
+	}
+	tracker := NewDependencyTracker(db, store, config, logger)
+
+	// Clear and enqueue files
+	if err := tracker.ClearRescanQueue(); err != nil {
+		t.Fatalf("ClearRescanQueue failed: %v", err)
+	}
+
+	for _, f := range []string{"good1.go", "bad.go", "good2.go"} {
+		if err := tracker.EnqueueRescan(f, RescanDepChange, 1); err != nil {
+			t.Fatalf("EnqueueRescan failed: %v", err)
+		}
+	}
+
+	// Rescan function that fails for bad.go
+	callCount := 0
+	result, err := tracker.DrainRescanQueue(func(filePath string) error {
+		callCount++
+		if filePath == "bad.go" {
+			return fmt.Errorf("simulated rescan failure")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("DrainRescanQueue failed: %v", err)
+	}
+
+	// Should have processed 2 successfully (good1.go, good2.go)
+	if result.FilesProcessed != 2 {
+		t.Errorf("Expected 2 files processed, got %d", result.FilesProcessed)
+	}
+
+	// bad.go should still be in queue with incremented attempts
+	remaining := tracker.GetPendingRescanCount()
+	if remaining != 1 {
+		t.Errorf("Expected 1 remaining (bad.go), got %d", remaining)
+	}
+
+	entry, _ := tracker.GetNextRescan()
+	if entry.FilePath != "bad.go" {
+		t.Errorf("Expected bad.go in queue, got %s", entry.FilePath)
+	}
+	if entry.Attempts != 1 {
+		t.Errorf("Expected 1 attempt for bad.go, got %d", entry.Attempts)
+	}
+}
+
+func TestDependencyTracker_MultipleChangedFiles(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	store := NewStore(db, logger)
+	config := &TransitiveConfig{
+		Enabled: true,
+		Mode:    InvalidationLazy,
+		Depth:   1,
+	}
+	tracker := NewDependencyTracker(db, store, config, logger)
+
+	// Setup: x.go -> a.go, y.go -> a.go, z.go -> b.go
+	err := db.WithTx(func(tx *sql.Tx) error {
+		if err := tracker.UpdateFileDeps(tx, "x.go", []Reference{
+			{ToSymbolID: "sym_a"},
+		}, map[string]string{"sym_a": "a.go"}); err != nil {
+			return err
+		}
+		if err := tracker.UpdateFileDeps(tx, "y.go", []Reference{
+			{ToSymbolID: "sym_a"},
+		}, map[string]string{"sym_a": "a.go"}); err != nil {
+			return err
+		}
+		return tracker.UpdateFileDeps(tx, "z.go", []Reference{
+			{ToSymbolID: "sym_b"},
+		}, map[string]string{"sym_b": "b.go"})
+	})
+	if err != nil {
+		t.Fatalf("Setup deps failed: %v", err)
+	}
+
+	// Clear queue
+	if err := tracker.ClearRescanQueue(); err != nil {
+		t.Fatalf("ClearRescanQueue failed: %v", err)
+	}
+
+	// Change both a.go and b.go
+	enqueued, err := tracker.InvalidateDependents([]string{"a.go", "b.go"})
+	if err != nil {
+		t.Fatalf("InvalidateDependents failed: %v", err)
+	}
+
+	// Should enqueue x.go, y.go (depend on a.go), z.go (depends on b.go)
+	if enqueued != 3 {
+		t.Errorf("Expected 3 enqueued, got %d", enqueued)
+	}
+
+	count := tracker.GetPendingRescanCount()
+	if count != 3 {
+		t.Errorf("Expected 3 pending rescans, got %d", count)
+	}
+}
+
+func TestDependencyTracker_DepthLimitRespected(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	store := NewStore(db, logger)
+	config := &TransitiveConfig{
+		Enabled: true,
+		Mode:    InvalidationEager,
+		Depth:   1, // Only direct dependents
+	}
+	tracker := NewDependencyTracker(db, store, config, logger)
+
+	// Setup: a.go -> b.go -> c.go
+	err := db.WithTx(func(tx *sql.Tx) error {
+		if err := tracker.UpdateFileDeps(tx, "a.go", []Reference{
+			{ToSymbolID: "sym_b"},
+		}, map[string]string{"sym_b": "b.go"}); err != nil {
+			return err
+		}
+		return tracker.UpdateFileDeps(tx, "b.go", []Reference{
+			{ToSymbolID: "sym_c"},
+		}, map[string]string{"sym_c": "c.go"})
+	})
+	if err != nil {
+		t.Fatalf("Setup deps failed: %v", err)
+	}
+
+	// Clear queue
+	if err := tracker.ClearRescanQueue(); err != nil {
+		t.Fatalf("ClearRescanQueue failed: %v", err)
+	}
+
+	// Change c.go with depth limit 1
+	enqueued, err := tracker.InvalidateDependents([]string{"c.go"})
+	if err != nil {
+		t.Fatalf("InvalidateDependents failed: %v", err)
+	}
+
+	// Should only enqueue b.go (direct dependent), NOT a.go (transitive)
+	if enqueued != 1 {
+		t.Errorf("Expected 1 enqueued (depth limit), got %d", enqueued)
+	}
+
+	entry, _ := tracker.GetNextRescan()
+	if entry.FilePath != "b.go" {
+		t.Errorf("Expected b.go, got %s", entry.FilePath)
+	}
+}
+
+func TestDependencyTracker_NilConfig(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	store := NewStore(db, logger)
+
+	// Create tracker with nil config - should use defaults
+	tracker := NewDependencyTracker(db, store, nil, logger)
+
+	// Should not panic and should use default config
+	if tracker == nil {
+		t.Fatal("Expected non-nil tracker")
+	}
+
+	// Verify it works with default config
+	if err := tracker.EnqueueRescan("test.go", RescanDepChange, 1); err != nil {
+		t.Fatalf("EnqueueRescan with nil config failed: %v", err)
+	}
+
+	count := tracker.GetPendingRescanCount()
+	if count != 1 {
+		t.Errorf("Expected 1 pending, got %d", count)
 	}
 }
