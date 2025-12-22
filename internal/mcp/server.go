@@ -5,10 +5,25 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
+	"time"
 
 	"ckb/internal/logging"
 	"ckb/internal/query"
+	"ckb/internal/repos"
 )
+
+const maxEngines = 5
+
+// engineEntry holds an engine and its metadata
+type engineEntry struct {
+	engine    *query.Engine
+	repoPath  string
+	repoName  string
+	loadedAt  time.Time
+	lastUsed  time.Time
+	activeOps sync.WaitGroup
+}
 
 // MCPServer represents the MCP server
 type MCPServer struct {
@@ -17,19 +32,47 @@ type MCPServer struct {
 	scanner   *bufio.Scanner
 	logger    *logging.Logger
 	version   string
-	engine    *query.Engine
 	tools     map[string]ToolHandler
 	resources map[string]ResourceHandler
+
+	// Legacy single-engine mode
+	legacyEngine *query.Engine
+
+	// Multi-repo mode
+	engines        map[string]*engineEntry // keyed by normalized path
+	activeRepo     string                  // current repo name
+	activeRepoPath string                  // current repo path
+	registry       *repos.Registry
+	mu             sync.RWMutex
 }
 
-// NewMCPServer creates a new MCP server
+// NewMCPServer creates a new MCP server in legacy single-engine mode
 func NewMCPServer(version string, engine *query.Engine, logger *logging.Logger) *MCPServer {
+	server := &MCPServer{
+		stdin:        os.Stdin,
+		stdout:       os.Stdout,
+		logger:       logger,
+		version:      version,
+		legacyEngine: engine,
+		tools:        make(map[string]ToolHandler),
+		resources:    make(map[string]ResourceHandler),
+	}
+
+	// Register all tools
+	server.RegisterTools()
+
+	return server
+}
+
+// NewMCPServerWithRegistry creates a new MCP server with multi-repo support
+func NewMCPServerWithRegistry(version string, registry *repos.Registry, logger *logging.Logger) *MCPServer {
 	server := &MCPServer{
 		stdin:     os.Stdin,
 		stdout:    os.Stdout,
 		logger:    logger,
 		version:   version,
-		engine:    engine,
+		registry:  registry,
+		engines:   make(map[string]*engineEntry),
 		tools:     make(map[string]ToolHandler),
 		resources: make(map[string]ResourceHandler),
 	}
@@ -38,6 +81,69 @@ func NewMCPServer(version string, engine *query.Engine, logger *logging.Logger) 
 	server.RegisterTools()
 
 	return server
+}
+
+// engine returns the current engine (for backward compatibility with tool handlers)
+func (s *MCPServer) engine() *query.Engine {
+	// Legacy mode
+	if s.legacyEngine != nil {
+		return s.legacyEngine
+	}
+
+	// Multi-repo mode
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.activeRepoPath == "" {
+		return nil
+	}
+
+	entry, ok := s.engines[s.activeRepoPath]
+	if !ok {
+		return nil
+	}
+
+	return entry.engine
+}
+
+// GetEngine returns the current engine or an error if none is active
+func (s *MCPServer) GetEngine() (*query.Engine, error) {
+	engine := s.engine()
+	if engine == nil {
+		return nil, fmt.Errorf("no active repository. Call listRepos to see available repos, then switchRepo")
+	}
+	return engine, nil
+}
+
+// IsMultiRepoMode returns true if the server is in multi-repo mode
+func (s *MCPServer) IsMultiRepoMode() bool {
+	return s.registry != nil
+}
+
+// GetActiveRepo returns the current active repo name and path
+func (s *MCPServer) GetActiveRepo() (name string, path string) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.activeRepo, s.activeRepoPath
+}
+
+// SetActiveRepo sets the initial active repo (used during startup)
+func (s *MCPServer) SetActiveRepo(name, path string, engine *query.Engine) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.activeRepo = name
+	s.activeRepoPath = path
+
+	if engine != nil {
+		s.engines[path] = &engineEntry{
+			engine:   engine,
+			repoPath: path,
+			repoName: name,
+			loadedAt: time.Now(),
+			lastUsed: time.Now(),
+		}
+	}
 }
 
 // Start starts the MCP server and begins processing messages

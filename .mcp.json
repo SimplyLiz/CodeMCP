@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "ckb": {
+      "command": "/Users/lisa/Work/Ideas/CodeMCP/ckb",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}

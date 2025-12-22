@@ -66,6 +66,12 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("/cache/warm", s.handleCacheWarm)
 	s.router.HandleFunc("/cache/clear", s.handleCacheClear)
 
+	// Index-serving endpoints (when index server is enabled)
+	if s.indexManager != nil {
+		s.router.HandleFunc("/index/repos", s.HandleIndexListRepos)
+		s.router.HandleFunc("/index/repos/", s.handleIndexRepoRoutes)
+	}
+
 	// OpenAPI spec
 	s.router.HandleFunc("/openapi.json", s.handleOpenAPISpec)
 
@@ -140,6 +146,20 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 			"POST /cache/clear - Clear cache",
 			"GET /openapi.json - OpenAPI specification",
 			"GET /metrics - Prometheus metrics",
+			"GET /index/repos - List indexed repositories (index-server mode)",
+			"POST /index/repos - Create new repo for upload",
+			"DELETE /index/repos/:repo - Delete uploaded repo",
+			"POST /index/repos/:repo/upload - Upload SCIP index (supports gzip, zstd)",
+			"POST /index/repos/:repo/upload/delta - Delta upload (incremental)",
+			"GET /index/repos/:repo/meta - Repository metadata and capabilities",
+			"GET /index/repos/:repo/files - List files with pagination",
+			"GET /index/repos/:repo/symbols - List symbols with pagination",
+			"GET /index/repos/:repo/symbols/:id - Get symbol by ID",
+			"POST /index/repos/:repo/symbols:batchGet - Batch get symbols",
+			"GET /index/repos/:repo/refs - List references with pagination",
+			"GET /index/repos/:repo/callgraph - List call edges with pagination",
+			"GET /index/repos/:repo/search/symbols - Search symbols",
+			"GET /index/repos/:repo/search/files - Search files",
 		},
 		"documentation": "/openapi.json",
 	}

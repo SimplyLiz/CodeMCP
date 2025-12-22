@@ -1,0 +1,758 @@
+package api
+
+import (
+	"crypto/sha256"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	_ "modernc.org/sqlite"
+
+	"ckb/internal/backends/scip"
+	"ckb/internal/logging"
+)
+
+// SCIPProcessor processes uploaded SCIP index files into CKB databases
+type SCIPProcessor struct {
+	storage *IndexStorage
+	logger  *logging.Logger
+}
+
+// UploadMeta contains metadata provided with an upload
+type UploadMeta struct {
+	Commit      string   // Git commit hash
+	Languages   []string // Languages (auto-detected if empty)
+	IndexerName string   // e.g., "scip-go"
+	IndexerVer  string   // e.g., "v0.3.0"
+}
+
+// ProcessResult contains processing statistics
+type ProcessResult struct {
+	RepoID      string        `json:"repo_id"`
+	Commit      string        `json:"commit,omitempty"`
+	Languages   []string      `json:"languages"`
+	FileCount   int           `json:"file_count"`
+	SymbolCount int           `json:"symbol_count"`
+	RefCount    int           `json:"ref_count"`
+	CallEdges   int           `json:"call_edges"`
+	TotalFiles  int           `json:"total_files,omitempty"` // For delta uploads: total files in repo
+	Duration    time.Duration `json:"-"`
+	DurationMs  int64         `json:"duration_ms"`
+}
+
+// NewSCIPProcessor creates a new processor
+func NewSCIPProcessor(storage *IndexStorage, logger *logging.Logger) *SCIPProcessor {
+	return &SCIPProcessor{
+		storage: storage,
+		logger:  logger,
+	}
+}
+
+// ProcessUpload processes an uploaded SCIP file into a repo's database
+func (p *SCIPProcessor) ProcessUpload(repoID string, scipPath string, meta UploadMeta) (*ProcessResult, error) {
+	start := time.Now()
+
+	// Load SCIP index
+	index, err := scip.LoadSCIPIndex(scipPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load SCIP index: %w", err)
+	}
+
+	p.logger.Info("Loaded SCIP index", map[string]interface{}{
+		"repo_id":   repoID,
+		"documents": len(index.Documents),
+	})
+
+	// Open/create database
+	dbPath := p.storage.DBPath(repoID)
+	db, err := p.openDatabase(dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+	defer db.Close()
+
+	// Initialize schema
+	if err := p.initSchema(db); err != nil {
+		return nil, fmt.Errorf("failed to initialize schema: %w", err)
+	}
+
+	// Process in transaction
+	result := &ProcessResult{
+		RepoID:    repoID,
+		Commit:    meta.Commit,
+		Languages: []string{},
+	}
+
+	if err := p.processIndex(db, index, result); err != nil {
+		return nil, fmt.Errorf("failed to process index: %w", err)
+	}
+
+	// Extract commit from SCIP metadata if not provided
+	if result.Commit == "" && index.IndexedCommit != "" {
+		result.Commit = index.IndexedCommit
+	}
+
+	// Update index_meta
+	if err := p.updateMeta(db, result); err != nil {
+		p.logger.Warn("Failed to update index_meta", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
+
+	// Update storage metadata
+	if err := p.storage.UpdateLastUpload(repoID); err != nil {
+		p.logger.Warn("Failed to update storage metadata", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
+
+	result.Duration = time.Since(start)
+	result.DurationMs = result.Duration.Milliseconds()
+
+	p.logger.Info("Processed SCIP index", map[string]interface{}{
+		"repo_id":     repoID,
+		"files":       result.FileCount,
+		"symbols":     result.SymbolCount,
+		"call_edges":  result.CallEdges,
+		"duration_ms": result.DurationMs,
+	})
+
+	return result, nil
+}
+
+// ProcessDeltaUpload processes a partial SCIP upload containing only changed files
+func (p *SCIPProcessor) ProcessDeltaUpload(repoID string, scipPath string, meta *DeltaUploadRequest) (*ProcessResult, error) {
+	start := time.Now()
+
+	// Load partial SCIP index
+	index, err := scip.LoadSCIPIndex(scipPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load SCIP index: %w", err)
+	}
+
+	p.logger.Info("Loaded delta SCIP index", map[string]interface{}{
+		"repo_id":       repoID,
+		"documents":     len(index.Documents),
+		"changed_files": len(meta.ChangedFiles),
+	})
+
+	// Open existing database
+	dbPath := p.storage.DBPath(repoID)
+	db, err := p.openDatabase(dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+	defer db.Close()
+
+	// Get total file count before changes
+	var totalFiles int
+	if err := db.QueryRow("SELECT COUNT(*) FROM indexed_files").Scan(&totalFiles); err != nil {
+		totalFiles = 0
+	}
+
+	result := &ProcessResult{
+		RepoID:     repoID,
+		Commit:     meta.TargetCommit,
+		Languages:  []string{},
+		TotalFiles: totalFiles,
+	}
+
+	// Process delta in transaction
+	if err := p.processDeltaIndex(db, index, meta, result); err != nil {
+		return nil, fmt.Errorf("failed to process delta: %w", err)
+	}
+
+	// Update index_meta with new commit
+	if err := p.updateMeta(db, result); err != nil {
+		p.logger.Warn("Failed to update index_meta", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
+
+	// Update storage metadata
+	if err := p.storage.UpdateLastUpload(repoID); err != nil {
+		p.logger.Warn("Failed to update storage metadata", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
+
+	result.Duration = time.Since(start)
+	result.DurationMs = result.Duration.Milliseconds()
+
+	p.logger.Info("Processed delta SCIP index", map[string]interface{}{
+		"repo_id":     repoID,
+		"files":       result.FileCount,
+		"symbols":     result.SymbolCount,
+		"call_edges":  result.CallEdges,
+		"duration_ms": result.DurationMs,
+	})
+
+	return result, nil
+}
+
+// processDeltaIndex applies changes from a partial SCIP index
+func (p *SCIPProcessor) processDeltaIndex(db *sql.DB, index *scip.SCIPIndex, meta *DeltaUploadRequest, result *ProcessResult) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Build change map for quick lookup
+	changeMap := make(map[string]*DeltaChangedFile)
+	for i := range meta.ChangedFiles {
+		cf := &meta.ChangedFiles[i]
+		changeMap[cf.Path] = cf
+		if cf.OldPath != "" {
+			changeMap[cf.OldPath] = cf
+		}
+	}
+
+	// Prepare statements
+	deleteSymbolsStmt, err := tx.Prepare("DELETE FROM symbol_mappings WHERE json_extract(location_json, '$.file_path') = ?")
+	if err != nil {
+		return err
+	}
+	defer deleteSymbolsStmt.Close()
+
+	deleteCallsStmt, err := tx.Prepare("DELETE FROM callgraph WHERE caller_file = ?")
+	if err != nil {
+		return err
+	}
+	defer deleteCallsStmt.Close()
+
+	deleteFileStmt, err := tx.Prepare("DELETE FROM indexed_files WHERE path = ?")
+	if err != nil {
+		return err
+	}
+	defer deleteFileStmt.Close()
+
+	symbolStmt, err := tx.Prepare(`
+		INSERT INTO symbol_mappings (
+			stable_id, state, backend_stable_id, fingerprint_json, location_json,
+			last_verified_at, last_verified_state_id
+		) VALUES (?, 'active', ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return err
+	}
+	defer symbolStmt.Close()
+
+	fileStmt, err := tx.Prepare(`
+		INSERT OR REPLACE INTO indexed_files (path, hash, indexed_at, symbol_count)
+		VALUES (?, ?, ?, ?)
+	`)
+	if err != nil {
+		return err
+	}
+	defer fileStmt.Close()
+
+	callStmt, err := tx.Prepare(`
+		INSERT OR IGNORE INTO callgraph (caller_id, callee_id, caller_file, call_line, call_col, call_end_col)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return err
+	}
+	defer callStmt.Close()
+
+	now := time.Now().Format(time.RFC3339)
+	langSet := make(map[string]bool)
+
+	// First, delete data for all changed files
+	for _, cf := range meta.ChangedFiles {
+		pathToDelete := cf.Path
+		if cf.OldPath != "" {
+			pathToDelete = cf.OldPath // For renames, delete old path
+		}
+
+		deleteSymbolsStmt.Exec(pathToDelete)
+		deleteCallsStmt.Exec(pathToDelete)
+		deleteFileStmt.Exec(pathToDelete)
+
+		// Also delete new path for renames/additions to avoid duplicates
+		if cf.OldPath != "" || cf.ChangeType == "modified" {
+			deleteSymbolsStmt.Exec(cf.Path)
+			deleteCallsStmt.Exec(cf.Path)
+			deleteFileStmt.Exec(cf.Path)
+		}
+	}
+
+	// Process documents from SCIP index (only contains changed files)
+	for _, doc := range index.Documents {
+		cf, isTracked := changeMap[doc.RelativePath]
+		if !isTracked {
+			// Skip files not in our change list
+			continue
+		}
+
+		// Skip if deleted (shouldn't have SCIP doc, but be safe)
+		if cf.ChangeType == "deleted" {
+			continue
+		}
+
+		if doc.Language != "" {
+			langSet[doc.Language] = true
+		}
+
+		fileSymbolCount := 0
+
+		// Build symbol info map for this document
+		symbolInfo := make(map[string]*scip.SymbolInformation)
+		for _, sym := range doc.Symbols {
+			symbolInfo[sym.Symbol] = sym
+		}
+
+		// Process occurrences
+		for _, occ := range doc.Occurrences {
+			if isLocalSymbol(occ.Symbol) {
+				continue
+			}
+
+			if occ.SymbolRoles&scip.SymbolRoleDefinition != 0 {
+				fingerprint := buildFingerprint(doc, occ, symbolInfo)
+				location := buildLocation(doc.RelativePath, occ)
+
+				_, err := symbolStmt.Exec(
+					occ.Symbol,
+					occ.Symbol,
+					fingerprint,
+					location,
+					now,
+					"delta-upload",
+				)
+				if err == nil {
+					result.SymbolCount++
+					fileSymbolCount++
+				}
+			} else {
+				result.RefCount++
+
+				if isCallableSymbol(occ.Symbol, symbolInfo) {
+					line, col, endCol := parseRange(occ.Range)
+					callerID := resolveCallerFromDoc(doc, line, symbolInfo)
+
+					_, err := callStmt.Exec(
+						nullString(callerID),
+						occ.Symbol,
+						doc.RelativePath,
+						line,
+						col,
+						nullInt(endCol),
+					)
+					if err == nil {
+						result.CallEdges++
+					}
+				}
+			}
+		}
+
+		// Insert/update file record
+		fileHash := computeFileHash(doc)
+		fileStmt.Exec(doc.RelativePath, fileHash, time.Now().Unix(), fileSymbolCount)
+		result.FileCount++
+	}
+
+	for lang := range langSet {
+		result.Languages = append(result.Languages, lang)
+	}
+
+	return tx.Commit()
+}
+
+// openDatabase opens or creates a SQLite database
+func (p *SCIPProcessor) openDatabase(dbPath string) (*sql.DB, error) {
+	// Ensure directory exists
+	if err := ensureDir(filepath.Dir(dbPath)); err != nil {
+		return nil, err
+	}
+
+	connStr := fmt.Sprintf("file:%s?_journal_mode=WAL&_busy_timeout=5000", dbPath)
+	db, err := sql.Open("sqlite", connStr)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set pragmas for performance
+	pragmas := []string{
+		"PRAGMA busy_timeout=5000",
+		"PRAGMA journal_mode=WAL",
+		"PRAGMA synchronous=NORMAL",
+		"PRAGMA cache_size=-64000", // 64MB
+		"PRAGMA temp_store=MEMORY",
+	}
+
+	for _, pragma := range pragmas {
+		if _, err := db.Exec(pragma); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("failed to set pragma: %w", err)
+		}
+	}
+
+	return db, nil
+}
+
+// initSchema creates required tables if they don't exist
+func (p *SCIPProcessor) initSchema(db *sql.DB) error {
+	// Schema version table
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS schema_version (
+			version INTEGER NOT NULL
+		)
+	`); err != nil {
+		return err
+	}
+
+	// Symbol mappings table (simplified for index server)
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS symbol_mappings (
+			stable_id TEXT PRIMARY KEY,
+			state TEXT NOT NULL DEFAULT 'active',
+			backend_stable_id TEXT,
+			fingerprint_json TEXT NOT NULL,
+			location_json TEXT NOT NULL,
+			definition_version_id TEXT,
+			definition_version_semantics TEXT,
+			last_verified_at TEXT NOT NULL,
+			last_verified_state_id TEXT NOT NULL,
+			deleted_at TEXT,
+			deleted_in_state_id TEXT
+		)
+	`); err != nil {
+		return err
+	}
+
+	// Indexed files table
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS indexed_files (
+			path TEXT PRIMARY KEY,
+			hash TEXT NOT NULL,
+			mtime INTEGER,
+			indexed_at INTEGER NOT NULL,
+			scip_document_hash TEXT,
+			symbol_count INTEGER DEFAULT 0
+		)
+	`); err != nil {
+		return err
+	}
+
+	// Callgraph table
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS callgraph (
+			caller_id TEXT,
+			callee_id TEXT NOT NULL,
+			caller_file TEXT NOT NULL,
+			call_line INTEGER NOT NULL,
+			call_col INTEGER NOT NULL,
+			call_end_col INTEGER,
+			PRIMARY KEY (caller_file, call_line, call_col, callee_id)
+		)
+	`); err != nil {
+		return err
+	}
+
+	// Index meta table
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS index_meta (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL
+		)
+	`); err != nil {
+		return err
+	}
+
+	// Create indexes
+	indexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_symbol_mappings_state ON symbol_mappings(state)",
+		"CREATE INDEX IF NOT EXISTS idx_callgraph_caller_file ON callgraph(caller_file)",
+		"CREATE INDEX IF NOT EXISTS idx_callgraph_caller_id ON callgraph(caller_id)",
+		"CREATE INDEX IF NOT EXISTS idx_callgraph_callee_id ON callgraph(callee_id)",
+	}
+
+	for _, idx := range indexes {
+		if _, err := db.Exec(idx); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// processIndex processes all documents from the SCIP index
+func (p *SCIPProcessor) processIndex(db *sql.DB, index *scip.SCIPIndex, result *ProcessResult) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Clear existing data (full replace)
+	tables := []string{"symbol_mappings", "indexed_files", "callgraph"}
+	for _, table := range tables {
+		if _, err := tx.Exec(fmt.Sprintf("DELETE FROM %s", table)); err != nil {
+			return fmt.Errorf("failed to clear %s: %w", table, err)
+		}
+	}
+
+	// Prepare statements
+	symbolStmt, err := tx.Prepare(`
+		INSERT INTO symbol_mappings (
+			stable_id, state, backend_stable_id, fingerprint_json, location_json,
+			last_verified_at, last_verified_state_id
+		) VALUES (?, 'active', ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return err
+	}
+	defer symbolStmt.Close()
+
+	fileStmt, err := tx.Prepare(`
+		INSERT INTO indexed_files (path, hash, indexed_at, symbol_count)
+		VALUES (?, ?, ?, ?)
+	`)
+	if err != nil {
+		return err
+	}
+	defer fileStmt.Close()
+
+	callStmt, err := tx.Prepare(`
+		INSERT OR IGNORE INTO callgraph (caller_id, callee_id, caller_file, call_line, call_col, call_end_col)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return err
+	}
+	defer callStmt.Close()
+
+	// Track languages
+	langSet := make(map[string]bool)
+	now := time.Now().Format(time.RFC3339)
+
+	// Process each document
+	for _, doc := range index.Documents {
+		if doc.Language != "" {
+			langSet[doc.Language] = true
+		}
+
+		fileSymbolCount := 0
+
+		// Build symbol info map for this document
+		symbolInfo := make(map[string]*scip.SymbolInformation)
+		for _, sym := range doc.Symbols {
+			symbolInfo[sym.Symbol] = sym
+		}
+
+		// Process occurrences
+		for _, occ := range doc.Occurrences {
+			// Skip local symbols
+			if isLocalSymbol(occ.Symbol) {
+				continue
+			}
+
+			// Definition = insert symbol
+			if occ.SymbolRoles&scip.SymbolRoleDefinition != 0 {
+				fingerprint := buildFingerprint(doc, occ, symbolInfo)
+				location := buildLocation(doc.RelativePath, occ)
+
+				_, err := symbolStmt.Exec(
+					occ.Symbol,
+					occ.Symbol,
+					fingerprint,
+					location,
+					now,
+					"upload",
+				)
+				if err != nil {
+					p.logger.Debug("Symbol insert error", map[string]interface{}{
+						"symbol": occ.Symbol,
+						"error":  err.Error(),
+					})
+					continue
+				}
+
+				result.SymbolCount++
+				fileSymbolCount++
+			} else {
+				// Reference = potential call edge
+				result.RefCount++
+
+				// Check if it's a callable (function/method)
+				if isCallableSymbol(occ.Symbol, symbolInfo) {
+					line, col, endCol := parseRange(occ.Range)
+
+					// Try to resolve caller
+					callerID := resolveCallerFromDoc(doc, line, symbolInfo)
+
+					_, err := callStmt.Exec(
+						nullString(callerID),
+						occ.Symbol,
+						doc.RelativePath,
+						line,
+						col,
+						nullInt(endCol),
+					)
+					if err == nil {
+						result.CallEdges++
+					}
+				}
+			}
+		}
+
+		// Insert file record
+		fileHash := computeFileHash(doc)
+		_, _ = fileStmt.Exec(doc.RelativePath, fileHash, time.Now().Unix(), fileSymbolCount)
+		result.FileCount++
+	}
+
+	// Collect languages
+	for lang := range langSet {
+		result.Languages = append(result.Languages, lang)
+	}
+
+	return tx.Commit()
+}
+
+// updateMeta updates the index_meta table
+func (p *SCIPProcessor) updateMeta(db *sql.DB, result *ProcessResult) error {
+	meta := map[string]string{
+		"commit":       result.Commit,
+		"indexed_at":   time.Now().Format(time.RFC3339),
+		"sync_seq":     "1",
+		"file_count":   fmt.Sprintf("%d", result.FileCount),
+		"symbol_count": fmt.Sprintf("%d", result.SymbolCount),
+	}
+
+	for key, value := range meta {
+		if value == "" {
+			continue
+		}
+		_, err := db.Exec(`
+			INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)
+		`, key, value)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// Helper functions
+
+func isLocalSymbol(symbolID string) bool {
+	return len(symbolID) > 6 && symbolID[:6] == "local "
+}
+
+func isCallableSymbol(symbolID string, info map[string]*scip.SymbolInformation) bool {
+	// Check SymbolInformation.Kind first
+	if sym, ok := info[symbolID]; ok && sym.Kind != 0 {
+		// Function (12), Method (6), Constructor (9)
+		return sym.Kind == 12 || sym.Kind == 6 || sym.Kind == 9
+	}
+	// Fallback: Go-specific heuristic
+	return strings.Contains(symbolID, "().")
+}
+
+func parseRange(r []int32) (line, col, endCol int) {
+	if len(r) >= 1 {
+		line = int(r[0]) + 1 // Convert to 1-indexed
+	}
+	if len(r) >= 2 {
+		col = int(r[1]) + 1
+	}
+	if len(r) >= 4 {
+		endCol = int(r[3]) + 1
+	}
+	return
+}
+
+func buildFingerprint(doc *scip.Document, occ *scip.Occurrence, info map[string]*scip.SymbolInformation) string {
+	fp := map[string]interface{}{
+		"symbol":   occ.Symbol,
+		"language": doc.Language,
+	}
+
+	if sym, ok := info[occ.Symbol]; ok {
+		fp["kind"] = sym.Kind
+		if sym.DisplayName != "" {
+			fp["name"] = sym.DisplayName
+		}
+	}
+
+	data, _ := json.Marshal(fp)
+	return string(data)
+}
+
+func buildLocation(path string, occ *scip.Occurrence) string {
+	loc := map[string]interface{}{
+		"file_path": path,
+	}
+
+	if len(occ.Range) >= 1 {
+		loc["line"] = int(occ.Range[0]) + 1
+	}
+	if len(occ.Range) >= 2 {
+		loc["col"] = int(occ.Range[1]) + 1
+	}
+
+	data, _ := json.Marshal(loc)
+	return string(data)
+}
+
+func computeFileHash(doc *scip.Document) string {
+	h := sha256.New()
+	h.Write([]byte(doc.RelativePath))
+	for _, occ := range doc.Occurrences {
+		h.Write([]byte(occ.Symbol))
+	}
+	return fmt.Sprintf("%x", h.Sum(nil))[:16]
+}
+
+func resolveCallerFromDoc(doc *scip.Document, callLine int, info map[string]*scip.SymbolInformation) string {
+	// Find the enclosing function definition for this call
+	var bestMatch string
+	bestLine := 0
+
+	for _, occ := range doc.Occurrences {
+		// Only consider definitions
+		if occ.SymbolRoles&scip.SymbolRoleDefinition == 0 {
+			continue
+		}
+
+		// Check if it's a callable
+		if !isCallableSymbol(occ.Symbol, info) {
+			continue
+		}
+
+		line := int(occ.Range[0]) + 1
+		// Find the closest function definition before the call
+		if line <= callLine && line > bestLine {
+			bestMatch = occ.Symbol
+			bestLine = line
+		}
+	}
+
+	return bestMatch
+}
+
+func nullString(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+func nullInt(i int) interface{} {
+	if i == 0 {
+		return nil
+	}
+	return i
+}
+
+func ensureDir(path string) error {
+	return os.MkdirAll(path, 0755)
+}

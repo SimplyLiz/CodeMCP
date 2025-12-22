@@ -11,8 +11,11 @@ import (
 // v3: Telemetry (observed_usage, observed_callers, coverage_snapshots)
 // v4: Developer Intelligence (coupling_cache, risk_scores)
 // v5: Doc-Symbol Linking (docs, doc_references, doc_modules, symbol_suffixes)
-// v6: FTS5 Symbol Search (symbols_fts_content, symbols_fts)
-const currentSchemaVersion = 6
+// v6: Incremental Indexing (indexed_files, file_symbols, index_meta)
+// v7: Incremental Callgraph (callgraph table for call edge storage)
+// v8: Transitive Invalidation (file_deps, rescan_queue for dependency tracking)
+// v9: FTS5 Symbol Search (symbols_fts_content, symbols_fts)
+const currentSchemaVersion = 9
 
 // initializeSchema creates all tables for a new database
 func (db *DB) initializeSchema() error {
@@ -74,7 +77,22 @@ func (db *DB) initializeSchema() error {
 			return err
 		}
 
-		// Create v6 FTS5 Symbol Search tables
+		// Create v6 Incremental Indexing tables
+		if err := createIncrementalIndexingTables(tx); err != nil {
+			return err
+		}
+
+		// Create v7 Callgraph table
+		if err := createCallgraphTable(tx); err != nil {
+			return err
+		}
+
+		// Create v8 Transitive Invalidation tables
+		if err := createTransitiveInvalidationTables(tx); err != nil {
+			return err
+		}
+
+		// Create v9 FTS5 Symbol Search tables
 		if err := createSymbolFTSTables(tx); err != nil {
 			return err
 		}
@@ -140,6 +158,24 @@ func (db *DB) runMigrations() error {
 	if version < 6 {
 		if err := db.migrateToV6(); err != nil {
 			return fmt.Errorf("failed to migrate to v6: %w", err)
+		}
+	}
+
+	if version < 7 {
+		if err := db.migrateToV7(); err != nil {
+			return fmt.Errorf("failed to migrate to v7: %w", err)
+		}
+	}
+
+	if version < 8 {
+		if err := db.migrateToV8(); err != nil {
+			return fmt.Errorf("failed to migrate to v8: %w", err)
+		}
+	}
+
+	if version < 9 {
+		if err := db.migrateToV9(); err != nil {
+			return fmt.Errorf("failed to migrate to v9: %w", err)
 		}
 	}
 
@@ -1040,6 +1076,238 @@ func createDocsTables(tx *sql.Tx) error {
 	return nil
 }
 
+// ============================================================================
+// v6 Schema: Incremental Indexing Tables
+// ============================================================================
+
+// migrateToV6 migrates the database from v5 to v6 (Incremental Indexing)
+func (db *DB) migrateToV6() error {
+	return db.WithTx(func(tx *sql.Tx) error {
+		db.logger.Info("Migrating database to v6 (Incremental Indexing)", nil)
+
+		// Create new v6 incremental indexing tables
+		if err := createIncrementalIndexingTables(tx); err != nil {
+			return err
+		}
+
+		// Update schema version
+		if err := setSchemaVersion(tx, 6); err != nil {
+			return err
+		}
+
+		db.logger.Info("Database migrated to v6", nil)
+		return nil
+	})
+}
+
+// createIncrementalIndexingTables creates tables for incremental SCIP indexing
+func createIncrementalIndexingTables(tx *sql.Tx) error {
+	tables := []string{
+		// Track indexed files for change detection
+		`CREATE TABLE IF NOT EXISTS indexed_files (
+			path TEXT PRIMARY KEY,
+			hash TEXT NOT NULL,
+			mtime INTEGER,
+			indexed_at INTEGER NOT NULL,
+			scip_document_hash TEXT,
+			symbol_count INTEGER DEFAULT 0
+		)`,
+
+		// Map files to their symbols for fast invalidation
+		`CREATE TABLE IF NOT EXISTS file_symbols (
+			file_path TEXT NOT NULL,
+			symbol_id TEXT NOT NULL,
+			PRIMARY KEY (file_path, symbol_id)
+		)`,
+
+		// Key-value store for incremental index state
+		`CREATE TABLE IF NOT EXISTS index_meta (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL
+		)`,
+	}
+
+	for _, stmt := range tables {
+		if _, err := tx.Exec(stmt); err != nil {
+			return fmt.Errorf("failed to create incremental indexing table: %w", err)
+		}
+	}
+
+	// Create indexes for efficient queries
+	indexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_indexed_files_indexed ON indexed_files(indexed_at)",
+		"CREATE INDEX IF NOT EXISTS idx_file_symbols_file ON file_symbols(file_path)",
+		"CREATE INDEX IF NOT EXISTS idx_file_symbols_symbol ON file_symbols(symbol_id)",
+	}
+
+	for _, idx := range indexes {
+		if _, err := tx.Exec(idx); err != nil {
+			return fmt.Errorf("failed to create incremental indexing index: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// ============================================================================
+// v7: Incremental Callgraph
+// ============================================================================
+
+// migrateToV7 migrates the database from v6 to v7 (Incremental Callgraph)
+func (db *DB) migrateToV7() error {
+	return db.WithTx(func(tx *sql.Tx) error {
+		db.logger.Info("Migrating database to v7 (Incremental Callgraph)", nil)
+
+		// Create new v7 callgraph table
+		if err := createCallgraphTable(tx); err != nil {
+			return err
+		}
+
+		// Update schema version
+		if err := setSchemaVersion(tx, 7); err != nil {
+			return err
+		}
+
+		db.logger.Info("Database migrated to v7", nil)
+		return nil
+	})
+}
+
+// createCallgraphTable creates the callgraph table for incremental call edge storage
+// Edges are owned by the caller file (caller-owned edges invariant).
+// PK is location-anchored: (caller_file, call_line, call_col, callee_id)
+func createCallgraphTable(tx *sql.Tx) error {
+	// Create callgraph table
+	_, err := tx.Exec(`
+		CREATE TABLE IF NOT EXISTS callgraph (
+			caller_id    TEXT,              -- May be NULL if caller unresolved
+			callee_id    TEXT NOT NULL,     -- Target symbol being called
+			caller_file  TEXT NOT NULL,     -- File containing the call (for deletion)
+			call_line    INTEGER NOT NULL,  -- 1-indexed line number
+			call_col     INTEGER NOT NULL,  -- 1-indexed column number
+			call_end_col INTEGER,           -- Optional: end column for nested calls
+			PRIMARY KEY (caller_file, call_line, call_col, callee_id)
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create callgraph table: %w", err)
+	}
+
+	// Create indexes for efficient queries
+	indexes := []string{
+		// Fast deletion by file (incremental update)
+		"CREATE INDEX IF NOT EXISTS idx_callgraph_caller_file ON callgraph(caller_file)",
+		// "What does X call?" queries
+		"CREATE INDEX IF NOT EXISTS idx_callgraph_caller_id ON callgraph(caller_id)",
+		// "What calls X?" queries
+		"CREATE INDEX IF NOT EXISTS idx_callgraph_callee_id ON callgraph(callee_id)",
+	}
+
+	for _, idx := range indexes {
+		if _, err := tx.Exec(idx); err != nil {
+			return fmt.Errorf("failed to create callgraph index: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// ============================================================================
+// v8: Transitive Invalidation
+// ============================================================================
+
+// migrateToV8 migrates the database from v7 to v8 (Transitive Invalidation)
+func (db *DB) migrateToV8() error {
+	return db.WithTx(func(tx *sql.Tx) error {
+		db.logger.Info("Migrating database to v8 (Transitive Invalidation)", nil)
+
+		// Create new v8 transitive invalidation tables
+		if err := createTransitiveInvalidationTables(tx); err != nil {
+			return err
+		}
+
+		// Update schema version
+		if err := setSchemaVersion(tx, 8); err != nil {
+			return err
+		}
+
+		db.logger.Info("Database migrated to v8", nil)
+		return nil
+	})
+}
+
+// createTransitiveInvalidationTables creates tables for file dependency tracking
+// and rescan queue for transitive invalidation (v2)
+func createTransitiveInvalidationTables(tx *sql.Tx) error {
+	tables := []string{
+		// file_deps: tracks which files depend on which files
+		// dependent_file uses symbols defined in defining_file
+		// Only tracks internal files (not external deps like stdlib)
+		`CREATE TABLE IF NOT EXISTS file_deps (
+			dependent_file TEXT NOT NULL,  -- File that references symbols
+			defining_file  TEXT NOT NULL,  -- File that defines those symbols
+			PRIMARY KEY (dependent_file, defining_file)
+		)`,
+
+		// rescan_queue: files that need to be rescanned due to dependency changes
+		// Used for transitive invalidation in lazy/eager/deferred modes
+		`CREATE TABLE IF NOT EXISTS rescan_queue (
+			file_path   TEXT PRIMARY KEY,
+			reason      TEXT NOT NULL,      -- 'dep_change' | 'budget_exceeded' | 'manual'
+			depth       INTEGER NOT NULL,   -- BFS hop count from original change
+			enqueued_at INTEGER NOT NULL,   -- Unix timestamp
+			attempts    INTEGER NOT NULL DEFAULT 0
+		)`,
+	}
+
+	for _, stmt := range tables {
+		if _, err := tx.Exec(stmt); err != nil {
+			return fmt.Errorf("failed to create transitive invalidation table: %w", err)
+		}
+	}
+
+	// Create indexes
+	indexes := []string{
+		// Fast lookup of what depends on a changed file
+		"CREATE INDEX IF NOT EXISTS idx_file_deps_defining ON file_deps(defining_file)",
+		// Queue ordering
+		"CREATE INDEX IF NOT EXISTS idx_rescan_queue_time ON rescan_queue(enqueued_at)",
+		"CREATE INDEX IF NOT EXISTS idx_rescan_queue_depth ON rescan_queue(depth)",
+	}
+
+	for _, idx := range indexes {
+		if _, err := tx.Exec(idx); err != nil {
+			return fmt.Errorf("failed to create transitive invalidation index: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// ============================================================================
+// v9 Schema: FTS5 Symbol Search
+// ============================================================================
+
+// migrateToV9 migrates the database from v8 to v9 (FTS5 Symbol Search)
+func (db *DB) migrateToV9() error {
+	return db.WithTx(func(tx *sql.Tx) error {
+		db.logger.Info("Migrating database to v9 (FTS5 Symbol Search)", nil)
+
+		// Create FTS5 tables
+		if err := createSymbolFTSTables(tx); err != nil {
+			return err
+		}
+
+		// Update schema version
+		if err := setSchemaVersion(tx, 9); err != nil {
+			return err
+		}
+
+		db.logger.Info("Database migrated to v9", nil)
+		return nil
+	})
+}
+
 // createSymbolFTSTables creates the FTS5 tables for symbol search
 func createSymbolFTSTables(tx *sql.Tx) error {
 	// Create the base content table for FTS5
@@ -1114,24 +1382,4 @@ func createSymbolFTSTables(tx *sql.Tx) error {
 	}
 
 	return nil
-}
-
-// migrateToV6 migrates the database from v5 to v6 (FTS5 Symbol Search)
-func (db *DB) migrateToV6() error {
-	return db.WithTx(func(tx *sql.Tx) error {
-		db.logger.Info("Migrating database to v6 (FTS5 Symbol Search)", nil)
-
-		// Create FTS5 tables
-		if err := createSymbolFTSTables(tx); err != nil {
-			return err
-		}
-
-		// Update schema version
-		if err := setSchemaVersion(tx, 6); err != nil {
-			return err
-		}
-
-		db.logger.Info("Database migrated to v6", nil)
-		return nil
-	})
 }

@@ -11,7 +11,7 @@ import (
 
 // toolGetTelemetryStatus returns telemetry system status
 func (s *MCPServer) toolGetTelemetryStatus(params map[string]interface{}) (interface{}, error) {
-	cfg := s.engine.GetConfig()
+	cfg := s.engine().GetConfig()
 	if cfg == nil {
 		return nil, fmt.Errorf("configuration not available")
 	}
@@ -110,7 +110,7 @@ func (s *MCPServer) toolGetObservedUsage(params map[string]interface{}) (interfa
 
 	includeCallers, _ := params["includeCallers"].(bool)
 
-	cfg := s.engine.GetConfig()
+	cfg := s.engine().GetConfig()
 	if cfg == nil || !cfg.Telemetry.Enabled {
 		return nil, fmt.Errorf("telemetry is not enabled")
 	}
@@ -172,7 +172,7 @@ func (s *MCPServer) toolGetObservedUsage(params map[string]interface{}) (interfa
 	}
 
 	// Get static refs for blended confidence
-	refs, _ := s.engine.GetReferenceCount(symbolID)
+	refs, _ := s.engine().GetReferenceCount(symbolID)
 	response.StaticRefs = refs
 
 	// Compute blended confidence
@@ -200,7 +200,7 @@ func (s *MCPServer) toolFindDeadCodeCandidates(params map[string]interface{}) (i
 		limit = int(v)
 	}
 
-	cfg := s.engine.GetConfig()
+	cfg := s.engine().GetConfig()
 	if cfg == nil || !cfg.Telemetry.Enabled {
 		return nil, fmt.Errorf("telemetry is not enabled")
 	}
@@ -289,7 +289,7 @@ func (s *MCPServer) toolFindDeadCodeCandidates(params map[string]interface{}) (i
 	detector := telemetry.NewDeadCodeDetector(storage, coverage, options)
 
 	// Get symbols from engine and check for dead code
-	symbols, err := s.engine.GetAllSymbols()
+	symbols, err := s.engine().GetAllSymbols()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get symbols: %w", err)
 	}
@@ -297,7 +297,7 @@ func (s *MCPServer) toolFindDeadCodeCandidates(params map[string]interface{}) (i
 	// Convert to SymbolInfo slice
 	var symbolInfos []telemetry.SymbolInfo
 	for _, sym := range symbols {
-		refs, _ := s.engine.GetReferenceCount(sym.ID)
+		refs, _ := s.engine().GetReferenceCount(sym.ID)
 		symbolInfos = append(symbolInfos, telemetry.SymbolInfo{
 			ID:         sym.ID,
 			Name:       sym.Name,
@@ -327,7 +327,7 @@ func (s *MCPServer) toolFindDeadCodeCandidates(params map[string]interface{}) (i
 
 // getTelemetryStorage returns the telemetry storage instance
 func (s *MCPServer) getTelemetryStorage() *telemetry.Storage {
-	db := s.engine.GetDB()
+	db := s.engine().GetDB()
 	if db == nil {
 		return nil
 	}
