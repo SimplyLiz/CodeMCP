@@ -47,6 +47,7 @@ not directly by users.`,
 var (
 	mcpStdio bool
 	mcpWatch bool
+	mcpRepo  string
 )
 
 const watchPollInterval = 30 * time.Second
@@ -55,6 +56,7 @@ func init() {
 	rootCmd.AddCommand(mcpCmd)
 	mcpCmd.Flags().BoolVar(&mcpStdio, "stdio", true, "Use stdio for communication (default)")
 	mcpCmd.Flags().BoolVar(&mcpWatch, "watch", false, "Watch for changes and auto-reindex")
+	mcpCmd.Flags().StringVar(&mcpRepo, "repo", "", "Repository path (defaults to CKB_REPO env var or current directory)")
 }
 
 func runMCP(cmd *cobra.Command, args []string) error {
@@ -70,8 +72,29 @@ func runMCP(cmd *cobra.Command, args []string) error {
 		"version": version.Version,
 	})
 
-	// Get repo root and create Query Engine
-	repoRoot := mustGetRepoRoot()
+	// Get repo root: --repo flag > CKB_REPO env var > current directory
+	repoRoot := mcpRepo
+	if repoRoot == "" {
+		repoRoot = os.Getenv("CKB_REPO")
+	}
+	if repoRoot == "" {
+		repoRoot = mustGetRepoRoot()
+	}
+
+	// Change to repo directory so relative paths work
+	if repoRoot != "" && repoRoot != "." {
+		if err := os.Chdir(repoRoot); err != nil {
+			logger.Error("Failed to change to repo directory", map[string]interface{}{
+				"path":  repoRoot,
+				"error": err.Error(),
+			})
+			return err
+		}
+		logger.Info("Changed to repo directory", map[string]interface{}{
+			"path": repoRoot,
+		})
+	}
+
 	engine := mustGetEngine(repoRoot, logger)
 
 	// Start watch mode if enabled

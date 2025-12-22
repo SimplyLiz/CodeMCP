@@ -69,8 +69,9 @@ type mcpServersConfig struct {
 }
 
 type mcpServer struct {
-	Command string   `json:"command"`
-	Args    []string `json:"args"`
+	Command string            `json:"command"`
+	Args    []string          `json:"args"`
+	Env     map[string]string `json:"env,omitempty"`
 }
 
 // vsCodeConfig is used by VS Code (.vscode/mcp.json)
@@ -224,6 +225,59 @@ func selectScope(tool *aiTool) (bool, error) {
 	}
 }
 
+func promptRepoPath() (string, error) {
+	cwd, _ := os.Getwd()
+
+	fmt.Println("\nClaude Desktop needs to know which repository to analyze.")
+	fmt.Printf("Current directory: %s\n\n", cwd)
+	fmt.Println("  1. Use current directory")
+	fmt.Println("  2. Enter a different path")
+	fmt.Println()
+
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Print("Enter choice [1-2]: ")
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			return "", fmt.Errorf("failed to read input: %w", err)
+		}
+
+		input = strings.TrimSpace(input)
+		switch input {
+		case "1":
+			return cwd, nil
+		case "2":
+			fmt.Print("Enter repository path: ")
+			path, err := reader.ReadString('\n')
+			if err != nil {
+				return "", fmt.Errorf("failed to read input: %w", err)
+			}
+			path = strings.TrimSpace(path)
+
+			// Expand ~ to home directory
+			if strings.HasPrefix(path, "~/") {
+				home, _ := os.UserHomeDir()
+				path = filepath.Join(home, path[2:])
+			}
+
+			// Validate path exists
+			if _, err := os.Stat(path); os.IsNotExist(err) {
+				fmt.Printf("Path does not exist: %s\n", path)
+				continue
+			}
+
+			// Convert to absolute path
+			absPath, err := filepath.Abs(path)
+			if err != nil {
+				return path, nil
+			}
+			return absPath, nil
+		default:
+			fmt.Println("Invalid choice. Please enter 1 or 2.")
+		}
+	}
+}
+
 func configureTool(tool *aiTool, global bool, ckbCommand string, ckbArgs []string) error {
 	// Handle tools that use CLI commands for global setup
 	if global && tool.GlobalUsesCmd {
@@ -247,11 +301,27 @@ func configureTool(tool *aiTool, global bool, ckbCommand string, ckbArgs []strin
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
+	// Claude Desktop needs special handling - prompt for repo path
+	var repoPath string
+	if tool.ID == "claude-desktop" {
+		var err error
+		repoPath, err = promptRepoPath()
+		if err != nil {
+			return err
+		}
+	}
+
 	// Write config based on format
 	var err error
 	switch tool.Format {
 	case "mcpServers":
-		err = writeMcpServersConfig(configPath, ckbCommand, ckbArgs)
+		if tool.ID == "claude-desktop" && repoPath != "" {
+			err = writeMcpServersConfigWithEnv(configPath, ckbCommand, ckbArgs, map[string]string{
+				"CKB_REPO": repoPath,
+			})
+		} else {
+			err = writeMcpServersConfig(configPath, ckbCommand, ckbArgs)
+		}
 	case "servers":
 		err = writeVSCodeConfig(configPath, ckbCommand, ckbArgs)
 	case "mcp":
@@ -266,6 +336,9 @@ func configureTool(tool *aiTool, global bool, ckbCommand string, ckbArgs []strin
 
 	fmt.Printf("\n✓ Added CKB to %s\n", configPath)
 	fmt.Printf("  Command: %s %s\n", ckbCommand, strings.Join(ckbArgs, " "))
+	if repoPath != "" {
+		fmt.Printf("  Repository: %s\n", repoPath)
+	}
 	fmt.Printf("\nRestart %s to load the new configuration.\n", tool.Name)
 
 	return nil
@@ -334,6 +407,10 @@ func getConfigPath(toolID string, global bool) string {
 }
 
 func writeMcpServersConfig(path, command string, args []string) error {
+	return writeMcpServersConfigWithEnv(path, command, args, nil)
+}
+
+func writeMcpServersConfigWithEnv(path, command string, args []string, env map[string]string) error {
 	// Read existing config or create new
 	config := mcpServersConfig{
 		McpServers: make(map[string]mcpServer),
@@ -347,10 +424,14 @@ func writeMcpServersConfig(path, command string, args []string) error {
 	}
 
 	// Add or update CKB entry
-	config.McpServers["ckb"] = mcpServer{
+	server := mcpServer{
 		Command: command,
 		Args:    args,
 	}
+	if len(env) > 0 {
+		server.Env = env
+	}
+	config.McpServers["ckb"] = server
 
 	// Write config
 	data, err := json.MarshalIndent(config, "", "  ")
