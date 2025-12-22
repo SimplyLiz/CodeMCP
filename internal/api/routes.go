@@ -10,6 +10,7 @@ import (
 func (s *Server) registerRoutes() {
 	// Health and readiness checks
 	s.router.HandleFunc("/health", s.handleHealth)
+	s.router.HandleFunc("/health/detailed", s.handleHealthDetailed)
 	s.router.HandleFunc("/ready", s.handleReady)
 
 	// System status and diagnostics
@@ -63,6 +64,9 @@ func (s *Server) registerRoutes() {
 	// OpenAPI spec
 	s.router.HandleFunc("/openapi.json", s.handleOpenAPISpec)
 
+	// Prometheus metrics
+	s.router.HandleFunc("/metrics", s.handleMetrics)
+
 	// Root endpoint
 	s.router.HandleFunc("/", s.handleRoot)
 }
@@ -85,6 +89,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		"version": version.Version,
 		"endpoints": []string{
 			"GET /health - Health check",
+			"GET /health/detailed - Detailed health status",
 			"GET /ready - Readiness check",
 			"GET /status - System status",
 			"GET /doctor - Diagnostic checks",
@@ -126,6 +131,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 			"POST /cache/warm - Warm cache",
 			"POST /cache/clear - Clear cache",
 			"GET /openapi.json - OpenAPI specification",
+			"GET /metrics - Prometheus metrics",
 		},
 		"documentation": "/openapi.json",
 	}

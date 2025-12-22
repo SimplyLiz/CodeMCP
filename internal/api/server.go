@@ -12,8 +12,9 @@ import (
 
 // ServerConfig contains configuration for the HTTP server
 type ServerConfig struct {
-	Auth AuthConfig
-	CORS CORSConfig
+	Auth    AuthConfig
+	CORS    CORSConfig
+	Metrics MetricsConfig
 }
 
 // DefaultServerConfig returns default server configuration
@@ -23,18 +24,20 @@ func DefaultServerConfig() ServerConfig {
 			Enabled: true,
 			Token:   "", // Must be set explicitly
 		},
-		CORS: DefaultCORSConfig(),
+		CORS:    DefaultCORSConfig(),
+		Metrics: DefaultMetricsConfig(),
 	}
 }
 
 // Server represents the HTTP API server
 type Server struct {
-	router *http.ServeMux
-	server *http.Server
-	addr   string
-	logger *logging.Logger
-	engine *query.Engine
-	config ServerConfig
+	router  *http.ServeMux
+	server  *http.Server
+	addr    string
+	logger  *logging.Logger
+	engine  *query.Engine
+	config  ServerConfig
+	metrics *MetricsCollector
 }
 
 // NewServer creates a new HTTP server instance
@@ -45,6 +48,11 @@ func NewServer(addr string, engine *query.Engine, logger *logging.Logger, config
 		engine: engine,
 		router: http.NewServeMux(),
 		config: config,
+	}
+
+	// Initialize metrics collector if enabled
+	if config.Metrics.Enabled {
+		s.metrics = NewMetricsCollector()
 	}
 
 	// Register routes
