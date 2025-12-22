@@ -267,7 +267,7 @@ CKB exposes code intelligence through the Model Context Protocol:
 </details>
 
 <details>
-<summary><strong>v7.4 — Remote Federation</strong></summary>
+<summary><strong>v7.3 — Remote Federation</strong></summary>
 
 | Tool | Purpose |
 |------|---------|
@@ -325,7 +325,7 @@ ckb federation add platform --repo-id=api --path=/code/api
 ckb federation status platform
 ckb federation sync platform
 
-# Remote Federation (v7.4)
+# Remote Federation (v7.3)
 ckb federation add-remote platform prod --url=https://ckb.company.com --token=$CKB_TOKEN
 ckb federation list-remote platform
 ckb federation sync-remote platform

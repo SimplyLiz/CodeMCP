@@ -2,7 +2,7 @@
 
 All notable changes to CKB will be documented in this file.
 
-## [7.4.0] - 2024-12-22
+## [7.3.0]
 
 ### Added
 
@@ -144,10 +144,6 @@ burst_size = 10
 **Backward Compatibility:**
 - Legacy single-token mode still works via `legacy_token` config
 - When `require_auth = false`, unauthenticated requests get read-only access
-
-## [7.3.0] - 2024-12-22
-
-### Added
 
 #### Enhanced Uploads (v3 Federation Phase 3)
 Compression support, progress reporting, and incremental (delta) updates for the index upload system. Reduces upload sizes by 70-90% for typical updates.
@@ -429,7 +425,7 @@ Tracks file-level dependencies and automatically queues dependent files for resc
 - `internal/storage/schema.go` — Schema v8 with callgraph, file_deps, and rescan_queue tables
 - `cmd/ckb/index.go` — Incremental indexing flow with `--force` flag
 
-## [7.2.0] - 2024-12-21
+## [7.2.0]
 
 ### Added
 
