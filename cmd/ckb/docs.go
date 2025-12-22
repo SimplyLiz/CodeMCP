@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -509,6 +508,3 @@ func limitStrings(s []string, max int) []string {
 	}
 	return s[:max]
 }
-
-// Silence unused variable warning
-var _ = strings.TrimSpace
