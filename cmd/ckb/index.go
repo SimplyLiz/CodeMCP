@@ -12,9 +12,12 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"ckb/internal/incremental"
 	"ckb/internal/index"
+	"ckb/internal/logging"
 	"ckb/internal/project"
 	"ckb/internal/repostate"
+	"ckb/internal/storage"
 	"ckb/internal/tier"
 )
 
@@ -244,6 +247,15 @@ func runIndex(cmd *cobra.Command, args []string) {
 		os.Exit(0)
 	}
 
+	// Try incremental indexing for Go projects (unless --force)
+	if !indexForce && lang == project.LangGo {
+		if tryIncrementalIndex(repoRoot, ckbDir) {
+			// Incremental succeeded, we're done
+			return
+		}
+		// Fall through to full index
+	}
+
 	// Acquire lock to prevent concurrent indexing
 	lock, err := index.AcquireLock(ckbDir)
 	if err != nil {
@@ -307,6 +319,11 @@ func runIndex(cmd *cobra.Command, args []string) {
 
 	if saveErr := meta.Save(ckbDir); saveErr != nil {
 		fmt.Fprintf(os.Stderr, "Warning: Could not save index metadata: %v\n", saveErr)
+	}
+
+	// Populate incremental tracking tables (for Go projects)
+	if lang == project.LangGo {
+		populateIncrementalTracking(repoRoot)
 	}
 
 	// Success message
@@ -595,4 +612,95 @@ func getSourceExtensions(lang project.Language) []string {
 	default:
 		return nil
 	}
+}
+
+// tryIncrementalIndex attempts incremental indexing for Go projects.
+// Returns true if incremental succeeded (caller should return early).
+// Returns false if full reindex is needed.
+func tryIncrementalIndex(repoRoot, ckbDir string) bool {
+	dbPath := filepath.Join(ckbDir, "ckb.db")
+
+	// Check if database exists
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+		// No database = no previous index
+		return false
+	}
+
+	// Create logger (quiet for CLI - only errors)
+	logger := logging.NewLogger(logging.Config{
+		Format: logging.HumanFormat,
+		Level:  logging.ErrorLevel,
+	})
+
+	// Open database
+	db, err := storage.Open(repoRoot, logger)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Could not open database for incremental: %v\n", err)
+		return false
+	}
+	defer db.Close()
+
+	// Create incremental indexer
+	indexer := incremental.NewIncrementalIndexer(repoRoot, db, nil, logger)
+
+	// Check if we need full reindex
+	needsFull, reason := indexer.NeedsFullReindex()
+	if needsFull {
+		fmt.Printf("Full reindex required: %s\n", reason)
+		return false
+	}
+
+	// Acquire lock to prevent concurrent indexing
+	lock, err := index.AcquireLock(ckbDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return false
+	}
+	defer lock.Release()
+
+	// Try incremental update
+	ctx := context.Background()
+	stats, err := indexer.IndexIncremental(ctx, "")
+	if err != nil {
+		fmt.Printf("Incremental failed: %v\n", err)
+		fmt.Println("Falling back to full reindex...")
+		return false
+	}
+
+	// Get current state for display
+	state := indexer.GetIndexState()
+
+	// Format and display results
+	fmt.Println(incremental.FormatStats(stats, state))
+
+	return true
+}
+
+// populateIncrementalTracking sets up tracking tables after a full index.
+// This enables subsequent incremental updates.
+func populateIncrementalTracking(repoRoot string) {
+	// Create logger (quiet for CLI - only errors)
+	logger := logging.NewLogger(logging.Config{
+		Format: logging.HumanFormat,
+		Level:  logging.ErrorLevel,
+	})
+
+	// Open database
+	db, err := storage.Open(repoRoot, logger)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Could not open database for incremental tracking: %v\n", err)
+		return
+	}
+	defer db.Close()
+
+	// Create incremental indexer
+	indexer := incremental.NewIncrementalIndexer(repoRoot, db, nil, logger)
+
+	// Populate tracking tables from the full index
+	if err := indexer.PopulateAfterFullIndex(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Could not populate incremental tracking: %v\n", err)
+		return
+	}
+
+	fmt.Println("  Incremental tracking enabled for future updates")
 }
