@@ -30,12 +30,18 @@ func NewIncrementalIndexer(repoRoot string, db *storage.DB, config *Config, logg
 		config = DefaultConfig()
 	}
 
+	// Ensure IndexPath has a sensible default
+	indexPath := config.IndexPath
+	if indexPath == "" {
+		indexPath = ".scip/index.scip"
+	}
+
 	store := NewStore(db, logger)
 	return &IncrementalIndexer{
 		repoRoot:  repoRoot,
 		db:        db,
 		detector:  NewChangeDetector(repoRoot, store, config, logger),
-		extractor: NewSCIPExtractor(repoRoot, logger),
+		extractor: NewSCIPExtractor(repoRoot, indexPath, logger),
 		updater:   NewIndexUpdater(db, store, logger),
 		store:     store,
 		config:    config,

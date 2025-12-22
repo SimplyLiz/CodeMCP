@@ -21,10 +21,15 @@ type SCIPExtractor struct {
 }
 
 // NewSCIPExtractor creates a new SCIP extractor
-func NewSCIPExtractor(repoRoot string, logger *logging.Logger) *SCIPExtractor {
+// indexPath should be the configured SCIP index path (default: .scip/index.scip)
+func NewSCIPExtractor(repoRoot string, indexPath string, logger *logging.Logger) *SCIPExtractor {
+	// If indexPath is relative, make it absolute from repoRoot
+	if !filepath.IsAbs(indexPath) {
+		indexPath = filepath.Join(repoRoot, indexPath)
+	}
 	return &SCIPExtractor{
 		repoRoot:  repoRoot,
-		indexPath: filepath.Join(repoRoot, "index.scip"),
+		indexPath: indexPath,
 		logger:    logger,
 	}
 }
@@ -89,9 +94,15 @@ func (e *SCIPExtractor) ExtractDeltas(changedFiles []ChangedFile) (*SymbolDelta,
 	return delta, nil
 }
 
-// RunSCIPGo executes the scip-go indexer
+// RunSCIPGo executes the scip-go indexer with configured output path
 func (e *SCIPExtractor) RunSCIPGo() error {
-	cmd := exec.Command("scip-go")
+	// Ensure output directory exists
+	outputDir := filepath.Dir(e.indexPath)
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return fmt.Errorf("failed to create index directory %s: %w", outputDir, err)
+	}
+
+	cmd := exec.Command("scip-go", "--output", e.indexPath)
 	cmd.Dir = e.repoRoot
 	cmd.Stdout = os.Stderr // Show indexer output
 	cmd.Stderr = os.Stderr

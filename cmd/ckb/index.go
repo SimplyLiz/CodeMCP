@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"ckb/internal/config"
 	"ckb/internal/incremental"
 	"ckb/internal/index"
 	"ckb/internal/logging"
@@ -92,7 +93,15 @@ func runIndex(cmd *cobra.Command, args []string) {
 		fmt.Println()
 	}
 
-	indexPath := filepath.Join(repoRoot, "index.scip")
+	// Get SCIP index path from config (default: .scip/index.scip)
+	indexPath := ".scip/index.scip"
+	if cfg, loadErr := config.LoadConfig(repoRoot); loadErr == nil && cfg.Backends.Scip.IndexPath != "" {
+		indexPath = cfg.Backends.Scip.IndexPath
+	}
+	// Make absolute if relative
+	if !filepath.IsAbs(indexPath) {
+		indexPath = filepath.Join(repoRoot, indexPath)
+	}
 
 	// Check index freshness (unless --force)
 	if !indexForce {
@@ -225,6 +234,16 @@ func runIndex(cmd *cobra.Command, args []string) {
 			fmt.Fprintln(os.Stderr, "  composer install")
 			os.Exit(1)
 		}
+
+	case project.LangGo:
+		// Ensure output directory exists
+		outputDir := filepath.Dir(indexPath)
+		if err := os.MkdirAll(outputDir, 0755); err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating index directory %s: %v\n", outputDir, err)
+			os.Exit(1)
+		}
+		// Add --output flag to use configured path
+		command = fmt.Sprintf("%s --output %s", command, indexPath)
 	}
 
 	// Check if indexer is installed
@@ -640,8 +659,21 @@ func tryIncrementalIndex(repoRoot, ckbDir string) bool {
 	}
 	defer db.Close()
 
+	// Get SCIP index path from config (default: .scip/index.scip)
+	indexPath := ".scip/index.scip"
+	if cfg, loadErr := config.LoadConfig(repoRoot); loadErr == nil && cfg.Backends.Scip.IndexPath != "" {
+		indexPath = cfg.Backends.Scip.IndexPath
+	}
+
+	// Create incremental config with the configured index path
+	incConfig := &incremental.Config{
+		IndexPath:            indexPath,
+		IncrementalThreshold: 50,
+		IndexTests:           false,
+	}
+
 	// Create incremental indexer
-	indexer := incremental.NewIncrementalIndexer(repoRoot, db, nil, logger)
+	indexer := incremental.NewIncrementalIndexer(repoRoot, db, incConfig, logger)
 
 	// Check if we need full reindex
 	needsFull, reason := indexer.NeedsFullReindex()
@@ -693,8 +725,21 @@ func populateIncrementalTracking(repoRoot string) {
 	}
 	defer db.Close()
 
+	// Get SCIP index path from config (default: .scip/index.scip)
+	indexPath := ".scip/index.scip"
+	if cfg, loadErr := config.LoadConfig(repoRoot); loadErr == nil && cfg.Backends.Scip.IndexPath != "" {
+		indexPath = cfg.Backends.Scip.IndexPath
+	}
+
+	// Create incremental config with the configured index path
+	incConfig := &incremental.Config{
+		IndexPath:            indexPath,
+		IncrementalThreshold: 50,
+		IndexTests:           false,
+	}
+
 	// Create incremental indexer
-	indexer := incremental.NewIncrementalIndexer(repoRoot, db, nil, logger)
+	indexer := incremental.NewIncrementalIndexer(repoRoot, db, incConfig, logger)
 
 	// Populate tracking tables from the full index
 	if err := indexer.PopulateAfterFullIndex(); err != nil {
