@@ -52,6 +52,11 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("/telemetry/", s.handleTelemetryRoutes) // /telemetry/status, /telemetry/usage/:id, /telemetry/dead-code
 	s.router.HandleFunc("/telemetry", s.handleTelemetryStatus)  // GET /telemetry (alias for /telemetry/status)
 
+	// v7.3 Language quality endpoints
+	s.router.HandleFunc("/meta/languages", s.handleLanguageQuality) // GET - language quality dashboard
+	s.router.HandleFunc("/meta/python-env", s.handlePythonEnv)      // GET - Python environment detection
+	s.router.HandleFunc("/meta/typescript-monorepo", s.handleTSMonorepo) // GET - TypeScript monorepo detection
+
 	// Delta ingestion endpoints (incremental indexing)
 	s.router.HandleFunc("/delta", s.handleDeltaRoutes)
 	s.router.HandleFunc("/delta/", s.handleDeltaRoutes)
@@ -127,6 +132,9 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 			"GET /delta - Delta ingestion info",
 			"POST /delta/ingest - Ingest delta artifact for incremental indexing",
 			"POST /delta/validate - Validate delta artifact without ingesting",
+			"GET /meta/languages - Language quality dashboard",
+			"GET /meta/python-env - Python environment detection",
+			"GET /meta/typescript-monorepo - TypeScript monorepo detection",
 			"POST /doctor/fix - Get fix script",
 			"POST /cache/warm - Warm cache",
 			"POST /cache/clear - Clear cache",
