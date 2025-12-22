@@ -1,11 +1,16 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
+
+	"ckb/internal/logging"
 )
 
 func TestCursorEncoding(t *testing.T) {
@@ -433,5 +438,959 @@ func TestIndexErrorResponse(t *testing.T) {
 	}
 	if resp.Error.Message != "Test message" {
 		t.Errorf("Expected message 'Test message', got %s", resp.Error.Message)
+	}
+}
+
+// =============================================================================
+// Integration tests with real database
+// =============================================================================
+
+// testIndexDB creates an in-memory SQLite database with test data
+func setupTestIndexDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+
+	// Create schema matching what index_queries.go expects
+	schema := `
+		CREATE TABLE symbol_mappings (
+			stable_id TEXT PRIMARY KEY,
+			state TEXT NOT NULL CHECK(state IN ('active', 'deleted', 'unknown')),
+			backend_stable_id TEXT,
+			fingerprint_json TEXT NOT NULL,
+			location_json TEXT NOT NULL,
+			definition_version_id TEXT,
+			definition_version_semantics TEXT,
+			last_verified_at TEXT NOT NULL,
+			last_verified_state_id TEXT NOT NULL,
+			deleted_at TEXT,
+			deleted_in_state_id TEXT
+		);
+
+		CREATE TABLE callgraph (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			caller_id TEXT,
+			callee_id TEXT NOT NULL,
+			caller_file TEXT NOT NULL,
+			call_line INTEGER NOT NULL,
+			call_col INTEGER NOT NULL,
+			call_end_col INTEGER,
+			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		);
+
+		CREATE TABLE indexed_files (
+			path TEXT PRIMARY KEY,
+			hash TEXT NOT NULL,
+			symbol_count INTEGER DEFAULT 0,
+			indexed_at TEXT NOT NULL,
+			state TEXT NOT NULL DEFAULT 'current'
+		);
+
+		CREATE INDEX idx_callgraph_caller ON callgraph(caller_id);
+		CREATE INDEX idx_callgraph_callee ON callgraph(callee_id);
+	`
+	if _, err := db.Exec(schema); err != nil {
+		t.Fatalf("Failed to create schema: %v", err)
+	}
+
+	// Insert test data
+	testData := `
+		INSERT INTO symbol_mappings (stable_id, state, fingerprint_json, location_json, last_verified_at, last_verified_state_id)
+		VALUES
+			('sym:func:main', 'active', '{"name":"main","kind":"function","qualifiedContainer":""}', '{"path":"cmd/app/main.go","line":10,"column":1}', datetime('now'), 'state1'),
+			('sym:func:helper', 'active', '{"name":"Helper","kind":"function","qualifiedContainer":"pkg"}', '{"path":"internal/pkg/helper.go","line":5,"column":1}', datetime('now'), 'state1'),
+			('sym:type:Config', 'active', '{"name":"Config","kind":"struct","qualifiedContainer":"config"}', '{"path":"internal/config/config.go","line":15,"column":1}', datetime('now'), 'state1'),
+			('sym:method:Start', 'active', '{"name":"Start","kind":"method","qualifiedContainer":"Server"}', '{"path":"internal/server/server.go","line":25,"column":1}', datetime('now'), 'state1'),
+			('sym:deleted:old', 'deleted', '{"name":"OldFunc","kind":"function","qualifiedContainer":""}', '{"path":"old.go","line":1,"column":1}', datetime('now'), 'state1');
+
+		INSERT INTO callgraph (caller_id, callee_id, caller_file, call_line, call_col, call_end_col)
+		VALUES
+			('sym:func:main', 'sym:func:helper', 'cmd/app/main.go', 15, 5, 20),
+			('sym:func:main', 'sym:method:Start', 'cmd/app/main.go', 20, 5, 25),
+			('sym:method:Start', 'sym:func:helper', 'internal/server/server.go', 30, 10, 15);
+
+		INSERT INTO indexed_files (path, hash, symbol_count, indexed_at)
+		VALUES
+			('cmd/app/main.go', 'hash1', 5, datetime('now')),
+			('internal/pkg/helper.go', 'hash2', 3, datetime('now')),
+			('internal/config/config.go', 'hash3', 10, datetime('now')),
+			('internal/server/server.go', 'hash4', 8, datetime('now'));
+	`
+	if _, err := db.Exec(testData); err != nil {
+		t.Fatalf("Failed to insert test data: %v", err)
+	}
+
+	return db
+}
+
+// createTestServer creates a server with a test index manager
+func createTestServer(t *testing.T, db *sql.DB) *Server {
+	t.Helper()
+
+	config := &IndexServerConfig{
+		Enabled:      true,
+		MaxPageSize:  100,
+		CursorSecret: "test-secret",
+		Repos: []IndexRepoConfig{
+			{
+				ID:   "test-repo",
+				Name: "Test Repository",
+				Path: "/test/path",
+			},
+		},
+		DefaultPrivacy: IndexPrivacyConfig{
+			ExposePaths:      true,
+			ExposeDocs:       true,
+			ExposeSignatures: true,
+		},
+	}
+
+	// Create a mock handle with the test database
+	handle := &IndexRepoHandle{
+		ID: "test-repo",
+		Config: &IndexRepoConfig{
+			ID:   "test-repo",
+			Name: "Test Repository",
+			Path: "/test/path",
+		},
+		db: db,
+		meta: &IndexRepoMetadata{
+			Stats: IndexRepoStats{
+				Symbols: 4,
+				Files:   4,
+			},
+		},
+	}
+
+	manager := &IndexRepoManager{
+		repos:  map[string]*IndexRepoHandle{"test-repo": handle},
+		config: config,
+		cursor: NewCursorManager("test-secret"),
+	}
+
+	return &Server{
+		indexManager: manager,
+	}
+}
+
+func TestHandleIndexListReposIntegration(t *testing.T) {
+	db := setupTestIndexDB(t)
+	defer db.Close()
+
+	server := createTestServer(t, db)
+
+	req := httptest.NewRequest(http.MethodGet, "/index/repos", nil)
+	w := httptest.NewRecorder()
+
+	server.HandleIndexListRepos(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp IndexResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	if resp.Error != nil {
+		t.Errorf("Unexpected error: %v", resp.Error)
+	}
+
+	// Check that we got the repos
+	data, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected data to be map, got %T", resp.Data)
+	}
+
+	repos, ok := data["repos"].([]interface{})
+	if !ok {
+		t.Fatalf("Expected repos to be array, got %T", data["repos"])
+	}
+
+	if len(repos) != 1 {
+		t.Errorf("Expected 1 repo, got %d", len(repos))
+	}
+}
+
+func TestHandleIndexGetMetaIntegration(t *testing.T) {
+	db := setupTestIndexDB(t)
+	defer db.Close()
+
+	server := createTestServer(t, db)
+
+	req := httptest.NewRequest(http.MethodGet, "/index/repos/test-repo/meta", nil)
+	w := httptest.NewRecorder()
+
+	server.HandleIndexGetMeta(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp IndexResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	if resp.Error != nil {
+		t.Errorf("Unexpected error: %v", resp.Error)
+	}
+}
+
+func TestHandleIndexGetMetaNotFound(t *testing.T) {
+	db := setupTestIndexDB(t)
+	defer db.Close()
+
+	server := createTestServer(t, db)
+
+	req := httptest.NewRequest(http.MethodGet, "/index/repos/nonexistent/meta", nil)
+	w := httptest.NewRecorder()
+
+	server.HandleIndexGetMeta(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", w.Code)
+	}
+}
+
+func TestHandleIndexListFilesIntegration(t *testing.T) {
+	db := setupTestIndexDB(t)
+	defer db.Close()
+
+	server := createTestServer(t, db)
+
+	req := httptest.NewRequest(http.MethodGet, "/index/repos/test-repo/files", nil)
+	w := httptest.NewRecorder()
+
+	server.HandleIndexListFiles(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp IndexResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	if resp.Error != nil {
+		t.Errorf("Unexpected error: %v", resp.Error)
+	}
+
+	data, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected data to be map, got %T", resp.Data)
+	}
+
+	files, ok := data["files"].([]interface{})
+	if !ok {
+		t.Fatalf("Expected files to be array, got %T", data["files"])
+	}
+
+	if len(files) != 4 {
+		t.Errorf("Expected 4 files, got %d", len(files))
+	}
+}
+
+func TestHandleIndexListSymbolsIntegration(t *testing.T) {
+	db := setupTestIndexDB(t)
+	defer db.Close()
+
+	server := createTestServer(t, db)
+
+	req := httptest.NewRequest(http.MethodGet, "/index/repos/test-repo/symbols?limit=10", nil)
+	w := httptest.NewRecorder()
+
+	server.HandleIndexListSymbols(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp IndexResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	if resp.Error != nil {
+		t.Errorf("Unexpected error: %v", resp.Error)
+	}
+
+	data, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected data to be map, got %T", resp.Data)
+	}
+
+	symbols, ok := data["symbols"].([]interface{})
+	if !ok {
+		t.Fatalf("Expected symbols to be array, got %T", data["symbols"])
+	}
+
+	// Should have 4 active symbols (excluding deleted)
+	if len(symbols) != 4 {
+		t.Errorf("Expected 4 symbols, got %d", len(symbols))
+	}
+}
+
+func TestHandleIndexListSymbolsWithFilter(t *testing.T) {
+	db := setupTestIndexDB(t)
+	defer db.Close()
+
+	server := createTestServer(t, db)
+
+	// Filter by kind
+	req := httptest.NewRequest(http.MethodGet, "/index/repos/test-repo/symbols?kind=function", nil)
+	w := httptest.NewRecorder()
+
+	server.HandleIndexListSymbols(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp IndexResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	data, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected data to be map, got %T", resp.Data)
+	}
+
+	symbols, ok := data["symbols"].([]interface{})
+	if !ok {
+		t.Fatalf("Expected symbols to be array, got %T", data["symbols"])
+	}
+
+	// Should have 2 functions (main, Helper)
+	if len(symbols) != 2 {
+		t.Errorf("Expected 2 function symbols, got %d", len(symbols))
+	}
+}
+
+func TestHandleIndexGetSymbolIntegration(t *testing.T) {
+	db := setupTestIndexDB(t)
+	defer db.Close()
+
+	server := createTestServer(t, db)
+
+	req := httptest.NewRequest(http.MethodGet, "/index/repos/test-repo/symbols/sym:func:main", nil)
+	w := httptest.NewRecorder()
+
+	server.HandleIndexGetSymbol(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp IndexResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	if resp.Error != nil {
+		t.Errorf("Unexpected error: %v", resp.Error)
+	}
+
+	data, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected data to be map, got %T", resp.Data)
+	}
+
+	symbol, ok := data["symbol"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected symbol to be map, got %T", data["symbol"])
+	}
+
+	if symbol["id"] != "sym:func:main" {
+		t.Errorf("Expected symbol id 'sym:func:main', got %v", symbol["id"])
+	}
+}
+
+func TestHandleIndexGetSymbolNotFound(t *testing.T) {
+	db := setupTestIndexDB(t)
+	defer db.Close()
+
+	server := createTestServer(t, db)
+
+	req := httptest.NewRequest(http.MethodGet, "/index/repos/test-repo/symbols/sym:nonexistent", nil)
+	w := httptest.NewRecorder()
+
+	server.HandleIndexGetSymbol(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", w.Code)
+	}
+}
+
+func TestHandleIndexBatchGetSymbolsIntegration(t *testing.T) {
+	db := setupTestIndexDB(t)
+	defer db.Close()
+
+	server := createTestServer(t, db)
+
+	body := `{"ids": ["sym:func:main", "sym:func:helper", "sym:nonexistent"]}`
+	req := httptest.NewRequest(http.MethodPost, "/index/repos/test-repo/symbols:batchGet", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.HandleIndexBatchGetSymbols(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp IndexResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	if resp.Error != nil {
+		t.Errorf("Unexpected error: %v", resp.Error)
+	}
+
+	data, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected data to be map, got %T", resp.Data)
+	}
+
+	symbols, ok := data["symbols"].([]interface{})
+	if !ok {
+		t.Fatalf("Expected symbols to be array, got %T", data["symbols"])
+	}
+
+	// Should have 2 found symbols (nonexistent is skipped)
+	if len(symbols) != 2 {
+		t.Errorf("Expected 2 symbols, got %d", len(symbols))
+	}
+}
+
+func TestHandleIndexListCallgraphIntegration(t *testing.T) {
+	db := setupTestIndexDB(t)
+	defer db.Close()
+
+	server := createTestServer(t, db)
+
+	req := httptest.NewRequest(http.MethodGet, "/index/repos/test-repo/callgraph", nil)
+	w := httptest.NewRecorder()
+
+	server.HandleIndexListCallgraph(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp IndexResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	if resp.Error != nil {
+		t.Errorf("Unexpected error: %v", resp.Error)
+	}
+
+	data, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected data to be map, got %T", resp.Data)
+	}
+
+	edges, ok := data["edges"].([]interface{})
+	if !ok {
+		t.Fatalf("Expected edges to be array, got %T", data["edges"])
+	}
+
+	if len(edges) != 3 {
+		t.Errorf("Expected 3 call edges, got %d", len(edges))
+	}
+}
+
+func TestHandleIndexListCallgraphWithCallerFilter(t *testing.T) {
+	db := setupTestIndexDB(t)
+	defer db.Close()
+
+	server := createTestServer(t, db)
+
+	req := httptest.NewRequest(http.MethodGet, "/index/repos/test-repo/callgraph?caller_id=sym:func:main", nil)
+	w := httptest.NewRecorder()
+
+	server.HandleIndexListCallgraph(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp IndexResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	data, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected data to be map, got %T", resp.Data)
+	}
+
+	edges, ok := data["edges"].([]interface{})
+	if !ok {
+		t.Fatalf("Expected edges to be array, got %T", data["edges"])
+	}
+
+	// main calls 2 functions
+	if len(edges) != 2 {
+		t.Errorf("Expected 2 edges from main, got %d", len(edges))
+	}
+}
+
+func TestHandleIndexSearchSymbolsIntegration(t *testing.T) {
+	db := setupTestIndexDB(t)
+	defer db.Close()
+
+	server := createTestServer(t, db)
+
+	req := httptest.NewRequest(http.MethodGet, "/index/repos/test-repo/search/symbols?q=Helper", nil)
+	w := httptest.NewRecorder()
+
+	server.HandleIndexSearchSymbols(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp IndexResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	if resp.Error != nil {
+		t.Errorf("Unexpected error: %v", resp.Error)
+	}
+
+	data, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected data to be map, got %T", resp.Data)
+	}
+
+	symbols, ok := data["symbols"].([]interface{})
+	if !ok {
+		t.Fatalf("Expected symbols to be array, got %T", data["symbols"])
+	}
+
+	if len(symbols) != 1 {
+		t.Errorf("Expected 1 symbol matching 'Helper', got %d", len(symbols))
+	}
+}
+
+func TestHandleIndexSearchSymbolsMissingQuery(t *testing.T) {
+	db := setupTestIndexDB(t)
+	defer db.Close()
+
+	server := createTestServer(t, db)
+
+	req := httptest.NewRequest(http.MethodGet, "/index/repos/test-repo/search/symbols", nil)
+	w := httptest.NewRecorder()
+
+	server.HandleIndexSearchSymbols(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
+func TestHandleIndexSearchFilesIntegration(t *testing.T) {
+	db := setupTestIndexDB(t)
+	defer db.Close()
+
+	server := createTestServer(t, db)
+
+	req := httptest.NewRequest(http.MethodGet, "/index/repos/test-repo/search/files?q=server", nil)
+	w := httptest.NewRecorder()
+
+	server.HandleIndexSearchFiles(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp IndexResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	if resp.Error != nil {
+		t.Errorf("Unexpected error: %v", resp.Error)
+	}
+
+	data, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected data to be map, got %T", resp.Data)
+	}
+
+	files, ok := data["files"].([]interface{})
+	if !ok {
+		t.Fatalf("Expected files to be array, got %T", data["files"])
+	}
+
+	if len(files) != 1 {
+		t.Errorf("Expected 1 file matching 'server', got %d", len(files))
+	}
+}
+
+func TestHandleIndexListRefsPagination(t *testing.T) {
+	db := setupTestIndexDB(t)
+	defer db.Close()
+
+	server := createTestServer(t, db)
+
+	// First request with limit=2
+	req := httptest.NewRequest(http.MethodGet, "/index/repos/test-repo/callgraph?limit=2", nil)
+	w := httptest.NewRecorder()
+
+	server.HandleIndexListCallgraph(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp IndexResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	data := resp.Data.(map[string]interface{})
+	edges := data["edges"].([]interface{})
+
+	if len(edges) != 2 {
+		t.Errorf("Expected 2 edges, got %d", len(edges))
+	}
+
+	// Check that cursor is returned for more results (cursor is in Meta, not Data)
+	if resp.Meta == nil || resp.Meta.Cursor == "" {
+		t.Error("Expected cursor in Meta for pagination")
+	}
+	cursor := resp.Meta.Cursor
+
+	// Second request with cursor
+	req2 := httptest.NewRequest(http.MethodGet, "/index/repos/test-repo/callgraph?limit=2&cursor="+cursor, nil)
+	w2 := httptest.NewRecorder()
+
+	server.HandleIndexListCallgraph(w2, req2)
+
+	if w2.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", w2.Code, w2.Body.String())
+	}
+
+	var resp2 IndexResponse
+	if err := json.Unmarshal(w2.Body.Bytes(), &resp2); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	data2 := resp2.Data.(map[string]interface{})
+	edges2 := data2["edges"].([]interface{})
+
+	if len(edges2) != 1 {
+		t.Errorf("Expected 1 remaining edge, got %d", len(edges2))
+	}
+}
+
+// === Upload Handler Integration Tests ===
+
+// createTestServerWithStorage creates a server with actual storage for upload testing
+func createTestServerWithStorage(t *testing.T, tmpDir string) *Server {
+	t.Helper()
+
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+
+	// Create actual storage
+	storage, err := NewIndexStorage(tmpDir, logger)
+	if err != nil {
+		t.Fatalf("Failed to create storage: %v", err)
+	}
+
+	config := &IndexServerConfig{
+		Enabled:         true,
+		MaxPageSize:     100,
+		CursorSecret:    "test-secret",
+		AllowCreateRepo: true,
+		DataDir:         tmpDir,
+		DefaultPrivacy: IndexPrivacyConfig{
+			ExposePaths:      true,
+			ExposeDocs:       true,
+			ExposeSignatures: true,
+		},
+	}
+
+	manager := &IndexRepoManager{
+		repos:   make(map[string]*IndexRepoHandle),
+		config:  config,
+		logger:  logger,
+		storage: storage,
+		cursor:  NewCursorManager(config.CursorSecret),
+	}
+
+	serverConfig := ServerConfig{
+		IndexServer: config,
+	}
+
+	return &Server{
+		indexManager: manager,
+		config:       serverConfig,
+		logger:       logger,
+	}
+}
+
+func TestHandleIndexCreateRepoIntegration(t *testing.T) {
+	// Create temp directory for storage
+	tmpDir, err := os.MkdirTemp("", "ckb-create-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	server := createTestServerWithStorage(t, tmpDir)
+
+	reqBody := `{"id": "test/new-repo", "name": "New Test Repo", "description": "A test repository"}`
+	req := httptest.NewRequest(http.MethodPost, "/index/repos", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.HandleIndexCreateRepo(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Errorf("Expected status 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp IndexResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	data, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected data to be map, got %T", resp.Data)
+	}
+
+	if id := data["id"].(string); id != "test/new-repo" {
+		t.Errorf("Expected id 'test/new-repo', got %q", id)
+	}
+	if status := data["status"].(string); status != "created" {
+		t.Errorf("Expected status 'created', got %q", status)
+	}
+
+	// Verify repo was actually created in storage
+	if !server.indexManager.Storage().RepoExists("test/new-repo") {
+		t.Error("Repo was not created in storage")
+	}
+}
+
+func TestHandleIndexCreateRepoConflict(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "ckb-conflict-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	server := createTestServerWithStorage(t, tmpDir)
+
+	// Create repo first time
+	reqBody := `{"id": "test/repo", "name": "Test Repo"}`
+	req1 := httptest.NewRequest(http.MethodPost, "/index/repos", strings.NewReader(reqBody))
+	req1.Header.Set("Content-Type", "application/json")
+	w1 := httptest.NewRecorder()
+	server.HandleIndexCreateRepo(w1, req1)
+
+	if w1.Code != http.StatusCreated {
+		t.Fatalf("First create failed: %s", w1.Body.String())
+	}
+
+	// Reload the repo so GetRepo succeeds
+	if err := server.indexManager.ReloadRepo("test/repo"); err != nil {
+		// Ignore error if no database yet - just mark it in the map
+		server.indexManager.repos["test/repo"] = &IndexRepoHandle{ID: "test/repo"}
+	}
+
+	// Try to create again - should conflict
+	req2 := httptest.NewRequest(http.MethodPost, "/index/repos", strings.NewReader(reqBody))
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+	server.HandleIndexCreateRepo(w2, req2)
+
+	if w2.Code != http.StatusConflict {
+		t.Errorf("Expected status 409 Conflict, got %d: %s", w2.Code, w2.Body.String())
+	}
+}
+
+func TestHandleIndexCreateRepoMissingID(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "ckb-missing-id-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	server := createTestServerWithStorage(t, tmpDir)
+
+	reqBody := `{"name": "No ID Repo"}`
+	req := httptest.NewRequest(http.MethodPost, "/index/repos", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.HandleIndexCreateRepo(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHandleIndexCreateRepoInvalidID(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "ckb-invalid-id-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	server := createTestServerWithStorage(t, tmpDir)
+
+	// Try invalid IDs
+	invalidIDs := []string{
+		"/invalid",
+		"invalid/",
+		"has spaces",
+		"has@special",
+	}
+
+	for _, invalidID := range invalidIDs {
+		reqBody := fmt.Sprintf(`{"id": %q}`, invalidID)
+		req := httptest.NewRequest(http.MethodPost, "/index/repos", strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		server.HandleIndexCreateRepo(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected status 400 for ID %q, got %d: %s", invalidID, w.Code, w.Body.String())
+		}
+	}
+}
+
+func TestHandleIndexCreateRepoDisabled(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "ckb-disabled-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	server := createTestServerWithStorage(t, tmpDir)
+	server.config.IndexServer.AllowCreateRepo = false
+
+	reqBody := `{"id": "test/repo"}`
+	req := httptest.NewRequest(http.MethodPost, "/index/repos", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.HandleIndexCreateRepo(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("Expected status 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHandleIndexDeleteRepoIntegration(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "ckb-delete-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	server := createTestServerWithStorage(t, tmpDir)
+
+	// First create a repo
+	if err := server.indexManager.CreateUploadedRepo("to-delete/repo", "Delete Me", ""); err != nil {
+		t.Fatalf("Failed to create repo: %v", err)
+	}
+	// Mark as uploaded in memory (with Config.Source = RepoSourceUploaded)
+	server.indexManager.repos["to-delete/repo"] = &IndexRepoHandle{
+		ID: "to-delete/repo",
+		Config: &IndexRepoConfig{
+			ID:     "to-delete/repo",
+			Source: RepoSourceUploaded,
+		},
+	}
+
+	// Now delete it
+	req := httptest.NewRequest(http.MethodDelete, "/index/repos/to-delete/repo", nil)
+	w := httptest.NewRecorder()
+
+	server.HandleIndexDeleteRepo(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp IndexResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	data, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected data to be map, got %T", resp.Data)
+	}
+
+	if status := data["status"].(string); status != "deleted" {
+		t.Errorf("Expected status 'deleted', got %q", status)
+	}
+
+	// Verify repo was removed from storage
+	if server.indexManager.Storage().RepoExists("to-delete/repo") {
+		t.Error("Repo still exists in storage after deletion")
+	}
+}
+
+func TestHandleIndexDeleteRepoNotFound(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "ckb-delete-notfound-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	server := createTestServerWithStorage(t, tmpDir)
+
+	req := httptest.NewRequest(http.MethodDelete, "/index/repos/nonexistent/repo", nil)
+	w := httptest.NewRecorder()
+
+	server.HandleIndexDeleteRepo(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHandleIndexDeleteConfigRepo(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "ckb-delete-config-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	server := createTestServerWithStorage(t, tmpDir)
+
+	// Add a config-based repo (not uploaded - Source = RepoSourceConfig)
+	server.indexManager.repos["config/repo"] = &IndexRepoHandle{
+		ID: "config/repo",
+		Config: &IndexRepoConfig{
+			ID:     "config/repo",
+			Source: RepoSourceConfig, // This is a config-based repo
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/index/repos/config/repo", nil)
+	w := httptest.NewRecorder()
+
+	server.HandleIndexDeleteRepo(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("Expected status 403 for config-based repo, got %d: %s", w.Code, w.Body.String())
 	}
 }
