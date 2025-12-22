@@ -2,11 +2,15 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"runtime/debug"
+	"strconv"
+	"strings"
 	"time"
 
+	"ckb/internal/auth"
 	"ckb/internal/logging"
 
 	"github.com/google/uuid"
@@ -16,7 +20,8 @@ import (
 type contextKey string
 
 const (
-	requestIDKey contextKey = "requestID"
+	requestIDKey  contextKey = "requestID"
+	authResultKey contextKey = "authResult"
 )
 
 // LoggingMiddleware logs HTTP requests and responses
@@ -227,6 +232,179 @@ func AuthMiddleware(config AuthConfig, logger *logging.Logger) func(http.Handler
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// ScopedAuthMiddleware enforces scoped token-based authentication
+// This is the Phase 4 middleware that supports API keys with scopes and rate limiting
+func ScopedAuthMiddleware(authManager *auth.Manager, logger *logging.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Determine required scope from method and path
+			scope := determineRequiredScope(r)
+			repoID := extractRepoIDFromRequest(r)
+
+			// Get token from Authorization header
+			token := extractBearerToken(r)
+
+			// Authenticate
+			result := authManager.Authenticate(token, scope, repoID)
+
+			// Add auth info to context
+			ctx := context.WithValue(r.Context(), authResultKey, result)
+			r = r.WithContext(ctx)
+
+			if !result.Authenticated {
+				logger.Warn("Authentication failed", map[string]interface{}{
+					"path":       r.URL.Path,
+					"method":     r.Method,
+					"error_code": result.ErrorCode,
+					"requestID":  GetRequestID(r.Context()),
+				})
+
+				writeAuthError(w, result)
+				return
+			}
+
+			if result.RateLimited {
+				logger.Info("Rate limited", map[string]interface{}{
+					"path":        r.URL.Path,
+					"key_id":      result.KeyID,
+					"retry_after": result.RetryAfter,
+					"requestID":   GetRequestID(r.Context()),
+				})
+
+				w.Header().Set("Retry-After", strconv.Itoa(result.RetryAfter))
+				w.Header().Set("X-RateLimit-Remaining", "0")
+				writeAuthError(w, result)
+				return
+			}
+
+			// Add rate limit headers for successful requests
+			if result.KeyID != "" {
+				w.Header().Set("X-RateLimit-Key", result.KeyID)
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// determineRequiredScope maps HTTP method/path to required scope
+func determineRequiredScope(r *http.Request) auth.Scope {
+	path := r.URL.Path
+
+	// DELETE requests require admin scope
+	if r.Method == "DELETE" {
+		return auth.ScopeAdmin
+	}
+
+	// Token management requires admin scope
+	if strings.HasPrefix(path, "/tokens") {
+		if r.Method == "POST" || r.Method == "DELETE" {
+			return auth.ScopeAdmin
+		}
+	}
+
+	// POST and PUT requests require write scope
+	if r.Method == "POST" || r.Method == "PUT" {
+		return auth.ScopeWrite
+	}
+
+	// Everything else (GET, HEAD, OPTIONS) requires read scope
+	return auth.ScopeRead
+}
+
+// extractRepoIDFromRequest extracts repo ID from URL path
+// Handles paths like /index/repos/{org}/{repo}/... or /index/repos/{repo}/...
+func extractRepoIDFromRequest(r *http.Request) string {
+	path := r.URL.Path
+
+	// Look for /index/repos/{repo}/ pattern
+	if !strings.HasPrefix(path, "/index/repos/") {
+		return ""
+	}
+
+	// Remove prefix
+	remaining := strings.TrimPrefix(path, "/index/repos/")
+	if remaining == "" {
+		return ""
+	}
+
+	// Find the repo ID (everything before the next action segment)
+	// Possible patterns:
+	// - org/repo/symbols -> "org/repo"
+	// - org/repo/upload -> "org/repo"
+	// - simple-repo/files -> "simple-repo"
+
+	// Known action segments that mark the end of repo ID
+	actions := []string{"/symbols", "/files", "/refs", "/callgraph", "/meta", "/upload", "/search"}
+
+	repoID := remaining
+	for _, action := range actions {
+		if idx := strings.Index(remaining, action); idx > 0 {
+			repoID = remaining[:idx]
+			break
+		}
+	}
+
+	// Clean up trailing slash
+	repoID = strings.TrimSuffix(repoID, "/")
+
+	return repoID
+}
+
+// extractBearerToken extracts the bearer token from Authorization header
+func extractBearerToken(r *http.Request) string {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return ""
+	}
+
+	const bearerPrefix = "Bearer "
+	if len(authHeader) < len(bearerPrefix) || !strings.HasPrefix(authHeader, bearerPrefix) {
+		return ""
+	}
+
+	return authHeader[len(bearerPrefix):]
+}
+
+// writeAuthError writes an authentication error response
+func writeAuthError(w http.ResponseWriter, result *auth.AuthResult) {
+	var status int
+	switch result.ErrorCode {
+	case auth.ErrCodeMissingToken, auth.ErrCodeInvalidToken, auth.ErrCodeExpiredToken, auth.ErrCodeRevokedToken:
+		status = http.StatusUnauthorized
+	case auth.ErrCodeInsufficientScope, auth.ErrCodeRepoNotAllowed:
+		status = http.StatusForbidden
+	case auth.ErrCodeRateLimited:
+		status = http.StatusTooManyRequests
+	default:
+		status = http.StatusUnauthorized
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+
+	response := map[string]interface{}{
+		"error": map[string]interface{}{
+			"code":    result.ErrorCode,
+			"message": result.ErrorMessage,
+		},
+	}
+
+	if result.RetryAfter > 0 {
+		response["error"].(map[string]interface{})["retry_after"] = result.RetryAfter
+	}
+
+	_ = json.NewEncoder(w).Encode(response)
+}
+
+// GetAuthResult retrieves the auth result from context
+func GetAuthResult(ctx context.Context) *auth.AuthResult {
+	if result, ok := ctx.Value(authResultKey).(*auth.AuthResult); ok {
+		return result
+	}
+	return nil
 }
 
 // RequestIDMiddleware adds a unique request ID to each request

@@ -2,6 +2,85 @@
 
 All notable changes to CKB will be documented in this file.
 
+## [7.4.0] - 2024-12-22
+
+### Added
+
+#### Authentication & API Keys (v3 Federation Phase 4)
+Scoped API key authentication for the index server, enabling secure multi-tenant access with fine-grained permissions.
+
+**Scoped API Keys:**
+- **read** — GET requests, symbol lookup, search
+- **write** — POST requests, upload indexes, create repos
+- **admin** — Full access including token management and deletions
+
+**Per-Repository Restrictions:**
+- Limit keys to specific repos using glob patterns (e.g., `myorg/*`)
+- Prevents cross-tenant data access in shared deployments
+
+**Rate Limiting:**
+- Token bucket algorithm with configurable limits per key
+- Returns `429 Too Many Requests` with `Retry-After` header
+- Customizable default limits and burst sizes
+
+**Token Management CLI:**
+```bash
+# Create a new token
+ckb token create --name "CI Upload" --scopes write
+ckb token create --name "Read-only" --scopes read --repos "myorg/*"
+ckb token create --name "Admin" --scopes admin --expires 30d
+
+# List all tokens
+ckb token list
+ckb token list --show-revoked
+
+# Revoke a token
+ckb token revoke ckb_key_abc123
+
+# Rotate a token (new secret, same ID)
+ckb token rotate ckb_key_abc123
+```
+
+**Token Format:**
+- Token: `ckb_sk_` prefix + 64 hex chars (shown once at creation)
+- Key ID: `ckb_key_` prefix + 16 hex chars (used for management)
+- Secure bcrypt hashing for storage
+
+**Configuration:**
+```toml
+[index_server.auth]
+enabled = true
+require_auth = true                    # false = unauthenticated gets read-only
+legacy_token = "${CKB_LEGACY_TOKEN}"   # Backward compatibility
+
+[[index_server.auth.static_keys]]
+id = "ci-upload"
+name = "CI Upload Key"
+token = "${CI_CKB_TOKEN}"
+scopes = ["write"]
+repo_patterns = ["myorg/*"]
+rate_limit = 100
+
+[index_server.auth.rate_limiting]
+enabled = true
+default_limit = 60                     # Requests per minute
+burst_size = 10
+```
+
+**HTTP Headers:**
+- `Authorization: Bearer <token>` — Authentication
+- `X-RateLimit-Key: <key_id>` — Rate limit tracking (response)
+- `Retry-After: <seconds>` — When rate limited (response)
+
+**Error Responses:**
+- `401 Unauthorized` — Missing/invalid/expired/revoked token
+- `403 Forbidden` — Insufficient scope or repo not allowed
+- `429 Too Many Requests` — Rate limited
+
+**Backward Compatibility:**
+- Legacy single-token mode still works via `legacy_token` config
+- When `require_auth = false`, unauthenticated requests get read-only access
+
 ## [7.3.0] - 2024-12-22
 
 ### Added

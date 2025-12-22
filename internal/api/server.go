@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"ckb/internal/auth"
 	"ckb/internal/logging"
 	"ckb/internal/query"
 )
@@ -37,6 +38,7 @@ type Server struct {
 	engine       *query.Engine
 	config       ServerConfig
 	indexManager *IndexRepoManager // nil if index-server mode disabled
+	authManager  *auth.Manager     // nil if scoped auth disabled
 }
 
 // NewServer creates a new HTTP server instance
@@ -59,6 +61,22 @@ func NewServer(addr string, engine *query.Engine, logger *logging.Logger, config
 		logger.Info("Index server enabled", map[string]interface{}{
 			"repo_count": len(config.IndexServer.Repos),
 		})
+
+		// Initialize auth manager if enabled
+		if config.IndexServer.Auth.Enabled {
+			// Note: We pass nil for db since static keys don't need database
+			// For dynamic key management, the database would be passed here
+			authMgr, err := auth.NewManager(config.IndexServer.Auth, nil, logger)
+			if err != nil {
+				return nil, fmt.Errorf("failed to initialize auth manager: %w", err)
+			}
+			s.authManager = authMgr
+			logger.Info("Scoped auth enabled", map[string]interface{}{
+				"static_keys":   len(config.IndexServer.Auth.StaticKeys),
+				"has_legacy":    config.IndexServer.Auth.LegacyToken != "",
+				"rate_limiting": config.IndexServer.Auth.RateLimiting.Enabled,
+			})
+		}
 	}
 
 	// Register routes
@@ -123,7 +141,15 @@ func (s *Server) applyMiddleware(handler http.Handler) http.Handler {
 	// (Recovery is outermost, CORS is innermost before handler)
 	handler = RecoveryMiddleware(s.logger)(handler)
 	handler = LoggingMiddleware(s.logger)(handler)
-	handler = AuthMiddleware(s.config.Auth, s.logger)(handler)
+
+	// Use ScopedAuthMiddleware when auth manager is available (Phase 4),
+	// otherwise fall back to legacy AuthMiddleware
+	if s.authManager != nil {
+		handler = ScopedAuthMiddleware(s.authManager, s.logger)(handler)
+	} else {
+		handler = AuthMiddleware(s.config.Auth, s.logger)(handler)
+	}
+
 	handler = RequestIDMiddleware()(handler)
 	handler = CORSMiddleware(s.config.CORS)(handler)
 	return handler

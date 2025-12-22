@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 
+	"ckb/internal/auth"
+
 	"github.com/BurntSushi/toml"
 )
 
@@ -27,6 +29,9 @@ type IndexServerConfig struct {
 	SupportedEncodings    []string `toml:"supported_encodings"`     // Supported Content-Encoding values (default ["gzip", "zstd"])
 	EnableDeltaUpload     bool     `toml:"enable_delta_upload"`     // Enable incremental delta uploads (default true)
 	DeltaThresholdPercent int      `toml:"delta_threshold_percent"` // Suggest full upload if >N% files changed (default 50)
+
+	// Authentication configuration (Phase 4)
+	Auth auth.ManagerConfig `toml:"auth"` // API key authentication settings
 }
 
 // RepoSource indicates how a repo was registered
@@ -77,6 +82,8 @@ func DefaultIndexServerConfig() *IndexServerConfig {
 		SupportedEncodings:    []string{"gzip", "zstd"},
 		EnableDeltaUpload:     true,
 		DeltaThresholdPercent: 50,
+		// Phase 4 defaults
+		Auth: auth.DefaultManagerConfig(),
 	}
 }
 
