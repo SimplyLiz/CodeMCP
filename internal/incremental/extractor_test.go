@@ -402,3 +402,222 @@ func TestMapSymbolKind_AllValues(t *testing.T) {
 		}
 	}
 }
+
+// v1.1 Callgraph Tests
+
+func TestIsFunctionSymbol(t *testing.T) {
+	tests := []struct {
+		symbolID string
+		expected bool
+	}{
+		// Functions should match
+		{"scip-go gomod example.com/foo 1.0 pkg.Func().", true},
+		{"scip-go gomod example.com/foo 1.0 main.main().", true},
+		// Methods should match
+		{"scip-go gomod example.com/foo 1.0 pkg.Type.Method().", true},
+		// Types should NOT match
+		{"scip-go gomod example.com/foo 1.0 pkg.Type.", false},
+		// Variables should NOT match
+		{"scip-go gomod example.com/foo 1.0 pkg.Variable.", false},
+		// Empty string
+		{"", false},
+		// Has "()" but not "()." pattern
+		{"has()something.", false},
+		// Has "()." pattern
+		{"has().something", true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.symbolID, func(t *testing.T) {
+			result := isFunctionSymbol(tc.symbolID)
+			if result != tc.expected {
+				t.Errorf("isFunctionSymbol(%q) = %v, want %v", tc.symbolID, result, tc.expected)
+			}
+		})
+	}
+}
+
+func TestIsCallableKind(t *testing.T) {
+	tests := []struct {
+		kind     int32
+		expected bool
+	}{
+		{6, true},   // Method
+		{9, true},   // Constructor
+		{12, true},  // Function
+		{5, false},  // Class
+		{8, false},  // Field
+		{13, false}, // Variable
+		{23, false}, // Struct
+		{0, false},  // Unknown
+	}
+
+	for _, tc := range tests {
+		t.Run(mapSymbolKind(tc.kind), func(t *testing.T) {
+			result := isCallableKind(tc.kind)
+			if result != tc.expected {
+				t.Errorf("isCallableKind(%d) = %v, want %v", tc.kind, result, tc.expected)
+			}
+		})
+	}
+}
+
+func TestIsCallable(t *testing.T) {
+	// Test with SymbolInformation available (Tier 1)
+	symbolInfo := map[string]*scip.SymbolInformation{
+		"scip-go gomod example 1.0 pkg.Func().":   {Symbol: "scip-go gomod example 1.0 pkg.Func().", Kind: 12},
+		"scip-go gomod example 1.0 pkg.Method().": {Symbol: "scip-go gomod example 1.0 pkg.Method().", Kind: 6},
+		"scip-go gomod example 1.0 pkg.Type.":     {Symbol: "scip-go gomod example 1.0 pkg.Type.", Kind: 5},
+		"scip-go gomod example 1.0 pkg.NoKind().": {Symbol: "scip-go gomod example 1.0 pkg.NoKind().", Kind: 0}, // Kind=0 means unknown
+	}
+
+	tests := []struct {
+		name     string
+		symbolID string
+		expected bool
+	}{
+		{"function with Kind", "scip-go gomod example 1.0 pkg.Func().", true},
+		{"method with Kind", "scip-go gomod example 1.0 pkg.Method().", true},
+		{"class type", "scip-go gomod example 1.0 pkg.Type.", false},
+		{"unknown kind falls back to heuristic", "scip-go gomod example 1.0 pkg.NoKind().", true},
+		{"not in symbolInfo uses heuristic", "scip-go gomod example 1.0 other.Func().", true},
+		{"not in symbolInfo non-func", "scip-go gomod example 1.0 other.Variable.", false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := isCallable(tc.symbolID, symbolInfo)
+			if result != tc.expected {
+				t.Errorf("isCallable(%q) = %v, want %v", tc.symbolID, result, tc.expected)
+			}
+		})
+	}
+}
+
+func TestResolveCallerSymbol(t *testing.T) {
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	ext := NewSCIPExtractor("/repo", ".scip/index.scip", logger)
+
+	symbols := []Symbol{
+		{ID: "scip-go gomod example 1.0 pkg.init().", Name: "init", Kind: "function", StartLine: 5, EndLine: 10},
+		{ID: "scip-go gomod example 1.0 pkg.main().", Name: "main", Kind: "function", StartLine: 12, EndLine: 30},
+		{ID: "scip-go gomod example 1.0 pkg.helper().", Name: "helper", Kind: "function", StartLine: 32, EndLine: 40},
+		{ID: "scip-go gomod example 1.0 pkg.Type.", Name: "Type", Kind: "struct", StartLine: 1, EndLine: 3}, // Not a callable
+	}
+
+	tests := []struct {
+		name     string
+		callLine int
+		expected string
+	}{
+		{"call in init", 7, "scip-go gomod example 1.0 pkg.init()."},
+		{"call in main start", 12, "scip-go gomod example 1.0 pkg.main()."},
+		{"call in main middle", 20, "scip-go gomod example 1.0 pkg.main()."},
+		{"call in main end", 30, "scip-go gomod example 1.0 pkg.main()."},
+		{"call in helper", 35, "scip-go gomod example 1.0 pkg.helper()."},
+		{"call before any function", 1, ""},  // Should return empty (top-level or struct def line)
+		{"call after all functions", 50, ""}, // Should return empty
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := ext.resolveCallerSymbol(symbols, tc.callLine)
+			if result != tc.expected {
+				t.Errorf("resolveCallerSymbol(..., %d) = %q, want %q", tc.callLine, result, tc.expected)
+			}
+		})
+	}
+}
+
+func TestResolveCallerSymbol_InferredEndLine(t *testing.T) {
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	ext := NewSCIPExtractor("/repo", ".scip/index.scip", logger)
+
+	// Symbols without explicit EndLine (EndLine == StartLine or 0)
+	symbols := []Symbol{
+		{ID: "scip-go gomod example 1.0 pkg.first().", Name: "first", Kind: "function", StartLine: 10, EndLine: 10},
+		{ID: "scip-go gomod example 1.0 pkg.second().", Name: "second", Kind: "function", StartLine: 50, EndLine: 50},
+	}
+
+	tests := []struct {
+		name     string
+		callLine int
+		expected string
+	}{
+		// First function's inferred end is second's start - 1 = 49
+		{"call in first function", 25, "scip-go gomod example 1.0 pkg.first()."},
+		{"call at inferred boundary", 49, "scip-go gomod example 1.0 pkg.first()."},
+		// Second function uses default 500 lines
+		{"call in second function", 100, "scip-go gomod example 1.0 pkg.second()."},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := ext.resolveCallerSymbol(symbols, tc.callLine)
+			if result != tc.expected {
+				t.Errorf("resolveCallerSymbol(..., %d) = %q, want %q", tc.callLine, result, tc.expected)
+			}
+		})
+	}
+}
+
+func TestExtractFileDelta_CallEdges(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "extractor-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	testFile := filepath.Join(tmpDir, "main.go")
+	if err := os.WriteFile(testFile, []byte("package main"), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	ext := NewSCIPExtractor(tmpDir, ".scip/index.scip", logger)
+
+	// Create a document with a function definition and a call
+	doc := &scip.Document{
+		RelativePath: "main.go",
+		Language:     "go",
+		Occurrences: []*scip.Occurrence{
+			// Definition of main.main
+			{Symbol: "scip-go gomod example 1.0 main.main().", Range: []int32{5, 5, 5, 9}, SymbolRoles: 1},
+			// Call to fmt.Println from within main
+			{Symbol: "scip-go gomod fmt 1.0 fmt.Println().", Range: []int32{7, 1, 7, 12}, SymbolRoles: 0},
+			// Reference to a non-callable (should not create call edge)
+			{Symbol: "scip-go gomod example 1.0 pkg.Variable.", Range: []int32{8, 1, 8, 8}, SymbolRoles: 0},
+		},
+		Symbols: []*scip.SymbolInformation{
+			{Symbol: "scip-go gomod example 1.0 main.main().", DisplayName: "main", Kind: 12},
+			{Symbol: "scip-go gomod fmt 1.0 fmt.Println().", DisplayName: "Println", Kind: 12},
+		},
+	}
+
+	change := ChangedFile{
+		Path:       "main.go",
+		ChangeType: ChangeAdded,
+	}
+
+	delta := ext.extractFileDelta(doc, change)
+
+	// Should have 1 call edge (to fmt.Println)
+	if len(delta.CallEdges) != 1 {
+		t.Fatalf("expected 1 call edge, got %d", len(delta.CallEdges))
+	}
+
+	edge := delta.CallEdges[0]
+	if edge.CalleeID != "scip-go gomod fmt 1.0 fmt.Println()." {
+		t.Errorf("expected callee 'fmt.Println', got %q", edge.CalleeID)
+	}
+	if edge.CallerFile != "main.go" {
+		t.Errorf("expected caller file 'main.go', got %q", edge.CallerFile)
+	}
+	if edge.Line != 8 { // SCIP 0-indexed, we use 1-indexed
+		t.Errorf("expected line 8, got %d", edge.Line)
+	}
+	// CallerID should be resolved to main.main since the call is on line 8, within main (lines 6-end)
+	if edge.CallerID != "scip-go gomod example 1.0 main.main()." {
+		t.Errorf("expected caller 'main.main', got %q", edge.CallerID)
+	}
+}

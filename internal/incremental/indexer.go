@@ -10,7 +10,7 @@ import (
 )
 
 // CurrentSchemaVersion should match storage.currentSchemaVersion
-const CurrentSchemaVersion = 6
+const CurrentSchemaVersion = 7
 
 // IncrementalIndexer orchestrates incremental index updates
 type IncrementalIndexer struct {
@@ -210,6 +210,7 @@ Incremental Index Complete
 Files:   %d modified, %d added, %d deleted
 Symbols: %d added, %d removed
 Refs:    %d updated
+Calls:   %d edges updated
 Time:    %v
 Commit:  %s
 
@@ -217,13 +218,15 @@ Accuracy:
   OK  Go to definition     - accurate
   OK  Find refs (forward)  - accurate
   !!  Find refs (reverse)  - may be stale
-  !!  Call graph           - may be stale
+  OK  Callees (outgoing)   - accurate
+  !!  Callers (incoming)   - may be stale
 
 Run 'ckb index --force' for full accuracy (%d files since last full)
 `,
 		stats.FilesChanged, stats.FilesAdded, stats.FilesDeleted,
 		stats.SymbolsAdded, stats.SymbolsRemoved,
 		stats.RefsAdded,
+		stats.CallsAdded,
 		stats.Duration.Round(time.Millisecond),
 		commitInfo,
 		state.FilesSinceFull,

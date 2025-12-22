@@ -1,7 +1,11 @@
 // Package incremental provides incremental SCIP index updates for Go codebases.
 //
-// V1 Scope: Go only, file-level granularity, in-place updates.
-// V1 Limitation: Reverse references (callers of symbols in changed files) may be stale.
+// V1.0 Scope: Go only, file-level granularity, in-place updates.
+// V1.0 Limitation: Reverse references (callers of symbols in changed files) may be stale.
+//
+// V1.1 Scope: Incremental callgraph updates.
+// V1.1 Contract: Outgoing calls (callees) from changed files are always accurate.
+// V1.1 Limitation: Incoming calls (callers) to changed symbols may be stale.
 package incremental
 
 import "time"
@@ -31,13 +35,26 @@ type FileDelta struct {
 	ChangeType ChangeType // Type of change
 
 	// Data to insert (extracted from SCIP)
-	Symbols []Symbol
-	Refs    []Reference
+	Symbols   []Symbol
+	Refs      []Reference
+	CallEdges []CallEdge // v1.1: Call edges from this file
 
 	// Metadata
 	Hash             string // SHA256 of file content
 	SCIPDocumentHash string // Hash of SCIP document (skip update if unchanged)
 	SymbolCount      int    // Number of symbols in this file
+}
+
+// CallEdge represents a function call from caller to callee (v1.1)
+// Edges are owned by the caller file (caller-owned edges invariant).
+// When a file is reindexed, its outgoing call edges are deleted and rebuilt.
+type CallEdge struct {
+	CallerID   string // SCIP symbol ID of calling function (may be empty if unresolved)
+	CallerFile string // File containing the call (always set)
+	CalleeID   string // SCIP symbol ID of called function
+	Line       int    // 1-indexed line number of call site
+	Column     int    // 1-indexed column of call site
+	EndColumn  int    // Optional: end column for nested call disambiguation
 }
 
 // IndexedFile represents a file in our tracking table
@@ -66,6 +83,7 @@ type DeltaStats struct {
 	SymbolsRemoved int
 	RefsAdded      int
 	RefsRemoved    int
+	CallsAdded     int // v1.1: Call edges added
 	Duration       time.Duration
 
 	// For UI display
@@ -122,10 +140,11 @@ func DefaultConfig() *Config {
 
 // Index metadata keys stored in index_meta table
 const (
-	MetaKeyIndexState      = "index_state"      // "full" or "partial"
-	MetaKeyLastFull        = "last_full_index"  // Unix timestamp
-	MetaKeyLastIncremental = "last_incremental" // Unix timestamp
-	MetaKeyIndexCommit     = "index_commit"     // Git commit SHA
-	MetaKeyFilesSinceFull  = "files_since_full" // Count of files updated since last full
-	MetaKeySchemaVersion   = "schema_version"   // Schema version (should match storage.currentSchemaVersion)
+	MetaKeyIndexState       = "index_state"       // "full" or "partial"
+	MetaKeyLastFull         = "last_full_index"   // Unix timestamp
+	MetaKeyLastIncremental  = "last_incremental"  // Unix timestamp
+	MetaKeyIndexCommit      = "index_commit"      // Git commit SHA
+	MetaKeyFilesSinceFull   = "files_since_full"  // Count of files updated since last full
+	MetaKeySchemaVersion    = "schema_version"    // Schema version (should match storage.currentSchemaVersion)
+	MetaKeyCallgraphQuality = "callgraph_quality" // v1.1: "ok" or "degraded"
 )

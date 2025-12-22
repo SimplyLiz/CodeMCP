@@ -197,6 +197,7 @@ Now Claude can answer questions like:
 - **Accuracy Guarantees** — Forward references always accurate; reverse refs may be stale
 - **Automatic Fallback** — Falls back to full reindex when >50% files changed or schema mismatch
 - **Index State Tracking** — Shows "partial" vs "full" state with staleness warnings
+- **Incremental Callgraph** — Outgoing calls from changed files always accurate; callers may be stale
 
 ## MCP Tools (64 Available)
 
