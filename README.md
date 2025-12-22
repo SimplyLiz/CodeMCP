@@ -357,13 +357,22 @@ curl http://localhost:8080/index/repos/company%2Fcore-lib/meta
 curl "http://localhost:8080/index/repos/company%2Fcore-lib/symbols?limit=100"
 curl "http://localhost:8080/index/repos/company%2Fcore-lib/search/symbols?q=Handler"
 
-# Upload endpoints (with compression)
+# Upload endpoints (with compression + auth)
 curl -X POST http://localhost:8080/index/repos \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ckb_xxx" \
   -d '{"id":"my-org/my-repo","name":"My Repo"}'
 
 gzip -c index.scip | curl -X POST http://localhost:8080/index/repos/my-org%2Fmy-repo/upload \
-  -H "Content-Encoding: gzip" --data-binary @-
+  -H "Content-Encoding: gzip" \
+  -H "Authorization: Bearer ckb_xxx" \
+  --data-binary @-
+
+# Token management (index server admin)
+ckb token create --name "ci-upload" --scope upload    # Create API key
+ckb token list                                         # List all tokens
+ckb token revoke ckb_xxx                              # Revoke a token
+ckb token rotate ckb_xxx                              # Rotate (new secret, same ID)
 ```
 
 ## MCP Integration
@@ -537,7 +546,7 @@ See the **[Full Documentation Wiki](https://github.com/SimplyLiz/CodeMCP/wiki)**
 - [User Guide](https://github.com/SimplyLiz/CodeMCP/wiki/User-Guide) — CLI commands and best practices
 - [Incremental Indexing](https://github.com/SimplyLiz/CodeMCP/wiki/Incremental-Indexing) — Fast index updates for Go projects
 - [Doc-Symbol Linking](https://github.com/SimplyLiz/CodeMCP/wiki/Doc-Symbol-Linking) — Symbol detection in docs, staleness checking
-- [MCP Integration](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration) — Claude Code setup, 58 tools
+- [MCP Integration](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration) — Claude Code setup, 64 tools
 - [API Reference](https://github.com/SimplyLiz/CodeMCP/wiki/API-Reference) — HTTP API documentation
 - [Configuration](https://github.com/SimplyLiz/CodeMCP/wiki/Configuration) — All options including MODULES.toml
 - [Telemetry](https://github.com/SimplyLiz/CodeMCP/wiki/Telemetry) — Runtime observability, dead code detection
