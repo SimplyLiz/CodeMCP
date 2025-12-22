@@ -2,6 +2,55 @@
 
 All notable changes to CKB will be documented in this file.
 
+## [7.3.0] - 2024-12-22
+
+### Added
+
+#### Doc-Symbol Linking
+Bridge documentation and code with automatic symbol detection:
+
+**Core Features:**
+- **Backtick detection** - Automatically detect `Symbol.Name` references in markdown
+- **Directive support** - `<!-- ckb:symbol -->` for explicit references, `<!-- ckb:module -->` for module linking
+- **Suffix resolution** - Resolve `UserService.Auth` to full SCIP symbol ID with confidence scoring
+- **Staleness detection** - Find broken references when symbols are deleted or renamed
+
+**v1.1 Enhancements:**
+- **CI enforcement** - `--fail-under` flag for `ckb docs coverage` to enforce minimum coverage in CI
+- **Rename detection** - Detect when documented symbols are renamed via alias chain, suggest new names
+- **known_symbols directive** - `<!-- ckb:known_symbols Engine, Start -->` allows single-segment detection
+- **Fence symbol scanning** - Extract identifiers from fenced code blocks using tree-sitter (8 languages)
+
+**CLI Commands:**
+- `ckb docs index` - Scan and index documentation for symbol references
+- `ckb docs symbol <name>` - Find docs referencing a symbol
+- `ckb docs file <path>` - Show symbols in a document
+- `ckb docs stale [path]` - Check for stale references (or `--all` for all docs)
+- `ckb docs coverage` - Documentation coverage statistics
+- `ckb docs module <id>` - Find docs linked to a module
+
+**MCP Tools:**
+- `indexDocs` - Scan and index documentation
+- `getDocsForSymbol` - Find docs referencing a symbol
+- `getSymbolsInDoc` - List symbols in a document
+- `getDocsForModule` - Find docs linked to a module
+- `checkDocStaleness` - Check for stale references
+- `getDocCoverage` - Coverage statistics
+
+### Files Added
+- `internal/docs/` - New package for doc-symbol linking
+  - `types.go` - Core types (Document, DocReference, StalenessReport, etc.)
+  - `scanner.go` - Markdown scanning with backtick/directive/fence detection
+  - `resolver.go` - Symbol resolution with suffix matching
+  - `staleness.go` - Staleness checking with rename detection
+  - `indexer.go` - Document indexing orchestration
+  - `store.go` - SQLite persistence for documents and references
+  - `coverage.go` - Coverage analysis
+  - `fence_parser.go` - Tree-sitter identifier extraction from fences
+- `cmd/ckb/docs.go` - CLI commands
+- `internal/query/docs.go` - Query engine integration
+- `internal/mcp/handlers_docs.go` - MCP tool handlers
+
 ## [7.2.0] - 2024-12-21
 
 ### Added

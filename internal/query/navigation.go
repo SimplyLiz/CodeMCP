@@ -59,6 +59,15 @@ type ExplainSymbolFacts struct {
 	Module      string              `json:"module,omitempty"`
 	Warnings    []string            `json:"warnings,omitempty"`
 	Annotations *AnnotationContext  `json:"annotations,omitempty"` // v6.5: Related ADRs and module metadata
+	RelatedDocs []RelatedDoc        `json:"relatedDocs,omitempty"` // v7.3: Docs that reference this symbol
+}
+
+// RelatedDoc represents a documentation file that references a symbol.
+type RelatedDoc struct {
+	Path    string `json:"path"`
+	Title   string `json:"title,omitempty"`
+	Line    int    `json:"line,omitempty"`
+	Context string `json:"context,omitempty"`
 }
 
 // ExplainUsage captures high level usage stats.
@@ -282,6 +291,14 @@ func (e *Engine) ExplainSymbol(ctx context.Context, opts ExplainSymbolOptions) (
 	// v6.5: Add annotation context (related ADRs and module metadata)
 	if facts.Module != "" {
 		facts.Annotations = e.getAnnotationContext(facts.Module)
+	}
+
+	// v7.3: Add related documentation (top 3 docs mentioning this symbol)
+	if symbolResp.Symbol != nil {
+		relatedDocs := e.getRelatedDocs(symbolResp.Symbol.StableId, 3)
+		if len(relatedDocs) > 0 {
+			facts.RelatedDocs = relatedDocs
+		}
 	}
 
 	summary := buildExplainSummary(facts)
@@ -3723,4 +3740,35 @@ func computeRecencyScore(timestamp string) float64 {
 	default:
 		return 1.0
 	}
+}
+
+// getRelatedDocs returns documentation that references a symbol (v7.3).
+func (e *Engine) getRelatedDocs(symbolID string, limit int) []RelatedDoc {
+	refs, err := e.GetDocsForSymbol(symbolID, limit)
+	if err != nil || len(refs) == 0 {
+		return nil
+	}
+
+	result := make([]RelatedDoc, 0, len(refs))
+	for _, ref := range refs {
+		doc := RelatedDoc{
+			Path: ref.DocPath,
+			Line: ref.Line,
+		}
+		// Try to get the document title
+		if docInfo, err := e.GetDocumentInfo(ref.DocPath); err == nil && docInfo != nil {
+			doc.Title = docInfo.Title
+		}
+		// Add context if available (truncate to reasonable length)
+		if ref.Context != "" {
+			ctx := ref.Context
+			if len(ctx) > 80 {
+				ctx = ctx[:77] + "..."
+			}
+			doc.Context = ctx
+		}
+		result = append(result, doc)
+	}
+
+	return result
 }

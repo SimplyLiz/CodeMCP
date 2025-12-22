@@ -10,7 +10,8 @@ import (
 // v2: Architectural Memory (ownership, hotspots, responsibilities, decisions)
 // v3: Telemetry (observed_usage, observed_callers, coverage_snapshots)
 // v4: Developer Intelligence (coupling_cache, risk_scores)
-const currentSchemaVersion = 4
+// v5: Doc-Symbol Linking (docs, doc_references, doc_modules, symbol_suffixes)
+const currentSchemaVersion = 5
 
 // initializeSchema creates all tables for a new database
 func (db *DB) initializeSchema() error {
@@ -67,6 +68,11 @@ func (db *DB) initializeSchema() error {
 			return err
 		}
 
+		// Create v5 Doc-Symbol Linking tables
+		if err := createDocsTables(tx); err != nil {
+			return err
+		}
+
 		// Set initial schema version
 		if err := setSchemaVersion(tx, currentSchemaVersion); err != nil {
 			return err
@@ -116,6 +122,12 @@ func (db *DB) runMigrations() error {
 	if version < 4 {
 		if err := db.migrateToV4(); err != nil {
 			return fmt.Errorf("failed to migrate to v4: %w", err)
+		}
+	}
+
+	if version < 5 {
+		if err := db.migrateToV5(); err != nil {
+			return fmt.Errorf("failed to migrate to v5: %w", err)
 		}
 	}
 
@@ -904,6 +916,112 @@ func createDeveloperIntelligenceTables(tx *sql.Tx) error {
 	for _, idx := range indexes {
 		if _, err := tx.Exec(idx); err != nil {
 			return fmt.Errorf("failed to create developer intelligence index: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// ============================================================================
+// v5 Schema: Doc-Symbol Linking Tables
+// ============================================================================
+
+// migrateToV5 migrates the database from v4 to v5 (Doc-Symbol Linking)
+func (db *DB) migrateToV5() error {
+	return db.WithTx(func(tx *sql.Tx) error {
+		db.logger.Info("Migrating database to v5 (Doc-Symbol Linking)", nil)
+
+		// Create new v5 doc linking tables
+		if err := createDocsTables(tx); err != nil {
+			return err
+		}
+
+		// Update schema version
+		if err := setSchemaVersion(tx, 5); err != nil {
+			return err
+		}
+
+		db.logger.Info("Database migrated to v5", nil)
+		return nil
+	})
+}
+
+// createDocsTables creates tables for v7.3 doc-symbol linking
+func createDocsTables(tx *sql.Tx) error {
+	tables := []string{
+		// Documents table - tracks indexed documentation files
+		`CREATE TABLE IF NOT EXISTS docs (
+			path TEXT PRIMARY KEY,
+			doc_type TEXT NOT NULL,
+			title TEXT,
+			hash TEXT NOT NULL,
+			last_indexed INTEGER NOT NULL
+		)`,
+
+		// References table - symbol mentions in docs
+		`CREATE TABLE IF NOT EXISTS doc_references (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			doc_path TEXT NOT NULL,
+			raw_text TEXT NOT NULL,
+			normalized_text TEXT NOT NULL,
+			symbol_id TEXT,
+			symbol_name TEXT,
+			line INTEGER NOT NULL,
+			col INTEGER NOT NULL,
+			context TEXT,
+			detection_method TEXT NOT NULL,
+			resolution TEXT NOT NULL,
+			candidates TEXT,
+			confidence REAL DEFAULT 1.0,
+			last_resolved INTEGER NOT NULL,
+			FOREIGN KEY (doc_path) REFERENCES docs(path) ON DELETE CASCADE
+		)`,
+
+		// Module links table - explicit doc↔module associations
+		`CREATE TABLE IF NOT EXISTS doc_modules (
+			doc_path TEXT NOT NULL,
+			module_id TEXT NOT NULL,
+			line INTEGER NOT NULL,
+			PRIMARY KEY (doc_path, module_id),
+			FOREIGN KEY (doc_path) REFERENCES docs(path) ON DELETE CASCADE
+		)`,
+
+		// Suffix index - precomputed suffix segments for fast matching
+		`CREATE TABLE IF NOT EXISTS symbol_suffixes (
+			suffix TEXT NOT NULL,
+			symbol_id TEXT NOT NULL,
+			segment_count INTEGER NOT NULL,
+			PRIMARY KEY (suffix, symbol_id)
+		)`,
+
+		// Docs meta - stores symbol index version for staleness detection
+		`CREATE TABLE IF NOT EXISTS docs_meta (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL
+		)`,
+	}
+
+	for _, stmt := range tables {
+		if _, err := tx.Exec(stmt); err != nil {
+			return fmt.Errorf("failed to create docs table: %w", err)
+		}
+	}
+
+	// Create indexes
+	indexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_docs_type ON docs(doc_type)",
+		"CREATE INDEX IF NOT EXISTS idx_refs_doc_path ON doc_references(doc_path)",
+		"CREATE INDEX IF NOT EXISTS idx_refs_symbol_id ON doc_references(symbol_id)",
+		"CREATE INDEX IF NOT EXISTS idx_refs_normalized ON doc_references(normalized_text)",
+		"CREATE INDEX IF NOT EXISTS idx_refs_resolution ON doc_references(resolution)",
+		"CREATE INDEX IF NOT EXISTS idx_doc_modules_module ON doc_modules(module_id)",
+		"CREATE INDEX IF NOT EXISTS idx_suffixes_suffix ON symbol_suffixes(suffix)",
+		"CREATE INDEX IF NOT EXISTS idx_suffixes_segments ON symbol_suffixes(segment_count)",
+	}
+
+	for _, idx := range indexes {
+		if _, err := tx.Exec(idx); err != nil {
+			return fmt.Errorf("failed to create docs index: %w", err)
 		}
 	}
 
