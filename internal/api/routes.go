@@ -51,6 +51,10 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("/telemetry/", s.handleTelemetryRoutes) // /telemetry/status, /telemetry/usage/:id, /telemetry/dead-code
 	s.router.HandleFunc("/telemetry", s.handleTelemetryStatus)  // GET /telemetry (alias for /telemetry/status)
 
+	// Delta ingestion endpoints (incremental indexing)
+	s.router.HandleFunc("/delta", s.handleDeltaRoutes)
+	s.router.HandleFunc("/delta/", s.handleDeltaRoutes)
+
 	// POST endpoints
 	s.router.HandleFunc("/doctor/fix", s.handleDoctorFix)
 	s.router.HandleFunc("/cache/warm", s.handleCacheWarm)
@@ -115,6 +119,9 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 			"GET /telemetry/status - Telemetry system status and coverage",
 			"GET /telemetry/usage/:id - Observed usage for a symbol",
 			"GET /telemetry/dead-code - Find dead code candidates",
+			"GET /delta - Delta ingestion info",
+			"POST /delta/ingest - Ingest delta artifact for incremental indexing",
+			"POST /delta/validate - Validate delta artifact without ingesting",
 			"POST /doctor/fix - Get fix script",
 			"POST /cache/warm - Warm cache",
 			"POST /cache/clear - Clear cache",
