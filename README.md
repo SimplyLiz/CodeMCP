@@ -191,6 +191,20 @@ Now Claude can answer questions like:
 - **Rename Awareness** — Suggest new names when documented symbols are renamed
 - **CI Enforcement** — `--fail-under` flag for documentation coverage thresholds
 
+### Production Hardening (v7.3)
+- **Delta Artifacts** — CI-generated diffs for O(delta) ingestion instead of O(N)
+- **FTS5 Search** — SQLite FTS5 for instant search (replaces LIKE scans)
+- **Compaction Scheduler** — Automatic snapshot cleanup and database maintenance
+- **Prometheus Metrics** — `/metrics` endpoint for monitoring and alerting
+- **Load Shedding** — Graceful degradation under load with priority endpoints
+- **Health Details** — `/health/detailed` endpoint with per-repo and storage metrics
+
+### Language Quality (v7.3)
+- **Quality Tiers** — 4-tier classification (Tier 1: Go, Tier 2: TS/Python, Tier 3: Rust/Java, Tier 4: Experimental)
+- **Quality Assessment** — Per-language metrics (ref accuracy, callgraph quality)
+- **Python Venv Detection** — Auto-detect virtual environments with activation recommendations
+- **TypeScript Monorepo** — Detect pnpm, lerna, nx, yarn workspaces with per-package tsconfig status
+
 ## MCP Tools (64 Available)
 
 CKB exposes code intelligence through the Model Context Protocol:

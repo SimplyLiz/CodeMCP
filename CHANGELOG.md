@@ -6,6 +6,47 @@ All notable changes to CKB will be documented in this file.
 
 ### Added
 
+#### Incremental Indexing v4 (Production-Grade)
+Fast, reliable incremental indexing for large codebases:
+
+**Delta Artifacts:**
+- **`ckb diff` command** - Generate delta manifests between snapshots
+- **CI-generated diffs** - O(delta) ingestion instead of O(N) comparison
+- **Delta validation** - Schema version, base snapshot, hash verification
+- **`POST /delta/ingest`** - Ingest delta artifacts via API
+- **`POST /delta/validate`** - Validate without applying
+
+**FTS5 Search:**
+- **SQLite FTS5** - Instant full-text search (replaces LIKE scans)
+- **Automatic triggers** - Real-time sync with symbol changes
+- **FTS maintenance** - Rebuild, vacuum, integrity-check
+- **LIKE fallback** - Graceful degradation for edge cases
+
+**Operational Hardening:**
+- **Compaction scheduler** - Automatic snapshot cleanup, journal pruning, FTS vacuum
+- **`GET /health/detailed`** - Per-repo metrics, storage info, memory usage
+- **`GET /metrics`** - Prometheus metrics (counters, histograms, gauges)
+- **Load shedding** - Priority endpoints, circuit breakers, adaptive shedding
+
+#### Language Quality Assessment
+Per-language quality metrics and environment detection:
+
+**Quality Tiers:**
+- **Tier 1 (Full)** - Go: full support, all features, stable
+- **Tier 2 (Standard)** - TypeScript, JavaScript, Python: full support, known edge cases
+- **Tier 3 (Basic)** - Rust, Java, Kotlin, C++, Ruby, Dart: basic support, callgraph may be incomplete
+- **Tier 4 (Experimental)** - C#, PHP: experimental
+
+**New Endpoints:**
+- **`GET /meta/languages`** - Language quality dashboard with tier info, metrics, recommendations
+- **`GET /meta/python-env`** - Python venv detection with activation recommendations
+- **`GET /meta/typescript-monorepo`** - TypeScript monorepo detection (pnpm, lerna, nx, yarn)
+
+**Environment Detection:**
+- Python virtual environment detection (`.venv`, `venv`, `env`, `VIRTUAL_ENV`)
+- Python package managers (pyproject.toml, requirements.txt, Pipfile)
+- TypeScript monorepo workspaces with per-package tsconfig status
+
 #### Doc-Symbol Linking
 Bridge documentation and code with automatic symbol detection:
 
@@ -38,6 +79,25 @@ Bridge documentation and code with automatic symbol detection:
 - `getDocCoverage` - Coverage statistics
 
 ### Files Added
+
+**Incremental Indexing v4:**
+- `internal/diff/` - Delta artifact generation
+  - `types.go` - Delta JSON schema types
+  - `generator.go` - Delta generation (compare two DBs)
+  - `validator.go` - Delta validation logic
+  - `hasher.go` - Canonical hash computation
+- `internal/storage/fts.go` - FTS5 maintenance (rebuild, vacuum, integrity-check)
+- `internal/daemon/compaction.go` - Compaction scheduler
+- `internal/api/metrics.go` - Prometheus metrics exporter
+- `internal/api/middleware_load.go` - Load shedding middleware
+- `internal/api/handlers_delta.go` - Delta ingestion endpoints
+- `cmd/ckb/diff.go` - `ckb diff` CLI command
+
+**Language Quality:**
+- `internal/project/quality.go` - Language quality assessment module
+- `internal/api/handlers_quality.go` - Language quality API endpoints
+
+**Doc-Symbol Linking:**
 - `internal/docs/` - New package for doc-symbol linking
   - `types.go` - Core types (Document, DocReference, StalenessReport, etc.)
   - `scanner.go` - Markdown scanning with backtick/directive/fence detection
