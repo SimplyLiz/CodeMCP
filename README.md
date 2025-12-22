@@ -191,7 +191,7 @@ Now Claude can answer questions like:
 - **Rename Awareness** — Suggest new names when documented symbols are renamed
 - **CI Enforcement** — `--fail-under` flag for documentation coverage thresholds
 
-## MCP Tools (58 Available)
+## MCP Tools (64 Available)
 
 CKB exposes code intelligence through the Model Context Protocol:
 
@@ -280,6 +280,20 @@ CKB exposes code intelligence through the Model Context Protocol:
 | `analyzeCoupling` | Co-change analysis |
 | `exportForLLM` | LLM-friendly export |
 | `auditRisk` | Multi-signal risk audit |
+
+</details>
+
+<details>
+<summary><strong>v7.3 — Doc-Symbol Linking</strong></summary>
+
+| Tool | Purpose |
+|------|---------|
+| `indexDocs` | Scan and index documentation |
+| `getDocsForSymbol` | Find docs referencing a symbol |
+| `getSymbolsInDoc` | List symbols in a document |
+| `getDocsForModule` | Find docs linked to a module |
+| `checkDocStaleness` | Check for stale references |
+| `getDocCoverage` | Documentation coverage stats |
 
 </details>
 

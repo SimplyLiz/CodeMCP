@@ -13,10 +13,10 @@ func TestFenceParser_ExtractIdentifiers(t *testing.T) {
 	}
 
 	tests := []struct {
-		name       string
-		fence      Fence
-		wantCount  int
-		wantNames  []string
+		name      string
+		fence     Fence
+		wantCount int
+		wantNames []string
 	}{
 		{
 			name: "Go selector expression",

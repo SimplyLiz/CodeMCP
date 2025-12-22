@@ -140,7 +140,7 @@ type StaleReference struct {
 	Line        int             `json:"line"`
 	Reason      StalenessReason `json:"reason"`
 	Message     string          `json:"message"`
-	Suggestions []string        `json:"suggestions,omitempty"` // Possible matches
+	Suggestions []string        `json:"suggestions,omitempty"`   // Possible matches
 	NewSymbolID *string         `json:"new_symbol_id,omitempty"` // If renamed, the new ID (v1.1)
 }
 
