@@ -33,11 +33,20 @@ type AnalyzeImpactResponse struct {
 	ModulesAffected   []ModuleImpact        `json:"modulesAffected"`
 	ObservedUsage     *ObservedUsageSummary `json:"observedUsage,omitempty"`
 	RelatedDecisions  []RelatedDecision     `json:"relatedDecisions,omitempty"` // v6.5: ADRs affecting impacted modules
+	DocsToUpdate      []DocToUpdate         `json:"docsToUpdate,omitempty"`     // v7.3: Docs that mention this symbol
 	BlendedConfidence float64               `json:"blendedConfidence,omitempty"`
 	Truncated         bool                  `json:"truncated,omitempty"`
 	TruncationInfo    *TruncationInfo       `json:"truncationInfo,omitempty"`
 	Provenance        *Provenance           `json:"provenance"`
 	Drilldowns        []output.Drilldown    `json:"drilldowns,omitempty"`
+}
+
+// DocToUpdate represents documentation that may need updating when a symbol changes.
+type DocToUpdate struct {
+	Path    string `json:"path"`
+	Title   string `json:"title,omitempty"`
+	Line    int    `json:"line,omitempty"`
+	Context string `json:"context,omitempty"`
 }
 
 // ObservedUsageSummary contains telemetry-based usage information
@@ -333,6 +342,12 @@ func (e *Engine) AnalyzeImpact(ctx context.Context, opts AnalyzeImpactOptions) (
 		}
 	}
 
+	// v7.3: Get documentation that may need updating (top 5 docs mentioning this symbol)
+	var docsToUpdate []DocToUpdate
+	if symbolInfo.StableId != "" {
+		docsToUpdate = e.getDocsToUpdate(symbolInfo.StableId, 5)
+	}
+
 	return &AnalyzeImpactResponse{
 		Symbol:            symbolInfo,
 		Visibility:        visibility,
@@ -342,6 +357,7 @@ func (e *Engine) AnalyzeImpact(ctx context.Context, opts AnalyzeImpactOptions) (
 		ModulesAffected:   modulesAffected,
 		ObservedUsage:     observedUsage,
 		RelatedDecisions:  relatedDecisions,
+		DocsToUpdate:      docsToUpdate,
 		BlendedConfidence: blendedConfidence,
 		Truncated:         truncationInfo != nil,
 		TruncationInfo:    truncationInfo,
@@ -678,4 +694,31 @@ func sortImpactItems(items []ImpactItem) {
 		}
 		return items[i].StableId < items[j].StableId
 	})
+}
+
+// getDocsToUpdate returns documentation that may need updating when a symbol changes (v7.3).
+func (e *Engine) getDocsToUpdate(symbolID string, limit int) []DocToUpdate {
+	refs, err := e.GetDocsForSymbol(symbolID, limit)
+	if err != nil || len(refs) == 0 {
+		return nil
+	}
+
+	result := make([]DocToUpdate, 0, len(refs))
+	for _, ref := range refs {
+		doc := DocToUpdate{
+			Path: ref.DocPath,
+			Line: ref.Line,
+		}
+		// Add context if available (truncate to reasonable length)
+		if ref.Context != "" {
+			ctx := ref.Context
+			if len(ctx) > 80 {
+				ctx = ctx[:77] + "..."
+			}
+			doc.Context = ctx
+		}
+		result = append(result, doc)
+	}
+
+	return result
 }

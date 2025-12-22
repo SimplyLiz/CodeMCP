@@ -1415,6 +1415,105 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		// v7.3 Doc-Symbol Linking tools
+		{
+			Name:        "getDocsForSymbol",
+			Description: "Find documentation that references a symbol. Returns docs mentioning the symbol with context and line numbers.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"symbol": map[string]interface{}{
+						"type":        "string",
+						"description": "Symbol name or ID to search for (e.g., 'Engine.Start', 'internal/query.Engine')",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"default":     10,
+						"description": "Maximum number of doc references to return",
+					},
+				},
+				"required": []string{"symbol"},
+			},
+		},
+		{
+			Name:        "getSymbolsInDoc",
+			Description: "List all symbol references found in a documentation file. Shows resolution status and line numbers.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"path": map[string]interface{}{
+						"type":        "string",
+						"description": "Path to the documentation file (relative to repo root)",
+					},
+				},
+				"required": []string{"path"},
+			},
+		},
+		{
+			Name:        "getDocsForModule",
+			Description: "Find documentation explicitly linked to a module via directives. Docs link to modules using <!-- ckb:module path/to/module --> directives.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"moduleId": map[string]interface{}{
+						"type":        "string",
+						"description": "Module ID (directory path) to find docs for",
+					},
+				},
+				"required": []string{"moduleId"},
+			},
+		},
+		{
+			Name:        "checkDocStaleness",
+			Description: "Check documentation for stale symbol references. A reference is stale if the symbol no longer exists, is ambiguous, or the language is not indexed.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"path": map[string]interface{}{
+						"type":        "string",
+						"description": "Path to check (optional, omit for all docs)",
+					},
+					"all": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Check all indexed documentation",
+					},
+				},
+			},
+		},
+		{
+			Name:        "indexDocs",
+			Description: "Scan and index documentation for symbol references. By default uses incremental indexing (skips unchanged files).",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"force": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Force re-index all docs even if unchanged",
+					},
+				},
+			},
+		},
+		{
+			Name:        "getDocCoverage",
+			Description: "Get documentation coverage statistics. Reports how many symbols are documented and which high-centrality symbols are missing documentation.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"exportedOnly": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Only count exported/public symbols",
+					},
+					"topN": map[string]interface{}{
+						"type":        "integer",
+						"default":     10,
+						"description": "Number of top undocumented symbols to return",
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -1487,4 +1586,11 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["analyzeCoupling"] = s.toolAnalyzeCoupling
 	s.tools["exportForLLM"] = s.toolExportForLLM
 	s.tools["auditRisk"] = s.toolAuditRisk
+	// v7.3 Doc-Symbol Linking tools
+	s.tools["getDocsForSymbol"] = s.toolGetDocsForSymbol
+	s.tools["getSymbolsInDoc"] = s.toolGetSymbolsInDoc
+	s.tools["getDocsForModule"] = s.toolGetDocsForModule
+	s.tools["checkDocStaleness"] = s.toolCheckDocStaleness
+	s.tools["indexDocs"] = s.toolIndexDocs
+	s.tools["getDocCoverage"] = s.toolGetDocCoverage
 }
