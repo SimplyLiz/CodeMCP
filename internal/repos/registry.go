@@ -102,8 +102,8 @@ func (r *Registry) Save() error {
 
 	// Ensure directory exists
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create registry directory: %w", err)
+	if mkdirErr := os.MkdirAll(dir, 0755); mkdirErr != nil {
+		return fmt.Errorf("failed to create registry directory: %w", mkdirErr)
 	}
 
 	// Acquire lock
@@ -115,7 +115,7 @@ func (r *Registry) Save() error {
 	if err != nil {
 		return fmt.Errorf("failed to acquire lock: %w", err)
 	}
-	defer lock.Release()
+	defer func() { _ = lock.Release() }()
 
 	// Ensure version is set
 	r.Version = currentRegistryVersion
@@ -132,7 +132,7 @@ func (r *Registry) Save() error {
 		return fmt.Errorf("failed to write registry: %w", err)
 	}
 	if err := os.Rename(tmpPath, path); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("failed to rename registry: %w", err)
 	}
 
@@ -324,8 +324,8 @@ type FileLock struct {
 // Release releases the file lock.
 func (l *FileLock) Release() error {
 	if l.file != nil {
-		unlockFile(l.file)
-		l.file.Close()
+		_ = unlockFile(l.file)
+		_ = l.file.Close()
 		l.file = nil
 	}
 	return nil
@@ -344,7 +344,7 @@ func acquireLock(path string) (*FileLock, error) {
 	}
 
 	if err := lockFile(f); err != nil {
-		f.Close()
+		_ = f.Close()
 		return nil, err
 	}
 
