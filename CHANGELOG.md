@@ -2,6 +2,62 @@
 
 All notable changes to CKB will be documented in this file.
 
+## [7.4.0] - 2024-12-22
+
+### Added
+
+#### Incremental Indexing (Go only)
+Index updates in seconds instead of full reindex—O(changed files) instead of O(entire repo).
+
+**Core Features:**
+- **Git-based change detection** — Uses `git diff -z` with NUL separators for accurate tracking
+- **Rename support** — Properly tracks `git mv` with old path cleanup
+- **Delta extraction** — Only processes SCIP documents for changed files
+- **Delete+insert pattern** — Clean updates without complex diffing logic
+- **Index state tracking** — Tracks "partial" vs "full" state with staleness warnings
+
+**Accuracy Guarantees:**
+| Query Type | After Incremental |
+|------------|-------------------|
+| Go to definition | Always accurate |
+| Find refs FROM changed files | Always accurate |
+| Find refs TO changed symbols | May be stale |
+| Call graph (callers) | May be stale |
+
+**Automatic Fallback:**
+- Falls back to full reindex when >50% files changed
+- Falls back on schema version mismatch
+- Falls back when no tracked commit exists
+
+**CLI Changes:**
+- `ckb index` — Incremental by default for Go projects
+- `ckb index --force` — Force full reindex when accuracy is critical
+
+**Configuration (`.ckb/config.json`):**
+```json
+{
+  "incremental": {
+    "threshold": 50,
+    "indexTests": false,
+    "excludes": ["vendor", "testdata"]
+  }
+}
+```
+
+### Files Added
+- `internal/incremental/` — New package for incremental indexing
+  - `types.go` — Core types (FileState, ChangeSet, FileDelta, DeltaStats)
+  - `store.go` — SQLite persistence for indexed_files, file_symbols, index_meta
+  - `detector.go` — Git-based and hash-based change detection
+  - `extractor.go` — SCIP delta extraction for changed files only
+  - `updater.go` — Database updates with delete+insert pattern
+  - `indexer.go` — Orchestration and state management
+  - `indexer_test.go` — Integration tests
+
+### Changed
+- `internal/storage/schema.go` — Added v6 migration with three new tables
+- `cmd/ckb/index.go` — Incremental indexing flow with `--force` flag
+
 ## [7.3.0] - 2024-12-22
 
 ### Added
