@@ -2,76 +2,6 @@
 
 All notable changes to CKB will be documented in this file.
 
-## [7.4.0] - 2024-12-22
-
-### Added
-
-#### Incremental Indexing (Go only)
-Index updates in seconds instead of full reindex—O(changed files) instead of O(entire repo).
-
-**Core Features:**
-- **Git-based change detection** — Uses `git diff -z` with NUL separators for accurate tracking
-- **Rename support** — Properly tracks `git mv` with old path cleanup
-- **Delta extraction** — Only processes SCIP documents for changed files
-- **Delete+insert pattern** — Clean updates without complex diffing logic
-- **Index state tracking** — Tracks "partial" vs "full" state with staleness warnings
-
-#### Incremental Callgraph (v1.1)
-Extends incremental indexing with call graph maintenance—outgoing calls from changed files are always accurate.
-
-- **Call edge extraction** — Extracts caller→callee edges during incremental updates
-- **Tiered callable detection** — Uses `SymbolInformation.Kind` first, falls back to `().` heuristic
-- **Caller resolution** — Resolves enclosing function for each call site via line range matching
-- **Location-anchored storage** — Call edges stored with `(caller_file, line, col, callee_id)` for precision
-- **Caller-owned edges** — Edges deleted and rebuilt with their owning file (no stale outgoing calls)
-
-**Accuracy Guarantees:**
-| Query Type | After Incremental |
-|------------|-------------------|
-| Go to definition | Always accurate |
-| Find refs FROM changed files | Always accurate |
-| Find refs TO changed symbols | May be stale |
-| Call graph (callees/outgoing) | Always accurate |
-| Call graph (callers/incoming) | May be stale |
-
-**Automatic Fallback:**
-- Falls back to full reindex when >50% files changed
-- Falls back on schema version mismatch
-- Falls back when no tracked commit exists
-
-**CLI Changes:**
-- `ckb index` — Incremental by default for Go projects
-- `ckb index --force` — Force full reindex when accuracy is critical
-
-**Configuration (`.ckb/config.json`):**
-```json
-{
-  "incremental": {
-    "threshold": 50,
-    "indexTests": false,
-    "excludes": ["vendor", "testdata"]
-  }
-}
-```
-
-### Files Added
-- `internal/incremental/` — New package for incremental indexing
-  - `types.go` — Core types (FileState, ChangeSet, FileDelta, DeltaStats)
-  - `store.go` — SQLite persistence for indexed_files, file_symbols, index_meta
-  - `detector.go` — Git-based and hash-based change detection
-  - `extractor.go` — SCIP delta extraction for changed files only
-  - `updater.go` — Database updates with delete+insert pattern
-  - `indexer.go` — Orchestration and state management
-  - `indexer_test.go` — Integration tests
-
-### Changed
-- `internal/storage/schema.go` — Schema v7 with callgraph table and indexes
-- `internal/incremental/types.go` — Added `CallEdge` type, updated `FileDelta` and `DeltaStats`
-- `internal/incremental/extractor.go` — Call edge extraction with `isCallable()`, `resolveCallerSymbol()`
-- `internal/incremental/updater.go` — Added `insertCallEdges()`, callgraph deletion
-- `internal/incremental/indexer.go` — Updated `FormatStats()` with call edge count
-- `cmd/ckb/index.go` — Incremental indexing flow with `--force` flag
-
 ## [7.3.0] - 2024-12-22
 
 ### Added
@@ -107,6 +37,74 @@ Bridge documentation and code with automatic symbol detection:
 - `checkDocStaleness` - Check for stale references
 - `getDocCoverage` - Coverage statistics
 
+#### Incremental Indexing (Go only)
+Index updates in seconds instead of full reindex—O(changed files) instead of O(entire repo).
+
+**Core Features:**
+- **Git-based change detection** — Uses `git diff -z` with NUL separators for accurate tracking
+- **Rename support** — Properly tracks `git mv` with old path cleanup
+- **Delta extraction** — Only processes SCIP documents for changed files
+- **Delete+insert pattern** — Clean updates without complex diffing logic
+- **Index state tracking** — Tracks "partial" vs "full" state with staleness warnings
+
+#### Incremental Callgraph (v1.1)
+Extends incremental indexing with call graph maintenance—outgoing calls from changed files are always accurate.
+
+- **Call edge extraction** — Extracts caller→callee edges during incremental updates
+- **Tiered callable detection** — Uses `SymbolInformation.Kind` first, falls back to `().` heuristic
+- **Caller resolution** — Resolves enclosing function for each call site via line range matching
+- **Location-anchored storage** — Call edges stored with `(caller_file, line, col, callee_id)` for precision
+- **Caller-owned edges** — Edges deleted and rebuilt with their owning file (no stale outgoing calls)
+
+#### Transitive Invalidation (v2)
+Tracks file-level dependencies and automatically queues dependent files for rescanning when their dependencies change.
+
+- **File dependency tracking** — `file_deps` table tracks which files reference symbols from other files
+- **Rescan queue** — `rescan_queue` table with BFS depth tracking and attempt counting
+- **Four invalidation modes:**
+  - `none` — Disabled (no dependency tracking)
+  - `lazy` — Enqueue dependents, drain on next full reindex (default)
+  - `eager` — Enqueue and drain immediately with configurable budgets
+  - `deferred` — Enqueue and drain periodically in background
+- **Budget-limited draining** — `MaxRescanFiles` (default: 200) and `MaxRescanMs` (default: 1500ms) limits
+- **Cascade depth control** — `Depth` setting limits BFS traversal (default: 1 = direct dependents only)
+
+**Accuracy Guarantees:**
+| Query Type | After Incremental | After Queue Drained |
+|------------|-------------------|---------------------|
+| Go to definition | Always accurate | Always accurate |
+| Find refs FROM changed files | Always accurate | Always accurate |
+| Find refs TO changed symbols | May be stale | Accurate |
+| Call graph (callees/outgoing) | Always accurate | Always accurate |
+| Call graph (callers/incoming) | May be stale | Accurate |
+
+**Automatic Fallback:**
+- Falls back to full reindex when >50% files changed
+- Falls back on schema version mismatch
+- Falls back when no tracked commit exists
+
+**CLI Changes:**
+- `ckb index` — Incremental by default for Go projects
+- `ckb index --force` — Force full reindex when accuracy is critical
+
+**Configuration (`.ckb/config.json`):**
+```json
+{
+  "incremental": {
+    "threshold": 50,
+    "indexTests": false,
+    "excludes": ["vendor", "testdata"]
+  },
+  "transitive": {
+    "enabled": true,
+    "mode": "lazy",
+    "depth": 1,
+    "maxRescanFiles": 200,
+    "maxRescanMs": 1500
+  }
+}
+```
+
 ### Files Added
 - `internal/docs/` - New package for doc-symbol linking
   - `types.go` - Core types (Document, DocReference, StalenessReport, etc.)
@@ -120,6 +118,19 @@ Bridge documentation and code with automatic symbol detection:
 - `cmd/ckb/docs.go` - CLI commands
 - `internal/query/docs.go` - Query engine integration
 - `internal/mcp/handlers_docs.go` - MCP tool handlers
+- `internal/incremental/` — New package for incremental indexing
+  - `types.go` — Core types (FileState, ChangeSet, FileDelta, DeltaStats, CallEdge, TransitiveConfig)
+  - `store.go` — SQLite persistence for indexed_files, file_symbols, index_meta
+  - `detector.go` — Git-based and hash-based change detection
+  - `extractor.go` — SCIP delta extraction for changed files only
+  - `updater.go` — Database updates with delete+insert pattern
+  - `deps.go` — Transitive invalidation with file dependency tracking and rescan queue
+  - `indexer.go` — Orchestration and state management
+  - `indexer_test.go`, `deps_test.go`, `types_test.go` — Tests
+
+### Changed
+- `internal/storage/schema.go` — Schema v8 with callgraph, file_deps, and rescan_queue tables
+- `cmd/ckb/index.go` — Incremental indexing flow with `--force` flag
 
 ## [7.2.0] - 2024-12-21
 
