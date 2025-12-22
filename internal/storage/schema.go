@@ -14,7 +14,8 @@ import (
 // v6: Incremental Indexing (indexed_files, file_symbols, index_meta)
 // v7: Incremental Callgraph (callgraph table for call edge storage)
 // v8: Transitive Invalidation (file_deps, rescan_queue for dependency tracking)
-const currentSchemaVersion = 8
+// v9: FTS5 Symbol Search (symbols_fts_content, symbols_fts)
+const currentSchemaVersion = 9
 
 // initializeSchema creates all tables for a new database
 func (db *DB) initializeSchema() error {
@@ -91,6 +92,11 @@ func (db *DB) initializeSchema() error {
 			return err
 		}
 
+		// Create v9 FTS5 Symbol Search tables
+		if err := createSymbolFTSTables(tx); err != nil {
+			return err
+		}
+
 		// Set initial schema version
 		if err := setSchemaVersion(tx, currentSchemaVersion); err != nil {
 			return err
@@ -164,6 +170,12 @@ func (db *DB) runMigrations() error {
 	if version < 8 {
 		if err := db.migrateToV8(); err != nil {
 			return fmt.Errorf("failed to migrate to v8: %w", err)
+		}
+	}
+
+	if version < 9 {
+		if err := db.migrateToV9(); err != nil {
+			return fmt.Errorf("failed to migrate to v9: %w", err)
 		}
 	}
 
@@ -1266,6 +1278,106 @@ func createTransitiveInvalidationTables(tx *sql.Tx) error {
 	for _, idx := range indexes {
 		if _, err := tx.Exec(idx); err != nil {
 			return fmt.Errorf("failed to create transitive invalidation index: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// ============================================================================
+// v9 Schema: FTS5 Symbol Search
+// ============================================================================
+
+// migrateToV9 migrates the database from v8 to v9 (FTS5 Symbol Search)
+func (db *DB) migrateToV9() error {
+	return db.WithTx(func(tx *sql.Tx) error {
+		db.logger.Info("Migrating database to v9 (FTS5 Symbol Search)", nil)
+
+		// Create FTS5 tables
+		if err := createSymbolFTSTables(tx); err != nil {
+			return err
+		}
+
+		// Update schema version
+		if err := setSchemaVersion(tx, 9); err != nil {
+			return err
+		}
+
+		db.logger.Info("Database migrated to v9", nil)
+		return nil
+	})
+}
+
+// createSymbolFTSTables creates the FTS5 tables for symbol search
+func createSymbolFTSTables(tx *sql.Tx) error {
+	// Create the base content table for FTS5
+	if _, err := tx.Exec(`
+		CREATE TABLE IF NOT EXISTS symbols_fts_content (
+			rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+			id TEXT UNIQUE NOT NULL,
+			name TEXT NOT NULL,
+			kind TEXT,
+			documentation TEXT,
+			signature TEXT,
+			file_path TEXT,
+			language TEXT,
+			indexed_at TEXT NOT NULL DEFAULT (datetime('now'))
+		)
+	`); err != nil {
+		return fmt.Errorf("failed to create symbols_fts_content table: %w", err)
+	}
+
+	// Create indexes on content table
+	indexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_symbols_fts_content_id ON symbols_fts_content(id)",
+		"CREATE INDEX IF NOT EXISTS idx_symbols_fts_content_kind ON symbols_fts_content(kind)",
+		"CREATE INDEX IF NOT EXISTS idx_symbols_fts_content_language ON symbols_fts_content(language)",
+	}
+	for _, idx := range indexes {
+		if _, err := tx.Exec(idx); err != nil {
+			return fmt.Errorf("failed to create symbols_fts index: %w", err)
+		}
+	}
+
+	// Create FTS5 virtual table
+	if _, err := tx.Exec(`
+		CREATE VIRTUAL TABLE IF NOT EXISTS symbols_fts USING fts5(
+			name,
+			documentation,
+			signature,
+			content='symbols_fts_content',
+			content_rowid='rowid'
+		)
+	`); err != nil {
+		return fmt.Errorf("failed to create symbols_fts table: %w", err)
+	}
+
+	// Create triggers for automatic sync
+	triggers := []string{
+		// After INSERT trigger
+		`CREATE TRIGGER IF NOT EXISTS symbols_fts_ai AFTER INSERT ON symbols_fts_content BEGIN
+			INSERT INTO symbols_fts(rowid, name, documentation, signature)
+			VALUES (new.rowid, new.name, new.documentation, new.signature);
+		END`,
+
+		// After UPDATE trigger
+		`CREATE TRIGGER IF NOT EXISTS symbols_fts_au AFTER UPDATE ON symbols_fts_content BEGIN
+			INSERT INTO symbols_fts(symbols_fts, rowid, name, documentation, signature)
+			VALUES ('delete', old.rowid, old.name, old.documentation, old.signature);
+			INSERT INTO symbols_fts(rowid, name, documentation, signature)
+			VALUES (new.rowid, new.name, new.documentation, new.signature);
+		END`,
+
+		// After DELETE trigger
+		`CREATE TRIGGER IF NOT EXISTS symbols_fts_ad AFTER DELETE ON symbols_fts_content BEGIN
+			INSERT INTO symbols_fts(symbols_fts, rowid, name, documentation, signature)
+			VALUES ('delete', old.rowid, old.name, old.documentation, old.signature);
+		END`,
+	}
+
+	for _, trigger := range triggers {
+		if _, err := tx.Exec(trigger); err != nil {
+			return fmt.Errorf("failed to create symbols_fts trigger: %w", err)
 		}
 	}
 

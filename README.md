@@ -161,6 +161,47 @@ Now Claude can answer questions like:
 
 📋 **[Full Changelog](https://github.com/SimplyLiz/CodeMCP/blob/main/CHANGELOG.md)** — Detailed version history from v5.1 to current
 
+### Zero-Friction UX (v7.0)
+- **npm Distribution** — `npm install -g @tastehub/ckb` or `npx @tastehub/ckb`
+- **Auto-Setup** — `ckb setup` configures Claude Code integration automatically
+
+### Zero-Index Operation (v7.1)
+- **Tree-sitter Fallback** — Symbol search works without SCIP index (8 languages)
+- **Auto-Index** — `ckb index` detects language and runs the right SCIP indexer
+- **Install Guidance** — Shows indexer install commands when missing
+- **Universal MCP Docs** — Setup for Claude Code, Cursor, Windsurf, VS Code, OpenCode, Claude Desktop
+
+### Smart Indexing & Explicit Tiers (v7.2)
+- **Skip-if-Fresh** — `ckb index` automatically skips if index is current with HEAD
+- **Freshness Tracking** — Tracks commits behind HEAD + uncommitted changes
+- **Index Status** — `ckb status` shows index freshness with commit hash
+- **Watch Mode** — `ckb mcp --watch` polls every 30s and auto-reindexes when stale
+- **Lock File** — Prevents concurrent indexing with flock-based locking
+- **Explicit Tiers** — Control analysis mode: `--tier=fast|standard|full` or `CKB_TIER` env var
+- **Tier Diagnostics** — `ckb doctor --tier enhanced` shows exactly what's missing and how to fix it
+
+### Doc-Symbol Linking (v7.3)
+- **Backtick Detection** — Automatically detect `Symbol.Name` references in markdown
+- **Directive Support** — Explicit `<!-- ckb:symbol -->` and `<!-- ckb:module -->` directives
+- **Fence Scanning** — Extract symbols from fenced code blocks via tree-sitter (8 languages)
+- **Staleness Detection** — Find broken references when symbols are renamed or deleted
+- **Rename Awareness** — Suggest new names when documented symbols are renamed
+- **CI Enforcement** — `--fail-under` flag for documentation coverage thresholds
+
+### Production Hardening (v7.3)
+- **Delta Artifacts** — CI-generated diffs for O(delta) ingestion instead of O(N)
+- **FTS5 Search** — SQLite FTS5 for instant search (replaces LIKE scans)
+- **Compaction Scheduler** — Automatic snapshot cleanup and database maintenance
+- **Prometheus Metrics** — `/metrics` endpoint for monitoring and alerting
+- **Load Shedding** — Graceful degradation under load with priority endpoints
+- **Health Details** — `/health/detailed` endpoint with per-repo and storage metrics
+
+### Language Quality (v7.3)
+- **Quality Tiers** — 4-tier classification (Tier 1: Go, Tier 2: TS/Python, Tier 3: Rust/Java, Tier 4: Experimental)
+- **Quality Assessment** — Per-language metrics (ref accuracy, callgraph quality)
+- **Python Venv Detection** — Auto-detect virtual environments with activation recommendations
+- **TypeScript Monorepo** — Detect pnpm, lerna, nx, yarn workspaces with per-package tsconfig status
+
 ## MCP Tools (74 Available)
 
 CKB exposes code intelligence through the Model Context Protocol:

@@ -370,8 +370,61 @@ func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (
 	var backendContribs []BackendContribution
 	var completeness CompletenessInfo
 
-	// Try SCIP first
-	if e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
+	// Try FTS5 first for fast symbol search
+	ftsResults, ftsErr := e.SearchSymbolsFTS(ctx, opts.Query, opts.Limit*2)
+	if ftsErr == nil && len(ftsResults) > 0 {
+		for _, r := range ftsResults {
+			// Filter by kinds if specified
+			if len(opts.Kinds) > 0 {
+				matchKind := false
+				for _, k := range opts.Kinds {
+					if strings.EqualFold(r.Kind, k) {
+						matchKind = true
+						break
+					}
+				}
+				if !matchKind {
+					continue
+				}
+			}
+			// Filter by scope if specified
+			if opts.Scope != "" && !strings.HasPrefix(r.FilePath, opts.Scope) {
+				continue
+			}
+
+			results = append(results, SearchResultItem{
+				StableId: r.ID,
+				Name:     r.Name,
+				Kind:     r.Kind,
+				ModuleId: filepath.Dir(r.FilePath),
+				Location: &LocationInfo{
+					FileId: r.FilePath,
+				},
+				Visibility: &VisibilityInfo{
+					Visibility: inferVisibility(r.Name, r.Kind),
+					Confidence: 0.7,
+					Source:     "fts",
+				},
+				Score: r.Rank,
+			})
+		}
+		if len(results) > 0 {
+			backendContribs = append(backendContribs, BackendContribution{
+				BackendId:    "fts5",
+				Available:    true,
+				Used:         true,
+				ResultCount:  len(results),
+				Completeness: 0.95,
+			})
+			completeness = CompletenessInfo{
+				Score:  0.95,
+				Reason: "fts5-search",
+			}
+		}
+	}
+
+	// Fall back to SCIP if FTS returned no results
+	if len(results) == 0 && e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
 		searchOpts := backends.SearchOptions{
 			MaxResults:   opts.Limit * 2, // Request more to allow for ranking
 			IncludeTests: true,
@@ -412,7 +465,7 @@ func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (
 				Reason: string(searchResult.Completeness.Reason),
 			}
 		}
-	} else if e.treesitterExtractor != nil {
+	} else if len(results) == 0 && e.treesitterExtractor != nil {
 		// Tree-sitter fallback when SCIP not available
 		tsResults, err := e.searchWithTreesitter(ctx, opts)
 		if err == nil && len(tsResults) > 0 {

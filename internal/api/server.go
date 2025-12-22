@@ -15,6 +15,7 @@ import (
 type ServerConfig struct {
 	Auth        AuthConfig
 	CORS        CORSConfig
+	Metrics     MetricsConfig
 	IndexServer *IndexServerConfig // nil if index-server mode disabled
 }
 
@@ -25,7 +26,8 @@ func DefaultServerConfig() ServerConfig {
 			Enabled: true,
 			Token:   "", // Must be set explicitly
 		},
-		CORS: DefaultCORSConfig(),
+		CORS:    DefaultCORSConfig(),
+		Metrics: DefaultMetricsConfig(),
 	}
 }
 
@@ -37,6 +39,7 @@ type Server struct {
 	logger       *logging.Logger
 	engine       *query.Engine
 	config       ServerConfig
+	metrics      *MetricsCollector
 	indexManager *IndexRepoManager // nil if index-server mode disabled
 	authManager  *auth.Manager     // nil if scoped auth disabled
 }
@@ -49,6 +52,11 @@ func NewServer(addr string, engine *query.Engine, logger *logging.Logger, config
 		engine: engine,
 		router: http.NewServeMux(),
 		config: config,
+	}
+
+	// Initialize metrics collector if enabled
+	if config.Metrics.Enabled {
+		s.metrics = NewMetricsCollector()
 	}
 
 	// Initialize index server if enabled
