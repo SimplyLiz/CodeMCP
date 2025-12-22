@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"ckb/internal/backends/scip"
@@ -76,6 +77,7 @@ func (e *SCIPExtractor) ExtractDeltas(changedFiles []ChangedFile) (*SymbolDelta,
 		}
 		delta.Stats.SymbolsAdded += len(fileDelta.Symbols)
 		delta.Stats.RefsAdded += len(fileDelta.Refs)
+		delta.Stats.CallsAdded += len(fileDelta.CallEdges) // v1.1
 	}
 
 	// Handle deleted files (they won't be in the new SCIP index)
@@ -211,6 +213,46 @@ func (e *SCIPExtractor) extractFileDelta(doc *scip.Document, change ChangedFile)
 		}
 
 		delta.Refs = append(delta.Refs, ref)
+	}
+
+	// v1.1: Extract call edges
+	// Call edges are references to callable symbols (functions/methods)
+	for _, occ := range doc.Occurrences {
+		// Skip definitions
+		if occ.SymbolRoles&scip.SymbolRoleDefinition != 0 {
+			continue
+		}
+
+		// Skip local symbols
+		if isLocalSymbol(occ.Symbol) {
+			continue
+		}
+
+		// Check if callee is callable (function/method)
+		if !isCallable(occ.Symbol, symbolInfo) {
+			continue
+		}
+
+		edge := CallEdge{
+			CallerFile: change.Path,
+			CalleeID:   occ.Symbol,
+		}
+
+		// Parse location (SCIP is 0-indexed, we use 1-indexed)
+		if len(occ.Range) >= 1 {
+			edge.Line = int(occ.Range[0]) + 1
+		}
+		if len(occ.Range) >= 2 {
+			edge.Column = int(occ.Range[1]) + 1
+		}
+		if len(occ.Range) >= 4 {
+			edge.EndColumn = int(occ.Range[3]) + 1
+		}
+
+		// Resolve caller symbol (may be empty for top-level calls)
+		edge.CallerID = e.resolveCallerSymbol(delta.Symbols, edge.Line)
+
+		delta.CallEdges = append(delta.CallEdges, edge)
 	}
 
 	// Compute document hash for change detection optimization
@@ -366,4 +408,79 @@ func hashFile(path string) (string, error) {
 	}
 	sum := sha256.Sum256(data)
 	return fmt.Sprintf("%x", sum[:]), nil
+}
+
+// isFunctionSymbol checks if a SCIP symbol ID represents a callable (Go-specific heuristic)
+// SCIP Go symbols for functions/methods contain "()." in the descriptor
+func isFunctionSymbol(symbolID string) bool {
+	return strings.Contains(symbolID, "().")
+}
+
+// isCallableKind checks if a SCIP symbol kind is callable
+func isCallableKind(kind int32) bool {
+	// SCIP kind values for callables
+	return kind == 6 || // Method
+		kind == 9 || // Constructor
+		kind == 12 // Function
+}
+
+// isCallable determines if a symbol is callable using tiered detection
+// Tier 1: Check SymbolInformation.Kind if available
+// Tier 2: Fall back to Go-specific symbol ID heuristic
+func isCallable(symbolID string, symbolInfo map[string]*scip.SymbolInformation) bool {
+	// Tier 1: Try to use Kind from SymbolInformation
+	if info, ok := symbolInfo[symbolID]; ok && info.Kind != 0 {
+		return isCallableKind(info.Kind)
+	}
+
+	// Tier 2: Go-specific heuristic (primary path for scip-go)
+	return isFunctionSymbol(symbolID)
+}
+
+// resolveCallerSymbol finds the enclosing callable symbol for a call site
+// Returns the symbol ID of the innermost function/method containing the call,
+// or empty string if unresolved (e.g., top-level var initializers)
+func (e *SCIPExtractor) resolveCallerSymbol(symbols []Symbol, callLine int) string {
+	// Filter to callables only
+	var callables []Symbol
+	for _, sym := range symbols {
+		if sym.Kind == "function" || sym.Kind == "method" {
+			callables = append(callables, sym)
+		}
+	}
+
+	if len(callables) == 0 {
+		return ""
+	}
+
+	// Sort by start line ascending
+	sort.Slice(callables, func(i, j int) bool {
+		return callables[i].StartLine < callables[j].StartLine
+	})
+
+	// Find enclosing callable (innermost)
+	var enclosing *Symbol
+	for i := range callables {
+		sym := &callables[i]
+		endLine := sym.EndLine
+
+		// Infer end line if not set or same as start
+		if endLine == 0 || endLine == sym.StartLine {
+			if i+1 < len(callables) {
+				endLine = callables[i+1].StartLine - 1
+			} else {
+				endLine = sym.StartLine + 500 // DefaultMaxFunctionLines
+			}
+		}
+
+		if sym.StartLine <= callLine && callLine <= endLine {
+			enclosing = sym
+			// Don't break - keep looking for innermost (nested functions)
+		}
+	}
+
+	if enclosing != nil {
+		return enclosing.ID
+	}
+	return "" // NULL caller - top-level call or unresolved
 }

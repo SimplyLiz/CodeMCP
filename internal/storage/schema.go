@@ -12,7 +12,8 @@ import (
 // v4: Developer Intelligence (coupling_cache, risk_scores)
 // v5: Doc-Symbol Linking (docs, doc_references, doc_modules, symbol_suffixes)
 // v6: Incremental Indexing (indexed_files, file_symbols, index_meta)
-const currentSchemaVersion = 6
+// v7: Incremental Callgraph (callgraph table for call edge storage)
+const currentSchemaVersion = 7
 
 // initializeSchema creates all tables for a new database
 func (db *DB) initializeSchema() error {
@@ -79,6 +80,11 @@ func (db *DB) initializeSchema() error {
 			return err
 		}
 
+		// Create v7 Callgraph table
+		if err := createCallgraphTable(tx); err != nil {
+			return err
+		}
+
 		// Set initial schema version
 		if err := setSchemaVersion(tx, currentSchemaVersion); err != nil {
 			return err
@@ -140,6 +146,12 @@ func (db *DB) runMigrations() error {
 	if version < 6 {
 		if err := db.migrateToV6(); err != nil {
 			return fmt.Errorf("failed to migrate to v6: %w", err)
+		}
+	}
+
+	if version < 7 {
+		if err := db.migrateToV7(); err != nil {
+			return fmt.Errorf("failed to migrate to v7: %w", err)
 		}
 	}
 
@@ -1107,6 +1119,69 @@ func createIncrementalIndexingTables(tx *sql.Tx) error {
 	for _, idx := range indexes {
 		if _, err := tx.Exec(idx); err != nil {
 			return fmt.Errorf("failed to create incremental indexing index: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// ============================================================================
+// v7: Incremental Callgraph
+// ============================================================================
+
+// migrateToV7 migrates the database from v6 to v7 (Incremental Callgraph)
+func (db *DB) migrateToV7() error {
+	return db.WithTx(func(tx *sql.Tx) error {
+		db.logger.Info("Migrating database to v7 (Incremental Callgraph)", nil)
+
+		// Create new v7 callgraph table
+		if err := createCallgraphTable(tx); err != nil {
+			return err
+		}
+
+		// Update schema version
+		if err := setSchemaVersion(tx, 7); err != nil {
+			return err
+		}
+
+		db.logger.Info("Database migrated to v7", nil)
+		return nil
+	})
+}
+
+// createCallgraphTable creates the callgraph table for incremental call edge storage
+// Edges are owned by the caller file (caller-owned edges invariant).
+// PK is location-anchored: (caller_file, call_line, call_col, callee_id)
+func createCallgraphTable(tx *sql.Tx) error {
+	// Create callgraph table
+	_, err := tx.Exec(`
+		CREATE TABLE IF NOT EXISTS callgraph (
+			caller_id    TEXT,              -- May be NULL if caller unresolved
+			callee_id    TEXT NOT NULL,     -- Target symbol being called
+			caller_file  TEXT NOT NULL,     -- File containing the call (for deletion)
+			call_line    INTEGER NOT NULL,  -- 1-indexed line number
+			call_col     INTEGER NOT NULL,  -- 1-indexed column number
+			call_end_col INTEGER,           -- Optional: end column for nested calls
+			PRIMARY KEY (caller_file, call_line, call_col, callee_id)
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create callgraph table: %w", err)
+	}
+
+	// Create indexes for efficient queries
+	indexes := []string{
+		// Fast deletion by file (incremental update)
+		"CREATE INDEX IF NOT EXISTS idx_callgraph_caller_file ON callgraph(caller_file)",
+		// "What does X call?" queries
+		"CREATE INDEX IF NOT EXISTS idx_callgraph_caller_id ON callgraph(caller_id)",
+		// "What calls X?" queries
+		"CREATE INDEX IF NOT EXISTS idx_callgraph_callee_id ON callgraph(callee_id)",
+	}
+
+	for _, idx := range indexes {
+		if _, err := tx.Exec(idx); err != nil {
+			return fmt.Errorf("failed to create callgraph index: %w", err)
 		}
 	}
 

@@ -26,8 +26,7 @@ func NewIndexUpdater(db *storage.DB, store *Store, logger *logging.Logger) *Inde
 }
 
 // ApplyDelta applies symbol changes to the database
-// V1 updates: indexed_files, file_symbols
-// V1 does NOT update: callgraph (deferred to v1.1)
+// V1.1 updates: indexed_files, file_symbols, callgraph
 func (u *IndexUpdater) ApplyDelta(delta *SymbolDelta) error {
 	return u.db.WithTx(func(tx *sql.Tx) error {
 		for _, fileDelta := range delta.FileDeltas {
@@ -73,8 +72,7 @@ func (u *IndexUpdater) applyFileDelta(tx *sql.Tx, delta FileDelta) error {
 }
 
 // deleteFileData removes all data owned by a file
-// This includes: file_symbols mapping and indexed_files entry
-// Does NOT touch: callgraph (deferred to v1.1)
+// This includes: file_symbols mapping, indexed_files entry, and callgraph edges
 func (u *IndexUpdater) deleteFileData(tx *sql.Tx, path string) error {
 	// 1. Delete file_symbols mapping for this file
 	_, err := tx.Exec(`DELETE FROM file_symbols WHERE file_path = ?`, path)
@@ -86,6 +84,12 @@ func (u *IndexUpdater) deleteFileData(tx *sql.Tx, path string) error {
 	_, err = tx.Exec(`DELETE FROM indexed_files WHERE path = ?`, path)
 	if err != nil {
 		return fmt.Errorf("delete indexed_files: %w", err)
+	}
+
+	// 3. Delete call edges owned by this file (v1.1: caller-owned edges invariant)
+	_, err = tx.Exec(`DELETE FROM callgraph WHERE caller_file = ?`, path)
+	if err != nil {
+		return fmt.Errorf("delete callgraph: %w", err)
 	}
 
 	u.logger.Debug("Deleted file data", map[string]interface{}{
@@ -123,12 +127,52 @@ func (u *IndexUpdater) insertFileData(tx *sql.Tx, delta FileDelta) error {
 		}
 	}
 
+	// 3. Insert call edges (v1.1)
+	if len(delta.CallEdges) > 0 {
+		if err := u.insertCallEdges(tx, delta); err != nil {
+			return fmt.Errorf("insert callgraph: %w", err)
+		}
+	}
+
 	u.logger.Debug("Inserted file data", map[string]interface{}{
 		"path":        delta.Path,
 		"symbolCount": len(delta.Symbols),
 		"refCount":    len(delta.Refs),
+		"callEdges":   len(delta.CallEdges),
 	})
 
+	return nil
+}
+
+// insertCallEdges inserts call edges for a file into the callgraph table
+func (u *IndexUpdater) insertCallEdges(tx *sql.Tx, delta FileDelta) error {
+	stmt, err := tx.Prepare(`
+		INSERT OR REPLACE INTO callgraph
+		(caller_id, callee_id, caller_file, call_line, call_col, call_end_col)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close() //nolint:errcheck // Best effort cleanup
+
+	for _, edge := range delta.CallEdges {
+		// Use sql.NullString for caller_id (may be empty for top-level calls)
+		var callerID interface{}
+		if edge.CallerID != "" {
+			callerID = edge.CallerID
+		}
+
+		var endCol interface{}
+		if edge.EndColumn > 0 {
+			endCol = edge.EndColumn
+		}
+
+		if _, err := stmt.Exec(callerID, edge.CalleeID, edge.CallerFile,
+			edge.Line, edge.Column, endCol); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -165,6 +209,7 @@ func (u *IndexUpdater) SetFullIndexComplete(commit string) error {
 
 // PopulateFromFullIndex populates the file tracking tables from a full SCIP index
 // This should be called after a full reindex to enable incremental updates
+// v1.1: Also populates callgraph table for call edges
 func (u *IndexUpdater) PopulateFromFullIndex(extractor *SCIPExtractor) error {
 	index, err := extractor.LoadIndex()
 	if err != nil {
@@ -182,6 +227,10 @@ func (u *IndexUpdater) PopulateFromFullIndex(extractor *SCIPExtractor) error {
 		}
 		if _, err := tx.Exec(`DELETE FROM indexed_files`); err != nil {
 			return fmt.Errorf("clear indexed_files: %w", err)
+		}
+		// v1.1: Also clear callgraph
+		if _, err := tx.Exec(`DELETE FROM callgraph`); err != nil {
+			return fmt.Errorf("clear callgraph: %w", err)
 		}
 
 		now := time.Now()
@@ -204,6 +253,8 @@ func (u *IndexUpdater) PopulateFromFullIndex(extractor *SCIPExtractor) error {
 		}
 		defer symbolStmt.Close() //nolint:errcheck // Best effort cleanup
 
+		totalCallEdges := 0
+
 		// Process each document
 		for _, doc := range index.Documents {
 			// Skip non-Go files
@@ -211,37 +262,38 @@ func (u *IndexUpdater) PopulateFromFullIndex(extractor *SCIPExtractor) error {
 				continue
 			}
 
-			// Compute file hash
-			hash := ""
-			if h, err := hashFile(extractor.repoRoot + "/" + doc.RelativePath); err == nil {
-				hash = h
+			// Use extractFileDelta to get full file data including call edges
+			change := ChangedFile{
+				Path:       doc.RelativePath,
+				ChangeType: ChangeAdded,
 			}
-
-			// Count definitions (symbols)
-			symbolCount := 0
-			var symbolIDs []string
-			for _, occ := range doc.Occurrences {
-				if occ.SymbolRoles&1 != 0 { // Definition role
-					if !isLocalSymbol(occ.Symbol) {
-						symbolCount++
-						symbolIDs = append(symbolIDs, occ.Symbol)
-					}
-				}
-			}
+			delta := extractor.extractFileDelta(doc, change)
 
 			// Insert file tracking
-			docHash := computeDocHash(doc)
-			if _, err := fileStmt.Exec(doc.RelativePath, hash, now.Unix(), now.Unix(), docHash, symbolCount); err != nil {
-				return fmt.Errorf("insert indexed_file for %s: %w", doc.RelativePath, err)
+			if _, err := fileStmt.Exec(delta.Path, delta.Hash, now.Unix(), now.Unix(),
+				delta.SCIPDocumentHash, delta.SymbolCount); err != nil {
+				return fmt.Errorf("insert indexed_file for %s: %w", delta.Path, err)
 			}
 
 			// Insert symbol mappings
-			for _, symID := range symbolIDs {
-				if _, err := symbolStmt.Exec(doc.RelativePath, symID); err != nil {
+			for _, sym := range delta.Symbols {
+				if _, err := symbolStmt.Exec(delta.Path, sym.ID); err != nil {
 					return fmt.Errorf("insert file_symbol: %w", err)
 				}
 			}
+
+			// v1.1: Insert call edges
+			if len(delta.CallEdges) > 0 {
+				if err := u.insertCallEdges(tx, delta); err != nil {
+					return fmt.Errorf("insert callgraph for %s: %w", delta.Path, err)
+				}
+				totalCallEdges += len(delta.CallEdges)
+			}
 		}
+
+		u.logger.Info("Full index callgraph populated", map[string]interface{}{
+			"callEdges": totalCallEdges,
+		})
 
 		return nil
 	})
