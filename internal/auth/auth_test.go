@@ -543,3 +543,460 @@ func TestCreateKeyOptionsValidate(t *testing.T) {
 func intPtr(i int) *int {
 	return &i
 }
+
+// TestManagerRevokeKey tests revoking an API key
+func TestManagerRevokeKey(t *testing.T) {
+	db := testDB(t)
+	defer db.Close()
+
+	config := ManagerConfig{
+		Enabled: true,
+	}
+
+	manager, err := NewManager(config, db, testLogger())
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+
+	// Create a key first
+	opts := CreateKeyOptions{
+		Name:   "Key To Revoke",
+		Scopes: []Scope{ScopeRead},
+	}
+
+	key, rawToken, err := manager.CreateKey(opts)
+	if err != nil {
+		t.Fatalf("CreateKey() error = %v", err)
+	}
+
+	// Verify the key works
+	result := manager.Authenticate(rawToken, ScopeRead, "")
+	if !result.Authenticated {
+		t.Error("Key should work before revocation")
+	}
+
+	// Revoke the key
+	if err := manager.RevokeKey(key.ID); err != nil {
+		t.Fatalf("RevokeKey() error = %v", err)
+	}
+
+	// Verify the key no longer works
+	result = manager.Authenticate(rawToken, ScopeRead, "")
+	if result.Authenticated {
+		t.Error("Key should not work after revocation")
+	}
+	if result.ErrorCode != ErrCodeRevokedToken {
+		t.Errorf("ErrorCode = %q, want %q", result.ErrorCode, ErrCodeRevokedToken)
+	}
+
+	// Test revoking non-existent key - should return some error
+	err = manager.RevokeKey("ckb_key_nonexistent")
+	if err == nil {
+		t.Error("RevokeKey(nonexistent) should return an error")
+	}
+}
+
+// TestManagerRevokeKeyNoStore tests RevokeKey without a store
+func TestManagerRevokeKeyNoStore(t *testing.T) {
+	config := ManagerConfig{
+		Enabled: true,
+	}
+
+	manager, err := NewManager(config, nil, testLogger())
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+
+	err = manager.RevokeKey("any-key")
+	if err != ErrStoreNotInitialized {
+		t.Errorf("RevokeKey() error = %v, want ErrStoreNotInitialized", err)
+	}
+}
+
+// TestManagerListKeys tests listing API keys
+func TestManagerListKeys(t *testing.T) {
+	db := testDB(t)
+	defer db.Close()
+
+	config := ManagerConfig{
+		Enabled: true,
+		StaticKeys: []StaticKeyConfig{
+			{
+				ID:     "static-key-1",
+				Name:   "Static Key 1",
+				Token:  "static-token-1",
+				Scopes: []string{"read"},
+			},
+		},
+	}
+
+	manager, err := NewManager(config, db, testLogger())
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+
+	// Create a database key
+	opts := CreateKeyOptions{
+		Name:   "DB Key 1",
+		Scopes: []Scope{ScopeWrite},
+	}
+	key1, _, err := manager.CreateKey(opts)
+	if err != nil {
+		t.Fatalf("CreateKey() error = %v", err)
+	}
+
+	// Create another and revoke it
+	opts.Name = "DB Key 2 (Revoked)"
+	key2, _, err := manager.CreateKey(opts)
+	if err != nil {
+		t.Fatalf("CreateKey() error = %v", err)
+	}
+	if err := manager.RevokeKey(key2.ID); err != nil {
+		t.Fatalf("RevokeKey() error = %v", err)
+	}
+
+	// List without revoked
+	keys, err := manager.ListKeys(false)
+	if err != nil {
+		t.Fatalf("ListKeys(false) error = %v", err)
+	}
+
+	// Should have static key + 1 active db key
+	if len(keys) != 2 {
+		t.Errorf("ListKeys(false) returned %d keys, want 2", len(keys))
+	}
+
+	// Verify token hashes are redacted
+	for _, k := range keys {
+		if k.TokenHash != "" {
+			t.Errorf("Key %s: TokenHash should be redacted", k.ID)
+		}
+	}
+
+	// Check we have the expected keys
+	foundStatic, foundDB := false, false
+	for _, k := range keys {
+		if k.ID == "static-key-1" {
+			foundStatic = true
+		}
+		if k.ID == key1.ID {
+			foundDB = true
+		}
+	}
+	if !foundStatic {
+		t.Error("Static key not found in list")
+	}
+	if !foundDB {
+		t.Error("DB key not found in list")
+	}
+
+	// List with revoked
+	keys, err = manager.ListKeys(true)
+	if err != nil {
+		t.Fatalf("ListKeys(true) error = %v", err)
+	}
+
+	// Should have static key + 2 db keys
+	if len(keys) != 3 {
+		t.Errorf("ListKeys(true) returned %d keys, want 3", len(keys))
+	}
+}
+
+// TestManagerGetKey tests getting a single API key
+func TestManagerGetKey(t *testing.T) {
+	db := testDB(t)
+	defer db.Close()
+
+	config := ManagerConfig{
+		Enabled: true,
+		StaticKeys: []StaticKeyConfig{
+			{
+				ID:     "static-key",
+				Name:   "Static Key",
+				Token:  "static-token",
+				Scopes: []string{"admin"},
+			},
+		},
+	}
+
+	manager, err := NewManager(config, db, testLogger())
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+
+	// Create a database key
+	opts := CreateKeyOptions{
+		Name:   "DB Key",
+		Scopes: []Scope{ScopeRead},
+	}
+	dbKey, _, err := manager.CreateKey(opts)
+	if err != nil {
+		t.Fatalf("CreateKey() error = %v", err)
+	}
+
+	// Get static key
+	key, err := manager.GetKey("static-key")
+	if err != nil {
+		t.Fatalf("GetKey(static) error = %v", err)
+	}
+	if key.Name != "Static Key" {
+		t.Errorf("GetKey(static).Name = %q, want %q", key.Name, "Static Key")
+	}
+	if key.TokenHash != "" {
+		t.Error("Static key TokenHash should be redacted")
+	}
+
+	// Get database key
+	key, err = manager.GetKey(dbKey.ID)
+	if err != nil {
+		t.Fatalf("GetKey(db) error = %v", err)
+	}
+	if key.Name != "DB Key" {
+		t.Errorf("GetKey(db).Name = %q, want %q", key.Name, "DB Key")
+	}
+	if key.TokenHash != "" {
+		t.Error("DB key TokenHash should be redacted")
+	}
+
+	// Get non-existent key
+	_, err = manager.GetKey("nonexistent")
+	if err != ErrKeyNotFound {
+		t.Errorf("GetKey(nonexistent) error = %v, want ErrKeyNotFound", err)
+	}
+}
+
+// TestManagerGetKeyNoStore tests GetKey without a store
+func TestManagerGetKeyNoStore(t *testing.T) {
+	config := ManagerConfig{
+		Enabled: true,
+		StaticKeys: []StaticKeyConfig{
+			{
+				ID:     "static-key",
+				Name:   "Static Key",
+				Token:  "static-token",
+				Scopes: []string{"read"},
+			},
+		},
+	}
+
+	manager, err := NewManager(config, nil, testLogger())
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+
+	// Should still be able to get static key
+	key, err := manager.GetKey("static-key")
+	if err != nil {
+		t.Fatalf("GetKey(static) error = %v", err)
+	}
+	if key.Name != "Static Key" {
+		t.Errorf("GetKey().Name = %q, want %q", key.Name, "Static Key")
+	}
+
+	// Non-existent key should fail
+	_, err = manager.GetKey("nonexistent")
+	if err != ErrKeyNotFound {
+		t.Errorf("GetKey(nonexistent) error = %v, want ErrKeyNotFound", err)
+	}
+}
+
+// TestManagerRotateKey tests rotating an API key
+func TestManagerRotateKey(t *testing.T) {
+	db := testDB(t)
+	defer db.Close()
+
+	config := ManagerConfig{
+		Enabled: true,
+		StaticKeys: []StaticKeyConfig{
+			{
+				ID:     "static-key",
+				Name:   "Static Key",
+				Token:  "static-token",
+				Scopes: []string{"read"},
+			},
+		},
+	}
+
+	manager, err := NewManager(config, db, testLogger())
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+
+	// Create a key to rotate
+	opts := CreateKeyOptions{
+		Name:   "Key To Rotate",
+		Scopes: []Scope{ScopeWrite},
+	}
+	key, oldToken, err := manager.CreateKey(opts)
+	if err != nil {
+		t.Fatalf("CreateKey() error = %v", err)
+	}
+
+	// Rotate the key
+	rotatedKey, newToken, err := manager.RotateKey(key.ID)
+	if err != nil {
+		t.Fatalf("RotateKey() error = %v", err)
+	}
+
+	// Key ID should be the same
+	if rotatedKey.ID != key.ID {
+		t.Errorf("Rotated key ID = %q, want %q", rotatedKey.ID, key.ID)
+	}
+
+	// Token should be different
+	if newToken == oldToken {
+		t.Error("Rotated token should be different from old token")
+	}
+
+	// New token should work
+	result := manager.Authenticate(newToken, ScopeWrite, "")
+	if !result.Authenticated {
+		t.Error("New token should work after rotation")
+	}
+
+	// Old token should NOT work
+	result = manager.Authenticate(oldToken, ScopeWrite, "")
+	if result.Authenticated {
+		t.Error("Old token should not work after rotation")
+	}
+
+	// Token hash should be redacted in returned key
+	if rotatedKey.TokenHash != "" {
+		t.Error("Rotated key TokenHash should be redacted")
+	}
+
+	// Test rotating static key (should fail)
+	_, _, err = manager.RotateKey("static-key")
+	if err != ErrKeyNotFound {
+		t.Errorf("RotateKey(static) error = %v, want ErrKeyNotFound", err)
+	}
+
+	// Test rotating non-existent key
+	_, _, err = manager.RotateKey("nonexistent")
+	if err != ErrKeyNotFound {
+		t.Errorf("RotateKey(nonexistent) error = %v, want ErrKeyNotFound", err)
+	}
+}
+
+// TestManagerRotateKeyNoStore tests RotateKey without a store
+func TestManagerRotateKeyNoStore(t *testing.T) {
+	config := ManagerConfig{
+		Enabled: true,
+	}
+
+	manager, err := NewManager(config, nil, testLogger())
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+
+	_, _, err = manager.RotateKey("any-key")
+	if err != ErrStoreNotInitialized {
+		t.Errorf("RotateKey() error = %v, want ErrStoreNotInitialized", err)
+	}
+}
+
+// TestMaskToken tests token masking for display
+func TestMaskToken(t *testing.T) {
+	tests := []struct {
+		name     string
+		token    string
+		expected string
+	}{
+		{"empty", "", "****"},
+		{"short", "abc", "****"},
+		{"too short for prefix", "ckb_sk_", "****"},
+		{"valid token", "ckb_sk_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2", "ckb_sk_a1b2c3d4****...****"},
+		{"minimum valid", "ckb_sk_12345678", "ckb_sk_12345678****...****"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := MaskToken(tt.token)
+			if got != tt.expected {
+				t.Errorf("MaskToken(%q) = %q, want %q", tt.token, got, tt.expected)
+			}
+		})
+	}
+}
+
+// TestValidScopes tests the ValidScopes function
+func TestValidScopes(t *testing.T) {
+	scopes := ValidScopes()
+
+	if len(scopes) != 3 {
+		t.Errorf("ValidScopes() returned %d scopes, want 3", len(scopes))
+	}
+
+	// Verify all expected scopes are present
+	expected := map[Scope]bool{
+		ScopeRead:  false,
+		ScopeWrite: false,
+		ScopeAdmin: false,
+	}
+
+	for _, s := range scopes {
+		if _, ok := expected[s]; !ok {
+			t.Errorf("Unexpected scope: %s", s)
+		}
+		expected[s] = true
+	}
+
+	for scope, found := range expected {
+		if !found {
+			t.Errorf("Missing scope: %s", scope)
+		}
+	}
+}
+
+// TestDefaultManagerConfig tests the default manager configuration
+func TestDefaultManagerConfig(t *testing.T) {
+	config := DefaultManagerConfig()
+
+	if config.Enabled {
+		t.Error("Default config should have Enabled = false")
+	}
+	// Default is RequireAuth = true (secure by default)
+	if !config.RequireAuth {
+		t.Error("Default config should have RequireAuth = true")
+	}
+	if len(config.StaticKeys) != 0 {
+		t.Errorf("Default config should have no static keys, got %d", len(config.StaticKeys))
+	}
+}
+
+// TestDefaultRateLimitConfig tests the default rate limit configuration
+func TestDefaultRateLimitConfig(t *testing.T) {
+	config := DefaultRateLimitConfig()
+
+	if config.Enabled {
+		t.Error("Default rate limit config should have Enabled = false")
+	}
+	if config.DefaultLimit <= 0 {
+		t.Errorf("Default rate limit should be positive, got %d", config.DefaultLimit)
+	}
+	if config.BurstSize <= 0 {
+		t.Errorf("Default burst size should be positive, got %d", config.BurstSize)
+	}
+}
+
+// TestRateLimiterCustomKeyLimit tests per-key custom rate limits
+func TestRateLimiterCustomKeyLimit(t *testing.T) {
+	config := RateLimitConfig{
+		Enabled:      true,
+		DefaultLimit: 60,
+		BurstSize:    5,
+	}
+
+	limiter := NewRateLimiter(config, testLogger())
+
+	// Custom limit for the key
+	customLimit := intPtr(120) // Higher limit
+
+	// Should allow more requests with custom limit
+	for i := 0; i < 5; i++ {
+		allowed, _ := limiter.Allow("custom-key", customLimit)
+		if !allowed {
+			t.Errorf("Request %d with custom limit should be allowed", i+1)
+		}
+	}
+}

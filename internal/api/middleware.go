@@ -253,18 +253,7 @@ func ScopedAuthMiddleware(authManager *auth.Manager, logger *logging.Logger) fun
 			ctx := context.WithValue(r.Context(), authResultKey, result)
 			r = r.WithContext(ctx)
 
-			if !result.Authenticated {
-				logger.Warn("Authentication failed", map[string]interface{}{
-					"path":       r.URL.Path,
-					"method":     r.Method,
-					"error_code": result.ErrorCode,
-					"requestID":  GetRequestID(r.Context()),
-				})
-
-				writeAuthError(w, result)
-				return
-			}
-
+			// Check rate limiting first (rate limited is a valid auth but over limit)
 			if result.RateLimited {
 				logger.Info("Rate limited", map[string]interface{}{
 					"path":        r.URL.Path,
@@ -275,6 +264,18 @@ func ScopedAuthMiddleware(authManager *auth.Manager, logger *logging.Logger) fun
 
 				w.Header().Set("Retry-After", strconv.Itoa(result.RetryAfter))
 				w.Header().Set("X-RateLimit-Remaining", "0")
+				writeAuthError(w, result)
+				return
+			}
+
+			if !result.Authenticated {
+				logger.Warn("Authentication failed", map[string]interface{}{
+					"path":       r.URL.Path,
+					"method":     r.Method,
+					"error_code": result.ErrorCode,
+					"requestID":  GetRequestID(r.Context()),
+				})
+
 				writeAuthError(w, result)
 				return
 			}
