@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -191,37 +193,99 @@ func (e *Engine) checkScip(ctx context.Context) DoctorCheck {
 	return check
 }
 
-// checkLsp verifies LSP servers.
+// checkLsp verifies LSP servers are configured and their commands are available.
 func (e *Engine) checkLsp(ctx context.Context) DoctorCheck {
 	check := DoctorCheck{
 		Name: "lsp",
 	}
 
-	if e.lspSupervisor == nil {
-		check.Status = "warn"
-		check.Message = "LSP supervisor not configured"
+	if e.lspSupervisor == nil || e.config == nil {
+		check.Status = "info"
+		check.Message = "LSP not configured"
 		return check
 	}
 
-	stats := e.lspSupervisor.GetStats()
-	processCount, ok := stats["totalProcesses"].(int)
-	if !ok || processCount == 0 {
-		check.Status = "warn"
-		check.Message = "No LSP servers running"
-		check.SuggestedFixes = []FixAction{
-			{
-				Type:        "run-command",
-				Command:     "ckb status --wait-for-ready",
-				Safe:        true,
-				Description: "Wait for LSP servers to start",
-			},
+	servers := e.config.Backends.Lsp.Servers
+	if len(servers) == 0 {
+		check.Status = "info"
+		check.Message = "No LSP servers configured"
+		return check
+	}
+
+	// Test each configured server command
+	var available, missing []string
+	var fixes []FixAction
+
+	for lang, cfg := range servers {
+		if _, err := exec.LookPath(cfg.Command); err == nil {
+			available = append(available, lang)
+		} else {
+			missing = append(missing, fmt.Sprintf("%s (%s)", lang, cfg.Command))
+			fixes = append(fixes, e.getLspInstallFix(lang, cfg.Command))
 		}
-		return check
 	}
 
-	check.Status = "pass"
-	check.Message = fmt.Sprintf("%d LSP server(s) healthy", processCount)
+	// Sort for consistent output
+	sort.Strings(available)
+	sort.Strings(missing)
+
+	if len(missing) == 0 {
+		check.Status = "pass"
+		check.Message = fmt.Sprintf("LSP ready: %s (starts on-demand)",
+			strings.Join(available, ", "))
+	} else if len(available) > 0 {
+		check.Status = "warn"
+		check.Message = fmt.Sprintf("LSP ready: %s | missing: %s",
+			strings.Join(available, ", "),
+			strings.Join(missing, ", "))
+		check.SuggestedFixes = fixes
+	} else {
+		check.Status = "warn"
+		check.Message = fmt.Sprintf("LSP commands not found: %s",
+			strings.Join(missing, ", "))
+		check.SuggestedFixes = fixes
+	}
+
 	return check
+}
+
+// getLspInstallFix returns installation instructions for an LSP server command.
+func (e *Engine) getLspInstallFix(lang, command string) FixAction {
+	switch command {
+	case "gopls":
+		return FixAction{
+			Type:        "run-command",
+			Command:     "go install golang.org/x/tools/gopls@latest",
+			Safe:        true,
+			Description: fmt.Sprintf("Install %s for %s", command, lang),
+		}
+	case "typescript-language-server":
+		return FixAction{
+			Type:        "run-command",
+			Command:     "npm install -g typescript-language-server typescript",
+			Safe:        true,
+			Description: fmt.Sprintf("Install %s for %s", command, lang),
+		}
+	case "dart":
+		return FixAction{
+			Type:        "open-docs",
+			URL:         "https://dart.dev/get-dart",
+			Description: fmt.Sprintf("Install Dart SDK for %s LSP", lang),
+		}
+	case "pylsp":
+		return FixAction{
+			Type:        "run-command",
+			Command:     "pip install python-lsp-server",
+			Safe:        true,
+			Description: fmt.Sprintf("Install %s for %s", command, lang),
+		}
+	default:
+		return FixAction{
+			Type:        "install-tool",
+			Tool:        command,
+			Description: fmt.Sprintf("Install %s for %s", command, lang),
+		}
+	}
 }
 
 // checkConfig verifies configuration.
