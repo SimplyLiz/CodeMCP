@@ -6,6 +6,39 @@ All notable changes to CKB will be documented in this file.
 
 ### Added
 
+#### Index Upload (v3 Federation Phase 2)
+Push SCIP indexes to the index server via HTTP, eliminating the need for local filesystem paths. This transforms CKB from a "bring your database" model to a centralized index hosting service.
+
+**REST API Endpoints:**
+- `POST /index/repos` — Create a new repo ready for upload
+- `POST /index/repos/{repo}/upload` — Upload SCIP index file (replaces existing data)
+- `DELETE /index/repos/{repo}` — Delete an uploaded repo
+
+**Upload Features:**
+- Stream large files (100MB+) without memory issues
+- Auto-create repos on first upload (configurable)
+- Metadata headers: `X-CKB-Commit`, `X-CKB-Language`, `X-CKB-Indexer-Name`
+- Full SCIP processing: symbols, refs, call graph extraction
+
+**Configuration:**
+```toml
+[index_server]
+enabled = true
+data_dir = "~/.ckb-server"      # Server data directory
+max_upload_size = 524288000     # 500MB default
+allow_create_repo = true        # Allow repo creation via API
+```
+
+**Data Directory Structure:**
+```
+~/.ckb-server/
+├── repos/
+│   └── company-core-lib/
+│       ├── ckb.db        # SQLite database
+│       └── meta.json     # Repo metadata
+└── uploads/              # Temp directory for uploads
+```
+
 #### Remote Index Serving (v3 Federation Phase 1)
 Serve symbol indexes over HTTP for remote federation clients. This enables cross-repository code intelligence without requiring clients to have direct database access.
 
@@ -153,15 +186,19 @@ Tracks file-level dependencies and automatically queues dependent files for resc
 ```
 
 ### Files Added
-- `internal/api/` - Remote index serving
+- `internal/api/` - Remote index serving and upload
   - `index_config.go` — Configuration types and TOML loading
   - `index_types.go` — API response types
   - `index_cursor.go` — HMAC-signed cursor pagination
-  - `index_repos.go` — Repository handle management
+  - `index_repos.go` — Repository handle management (Phase 1 + 2 dynamic mgmt)
   - `index_redaction.go` — Privacy redaction logic
   - `index_queries.go` — Database queries for symbols, files, refs, callgraph
+  - `index_storage.go` — Server data directory management (Phase 2)
+  - `index_processor.go` — SCIP processing pipeline (Phase 2)
   - `handlers_index.go` — HTTP handlers for all index endpoints
+  - `handlers_upload.go` — HTTP handlers for create/delete/upload endpoints (Phase 2)
   - `handlers_index_test.go` — Tests for cursors, redaction, handlers
+  - `handlers_upload_test.go` — Tests for upload functionality (Phase 2)
 - `internal/docs/` - New package for doc-symbol linking
   - `types.go` - Core types (Document, DocReference, StalenessReport, etc.)
   - `scanner.go` - Markdown scanning with backtick/directive/fence detection

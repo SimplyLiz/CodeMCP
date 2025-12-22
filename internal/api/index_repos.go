@@ -23,11 +23,13 @@ type IndexRepoHandle struct {
 
 // IndexRepoManager manages repo handles for index serving
 type IndexRepoManager struct {
-	repos   map[string]*IndexRepoHandle
-	config  *IndexServerConfig
-	logger  *logging.Logger
-	cursor  *CursorManager
-	mu      sync.RWMutex
+	repos     map[string]*IndexRepoHandle
+	config    *IndexServerConfig
+	logger    *logging.Logger
+	cursor    *CursorManager
+	storage   *IndexStorage   // For uploaded repos (Phase 2)
+	processor *SCIPProcessor  // For processing uploads (Phase 2)
+	mu        sync.RWMutex
 }
 
 // NewIndexRepoManager creates a new repo manager with connections to all configured repos
@@ -39,8 +41,57 @@ func NewIndexRepoManager(config *IndexServerConfig, logger *logging.Logger) (*In
 		cursor: NewCursorManager(config.CursorSecret),
 	}
 
+	// Initialize storage for uploaded repos (Phase 2)
+	if config.DataDir != "" {
+		storage, err := NewIndexStorage(config.DataDir, logger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize storage: %w", err)
+		}
+		m.storage = storage
+		m.processor = NewSCIPProcessor(storage, logger)
+
+		// Load any existing uploaded repos from storage
+		uploadedRepos, err := storage.ListRepos()
+		if err != nil {
+			logger.Warn("Failed to list uploaded repos", map[string]interface{}{
+				"error": err.Error(),
+			})
+		} else {
+			for _, repoID := range uploadedRepos {
+				meta, err := storage.LoadMeta(repoID)
+				if err != nil {
+					logger.Warn("Failed to load uploaded repo metadata", map[string]interface{}{
+						"repo_id": repoID,
+						"error":   err.Error(),
+					})
+					continue
+				}
+				repoConfig := IndexRepoConfig{
+					ID:          repoID,
+					Name:        meta.Name,
+					Description: meta.Description,
+					Path:        storage.RepoPath(repoID),
+					Source:      RepoSourceUploaded,
+				}
+				handle, err := m.openUploadedRepo(repoConfig)
+				if err != nil {
+					logger.Warn("Failed to open uploaded repo", map[string]interface{}{
+						"repo_id": repoID,
+						"error":   err.Error(),
+					})
+					continue
+				}
+				m.repos[repoID] = handle
+				logger.Info("Loaded uploaded repo", map[string]interface{}{
+					"repo_id": repoID,
+				})
+			}
+		}
+	}
+
 	// Open connections to all configured repos
 	for _, repoConfig := range config.Repos {
+		repoConfig.Source = RepoSourceConfig // Mark as config-based
 		handle, err := m.openRepo(repoConfig)
 		if err != nil {
 			// Close any already-opened repos before returning
@@ -357,4 +408,198 @@ func (h *IndexRepoHandle) ToMetaResponse(privacy IndexPrivacyConfig, maxPageSize
 			SignaturesExposed: privacy.ExposeSignatures,
 		},
 	}
+}
+
+// --- Phase 2: Dynamic Repo Management ---
+
+// openUploadedRepo opens a connection to an uploaded repo's database
+// Uploaded repos store the database directly in the repo directory (not .ckb/)
+func (m *IndexRepoManager) openUploadedRepo(config IndexRepoConfig) (*IndexRepoHandle, error) {
+	// Database path for uploaded repos is directly in repo path
+	dbPath := filepath.Join(config.Path, "ckb.db")
+
+	// Open in read-only mode for queries (writes happen during upload processing)
+	connStr := fmt.Sprintf("file:%s?mode=ro", dbPath)
+	conn, err := sql.Open("sqlite", connStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+
+	// Set read-only pragmas
+	pragmas := []string{
+		"PRAGMA query_only=ON",
+		"PRAGMA busy_timeout=5000",
+		"PRAGMA cache_size=-32000",
+		"PRAGMA temp_store=MEMORY",
+		"PRAGMA mmap_size=134217728",
+	}
+
+	for _, pragma := range pragmas {
+		if _, err := conn.Exec(pragma); err != nil {
+			_ = conn.Close()
+			return nil, fmt.Errorf("failed to set pragma: %w", err)
+		}
+	}
+
+	// Verify connection works
+	if err := conn.Ping(); err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("database ping failed: %w", err)
+	}
+
+	handle := &IndexRepoHandle{
+		ID:     config.ID,
+		Config: &config,
+		db:     conn,
+	}
+
+	// Load initial metadata
+	if err := handle.refreshMeta(); err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("failed to load metadata: %w", err)
+	}
+
+	return handle, nil
+}
+
+// CreateUploadedRepo creates a new repo in storage for upload
+func (m *IndexRepoManager) CreateUploadedRepo(id, name, description string) error {
+	if m.storage == nil {
+		return fmt.Errorf("storage not initialized (data_dir not configured)")
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Check if already exists
+	if _, exists := m.repos[id]; exists {
+		return fmt.Errorf("repo already exists: %s", id)
+	}
+
+	// Create in storage
+	if err := m.storage.CreateRepo(id, name, description); err != nil {
+		return err
+	}
+
+	m.logger.Info("Created uploaded repo", map[string]interface{}{
+		"repo_id": id,
+	})
+
+	return nil
+}
+
+// RemoveRepo removes an uploaded repo
+func (m *IndexRepoManager) RemoveRepo(id string) error {
+	if m.storage == nil {
+		return fmt.Errorf("storage not initialized")
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Close handle if open
+	if handle, exists := m.repos[id]; exists {
+		if err := handle.Close(); err != nil {
+			m.logger.Warn("Failed to close repo before removal", map[string]interface{}{
+				"repo_id": id,
+				"error":   err.Error(),
+			})
+		}
+		delete(m.repos, id)
+	}
+
+	// Delete from storage
+	if err := m.storage.DeleteRepo(id); err != nil {
+		return err
+	}
+
+	m.logger.Info("Removed repo", map[string]interface{}{
+		"repo_id": id,
+	})
+
+	return nil
+}
+
+// ReloadRepo closes and reopens a repo's database connection
+// This is needed after an upload to pick up new data
+func (m *IndexRepoManager) ReloadRepo(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	handle, exists := m.repos[id]
+	if !exists {
+		// Repo might be new - try to open it
+		if m.storage == nil {
+			return fmt.Errorf("repo not found: %s", id)
+		}
+
+		meta, err := m.storage.LoadMeta(id)
+		if err != nil {
+			return fmt.Errorf("repo not found: %s", id)
+		}
+
+		config := IndexRepoConfig{
+			ID:          id,
+			Name:        meta.Name,
+			Description: meta.Description,
+			Path:        m.storage.RepoPath(id),
+			Source:      RepoSourceUploaded,
+		}
+
+		newHandle, err := m.openUploadedRepo(config)
+		if err != nil {
+			return fmt.Errorf("failed to open repo: %w", err)
+		}
+
+		m.repos[id] = newHandle
+		return nil
+	}
+
+	// Close existing connection
+	if err := handle.Close(); err != nil {
+		m.logger.Warn("Failed to close repo during reload", map[string]interface{}{
+			"repo_id": id,
+			"error":   err.Error(),
+		})
+	}
+
+	// Reopen based on source
+	var newHandle *IndexRepoHandle
+	var err error
+
+	if handle.Config.Source == RepoSourceUploaded {
+		newHandle, err = m.openUploadedRepo(*handle.Config)
+	} else {
+		newHandle, err = m.openRepo(*handle.Config)
+	}
+
+	if err != nil {
+		delete(m.repos, id)
+		return fmt.Errorf("failed to reopen repo: %w", err)
+	}
+
+	m.repos[id] = newHandle
+	return nil
+}
+
+// IsUploadedRepo checks if a repo is uploaded (vs configured)
+func (m *IndexRepoManager) IsUploadedRepo(id string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	handle, exists := m.repos[id]
+	if !exists {
+		return false
+	}
+	return handle.Config.Source == RepoSourceUploaded
+}
+
+// Storage returns the storage manager for uploaded repos
+func (m *IndexRepoManager) Storage() *IndexStorage {
+	return m.storage
+}
+
+// Processor returns the SCIP processor for uploads
+func (m *IndexRepoManager) Processor() *SCIPProcessor {
+	return m.processor
 }

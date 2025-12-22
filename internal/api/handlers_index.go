@@ -10,8 +10,11 @@ import (
 func (s *Server) handleIndexRepoRoutes(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 
-	// Route based on path suffix
+	// Route based on path suffix and method
 	switch {
+	case strings.HasSuffix(path, "/upload"):
+		// POST /index/repos/{repo}/upload - Upload SCIP index
+		s.HandleIndexUpload(w, r)
 	case strings.HasSuffix(path, "/meta"):
 		s.HandleIndexGetMeta(w, r)
 	case strings.HasSuffix(path, "/files"):
@@ -31,17 +34,28 @@ func (s *Server) handleIndexRepoRoutes(w http.ResponseWriter, r *http.Request) {
 	case strings.HasSuffix(path, "/search/files"):
 		s.HandleIndexSearchFiles(w, r)
 	default:
+		// Check for DELETE /index/repos/{repo} - delete repo
+		if r.Method == http.MethodDelete {
+			s.HandleIndexDeleteRepo(w, r)
+			return
+		}
 		http.NotFound(w, r)
 	}
 }
 
-// HandleIndexListRepos handles GET /index/repos
+// HandleIndexListRepos handles GET /index/repos and POST /index/repos
 func (s *Server) HandleIndexListRepos(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	switch r.Method {
+	case http.MethodGet:
+		s.handleIndexListReposGet(w, r)
+	case http.MethodPost:
+		s.HandleIndexCreateRepo(w, r)
+	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
 	}
+}
 
+func (s *Server) handleIndexListReposGet(w http.ResponseWriter, r *http.Request) {
 	if s.indexManager == nil {
 		writeIndexError(w, http.StatusServiceUnavailable, "index_server_disabled", "Index server not enabled")
 		return

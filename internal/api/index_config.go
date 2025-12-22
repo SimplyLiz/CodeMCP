@@ -16,7 +16,22 @@ type IndexServerConfig struct {
 	DefaultPrivacy IndexPrivacyConfig  `toml:"default_privacy"`
 	MaxPageSize    int                 `toml:"max_page_size"`    // Default 10000
 	CursorSecret   string              `toml:"cursor_secret"`    // HMAC key for cursors
+
+	// Upload configuration (Phase 2)
+	DataDir         string `toml:"data_dir"`          // Server data directory for uploaded repos
+	MaxUploadSize   int64  `toml:"max_upload_size"`   // Max upload size in bytes (default 500MB)
+	AllowCreateRepo bool   `toml:"allow_create_repo"` // Allow creating repos via API (default true)
 }
+
+// RepoSource indicates how a repo was registered
+type RepoSource string
+
+const (
+	// RepoSourceConfig means the repo was defined in the TOML config file
+	RepoSourceConfig RepoSource = "config"
+	// RepoSourceUploaded means the repo was created via API upload
+	RepoSourceUploaded RepoSource = "uploaded"
+)
 
 // IndexRepoConfig configures a single repository for index serving
 type IndexRepoConfig struct {
@@ -25,6 +40,7 @@ type IndexRepoConfig struct {
 	Path        string              `toml:"path"`        // Path to repo with .ckb/
 	Description string              `toml:"description"` // Optional description
 	Privacy     *IndexPrivacyConfig `toml:"privacy"`     // Per-repo override (nil = use default)
+	Source      RepoSource          `toml:"-"`           // How the repo was registered (not from config)
 }
 
 // IndexPrivacyConfig controls field redaction in API responses
@@ -46,7 +62,10 @@ func DefaultIndexServerConfig() *IndexServerConfig {
 			ExposeDocs:       true,
 			ExposeSignatures: true,
 		},
-		CursorSecret: generateDefaultSecret(),
+		CursorSecret:    generateDefaultSecret(),
+		DataDir:         "~/.ckb-server",
+		MaxUploadSize:   500 * 1024 * 1024, // 500MB
+		AllowCreateRepo: true,
 	}
 }
 
@@ -98,8 +117,9 @@ func (c *IndexServerConfig) Validate() error {
 		return nil // Nothing to validate if disabled
 	}
 
-	if len(c.Repos) == 0 {
-		return fmt.Errorf("at least one repo must be configured when index server is enabled")
+	// Repos can be empty if AllowCreateRepo is true (dynamic upload mode)
+	if len(c.Repos) == 0 && !c.AllowCreateRepo {
+		return fmt.Errorf("at least one repo must be configured when index server is enabled and allow_create_repo is false")
 	}
 
 	// Check for duplicate repo IDs
@@ -128,6 +148,10 @@ func (c *IndexServerConfig) Validate() error {
 
 	if c.MaxPageSize > 100000 {
 		return fmt.Errorf("max_page_size cannot exceed 100000")
+	}
+
+	if c.MaxUploadSize < 0 {
+		return fmt.Errorf("max_upload_size cannot be negative")
 	}
 
 	return nil
