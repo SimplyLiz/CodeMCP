@@ -166,10 +166,7 @@ func (s *Server) HandleIndexUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract repo ID from path (remove /upload suffix)
-	path := r.URL.Path
-	if strings.HasSuffix(path, "/upload") {
-		path = strings.TrimSuffix(path, "/upload")
-	}
+	path := strings.TrimSuffix(r.URL.Path, "/upload")
 	repoID := extractRepoIDFromPath(path, "/index/repos/", "")
 	if repoID == "" {
 		writeIndexError(w, http.StatusBadRequest, "missing_repo_id", "Repo ID is required")

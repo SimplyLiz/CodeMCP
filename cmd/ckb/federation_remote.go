@@ -334,8 +334,8 @@ func runFedStatusRemote(cmd *cobra.Command, args []string) error {
 
 	// Create hybrid engine
 	engine := federation.NewHybridEngine(fed, logger)
-	if err := engine.InitRemoteClients(); err != nil {
-		return fmt.Errorf("failed to initialize remote clients: %w", err)
+	if initErr := engine.InitRemoteClients(); initErr != nil {
+		return fmt.Errorf("failed to initialize remote clients: %w", initErr)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

@@ -59,10 +59,7 @@ func (s *Server) HandleIndexDeltaUpload(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Extract repo ID from path (remove /upload/delta suffix)
-	path := r.URL.Path
-	if strings.HasSuffix(path, "/upload/delta") {
-		path = strings.TrimSuffix(path, "/upload/delta")
-	}
+	path := strings.TrimSuffix(r.URL.Path, "/upload/delta")
 	repoID := extractRepoIDFromPath(path, "/index/repos/", "")
 	if repoID == "" {
 		writeIndexError(w, http.StatusBadRequest, "missing_repo_id", "Repo ID is required")
