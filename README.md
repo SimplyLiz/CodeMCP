@@ -139,113 +139,25 @@ Now Claude can answer questions like:
 - **Hotspot Detection** — Track churn trends, get 30-day risk projections
 - **Architectural Decisions** — Record and query ADRs with full-text search
 
-### Production Ready (v6.1)
-- **Background Jobs** — Queue long operations, track progress, cancel jobs
-- **CI/CD Integration** — PR risk analysis, ownership drift detection
-
-### Cross-Repository (v6.2+)
+### Advanced Capabilities
 - **Federation** — Query across multiple repos organization-wide
-- **Daemon Mode** — Always-on service with HTTP API, scheduled tasks, file watching, webhooks
-- **Tree-sitter Complexity** — Language-agnostic cyclomatic/cognitive complexity for 7 languages
+- **Daemon Mode** — Always-on service with HTTP API, scheduled tasks, webhooks
+- **Contract Analysis** — Protobuf and OpenAPI discovery with cross-repo impact
+- **Runtime Observability** — OpenTelemetry integration for dead code detection
+- **Developer Intelligence** — Symbol origins, co-change coupling, risk audit
 
-### Contract-Aware (v6.3)
-- **API Boundary Detection** — Protobuf and OpenAPI contract discovery
-- **Consumer Tracking** — Three evidence tiers for cross-repo dependencies
-- **Cross-Repo Impact** — "What breaks if I change this shared API?"
+### Fast Indexing
+- **Zero-Index Operation** — Tree-sitter fallback works without SCIP index
+- **Incremental Updates** — O(changed files) instead of full reindex (Go)
+- **Smart Caching** — Skip-if-fresh, watch mode, transitive invalidation
 
-### Runtime Observability (v6.4)
-- **OpenTelemetry Integration** — See real call counts, not just static analysis
-- **Dead Code Confidence** — Find symbols with zero runtime calls
-- **Observed Callers** — Enrich impact analysis with production data
+### Remote Index Server
+- **Index Serving** — Serve symbol indexes over HTTP for federation
+- **Index Upload** — Push SCIP indexes with compression (gzip/zstd)
+- **Delta Updates** — Upload only changed files
+- **API Key Auth** — Scoped keys with rate limiting
 
-### Developer Intelligence (v6.5)
-- **Symbol Origins** — Why does this code exist? Git history, linked issues/PRs
-- **Co-change Coupling** — Find files that historically change together
-- **LLM Export** — Token-efficient codebase summaries with importance ranking
-- **Risk Audit** — 8-factor scoring (complexity, coverage, bus factor, security, staleness, errors, coupling, churn)
-
-### Zero-Friction UX (v7.0)
-- **npm Distribution** — `npm install -g @tastehub/ckb` or `npx @tastehub/ckb`
-- **Auto-Setup** — `ckb setup` configures Claude Code integration automatically
-
-### Zero-Index Operation (v7.1)
-- **Tree-sitter Fallback** — Symbol search works without SCIP index (8 languages)
-- **Auto-Index** — `ckb index` detects language and runs the right SCIP indexer
-- **Install Guidance** — Shows indexer install commands when missing
-- **Universal MCP Docs** — Setup for Claude Code, Cursor, Windsurf, VS Code, OpenCode, Claude Desktop
-
-### Smart Indexing & Explicit Tiers (v7.2)
-- **Skip-if-Fresh** — `ckb index` automatically skips if index is current with HEAD
-- **Freshness Tracking** — Tracks commits behind HEAD + uncommitted changes
-- **Index Status** — `ckb status` shows index freshness with commit hash
-- **Watch Mode** — `ckb mcp --watch` polls every 30s and auto-reindexes when stale
-- **Lock File** — Prevents concurrent indexing with flock-based locking
-- **Explicit Tiers** — Control analysis mode: `--tier=fast|standard|full` or `CKB_TIER` env var
-- **Tier Diagnostics** — `ckb doctor --tier enhanced` shows exactly what's missing and how to fix it
-
-### Doc-Symbol Linking (v7.3)
-- **Backtick Detection** — Automatically detect `Symbol.Name` references in markdown
-- **Directive Support** — Explicit `<!-- ckb:symbol -->` and `<!-- ckb:module -->` directives
-- **Fence Scanning** — Extract symbols from fenced code blocks via tree-sitter (8 languages)
-- **Staleness Detection** — Find broken references when symbols are renamed or deleted
-- **Rename Awareness** — Suggest new names when documented symbols are renamed
-- **CI Enforcement** — `--fail-under` flag for documentation coverage thresholds
-
-### Incremental Indexing (v7.3)
-- **O(changed files)** — Index updates in seconds instead of full reindex (Go only)
-- **Git-based Detection** — Uses `git diff -z` for accurate change tracking with rename support
-- **Accuracy Guarantees** — Forward references always accurate; reverse refs may be stale
-- **Automatic Fallback** — Falls back to full reindex when >50% files changed or schema mismatch
-- **Index State Tracking** — Shows "partial" vs "full" state with staleness warnings
-- **Incremental Callgraph** — Outgoing calls from changed files always accurate; callers may be stale
-- **Transitive Invalidation (v2)** — File dependency tracking with automatic rescan queue:
-  - Four modes: `none`, `lazy` (default), `eager`, `deferred`
-  - Budget-limited draining (max 200 files, 1500ms per drain)
-  - Cascade depth control for BFS traversal
-
-### Remote Index Serving (v7.3)
-- **Index Server Mode** — Serve symbol indexes over HTTP for remote federation clients
-- **Multi-Repo Support** — Serve multiple repositories from a single server
-- **Cursor Pagination** — HMAC-signed cursors for efficient, secure pagination
-- **Privacy Controls** — Redact paths, documentation, and signatures per-repo
-- **REST API** — Standard endpoints for symbols, files, refs, callgraph, search
-
-```bash
-# Start with index server enabled
-ckb serve --index-server --index-config /path/to/config.toml
-
-# Example config (index-server.toml):
-[[repos]]
-id = "company/core-lib"
-name = "Core Library"
-path = "/repos/core-lib"
-
-[default_privacy]
-expose_paths = true
-expose_docs = true
-expose_signatures = true
-```
-
-### Index Upload (v7.3)
-- **HTTP Upload** — Push SCIP indexes to a central server via REST API
-- **Compression** — gzip and zstd support for 70-90% bandwidth savings
-- **Delta Updates** — Upload only changed files for incremental updates
-- **Progress Reporting** — Real-time logging for large uploads
-
-```bash
-# Upload a full index (with compression)
-gzip -c index.scip | curl -X POST http://server:8080/index/repos/my-org/my-repo/upload \
-  -H "Content-Encoding: gzip" \
-  -H "X-CKB-Commit: abc123" \
-  --data-binary @-
-
-# Delta upload (only changed files)
-curl -X POST http://server:8080/index/repos/my-org/my-repo/upload/delta \
-  -H "X-CKB-Base-Commit: abc123" \
-  -H "X-CKB-Target-Commit: def456" \
-  -H 'X-CKB-Changed-Files: [{"path":"src/main.go","change_type":"modified"}]' \
-  --data-binary @partial-index.scip
-```
+📋 **[Full Changelog](https://github.com/SimplyLiz/CodeMCP/blob/main/CHANGELOG.md)** — Detailed version history from v5.1 to current
 
 ## MCP Tools (64 Available)
 

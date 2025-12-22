@@ -456,3 +456,95 @@ Zero-Friction Operation - CKB v7.1 enables code intelligence without requiring a
 ### Added
 - Initial npm package release via `@tastehub/ckb`
 - 58 MCP tools for code intelligence
+
+## [6.5.0] - 2024-12-XX
+
+### Added
+
+#### Developer Intelligence
+- **Symbol Origins** — `explainOrigin`: Why does this code exist? Git history, linked issues/PRs
+- **Co-change Coupling** — `analyzeCoupling`: Find files that historically change together
+- **LLM Export** — `exportForLLM`: Token-efficient codebase summaries with importance ranking
+- **Risk Audit** — `auditRisk`: 8-factor scoring (complexity, coverage, bus factor, security, staleness, errors, coupling, churn)
+
+## [6.4.0] - 2024-12-XX
+
+### Added
+
+#### Runtime Observability
+- **OpenTelemetry Integration** — `getTelemetryStatus`: See real call counts, not just static analysis
+- **Dead Code Confidence** — `findDeadCodeCandidates`: Find symbols with zero runtime calls
+- **Observed Callers** — `getObservedUsage`: Enrich impact analysis with production data
+
+## [6.3.0] - 2024-12-XX
+
+### Added
+
+#### Contract-Aware Analysis
+- **API Boundary Detection** — `listContracts`: Protobuf and OpenAPI contract discovery
+- **Consumer Tracking** — Three evidence tiers for cross-repo dependencies
+- **Cross-Repo Impact** — `analyzeContractImpact`: "What breaks if I change this shared API?"
+- **Contract Dependencies** — `getContractDependencies`: See consumers and dependencies
+
+## [6.2.0] - 2024-12-XX
+
+### Added
+
+#### Federation & Cross-Repository
+- **Federation** — Query across multiple repos organization-wide
+- **Federation Tools** — `listFederations`, `federationStatus`, `federationSearchModules`, `federationSearchOwnership`, `federationGetHotspots`
+- **Daemon Mode** — Always-on service with HTTP API, scheduled tasks, file watching, webhooks
+- **Daemon Tools** — `daemonStatus`, `listSchedules`, `listWebhooks`
+- **Tree-sitter Complexity** — `getFileComplexity`: Language-agnostic cyclomatic/cognitive complexity for 7 languages
+
+## [6.1.0] - 2024-12-XX
+
+### Added
+
+#### Production Ready
+- **Background Jobs** — Queue long operations, track progress, cancel jobs
+- **Job Tools** — `getJobStatus`, `listJobs`, `cancelJob`
+- **CI/CD Integration** — `summarizePr`: PR risk analysis, ownership drift detection
+- **Ownership Drift** — `getOwnershipDrift`: CODEOWNERS vs actual ownership
+
+## [6.0.0] - 2024-12-XX
+
+### Added
+
+#### Architectural Memory
+- **Ownership Intelligence** — `getOwnership`: CODEOWNERS + git blame with time-weighted analysis
+- **Module Responsibilities** — `getModuleResponsibilities`: What does this module do?
+- **Architectural Decisions** — `recordDecision`, `getDecisions`: ADRs with full-text search
+- **Module Annotations** — `annotateModule`: Add module metadata
+- **Architecture Refresh** — `refreshArchitecture`: Rebuild architectural model
+
+## [5.2.0] - 2024-12-XX
+
+### Added
+
+#### Discovery & Flow
+- **Usage Tracing** — `traceUsage`: How is this symbol reached?
+- **Entrypoints** — `listEntrypoints`: System entrypoints (API, CLI, jobs)
+- **File Orientation** — `explainFile`: File-level orientation
+- **Path Explanation** — `explainPath`: Why does this path exist?
+- **Diff Summary** — `summarizeDiff`: What changed, what might break?
+- **Architecture Overview** — `getArchitecture`: Module dependency overview
+- **Hotspots** — `getHotspots`: Volatile areas with trends
+- **Key Concepts** — `listKeyConcepts`: Domain concepts in codebase
+- **Recently Relevant** — `recentlyRelevant`: What matters now?
+
+## [5.1.0] - 2024-12-XX
+
+### Added
+
+#### Core Navigation
+- **Symbol Search** — `searchSymbols`: Find symbols by name with filtering
+- **Symbol Details** — `getSymbol`: Get symbol details
+- **References** — `findReferences`: Find all usages
+- **Symbol Explanation** — `explainSymbol`: AI-friendly symbol explanation
+- **Symbol Justification** — `justifySymbol`: Keep/investigate/remove verdict
+- **Call Graph** — `getCallGraph`: Caller/callee relationships
+- **Module Overview** — `getModuleOverview`: Module statistics
+- **Impact Analysis** — `analyzeImpact`: Change risk analysis
+- **System Status** — `getStatus`: System health
+- **Diagnostics** — `doctor`: System diagnostics
