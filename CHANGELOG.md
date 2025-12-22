@@ -16,13 +16,23 @@ Index updates in seconds instead of full reindex—O(changed files) instead of O
 - **Delete+insert pattern** — Clean updates without complex diffing logic
 - **Index state tracking** — Tracks "partial" vs "full" state with staleness warnings
 
+#### Incremental Callgraph (v1.1)
+Extends incremental indexing with call graph maintenance—outgoing calls from changed files are always accurate.
+
+- **Call edge extraction** — Extracts caller→callee edges during incremental updates
+- **Tiered callable detection** — Uses `SymbolInformation.Kind` first, falls back to `().` heuristic
+- **Caller resolution** — Resolves enclosing function for each call site via line range matching
+- **Location-anchored storage** — Call edges stored with `(caller_file, line, col, callee_id)` for precision
+- **Caller-owned edges** — Edges deleted and rebuilt with their owning file (no stale outgoing calls)
+
 **Accuracy Guarantees:**
 | Query Type | After Incremental |
 |------------|-------------------|
 | Go to definition | Always accurate |
 | Find refs FROM changed files | Always accurate |
 | Find refs TO changed symbols | May be stale |
-| Call graph (callers) | May be stale |
+| Call graph (callees/outgoing) | Always accurate |
+| Call graph (callers/incoming) | May be stale |
 
 **Automatic Fallback:**
 - Falls back to full reindex when >50% files changed
@@ -55,7 +65,11 @@ Index updates in seconds instead of full reindex—O(changed files) instead of O
   - `indexer_test.go` — Integration tests
 
 ### Changed
-- `internal/storage/schema.go` — Added v6 migration with three new tables
+- `internal/storage/schema.go` — Schema v7 with callgraph table and indexes
+- `internal/incremental/types.go` — Added `CallEdge` type, updated `FileDelta` and `DeltaStats`
+- `internal/incremental/extractor.go` — Call edge extraction with `isCallable()`, `resolveCallerSymbol()`
+- `internal/incremental/updater.go` — Added `insertCallEdges()`, callgraph deletion
+- `internal/incremental/indexer.go` — Updated `FormatStats()` with call edge count
 - `cmd/ckb/index.go` — Incremental indexing flow with `--force` flag
 
 ## [7.3.0] - 2024-12-22
