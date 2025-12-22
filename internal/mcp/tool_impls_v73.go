@@ -21,7 +21,7 @@ func (s *MCPServer) toolGetDocsForSymbol(params map[string]interface{}) (interfa
 		limit = int(v)
 	}
 
-	refs, err := s.engine.GetDocsForSymbol(symbol, limit)
+	refs, err := s.engine().GetDocsForSymbol(symbol, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find docs for symbol: %w", err)
 	}
@@ -58,7 +58,7 @@ func (s *MCPServer) toolGetSymbolsInDoc(params map[string]interface{}) (interfac
 		return nil, fmt.Errorf("path is required")
 	}
 
-	doc, err := s.engine.GetDocumentInfo(path)
+	doc, err := s.engine().GetDocumentInfo(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get document info: %w", err)
 	}
@@ -104,7 +104,7 @@ func (s *MCPServer) toolGetDocsForModule(params map[string]interface{}) (interfa
 		return nil, fmt.Errorf("moduleId is required")
 	}
 
-	docsList, err := s.engine.GetDocsForModule(moduleID)
+	docsList, err := s.engine().GetDocsForModule(moduleID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find docs for module: %w", err)
 	}
@@ -136,7 +136,7 @@ func (s *MCPServer) toolCheckDocStaleness(params map[string]interface{}) (interf
 
 	if path != "" {
 		// Check single document
-		report, e := s.engine.CheckDocStaleness(path)
+		report, e := s.engine().CheckDocStaleness(path)
 		if e != nil {
 			return nil, fmt.Errorf("failed to check staleness: %w", e)
 		}
@@ -145,7 +145,7 @@ func (s *MCPServer) toolCheckDocStaleness(params map[string]interface{}) (interf
 		}
 	} else if checkAll {
 		// Check all documents
-		reports, err = s.engine.CheckAllDocsStaleness()
+		reports, err = s.engine().CheckAllDocsStaleness()
 		if err != nil {
 			return nil, fmt.Errorf("failed to check staleness: %w", err)
 		}
@@ -201,7 +201,7 @@ func (s *MCPServer) toolIndexDocs(params map[string]interface{}) (interface{}, e
 	}
 
 	start := time.Now()
-	stats, err := s.engine.IndexDocs(force)
+	stats, err := s.engine().IndexDocs(force)
 	if err != nil {
 		return nil, fmt.Errorf("failed to index docs: %w", err)
 	}
@@ -229,7 +229,7 @@ func (s *MCPServer) toolGetDocCoverage(params map[string]interface{}) (interface
 		topN = int(v)
 	}
 
-	report, err := s.engine.GetDocCoverage(exportedOnly, topN)
+	report, err := s.engine().GetDocCoverage(exportedOnly, topN)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get doc coverage: %w", err)
 	}

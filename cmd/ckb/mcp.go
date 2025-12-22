@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"ckb/internal/logging"
 	"ckb/internal/mcp"
 	"ckb/internal/project"
+	"ckb/internal/repos"
 	"ckb/internal/repostate"
 	"ckb/internal/version"
 
@@ -56,7 +58,7 @@ func init() {
 	rootCmd.AddCommand(mcpCmd)
 	mcpCmd.Flags().BoolVar(&mcpStdio, "stdio", true, "Use stdio for communication (default)")
 	mcpCmd.Flags().BoolVar(&mcpWatch, "watch", false, "Watch for changes and auto-reindex")
-	mcpCmd.Flags().StringVar(&mcpRepo, "repo", "", "Repository path (defaults to CKB_REPO env var or current directory)")
+	mcpCmd.Flags().StringVar(&mcpRepo, "repo", "", "Repository path or registry name (auto-detected)")
 }
 
 func runMCP(cmd *cobra.Command, args []string) error {
@@ -68,17 +70,69 @@ func runMCP(cmd *cobra.Command, args []string) error {
 		Output: os.Stderr,
 	})
 
-	logger.Info("Starting MCP server", map[string]interface{}{
-		"version": version.Version,
-	})
+	fmt.Fprintf(os.Stderr, "CKB MCP Server v%s\n", version.Version)
 
-	// Get repo root: --repo flag > CKB_REPO env var > current directory
-	repoRoot := mcpRepo
-	if repoRoot == "" {
+	// Determine mode and repo
+	var server *mcp.MCPServer
+	var repoRoot string
+	var repoName string
+
+	// Smart --repo detection: path vs registry name
+	if mcpRepo != "" {
+		if isRepoPath(mcpRepo) {
+			// It's a path - use legacy single-engine mode
+			repoRoot = mcpRepo
+			fmt.Fprintf(os.Stderr, "Repository: %s (path)\n", repoRoot)
+		} else {
+			// It's a registry name - use multi-repo mode
+			registry, err := repos.LoadRegistry()
+			if err != nil {
+				return fmt.Errorf("failed to load registry: %w", err)
+			}
+			entry, state, err := registry.Get(mcpRepo)
+			if err != nil {
+				return fmt.Errorf("repository '%s' not found in registry", mcpRepo)
+			}
+			if state != repos.RepoStateValid {
+				return fmt.Errorf("repository '%s' is %s", mcpRepo, state)
+			}
+			repoRoot = entry.Path
+			repoName = mcpRepo
+			fmt.Fprintf(os.Stderr, "Repository: %s (%s) [%s]\n", repoName, repoRoot, state)
+
+			// Use multi-repo mode
+			server = mcp.NewMCPServerWithRegistry(version.Version, registry, logger)
+			engine := mustGetEngine(repoRoot, logger)
+			server.SetActiveRepo(repoName, repoRoot, engine)
+		}
+	} else {
+		// No --repo flag - check CKB_REPO env var
 		repoRoot = os.Getenv("CKB_REPO")
-	}
-	if repoRoot == "" {
-		repoRoot = mustGetRepoRoot()
+		if repoRoot != "" {
+			fmt.Fprintf(os.Stderr, "Repository: %s (from CKB_REPO)\n", repoRoot)
+		} else {
+			// Check if registry exists with a default
+			registry, err := repos.LoadRegistry()
+			if err == nil && registry.Default != "" {
+				entry, state, err := registry.Get(registry.Default)
+				if err == nil && state == repos.RepoStateValid {
+					// Use multi-repo mode with default
+					repoRoot = entry.Path
+					repoName = registry.Default
+					fmt.Fprintf(os.Stderr, "Repository: %s (%s) [default]\n", repoName, repoRoot)
+
+					server = mcp.NewMCPServerWithRegistry(version.Version, registry, logger)
+					engine := mustGetEngine(repoRoot, logger)
+					server.SetActiveRepo(repoName, repoRoot, engine)
+				}
+			}
+
+			// Fall back to current directory
+			if repoRoot == "" {
+				repoRoot = mustGetRepoRoot()
+				fmt.Fprintf(os.Stderr, "Repository: %s (current directory)\n", repoRoot)
+			}
+		}
 	}
 
 	// Change to repo directory so relative paths work
@@ -90,12 +144,13 @@ func runMCP(cmd *cobra.Command, args []string) error {
 			})
 			return err
 		}
-		logger.Info("Changed to repo directory", map[string]interface{}{
-			"path": repoRoot,
-		})
 	}
 
-	engine := mustGetEngine(repoRoot, logger)
+	// Create server if not already created (legacy single-engine mode)
+	if server == nil {
+		engine := mustGetEngine(repoRoot, logger)
+		server = mcp.NewMCPServer(version.Version, engine, logger)
+	}
 
 	// Start watch mode if enabled
 	if mcpWatch {
@@ -105,9 +160,6 @@ func runMCP(cmd *cobra.Command, args []string) error {
 		})
 	}
 
-	// Create and start MCP server
-	server := mcp.NewMCPServer(version.Version, engine, logger)
-
 	if err := server.Start(); err != nil {
 		logger.Error("MCP server error", map[string]interface{}{
 			"error": err.Error(),
@@ -116,6 +168,24 @@ func runMCP(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// isRepoPath checks if a string looks like a filesystem path vs a registry name
+func isRepoPath(s string) bool {
+	// Contains path separator
+	if strings.Contains(s, "/") || strings.Contains(s, "\\") {
+		return true
+	}
+	// Starts with . (relative path)
+	if strings.HasPrefix(s, ".") {
+		return true
+	}
+	// Exists as a directory
+	info, err := os.Stat(s)
+	if err == nil && info.IsDir() {
+		return true
+	}
+	return false
 }
 
 // runWatchLoop periodically checks index freshness and reindexes if stale

@@ -141,6 +141,7 @@ Now Claude can answer questions like:
 
 ### Advanced Capabilities
 - **Federation** — Query across multiple repos organization-wide
+- **Multi-Repo Management** — Named repo registry with quick MCP context switching
 - **Daemon Mode** — Always-on service with HTTP API, scheduled tasks, webhooks
 - **Contract Analysis** — Protobuf and OpenAPI discovery with cross-repo impact
 - **Runtime Observability** — OpenTelemetry integration for dead code detection
@@ -160,7 +161,7 @@ Now Claude can answer questions like:
 
 📋 **[Full Changelog](https://github.com/SimplyLiz/CodeMCP/blob/main/CHANGELOG.md)** — Detailed version history from v5.1 to current
 
-## MCP Tools (71 Available)
+## MCP Tools (74 Available)
 
 CKB exposes code intelligence through the Model Context Protocol:
 
@@ -263,6 +264,17 @@ CKB exposes code intelligence through the Model Context Protocol:
 | `getDocsForModule` | Find docs linked to a module |
 | `checkDocStaleness` | Check for stale references |
 | `getDocCoverage` | Documentation coverage stats |
+
+</details>
+
+<details>
+<summary><strong>v7.3 — Multi-Repo Management</strong></summary>
+
+| Tool | Purpose |
+|------|---------|
+| `listRepos` | List registered repos with state |
+| `switchRepo` | Switch active repo context |
+| `getActiveRepo` | Get current repo info |
 
 </details>
 

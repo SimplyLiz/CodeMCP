@@ -1671,6 +1671,37 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		// v7.3 Multi-Repo Management tools
+		{
+			Name:        "listRepos",
+			Description: "List all registered repositories with their state and active status. Shows which repos are valid, uninitialized, or missing.",
+			InputSchema: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+		},
+		{
+			Name:        "switchRepo",
+			Description: "Switch to a different repository. The repository must be registered and initialized. Use listRepos to see available repos.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "The name of the repository to switch to (from registry)",
+					},
+				},
+				"required": []string{"name"},
+			},
+		},
+		{
+			Name:        "getActiveRepo",
+			Description: "Get information about the currently active repository including name, path, and state.",
+			InputSchema: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+		},
 	}
 }
 
@@ -1758,4 +1789,8 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["checkDocStaleness"] = s.toolCheckDocStaleness
 	s.tools["indexDocs"] = s.toolIndexDocs
 	s.tools["getDocCoverage"] = s.toolGetDocCoverage
+	// v7.3 Multi-Repo Management tools
+	s.tools["listRepos"] = s.toolListRepos
+	s.tools["switchRepo"] = s.toolSwitchRepo
+	s.tools["getActiveRepo"] = s.toolGetActiveRepo
 }

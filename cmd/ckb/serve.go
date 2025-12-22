@@ -11,6 +11,8 @@ import (
 
 	"ckb/internal/api"
 	"ckb/internal/logging"
+	"ckb/internal/repos"
+	"ckb/internal/version"
 
 	"github.com/spf13/cobra"
 )
@@ -22,6 +24,7 @@ var (
 	serveCORSAllow   string
 	serveIndexServer bool
 	serveIndexConfig string
+	serveRepo        string
 )
 
 var serveCmd = &cobra.Command{
@@ -43,6 +46,7 @@ func init() {
 	serveCmd.Flags().StringVar(&serveCORSAllow, "cors-allow", "", "Comma-separated allowed CORS origins (empty=same-origin only, '*'=all)")
 	serveCmd.Flags().BoolVar(&serveIndexServer, "index-server", false, "Enable index-serving endpoints for remote federation")
 	serveCmd.Flags().StringVar(&serveIndexConfig, "index-config", "", "Path to index server config file (TOML)")
+	serveCmd.Flags().StringVar(&serveRepo, "repo", "", "Repository path or registry name (auto-detected)")
 }
 
 func runServe(cmd *cobra.Command, args []string) error {
@@ -52,11 +56,45 @@ func runServe(cmd *cobra.Command, args []string) error {
 		Level:  logging.InfoLevel,
 	})
 
+	fmt.Printf("CKB HTTP API Server v%s\n", version.Version)
+
 	// Build server address
 	addr := fmt.Sprintf("%s:%s", serveHost, servePort)
 
-	// Get repo root and create Query Engine
-	repoRoot := mustGetRepoRoot()
+	// Smart repo detection
+	var repoRoot string
+	if serveRepo != "" {
+		if isRepoPath(serveRepo) {
+			repoRoot = serveRepo
+			fmt.Printf("Repository: %s (path)\n", repoRoot)
+		} else {
+			// Registry lookup
+			registry, err := repos.LoadRegistry()
+			if err != nil {
+				return fmt.Errorf("failed to load registry: %w", err)
+			}
+			entry, state, err := registry.Get(serveRepo)
+			if err != nil {
+				return fmt.Errorf("repository '%s' not found in registry", serveRepo)
+			}
+			if state != repos.RepoStateValid {
+				return fmt.Errorf("repository '%s' is %s", serveRepo, state)
+			}
+			repoRoot = entry.Path
+			fmt.Printf("Repository: %s (%s) [%s]\n", serveRepo, repoRoot, state)
+		}
+	} else {
+		repoRoot = mustGetRepoRoot()
+		fmt.Printf("Repository: %s (current directory)\n", repoRoot)
+	}
+
+	// Change to repo directory
+	if repoRoot != "" && repoRoot != "." {
+		if err := os.Chdir(repoRoot); err != nil {
+			return fmt.Errorf("failed to change to repo directory: %w", err)
+		}
+	}
+
 	engine := mustGetEngine(repoRoot, logger)
 
 	// Build server config

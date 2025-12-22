@@ -17,6 +17,11 @@ type MCPError struct {
 	Data    interface{} `json:"data,omitempty"`
 }
 
+// Error implements the error interface
+func (e *MCPError) Error() string {
+	return e.Message
+}
+
 // Standard JSON-RPC error codes
 const (
 	ParseError     = -32700

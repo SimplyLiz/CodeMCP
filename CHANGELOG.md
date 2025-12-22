@@ -301,6 +301,35 @@ Bridge documentation and code with automatic symbol detection:
 - `checkDocStaleness` - Check for stale references
 - `getDocCoverage` - Coverage statistics
 
+#### Multi-Repo Management
+Quick context switching between multiple repositories in MCP sessions:
+
+**Core Features:**
+- **Global registry** - Named repo shortcuts stored at `~/.ckb/repos.json`
+- **Smart --repo flag** - Auto-detects if argument is a path or registry name
+- **Multi-engine support** - Up to 5 engines in memory with LRU eviction
+- **Per-repo config** - Each engine loads its own `.ckb/config.json`
+- **Repo state tracking** - `valid`, `uninitialized`, `missing` states
+
+**CLI Commands:**
+- `ckb repo add [name] [path]` - Register a repository (path defaults to cwd)
+- `ckb repo list` - List repos grouped by state
+- `ckb repo remove <name>` - Unregister a repo
+- `ckb repo rename <old> <new>` - Rename a repo alias
+- `ckb repo default [name]` - Get or set default repo
+- `ckb repo info [name]` - Show detailed repo info
+- `ckb repo which` - Print current repo (for scripts)
+- `ckb repo check` - Validate all registered repos
+
+**MCP Tools:**
+- `listRepos` - List registered repos with state and active status
+- `switchRepo` - Switch active repo context
+- `getActiveRepo` - Get current repo info
+
+**Command Flags:**
+- `ckb mcp --repo <name>` - Start MCP with specific repo active
+- `ckb serve --repo <name>` - Start HTTP server for specific repo
+
 #### Incremental Indexing (Go only)
 Index updates in seconds instead of full reindex—O(changed files) instead of O(entire repo).
 
