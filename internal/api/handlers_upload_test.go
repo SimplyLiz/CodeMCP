@@ -2,7 +2,7 @@ package api
 
 import (
 	"os"
-	"path/filepath"
+	"strings"
 	"testing"
 
 	"ckb/internal/logging"
@@ -171,7 +171,7 @@ func TestIndexStorage(t *testing.T) {
 		defer file.Close()
 		defer storage.CleanupUpload(path)
 
-		if !filepath.HasPrefix(path, storage.uploadDir) {
+		if !strings.HasPrefix(path, storage.uploadDir) {
 			t.Errorf("Upload path %q not in upload dir %q", path, storage.uploadDir)
 		}
 

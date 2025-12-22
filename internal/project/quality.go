@@ -264,7 +264,7 @@ func (qa *QualityAssessor) loadMetrics(ctx context.Context, quality *LanguageQua
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	langStr := string(quality.Language)
 

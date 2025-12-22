@@ -493,8 +493,8 @@ func (p *SCIPProcessor) processIndex(db *sql.DB, index *scip.SCIPIndex, result *
 	// Clear existing data (full replace)
 	tables := []string{"symbol_mappings", "indexed_files", "callgraph"}
 	for _, table := range tables {
-		if _, err := tx.Exec(fmt.Sprintf("DELETE FROM %s", table)); err != nil {
-			return fmt.Errorf("failed to clear %s: %w", table, err)
+		if _, execErr := tx.Exec(fmt.Sprintf("DELETE FROM %s", table)); execErr != nil {
+			return fmt.Errorf("failed to clear %s: %w", table, execErr)
 		}
 	}
 

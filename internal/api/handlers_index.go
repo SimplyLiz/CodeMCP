@@ -409,8 +409,8 @@ func (s *Server) HandleIndexListRefs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if cursor != nil {
-		if err := cursor.ValidateEntity("ref"); err != nil {
-			writeIndexError(w, http.StatusBadRequest, "cursor_entity_mismatch", err.Error())
+		if validateErr := cursor.ValidateEntity("ref"); validateErr != nil {
+			writeIndexError(w, http.StatusBadRequest, "cursor_entity_mismatch", validateErr.Error())
 			return
 		}
 	}
@@ -483,8 +483,8 @@ func (s *Server) HandleIndexListCallgraph(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if cursor != nil {
-		if err := cursor.ValidateEntity("callgraph"); err != nil {
-			writeIndexError(w, http.StatusBadRequest, "cursor_entity_mismatch", err.Error())
+		if validateErr := cursor.ValidateEntity("callgraph"); validateErr != nil {
+			writeIndexError(w, http.StatusBadRequest, "cursor_entity_mismatch", validateErr.Error())
 			return
 		}
 	}

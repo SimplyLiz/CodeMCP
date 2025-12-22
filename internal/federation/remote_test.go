@@ -14,10 +14,8 @@ import (
 
 func TestExpandEnvVars(t *testing.T) {
 	// Set test env vars
-	os.Setenv("TEST_VAR_1", "value1")
-	os.Setenv("TEST_VAR_2", "value2")
-	defer os.Unsetenv("TEST_VAR_1")
-	defer os.Unsetenv("TEST_VAR_2")
+	t.Setenv("TEST_VAR_1", "value1")
+	t.Setenv("TEST_VAR_2", "value2")
 
 	tests := []struct {
 		name     string
@@ -211,7 +209,7 @@ func TestRemoteClient(t *testing.T) {
 				},
 			}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 
 		case "/index/repos/repo1/meta":
 			resp := struct {
@@ -226,7 +224,7 @@ func TestRemoteClient(t *testing.T) {
 				},
 			}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 
 		case "/index/repos/repo1/search/symbols":
 			resp := struct {
@@ -246,12 +244,12 @@ func TestRemoteClient(t *testing.T) {
 				},
 			}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 
 		case "/index/repos/protected/meta":
 			if auth != "Bearer test-token" {
 				w.WriteHeader(http.StatusUnauthorized)
-				json.NewEncoder(w).Encode(RemoteResponse{
+				_ = json.NewEncoder(w).Encode(RemoteResponse{
 					Error: &RemoteErrorInfo{Code: "unauthorized", Message: "Invalid token"},
 				})
 				return
@@ -262,11 +260,11 @@ func TestRemoteClient(t *testing.T) {
 				Data: RemoteRepoMeta{ID: "protected", Name: "Protected Repo"},
 			}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 
 		default:
 			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(RemoteResponse{
+			_ = json.NewEncoder(w).Encode(RemoteResponse{
 				Error: &RemoteErrorInfo{Code: "not_found", Message: "Not found"},
 			})
 		}

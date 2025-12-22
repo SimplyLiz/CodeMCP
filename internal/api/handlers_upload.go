@@ -337,7 +337,8 @@ func (s *Server) streamUploadToFile(r *http.Request, maxSize int64) (*StreamResu
 
 	switch encoding {
 	case "gzip":
-		gr, err := gzip.NewReader(reader)
+		var gr *gzip.Reader
+		gr, err = gzip.NewReader(reader)
 		if err != nil {
 			storage.CleanupUpload(path)
 			return nil, fmt.Errorf("invalid gzip stream: %w", err)
@@ -345,7 +346,8 @@ func (s *Server) streamUploadToFile(r *http.Request, maxSize int64) (*StreamResu
 		defer gr.Close()
 		reader = gr
 	case "zstd":
-		zr, err := zstd.NewReader(reader)
+		var zr *zstd.Decoder
+		zr, err = zstd.NewReader(reader)
 		if err != nil {
 			storage.CleanupUpload(path)
 			return nil, fmt.Errorf("invalid zstd stream: %w", err)
