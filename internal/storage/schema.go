@@ -13,7 +13,8 @@ import (
 // v5: Doc-Symbol Linking (docs, doc_references, doc_modules, symbol_suffixes)
 // v6: Incremental Indexing (indexed_files, file_symbols, index_meta)
 // v7: Incremental Callgraph (callgraph table for call edge storage)
-const currentSchemaVersion = 7
+// v8: Transitive Invalidation (file_deps, rescan_queue for dependency tracking)
+const currentSchemaVersion = 8
 
 // initializeSchema creates all tables for a new database
 func (db *DB) initializeSchema() error {
@@ -85,6 +86,11 @@ func (db *DB) initializeSchema() error {
 			return err
 		}
 
+		// Create v8 Transitive Invalidation tables
+		if err := createTransitiveInvalidationTables(tx); err != nil {
+			return err
+		}
+
 		// Set initial schema version
 		if err := setSchemaVersion(tx, currentSchemaVersion); err != nil {
 			return err
@@ -152,6 +158,12 @@ func (db *DB) runMigrations() error {
 	if version < 7 {
 		if err := db.migrateToV7(); err != nil {
 			return fmt.Errorf("failed to migrate to v7: %w", err)
+		}
+	}
+
+	if version < 8 {
+		if err := db.migrateToV8(); err != nil {
+			return fmt.Errorf("failed to migrate to v8: %w", err)
 		}
 	}
 
@@ -1182,6 +1194,78 @@ func createCallgraphTable(tx *sql.Tx) error {
 	for _, idx := range indexes {
 		if _, err := tx.Exec(idx); err != nil {
 			return fmt.Errorf("failed to create callgraph index: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// ============================================================================
+// v8: Transitive Invalidation
+// ============================================================================
+
+// migrateToV8 migrates the database from v7 to v8 (Transitive Invalidation)
+func (db *DB) migrateToV8() error {
+	return db.WithTx(func(tx *sql.Tx) error {
+		db.logger.Info("Migrating database to v8 (Transitive Invalidation)", nil)
+
+		// Create new v8 transitive invalidation tables
+		if err := createTransitiveInvalidationTables(tx); err != nil {
+			return err
+		}
+
+		// Update schema version
+		if err := setSchemaVersion(tx, 8); err != nil {
+			return err
+		}
+
+		db.logger.Info("Database migrated to v8", nil)
+		return nil
+	})
+}
+
+// createTransitiveInvalidationTables creates tables for file dependency tracking
+// and rescan queue for transitive invalidation (v2)
+func createTransitiveInvalidationTables(tx *sql.Tx) error {
+	tables := []string{
+		// file_deps: tracks which files depend on which files
+		// dependent_file uses symbols defined in defining_file
+		// Only tracks internal files (not external deps like stdlib)
+		`CREATE TABLE IF NOT EXISTS file_deps (
+			dependent_file TEXT NOT NULL,  -- File that references symbols
+			defining_file  TEXT NOT NULL,  -- File that defines those symbols
+			PRIMARY KEY (dependent_file, defining_file)
+		)`,
+
+		// rescan_queue: files that need to be rescanned due to dependency changes
+		// Used for transitive invalidation in lazy/eager/deferred modes
+		`CREATE TABLE IF NOT EXISTS rescan_queue (
+			file_path   TEXT PRIMARY KEY,
+			reason      TEXT NOT NULL,      -- 'dep_change' | 'budget_exceeded' | 'manual'
+			depth       INTEGER NOT NULL,   -- BFS hop count from original change
+			enqueued_at INTEGER NOT NULL,   -- Unix timestamp
+			attempts    INTEGER NOT NULL DEFAULT 0
+		)`,
+	}
+
+	for _, stmt := range tables {
+		if _, err := tx.Exec(stmt); err != nil {
+			return fmt.Errorf("failed to create transitive invalidation table: %w", err)
+		}
+	}
+
+	// Create indexes
+	indexes := []string{
+		// Fast lookup of what depends on a changed file
+		"CREATE INDEX IF NOT EXISTS idx_file_deps_defining ON file_deps(defining_file)",
+		// Queue ordering
+		"CREATE INDEX IF NOT EXISTS idx_rescan_queue_time ON rescan_queue(enqueued_at)",
+		"CREATE INDEX IF NOT EXISTS idx_rescan_queue_depth ON rescan_queue(depth)",
+	}
+
+	for _, idx := range indexes {
+		if _, err := tx.Exec(idx); err != nil {
+			return fmt.Errorf("failed to create transitive invalidation index: %w", err)
 		}
 	}
 

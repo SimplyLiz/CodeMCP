@@ -191,13 +191,17 @@ Now Claude can answer questions like:
 - **Rename Awareness** — Suggest new names when documented symbols are renamed
 - **CI Enforcement** — `--fail-under` flag for documentation coverage thresholds
 
-### Incremental Indexing (v7.4)
+### Incremental Indexing (v7.3)
 - **O(changed files)** — Index updates in seconds instead of full reindex (Go only)
 - **Git-based Detection** — Uses `git diff -z` for accurate change tracking with rename support
 - **Accuracy Guarantees** — Forward references always accurate; reverse refs may be stale
 - **Automatic Fallback** — Falls back to full reindex when >50% files changed or schema mismatch
 - **Index State Tracking** — Shows "partial" vs "full" state with staleness warnings
 - **Incremental Callgraph** — Outgoing calls from changed files always accurate; callers may be stale
+- **Transitive Invalidation (v2)** — File dependency tracking with automatic rescan queue:
+  - Four modes: `none`, `lazy` (default), `eager`, `deferred`
+  - Budget-limited draining (max 200 files, 1500ms per drain)
+  - Cascade depth control for BFS traversal
 
 ## MCP Tools (64 Available)
 

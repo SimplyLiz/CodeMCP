@@ -10,7 +10,7 @@ import (
 )
 
 // CurrentSchemaVersion should match storage.currentSchemaVersion
-const CurrentSchemaVersion = 7
+const CurrentSchemaVersion = 8
 
 // IncrementalIndexer orchestrates incremental index updates
 type IncrementalIndexer struct {
@@ -204,6 +204,14 @@ func FormatStats(stats *DeltaStats, state IndexState) string {
 		commitInfo += " (+dirty)"
 	}
 
+	// Determine accuracy based on state
+	reverseAccuracy := "may be stale"
+	callersAccuracy := "may be stale"
+	if state.State == "full" && state.PendingRescans == 0 {
+		reverseAccuracy = "accurate"
+		callersAccuracy = "accurate"
+	}
+
 	result := fmt.Sprintf(`
 Incremental Index Complete
 --------------------------
@@ -213,15 +221,6 @@ Refs:    %d updated
 Calls:   %d edges updated
 Time:    %v
 Commit:  %s
-
-Accuracy:
-  OK  Go to definition     - accurate
-  OK  Find refs (forward)  - accurate
-  !!  Find refs (reverse)  - may be stale
-  OK  Callees (outgoing)   - accurate
-  !!  Callers (incoming)   - may be stale
-
-Run 'ckb index --force' for full accuracy (%d files since last full)
 `,
 		stats.FilesChanged, stats.FilesAdded, stats.FilesDeleted,
 		stats.SymbolsAdded, stats.SymbolsRemoved,
@@ -229,8 +228,35 @@ Run 'ckb index --force' for full accuracy (%d files since last full)
 		stats.CallsAdded,
 		stats.Duration.Round(time.Millisecond),
 		commitInfo,
+	)
+
+	// Add pending rescans info if any
+	if state.PendingRescans > 0 {
+		result += fmt.Sprintf("Pending: %d files queued for rescan\n", state.PendingRescans)
+	}
+
+	result += fmt.Sprintf(`
+Accuracy:
+  OK  Go to definition     - accurate
+  OK  Find refs (forward)  - accurate
+  %s  Find refs (reverse)  - %s
+  OK  Callees (outgoing)   - accurate
+  %s  Callers (incoming)   - %s
+
+Run 'ckb index --force' for full accuracy (%d files since last full)
+`,
+		formatAccuracyMarker(reverseAccuracy), reverseAccuracy,
+		formatAccuracyMarker(callersAccuracy), callersAccuracy,
 		state.FilesSinceFull,
 	)
 
 	return result
+}
+
+// formatAccuracyMarker returns OK or !! based on accuracy string
+func formatAccuracyMarker(accuracy string) string {
+	if accuracy == "accurate" {
+		return "OK"
+	}
+	return "!!"
 }

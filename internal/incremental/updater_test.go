@@ -499,3 +499,359 @@ func TestApplyDelta_MultipleFiles(t *testing.T) {
 		}
 	}
 }
+
+// ============================================================================
+// v2 Transitive Invalidation Tests
+// ============================================================================
+
+func TestApplyDeltaWithInvalidation(t *testing.T) {
+	updater, store, db, cleanup := setupTestUpdater(t)
+	defer cleanup()
+
+	// Setup initial files with dependencies
+	// a.go references symbols in b.go
+	initialDelta := &SymbolDelta{
+		FileDeltas: []FileDelta{
+			{
+				Path:        "b.go",
+				ChangeType:  ChangeAdded,
+				Hash:        "hash_b",
+				SymbolCount: 1,
+				Symbols: []Symbol{
+					{ID: "pkg.B", Name: "B", Kind: "function", FilePath: "b.go"},
+				},
+			},
+			{
+				Path:        "a.go",
+				ChangeType:  ChangeAdded,
+				Hash:        "hash_a",
+				SymbolCount: 1,
+				Symbols: []Symbol{
+					{ID: "pkg.A", Name: "A", Kind: "function", FilePath: "a.go"},
+				},
+				Refs: []Reference{
+					{FromFile: "a.go", FromLine: 10, ToSymbolID: "pkg.B", Kind: "reference"},
+				},
+			},
+		},
+	}
+
+	if err := updater.ApplyDelta(initialDelta); err != nil {
+		t.Fatalf("Initial ApplyDelta failed: %v", err)
+	}
+
+	// Now modify b.go - should trigger invalidation of a.go
+	modifyDelta := &SymbolDelta{
+		FileDeltas: []FileDelta{
+			{
+				Path:        "b.go",
+				ChangeType:  ChangeModified,
+				Hash:        "hash_b_modified",
+				SymbolCount: 2,
+				Symbols: []Symbol{
+					{ID: "pkg.B", Name: "B", Kind: "function", FilePath: "b.go"},
+					{ID: "pkg.B2", Name: "B2", Kind: "function", FilePath: "b.go"},
+				},
+			},
+		},
+	}
+
+	enqueued, err := updater.ApplyDeltaWithInvalidation(modifyDelta)
+	if err != nil {
+		t.Fatalf("ApplyDeltaWithInvalidation failed: %v", err)
+	}
+
+	// a.go depends on b.go, so it should be enqueued
+	if enqueued != 1 {
+		t.Errorf("Expected 1 file enqueued for invalidation, got %d", enqueued)
+	}
+
+	// Verify file was modified
+	state, _ := store.GetFileState("b.go")
+	if state.Hash != "hash_b_modified" {
+		t.Errorf("Expected hash 'hash_b_modified', got %q", state.Hash)
+	}
+
+	// Verify rescan queue has a.go
+	var count int
+	row := db.QueryRow(`SELECT COUNT(*) FROM rescan_queue WHERE file_path = 'a.go'`)
+	row.Scan(&count)
+	if count != 1 {
+		t.Errorf("Expected a.go in rescan queue, count=%d", count)
+	}
+}
+
+func TestApplyDeltaWithInvalidation_DeletedFile(t *testing.T) {
+	updater, _, _, cleanup := setupTestUpdater(t)
+	defer cleanup()
+
+	// Add a file first
+	addDelta := &SymbolDelta{
+		FileDeltas: []FileDelta{
+			{
+				Path:        "todelete.go",
+				ChangeType:  ChangeAdded,
+				Hash:        "hash",
+				SymbolCount: 1,
+				Symbols: []Symbol{
+					{ID: "pkg.ToDelete", Name: "ToDelete", FilePath: "todelete.go"},
+				},
+			},
+		},
+	}
+	if err := updater.ApplyDelta(addDelta); err != nil {
+		t.Fatalf("Initial ApplyDelta failed: %v", err)
+	}
+
+	// Delete it - deleted files should not trigger invalidation
+	deleteDelta := &SymbolDelta{
+		FileDeltas: []FileDelta{
+			{
+				Path:       "todelete.go",
+				ChangeType: ChangeDeleted,
+			},
+		},
+	}
+
+	enqueued, err := updater.ApplyDeltaWithInvalidation(deleteDelta)
+	if err != nil {
+		t.Fatalf("ApplyDeltaWithInvalidation failed: %v", err)
+	}
+
+	// Deleted files should not be included in invalidation
+	if enqueued != 0 {
+		t.Errorf("Expected 0 enqueued for deleted file, got %d", enqueued)
+	}
+}
+
+func TestSetConfig(t *testing.T) {
+	updater, _, _, cleanup := setupTestUpdater(t)
+	defer cleanup()
+
+	// Get original dep tracker
+	origTracker := updater.GetDependencyTracker()
+	if origTracker == nil {
+		t.Fatal("Expected non-nil dep tracker")
+	}
+
+	// Create new config with different settings
+	newConfig := &Config{
+		IndexPath:            ".custom/index.scip",
+		IncrementalThreshold: 75,
+		Transitive: TransitiveConfig{
+			Enabled:        true,
+			Mode:           InvalidationEager,
+			Depth:          5,
+			MaxRescanFiles: 500,
+			MaxRescanMs:    3000,
+		},
+	}
+
+	updater.SetConfig(newConfig)
+
+	// Verify config was updated
+	newTracker := updater.GetDependencyTracker()
+	if newTracker == origTracker {
+		t.Error("Expected new dep tracker instance after SetConfig")
+	}
+}
+
+func TestApplyDelta_FileDeps(t *testing.T) {
+	updater, _, db, cleanup := setupTestUpdater(t)
+	defer cleanup()
+
+	// Add files with references
+	delta := &SymbolDelta{
+		FileDeltas: []FileDelta{
+			{
+				Path:        "utils.go",
+				ChangeType:  ChangeAdded,
+				Hash:        "hash_utils",
+				SymbolCount: 2,
+				Symbols: []Symbol{
+					{ID: "pkg.Helper", Name: "Helper", Kind: "function", FilePath: "utils.go"},
+					{ID: "pkg.Config", Name: "Config", Kind: "type", FilePath: "utils.go"},
+				},
+			},
+			{
+				Path:        "main.go",
+				ChangeType:  ChangeAdded,
+				Hash:        "hash_main",
+				SymbolCount: 1,
+				Symbols: []Symbol{
+					{ID: "pkg.Main", Name: "Main", Kind: "function", FilePath: "main.go"},
+				},
+				Refs: []Reference{
+					{FromFile: "main.go", FromLine: 5, ToSymbolID: "pkg.Helper", Kind: "reference"},
+					{FromFile: "main.go", FromLine: 7, ToSymbolID: "pkg.Config", Kind: "reference"},
+				},
+			},
+		},
+	}
+
+	if err := updater.ApplyDelta(delta); err != nil {
+		t.Fatalf("ApplyDelta failed: %v", err)
+	}
+
+	// Verify file_deps was populated
+	var count int
+	row := db.QueryRow(`SELECT COUNT(*) FROM file_deps WHERE dependent_file = 'main.go' AND defining_file = 'utils.go'`)
+	if err := row.Scan(&count); err != nil {
+		t.Fatalf("Query failed: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("Expected 1 file_dep entry, got %d", count)
+	}
+}
+
+func TestApplyDelta_DeleteClearsFileDeps(t *testing.T) {
+	updater, _, db, cleanup := setupTestUpdater(t)
+	defer cleanup()
+
+	// Add files with dependencies
+	delta := &SymbolDelta{
+		FileDeltas: []FileDelta{
+			{
+				Path:        "lib.go",
+				ChangeType:  ChangeAdded,
+				Hash:        "hash_lib",
+				SymbolCount: 1,
+				Symbols: []Symbol{
+					{ID: "pkg.Lib", Name: "Lib", Kind: "function", FilePath: "lib.go"},
+				},
+			},
+			{
+				Path:        "consumer.go",
+				ChangeType:  ChangeAdded,
+				Hash:        "hash_consumer",
+				SymbolCount: 1,
+				Symbols: []Symbol{
+					{ID: "pkg.Consumer", Name: "Consumer", Kind: "function", FilePath: "consumer.go"},
+				},
+				Refs: []Reference{
+					{FromFile: "consumer.go", FromLine: 10, ToSymbolID: "pkg.Lib", Kind: "reference"},
+				},
+			},
+		},
+	}
+	if err := updater.ApplyDelta(delta); err != nil {
+		t.Fatalf("Initial ApplyDelta failed: %v", err)
+	}
+
+	// Verify dep exists
+	var count int
+	row := db.QueryRow(`SELECT COUNT(*) FROM file_deps WHERE dependent_file = 'consumer.go'`)
+	row.Scan(&count)
+	if count != 1 {
+		t.Fatalf("Expected 1 dep before delete, got %d", count)
+	}
+
+	// Delete consumer.go
+	deleteDelta := &SymbolDelta{
+		FileDeltas: []FileDelta{
+			{
+				Path:       "consumer.go",
+				ChangeType: ChangeDeleted,
+			},
+		},
+	}
+	if err := updater.ApplyDelta(deleteDelta); err != nil {
+		t.Fatalf("Delete ApplyDelta failed: %v", err)
+	}
+
+	// Verify dep was removed
+	row = db.QueryRow(`SELECT COUNT(*) FROM file_deps WHERE dependent_file = 'consumer.go'`)
+	row.Scan(&count)
+	if count != 0 {
+		t.Errorf("Expected 0 deps after delete, got %d", count)
+	}
+}
+
+func TestApplyDelta_CallEdges(t *testing.T) {
+	updater, _, db, cleanup := setupTestUpdater(t)
+	defer cleanup()
+
+	// Add file with call edges
+	delta := &SymbolDelta{
+		FileDeltas: []FileDelta{
+			{
+				Path:        "caller.go",
+				ChangeType:  ChangeAdded,
+				Hash:        "hash",
+				SymbolCount: 1,
+				Symbols: []Symbol{
+					{ID: "pkg.Caller", Name: "Caller", Kind: "function", FilePath: "caller.go"},
+				},
+				CallEdges: []CallEdge{
+					{CallerID: "pkg.Caller", CallerFile: "caller.go", CalleeID: "fmt.Println", Line: 5, Column: 2},
+					{CallerID: "pkg.Caller", CallerFile: "caller.go", CalleeID: "os.Exit", Line: 6, Column: 2},
+				},
+			},
+		},
+	}
+
+	if err := updater.ApplyDelta(delta); err != nil {
+		t.Fatalf("ApplyDelta failed: %v", err)
+	}
+
+	// Verify call edges were inserted
+	var count int
+	row := db.QueryRow(`SELECT COUNT(*) FROM callgraph WHERE caller_file = 'caller.go'`)
+	row.Scan(&count)
+	if count != 2 {
+		t.Errorf("Expected 2 call edges, got %d", count)
+	}
+}
+
+func TestApplyDelta_CallEdgesWithNullCaller(t *testing.T) {
+	updater, _, db, cleanup := setupTestUpdater(t)
+	defer cleanup()
+
+	// Add file with top-level call (no caller ID)
+	delta := &SymbolDelta{
+		FileDeltas: []FileDelta{
+			{
+				Path:        "init.go",
+				ChangeType:  ChangeAdded,
+				Hash:        "hash",
+				SymbolCount: 0,
+				Symbols:     []Symbol{},
+				CallEdges: []CallEdge{
+					{CallerID: "", CallerFile: "init.go", CalleeID: "pkg.Init", Line: 3, Column: 1},
+				},
+			},
+		},
+	}
+
+	if err := updater.ApplyDelta(delta); err != nil {
+		t.Fatalf("ApplyDelta failed: %v", err)
+	}
+
+	// Verify call edge with NULL caller_id was inserted
+	var count int
+	row := db.QueryRow(`SELECT COUNT(*) FROM callgraph WHERE caller_file = 'init.go' AND caller_id IS NULL`)
+	row.Scan(&count)
+	if count != 1 {
+		t.Errorf("Expected 1 call edge with NULL caller_id, got %d", count)
+	}
+}
+
+func TestGetDependencyTracker(t *testing.T) {
+	updater, _, _, cleanup := setupTestUpdater(t)
+	defer cleanup()
+
+	tracker := updater.GetDependencyTracker()
+	if tracker == nil {
+		t.Fatal("Expected non-nil dependency tracker")
+	}
+
+	// Verify tracker is functional
+	if err := tracker.EnqueueRescan("test.go", RescanDepChange, 1); err != nil {
+		t.Fatalf("EnqueueRescan via tracker failed: %v", err)
+	}
+
+	count := tracker.GetPendingRescanCount()
+	if count != 1 {
+		t.Errorf("Expected 1 pending rescan, got %d", count)
+	}
+}
