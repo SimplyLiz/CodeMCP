@@ -485,18 +485,30 @@ Add to `opencode.json` in project root:
 <details>
 <summary><strong>Claude Desktop</strong></summary>
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+Claude Desktop doesn't have a project context, so you must specify the repository path.
+
+**Automatic setup** (recommended):
+```bash
+cd /path/to/your/repo
+ckb setup --tool=claude-desktop
+```
+
+**Manual configuration** — add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 ```json
 {
   "mcpServers": {
     "ckb": {
       "command": "npx",
-      "args": ["@tastehub/ckb", "mcp"],
-      "cwd": "/path/to/your/repo"
+      "args": ["-y", "@tastehub/ckb", "mcp"],
+      "env": {
+        "CKB_REPO": "/path/to/your/repo"
+      }
     }
   }
 }
 ```
+
+The `CKB_REPO` environment variable tells CKB which repository to analyze. Claude Desktop can only work with one repository at a time.
 
 </details>
 
