@@ -127,6 +127,7 @@ jobs:
 
               total = len(rows)
               oks = [r for r in rows if r["verdict"] == "OK"]
+              passed = len(oks) + len(goods)
 
               # Headline with breakdown
               parts = []
@@ -134,17 +135,16 @@ jobs:
                   parts.append(f"{len(fails)} failed")
               if warns:
                   parts.append(f"{len(warns)} regressed")
+              parts.append(f"{passed} passed")
               if goods:
-                  parts.append(f"{len(goods)} improved")
-              if oks:
-                  parts.append(f"{len(oks)} unchanged")
+                  parts.append(f"📉 {len(goods)} improved")
 
               if fails:
-                  print(f"## NFR Budget ❌ {' · '.join(parts)}\n")
+                  print(f"## Response Size ❌ {' · '.join(parts)}\n")
               elif warns:
-                  print(f"## NFR Budget ⚠️ {' · '.join(parts)}\n")
+                  print(f"## Response Size ⚠️ {' · '.join(parts)}\n")
               else:
-                  print(f"## NFR Budget ✅ {' · '.join(parts)}\n")
+                  print(f"## Response Size ✅ {' · '.join(parts)}\n")
 
               # Key metrics
               if worst_reg:
