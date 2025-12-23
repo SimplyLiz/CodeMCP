@@ -126,13 +126,25 @@ jobs:
               hotspot_count = sum(1 for r in rows if r["budget_pct"] >= 90)
 
               total = len(rows)
-              passed = total - len(fails)
+              oks = [r for r in rows if r["verdict"] == "OK"]
 
-              # Headline
+              # Headline with breakdown
+              parts = []
               if fails:
-                  print(f"## NFR Budget ❌ {len(fails)} failed\n")
+                  parts.append(f"{len(fails)} failed")
+              if warns:
+                  parts.append(f"{len(warns)} regressed")
+              if goods:
+                  parts.append(f"{len(goods)} improved")
+              if oks:
+                  parts.append(f"{len(oks)} unchanged")
+
+              if fails:
+                  print(f"## NFR Budget ❌ {' · '.join(parts)}\n")
+              elif warns:
+                  print(f"## NFR Budget ⚠️ {' · '.join(parts)}\n")
               else:
-                  print(f"## NFR Budget ✅ {passed} passed\n")
+                  print(f"## NFR Budget ✅ {' · '.join(parts)}\n")
 
               # Key metrics
               if worst_reg:
