@@ -53,8 +53,8 @@ jobs:
 
           # Extract risk score if available
           if [ -f pr-analysis.json ]; then
-            RISK=$(jq -r '.riskScore // "unknown"' pr-analysis.json) || RISK="unknown"
-            echo "risk_score=$RISK" >> $GITHUB_OUTPUT
+            RISK=$(jq -r '.riskAssessment.level // "unknown"' pr-analysis.json) || RISK="unknown"
+            echo "risk_level=$RISK" >> $GITHUB_OUTPUT
           fi
 
       - name: Comment on PR
@@ -67,25 +67,34 @@ jobs:
             let analysis = 'Analysis not available';
             try {
               const raw = fs.readFileSync('pr-analysis.json', 'utf8');
-              // Try to parse as JSON, fall back to raw text
               try {
                 const data = JSON.parse(raw);
 
-                // Format affected modules
-                const modules = data.affectedModules || [];
+                // Risk assessment
+                const risk = data.riskAssessment || {};
+                const riskLevel = risk.level ? risk.level.toUpperCase() : 'N/A';
+                const riskScore = risk.score ? risk.score.toFixed(1) : 'N/A';
+                const riskFactors = (risk.factors || []).map(f => '  - ' + f).join('\n') || '  None';
+
+                // Affected modules (top 10 by risk)
+                const modules = (data.modulesAffected || [])
+                  .filter(m => m.riskLevel === 'high' || m.riskLevel === 'medium')
+                  .slice(0, 10);
                 const moduleList = modules.length > 0
-                  ? modules.map(m => '- `' + m + '`').join('\n')
-                  : 'None detected';
+                  ? modules.map(m => '- `' + m.moduleId + '` (' + m.filesChanged + ' files, ' + m.riskLevel + ')').join('\n')
+                  : 'None at elevated risk';
 
-                // Format suggested reviewers
-                const reviewers = data.suggestedReviewers || [];
-                const reviewerList = reviewers.length > 0
-                  ? reviewers.map(r => '- @' + r).join('\n')
-                  : 'None suggested';
+                // Summary stats
+                const summary = data.summary || {};
+                const stats = '**Files:** ' + (summary.totalFiles || 0) +
+                  ' | **Additions:** +' + (summary.totalAdditions || 0) +
+                  ' | **Deletions:** -' + (summary.totalDeletions || 0) +
+                  ' | **Hotspots:** ' + (summary.hotspotsTouched || 0);
 
-                analysis = '**Risk Score:** ' + (data.riskScore || 'N/A') + '\n\n' +
-                  '**Affected Modules:**\n' + moduleList + '\n\n' +
-                  '**Suggested Reviewers:**\n' + reviewerList;
+                analysis = '**Risk Level:** ' + riskLevel + ' (score: ' + riskScore + ')\n\n' +
+                  stats + '\n\n' +
+                  '**Risk Factors:**\n' + riskFactors + '\n\n' +
+                  '**Modules at Risk:**\n' + moduleList;
               } catch {
                 analysis = '```\n' + raw.slice(0, 2000) + '\n```';
               }

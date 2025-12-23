@@ -44,41 +44,8 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
-      - name: Run tests with coverage
-        run: |
-          go test -v -race -coverprofile=coverage.out ./...
-          go tool cover -func=coverage.out -o coverage.txt
-
-      - name: Coverage quality gate
-        run: |
-          COVERAGE=$(grep total coverage.txt | awk '{print $3}' | sed 's/%//')
-          THRESHOLD=50
-          echo "Coverage: ${COVERAGE}%"
-
-          if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
-            echo "::error::Coverage ${COVERAGE}% is below threshold ${THRESHOLD}%"
-            exit 1
-          fi
-
-          # Job summary
-          echo "## 📊 Test Coverage: ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "<details>" >> $GITHUB_STEP_SUMMARY
-          echo "<summary>Coverage by package</summary>" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          head -50 coverage.txt >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "</details>" >> $GITHUB_STEP_SUMMARY
-
-      - name: Upload coverage
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage
-          path: |
-            coverage.out
-            coverage.txt
-          retention-days: 7
+      - name: Run tests
+        run: go test -v -race ./...
 
   tidycheck:
     name: Go Mod Tidy

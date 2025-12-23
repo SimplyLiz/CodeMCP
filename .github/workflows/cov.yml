@@ -1,0 +1,134 @@
+name: Coverage
+
+on:
+  pull_request:
+    branches: [develop, main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  coverage:
+    name: Test Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Run tests with coverage
+        id: test
+        run: |
+          set +e
+          go test -v -race -coverprofile=coverage.out ./... 2>&1 | tee test-output.txt
+          TEST_EXIT=${PIPESTATUS[0]}
+          set -e
+
+          go tool cover -func=coverage.out -o coverage.txt
+
+          COVERAGE=$(grep total coverage.txt | awk '{print $3}' | sed 's/%//')
+          THRESHOLD=50
+
+          echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
+          echo "threshold=$THRESHOLD" >> $GITHUB_OUTPUT
+          echo "exit_code=$TEST_EXIT" >> $GITHUB_OUTPUT
+
+          # Check threshold
+          if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
+            echo "below_threshold=true" >> $GITHUB_OUTPUT
+          else
+            echo "below_threshold=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Job summary
+          echo "## 📊 Test Coverage: ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "<details>" >> $GITHUB_STEP_SUMMARY
+          echo "<summary>Coverage by package</summary>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          head -50 coverage.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "</details>" >> $GITHUB_STEP_SUMMARY
+
+      - name: Comment on PR
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            const coverage = '${{ steps.test.outputs.coverage }}';
+            const threshold = '${{ steps.test.outputs.threshold }}';
+            const belowThreshold = '${{ steps.test.outputs.below_threshold }}' === 'true';
+            const testExit = '${{ steps.test.outputs.exit_code }}';
+
+            const passed = testExit === '0' && !belowThreshold;
+            const emoji = passed ? '✅' : '❌';
+
+            let status = coverage + '%';
+            if (belowThreshold) {
+              status += ' (below ' + threshold + '% threshold)';
+            }
+
+            // Read package coverage
+            let packageCoverage = '';
+            try {
+              const covTxt = fs.readFileSync('coverage.txt', 'utf8');
+              const lines = covTxt.split('\n').slice(0, 20);
+              packageCoverage = '\n\n<details>\n<summary>Package breakdown</summary>\n\n```\n' + lines.join('\n') + '\n```\n</details>';
+            } catch (e) {}
+
+            const body = '## Test Coverage ' + emoji + ' ' + status + packageCoverage;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes('Test Coverage')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
+
+      - name: Coverage quality gate
+        if: steps.test.outputs.below_threshold == 'true'
+        run: |
+          echo "::error::Coverage ${{ steps.test.outputs.coverage }}% is below threshold ${{ steps.test.outputs.threshold }}%"
+          exit 1
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            coverage.out
+            coverage.txt
+            test-output.txt
+          retention-days: 7
