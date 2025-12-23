@@ -1,7 +1,10 @@
 package mcp
 
 import (
+	"encoding/json"
 	"fmt"
+
+	"ckb/internal/envelope"
 )
 
 // handleMessage processes an incoming MCP message and returns a response
@@ -168,14 +171,30 @@ func (s *MCPServer) handleCallTool(params map[string]interface{}) (interface{}, 
 
 	result, err := handler(toolParams)
 	if err != nil {
-		return nil, fmt.Errorf("tool execution failed: %w", err)
+		// Wrap error in envelope format
+		errResp := envelope.New().Data(nil).Error(err).Build()
+		jsonBytes, _ := json.Marshal(errResp)
+		return map[string]interface{}{
+			"content": []map[string]interface{}{
+				{
+					"type": "text",
+					"text": string(jsonBytes),
+				},
+			},
+		}, nil
+	}
+
+	// Marshal the envelope response to JSON
+	jsonBytes, err := json.Marshal(result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal response: %w", err)
 	}
 
 	return map[string]interface{}{
 		"content": []map[string]interface{}{
 			{
 				"type": "text",
-				"text": fmt.Sprintf("%v", result),
+				"text": string(jsonBytes),
 			},
 		},
 	}, nil

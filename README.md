@@ -189,6 +189,13 @@ Now Claude can answer questions like:
 - **Rename Awareness** — Suggest new names when documented symbols are renamed
 - **CI Enforcement** — `--fail-under` flag for documentation coverage thresholds
 
+### Standardized Response Envelope (v7.4)
+- **Unified Metadata** — All 74 MCP tool responses now include structured metadata
+- **Confidence Tiers** — High/Medium/Low/Speculative tiers based on data freshness and source
+- **Provenance Tracking** — Know which backends (SCIP, Git, LSP) contributed to results
+- **Truncation Awareness** — Metadata shows when results are truncated and total counts
+- **Suggested Next Calls** — Structured drilldown suggestions for follow-up queries
+
 ### Production Hardening (v7.3)
 - **Delta Artifacts** — CI-generated diffs for O(delta) ingestion instead of O(N)
 - **FTS5 Search** — SQLite FTS5 for instant search (replaces LIKE scans)

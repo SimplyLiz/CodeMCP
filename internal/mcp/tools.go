@@ -1,5 +1,7 @@
 package mcp
 
+import "ckb/internal/envelope"
+
 // Tool represents a CKB tool exposed via MCP
 type Tool struct {
 	Name        string                 `json:"name"`
@@ -7,8 +9,8 @@ type Tool struct {
 	InputSchema map[string]interface{} `json:"inputSchema"`
 }
 
-// ToolHandler is a function that handles a tool call
-type ToolHandler func(params map[string]interface{}) (interface{}, error)
+// ToolHandler is a function that handles a tool call and returns an envelope response.
+type ToolHandler func(params map[string]interface{}) (*envelope.Response, error)
 
 // GetToolDefinitions returns all tool definitions
 func (s *MCPServer) GetToolDefinitions() []Tool {

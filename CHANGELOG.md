@@ -6,6 +6,46 @@ All notable changes to CKB will be documented in this file.
 
 ### Added
 
+#### Standardized Response Envelope
+All 74 MCP tool responses now include structured metadata in a consistent envelope format:
+
+**Envelope Schema:**
+```json
+{
+  "schemaVersion": "1.0",
+  "data": { },
+  "meta": {
+    "confidence": { "score": 0.85, "tier": "medium", "reasons": [] },
+    "provenance": { "backends": ["scip", "git"], "repoStateId": "..." },
+    "freshness": { "indexAge": { "commitsBehind": 3, "staleReason": "behind-head" } },
+    "truncation": { "isTruncated": true, "shown": 10, "total": 47, "reason": "max-symbols" }
+  },
+  "warnings": [],
+  "suggestedNextCalls": [{ "tool": "findReferences", "params": {...}, "reason": "..." }]
+}
+```
+
+**Key Features:**
+- **Confidence Tiers** — Results scored as high (≥0.95), medium (0.70-0.94), low (0.30-0.69), or speculative (<0.30)
+- **Provenance Tracking** — See which backends (SCIP, LSP, git) contributed to results
+- **Freshness Info** — Know how stale your index is (commits behind, uncommitted changes)
+- **Truncation Metadata** — See how many results were trimmed and why
+- **Suggested Next Calls** — AI-friendly drilldown suggestions as structured tool calls
+- **Cross-repo Marking** — Federation queries automatically marked as speculative tier
+
+**Files Added:**
+- `internal/envelope/envelope.go` — Core types (Response, Meta, Confidence, etc.)
+- `internal/envelope/builder.go` — Fluent builder API
+- `internal/envelope/confidence.go` — Score to tier mapping
+- `internal/envelope/envelope_test.go` — Comprehensive tests
+- `internal/mcp/tool_helpers.go` — Convenience wrappers for tool implementations
+- `internal/mcp/tool_helpers_test.go` — Tool helper tests
+
+**Files Changed:**
+- `internal/mcp/tools.go` — Updated ToolHandler signature
+- `internal/mcp/handler.go` — Updated handleCallTool for envelope format
+- All `internal/mcp/tool_impls*.go` files — Refactored to return envelope responses
+
 #### npm Update Notifications
 Automatic update checking for npm installations:
 

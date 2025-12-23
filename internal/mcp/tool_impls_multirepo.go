@@ -5,13 +5,14 @@ import (
 	"time"
 
 	"ckb/internal/config"
+	"ckb/internal/envelope"
 	"ckb/internal/query"
 	"ckb/internal/repos"
 	"ckb/internal/storage"
 )
 
 // toolListRepos lists all registered repositories
-func (s *MCPServer) toolListRepos(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolListRepos(params map[string]interface{}) (*envelope.Response, error) {
 	s.logger.Debug("Executing listRepos", nil)
 
 	if !s.IsMultiRepoMode() {
@@ -55,15 +56,15 @@ func (s *MCPServer) toolListRepos(params map[string]interface{}) (interface{}, e
 		})
 	}
 
-	return map[string]interface{}{
+	return OperationalResponse(map[string]interface{}{
 		"repos":      repoList,
 		"activeRepo": activeRepo,
 		"default":    registry.Default,
-	}, nil
+	}), nil
 }
 
 // toolSwitchRepo switches to a different repository
-func (s *MCPServer) toolSwitchRepo(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolSwitchRepo(params map[string]interface{}) (*envelope.Response, error) {
 	s.logger.Debug("Executing switchRepo", map[string]interface{}{
 		"params": params,
 	})
@@ -124,11 +125,11 @@ func (s *MCPServer) toolSwitchRepo(params map[string]interface{}) (interface{}, 
 			"repo": name,
 			"path": entry.Path,
 		})
-		return map[string]interface{}{
+		return OperationalResponse(map[string]interface{}{
 			"success":    true,
 			"activeRepo": name,
 			"path":       entry.Path,
-		}, nil
+		}), nil
 	}
 
 	// Need to create new engine - check if we're at max
@@ -161,15 +162,15 @@ func (s *MCPServer) toolSwitchRepo(params map[string]interface{}) (interface{}, 
 		"totalLoaded": len(s.engines),
 	})
 
-	return map[string]interface{}{
+	return OperationalResponse(map[string]interface{}{
 		"success":    true,
 		"activeRepo": name,
 		"path":       entry.Path,
-	}, nil
+	}), nil
 }
 
 // toolGetActiveRepo returns information about the currently active repository
-func (s *MCPServer) toolGetActiveRepo(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolGetActiveRepo(params map[string]interface{}) (*envelope.Response, error) {
 	s.logger.Debug("Executing getActiveRepo", nil)
 
 	if !s.IsMultiRepoMode() {
@@ -182,11 +183,11 @@ func (s *MCPServer) toolGetActiveRepo(params map[string]interface{}) (interface{
 	name, path := s.GetActiveRepo()
 
 	if name == "" {
-		return map[string]interface{}{
+		return OperationalResponse(map[string]interface{}{
 			"name":  nil,
 			"state": "none",
 			"error": "No active repository. Call switchRepo first or set a default.",
-		}, nil
+		}), nil
 	}
 
 	registry, err := repos.LoadRegistry()
@@ -196,11 +197,11 @@ func (s *MCPServer) toolGetActiveRepo(params map[string]interface{}) (interface{
 
 	state := registry.ValidateState(name)
 
-	return map[string]interface{}{
+	return OperationalResponse(map[string]interface{}{
 		"name":  name,
 		"path":  path,
 		"state": string(state),
-	}, nil
+	}), nil
 }
 
 // evictLRULocked evicts the least recently used engine (must be called with mu held)
