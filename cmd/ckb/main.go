@@ -33,7 +33,7 @@ func main() {
 		select {
 		case info := <-updateCh:
 			if info != nil {
-				os.Stderr.WriteString(info.FormatUpdateMessage())
+				_, _ = os.Stderr.WriteString(info.FormatUpdateMessage())
 			}
 		default:
 			// Don't block if check hasn't completed yet

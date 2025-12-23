@@ -2,7 +2,6 @@ package query
 
 import (
 	"context"
-	"math"
 	"sort"
 	"strings"
 
@@ -13,11 +12,11 @@ import (
 
 // FusionWeights controls how different signals are combined in ranking.
 type FusionWeights struct {
-	FTS      float64 `json:"fts"`      // Full-text search score
-	PPR      float64 `json:"ppr"`      // Personalized PageRank score
-	Hotspot  float64 `json:"hotspot"`  // Hotspot/churn score
-	Recency  float64 `json:"recency"`  // Recent activity score
-	Exact    float64 `json:"exact"`    // Exact match bonus
+	FTS     float64 `json:"fts"`     // Full-text search score
+	PPR     float64 `json:"ppr"`     // Personalized PageRank score
+	Hotspot float64 `json:"hotspot"` // Hotspot/churn score
+	Recency float64 `json:"recency"` // Recent activity score
+	Exact   float64 `json:"exact"`   // Exact match bonus
 }
 
 // DefaultFusionWeights returns default weights based on research.
@@ -68,7 +67,7 @@ func NewFusionRanker(g *graph.Graph, logger *logging.Logger, config FusionConfig
 // RankedResult extends SearchResultItem with fusion scores.
 type RankedResult struct {
 	SearchResultItem
-	FusionScore float64            `json:"fusionScore"`
+	FusionScore    float64            `json:"fusionScore"`
 	ScoreBreakdown map[string]float64 `json:"scoreBreakdown,omitempty"`
 }
 
@@ -249,8 +248,9 @@ func RerankWithPPR(ctx context.Context, g *graph.Graph, results []SearchResultIt
 	opts := graph.DefaultPPROptions()
 	opts.TopK = topK * 2 // Get extra for merging
 	pprOutput, err := g.PPR(ctx, seeds, opts)
-	if err != nil {
-		return results, nil // Fall back to original
+	if err != nil || pprOutput == nil {
+		// PPR failed, fall back to original results (graceful degradation)
+		return results, nil //nolint:nilerr // intentional fallback
 	}
 
 	// Build PPR score map
@@ -291,11 +291,6 @@ func RerankWithPPR(ctx context.Context, g *graph.Graph, results []SearchResultIt
 	}
 
 	return reranked, nil
-}
-
-// sigmoid applies sigmoid normalization.
-func sigmoid(x float64) float64 {
-	return 1.0 / (1.0 + math.Exp(-x))
 }
 
 // expandSeedsWithMethods expands seeds to include struct methods.

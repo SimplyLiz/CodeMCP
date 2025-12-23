@@ -58,8 +58,8 @@ func TestIsNewerVersion(t *testing.T) {
 
 func TestChecker_Check_DisabledByEnv(t *testing.T) {
 	// Set the disable env var
-	os.Setenv("CKB_NO_UPDATE_CHECK", "1")
-	defer os.Unsetenv("CKB_NO_UPDATE_CHECK")
+	_ = os.Setenv("CKB_NO_UPDATE_CHECK", "1")
+	defer func() { _ = os.Unsetenv("CKB_NO_UPDATE_CHECK") }()
 
 	checker := &Checker{
 		cache:     NewCache(),
@@ -86,9 +86,9 @@ func TestChecker_Check_NotNpmInstall(t *testing.T) {
 
 func TestChecker_FetchLatestVersion(t *testing.T) {
 	// Create a mock npm registry server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"version": "99.0.0"}`))
+		_, _ = w.Write([]byte(`{"version": "99.0.0"}`))
 	}))
 	defer server.Close()
 
