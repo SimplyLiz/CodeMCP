@@ -223,7 +223,9 @@ func TestGetWideResultStats(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	// Stats on empty table
-	total, _, newest, err := db.GetWideResultStats()
+	var oldest, newest *time.Time
+	var total int64
+	total, oldest, newest, err = db.GetWideResultStats()
 	if err != nil {
 		t.Fatalf("failed to get stats: %v", err)
 	}
