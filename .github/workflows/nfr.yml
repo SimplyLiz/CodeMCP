@@ -145,7 +145,7 @@ jobs:
                   reg_val = f"{len(fails)} failed, {len(warns)} regressed" if fails else f"{len(warns)} regressed"
                   print(f"**Regressions:** {reg_val}\n")
               else:
-                  print("**Regressions:** none ✓\n")
+                  print("**Regressions:** none ✅\n")
 
               # Diff block preview (top 3 each)
               preview_bad = sorted([r for r in rows if r["diff_pct"] >= 5], key=lambda r: -r["diff_pct"])[:3]
