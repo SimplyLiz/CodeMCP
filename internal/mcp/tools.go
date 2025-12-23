@@ -24,6 +24,14 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 			},
 		},
 		{
+			Name:        "getWideResultMetrics",
+			Description: "Get aggregated metrics for wide-result tools (findReferences, getCallGraph, etc). Shows truncation rates to inform Frontier mode decisions. Internal/debug tool.",
+			InputSchema: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+		},
+		{
 			Name:        "doctor",
 			Description: "Diagnose CKB configuration issues and get suggested fixes",
 			InputSchema: map[string]interface{}{
@@ -1730,6 +1738,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 // RegisterTools registers all tool handlers
 func (s *MCPServer) RegisterTools() {
 	s.tools["getStatus"] = s.toolGetStatus
+	s.tools["getWideResultMetrics"] = s.toolGetWideResultMetrics
 	s.tools["doctor"] = s.toolDoctor
 	s.tools["expandToolset"] = s.toolExpandToolset
 	s.tools["getSymbol"] = s.toolGetSymbol

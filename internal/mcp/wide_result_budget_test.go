@@ -26,20 +26,17 @@ const (
 	maxSummarizePrBytes    = 12000 // ~3000 tokens
 )
 
-// WideResultMetrics captures token-related metrics for a tool response.
-type WideResultMetrics struct {
+// testResponseMetrics captures token-related metrics for a tool response (test-local).
+type testResponseMetrics struct {
 	ToolName        string
-	TotalResults    int
-	ReturnedResults int
-	TruncatedCount  int
 	JSONBytes       int
 	EstimatedTokens int
 }
 
 // measureToolResponse measures the size of a tool response.
-func measureToolResponse(toolName string, response interface{}) WideResultMetrics {
+func measureToolResponse(toolName string, response interface{}) testResponseMetrics {
 	data, _ := json.Marshal(response)
-	return WideResultMetrics{
+	return testResponseMetrics{
 		ToolName:        toolName,
 		JSONBytes:       len(data),
 		EstimatedTokens: len(data) / 4,

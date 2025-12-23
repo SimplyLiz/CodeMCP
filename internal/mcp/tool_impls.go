@@ -257,6 +257,8 @@ func (s *MCPServer) toolGetSymbol(params map[string]interface{}) (*envelope.Resp
 
 // toolSearchSymbols implements the searchSymbols tool
 func (s *MCPServer) toolSearchSymbols(params map[string]interface{}) (*envelope.Response, error) {
+	timer := NewWideResultTimer()
+
 	queryStr, ok := params["query"].(string)
 	if !ok {
 		return nil, fmt.Errorf("missing or invalid 'query' parameter")
@@ -343,6 +345,15 @@ func (s *MCPServer) toolSearchSymbols(params map[string]interface{}) (*envelope.
 		"totalCount": searchResp.TotalCount,
 	}
 
+	// Record wide-result metrics
+	RecordWideResult(WideResultMetrics{
+		ToolName:        "searchSymbols",
+		TotalResults:    searchResp.TotalCount,
+		ReturnedResults: len(symbols),
+		TruncatedCount:  searchResp.TotalCount - len(symbols),
+		ExecutionMs:     timer.ElapsedMs(),
+	})
+
 	return NewToolResponse().
 		Data(data).
 		WithProvenance(searchResp.Provenance).
@@ -352,6 +363,8 @@ func (s *MCPServer) toolSearchSymbols(params map[string]interface{}) (*envelope.
 
 // toolFindReferences implements the findReferences tool
 func (s *MCPServer) toolFindReferences(params map[string]interface{}) (*envelope.Response, error) {
+	timer := NewWideResultTimer()
+
 	symbolId, ok := params["symbolId"].(string)
 	if !ok {
 		return nil, fmt.Errorf("missing or invalid 'symbolId' parameter")
@@ -417,6 +430,15 @@ func (s *MCPServer) toolFindReferences(params map[string]interface{}) (*envelope
 		"references": refs,
 		"totalCount": refsResp.TotalCount,
 	}
+
+	// Record wide-result metrics
+	RecordWideResult(WideResultMetrics{
+		ToolName:        "findReferences",
+		TotalResults:    refsResp.TotalCount,
+		ReturnedResults: len(refs),
+		TruncatedCount:  refsResp.TotalCount - len(refs),
+		ExecutionMs:     timer.ElapsedMs(),
+	})
 
 	return NewToolResponse().
 		Data(data).
@@ -512,6 +534,8 @@ func (s *MCPServer) toolGetArchitecture(params map[string]interface{}) (*envelop
 
 // toolAnalyzeImpact implements the analyzeImpact tool
 func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (*envelope.Response, error) {
+	timer := NewWideResultTimer()
+
 	symbolId, ok := params["symbolId"].(string)
 	if !ok {
 		return nil, fmt.Errorf("missing or invalid 'symbolId' parameter")
@@ -631,6 +655,16 @@ func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (*envelope.
 		data["observedUsage"] = observedUsage
 	}
 
+	// Record wide-result metrics
+	totalImpact := len(impactResp.DirectImpact) + len(impactResp.TransitiveImpact)
+	RecordWideResult(WideResultMetrics{
+		ToolName:        "analyzeImpact",
+		TotalResults:    totalImpact,
+		ReturnedResults: totalImpact,
+		TruncatedCount:  0, // analyzeImpact doesn't truncate currently
+		ExecutionMs:     timer.ElapsedMs(),
+	})
+
 	return NewToolResponse().
 		Data(data).
 		WithProvenance(impactResp.Provenance).
@@ -685,6 +719,8 @@ func (s *MCPServer) toolJustifySymbol(params map[string]interface{}) (*envelope.
 
 // toolGetCallGraph implements the getCallGraph tool
 func (s *MCPServer) toolGetCallGraph(params map[string]interface{}) (*envelope.Response, error) {
+	timer := NewWideResultTimer()
+
 	symbolId, ok := params["symbolId"].(string)
 	if !ok {
 		return nil, fmt.Errorf("missing or invalid 'symbolId' parameter")
@@ -715,6 +751,15 @@ func (s *MCPServer) toolGetCallGraph(params map[string]interface{}) (*envelope.R
 	if err != nil {
 		return nil, fmt.Errorf("getCallGraph failed: %w", err)
 	}
+
+	// Record wide-result metrics (nodes = callers + callees + root)
+	RecordWideResult(WideResultMetrics{
+		ToolName:        "getCallGraph",
+		TotalResults:    len(resp.Nodes),
+		ReturnedResults: len(resp.Nodes),
+		TruncatedCount:  0, // getCallGraph doesn't truncate currently
+		ExecutionMs:     timer.ElapsedMs(),
+	})
 
 	return NewToolResponse().
 		Data(resp).
@@ -892,6 +937,7 @@ func (s *MCPServer) toolSummarizeDiff(params map[string]interface{}) (*envelope.
 
 // toolGetHotspots handles the getHotspots tool call
 func (s *MCPServer) toolGetHotspots(params map[string]interface{}) (*envelope.Response, error) {
+	timer := NewWideResultTimer()
 	ctx := context.Background()
 
 	opts := query.GetHotspotsOptions{}
@@ -922,6 +968,15 @@ func (s *MCPServer) toolGetHotspots(params map[string]interface{}) (*envelope.Re
 	if err != nil {
 		return nil, fmt.Errorf("getHotspots failed: %w", err)
 	}
+
+	// Record wide-result metrics
+	RecordWideResult(WideResultMetrics{
+		ToolName:        "getHotspots",
+		TotalResults:    resp.TotalCount,
+		ReturnedResults: len(resp.Hotspots),
+		TruncatedCount:  resp.TotalCount - len(resp.Hotspots),
+		ExecutionMs:     timer.ElapsedMs(),
+	})
 
 	return NewToolResponse().
 		Data(resp).
@@ -1445,6 +1500,7 @@ func (s *MCPServer) toolCancelJob(params map[string]interface{}) (*envelope.Resp
 
 // toolSummarizePr handles the summarizePr tool call
 func (s *MCPServer) toolSummarizePr(params map[string]interface{}) (*envelope.Response, error) {
+	timer := NewWideResultTimer()
 	ctx := context.Background()
 
 	// Parse baseBranch (optional, default: "main")
@@ -1481,6 +1537,15 @@ func (s *MCPServer) toolSummarizePr(params map[string]interface{}) (*envelope.Re
 	if err != nil {
 		return nil, fmt.Errorf("summarizePr failed: %w", err)
 	}
+
+	// Record wide-result metrics
+	RecordWideResult(WideResultMetrics{
+		ToolName:        "summarizePr",
+		TotalResults:    len(resp.ChangedFiles),
+		ReturnedResults: len(resp.ChangedFiles),
+		TruncatedCount:  0, // summarizePr doesn't truncate currently
+		ExecutionMs:     timer.ElapsedMs(),
+	})
 
 	return NewToolResponse().
 		Data(resp).
@@ -1659,4 +1724,39 @@ func (s *MCPServer) toolGetFileComplexity(params map[string]interface{}) (*envel
 	}
 
 	return OperationalResponse(resp), nil
+}
+
+// toolGetWideResultMetrics returns aggregated metrics for wide-result tools.
+// This is an internal/debug tool to inform the Frontier mode decision.
+func (s *MCPServer) toolGetWideResultMetrics(params map[string]interface{}) (*envelope.Response, error) {
+	s.logger.Debug("Executing getWideResultMetrics", map[string]interface{}{
+		"params": params,
+	})
+
+	summary := GetWideResultSummary()
+
+	// Convert to list format sorted by tool name
+	tools := make([]map[string]interface{}, 0, len(summary))
+	for _, m := range summary {
+		tools = append(tools, map[string]interface{}{
+			"toolName":          m.ToolName,
+			"queryCount":        m.QueryCount,
+			"totalResults":      m.TotalResults,
+			"totalReturned":     m.TotalReturned,
+			"totalTruncated":    m.TotalTruncated,
+			"avgTruncationRate": m.AvgTruncationRate(),
+			"avgTokens":         m.AvgTokens(),
+			"avgLatencyMs":      m.AvgLatencyMs(),
+		})
+	}
+
+	// Sort by tool name for consistent output
+	sort.Slice(tools, func(i, j int) bool {
+		return tools[i]["toolName"].(string) < tools[j]["toolName"].(string)
+	})
+
+	return OperationalResponse(map[string]interface{}{
+		"tools":       tools,
+		"description": "Wide-result tool metrics for Frontier mode decision. High avgTruncationRate indicates tools that would benefit from frontierMode.",
+	}), nil
 }
