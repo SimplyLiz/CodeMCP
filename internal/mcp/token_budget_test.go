@@ -27,10 +27,10 @@ func TestToolsListTokenBudget(t *testing.T) {
 	server := NewMCPServer("test", nil, logger)
 
 	tests := []struct {
-		preset    string
-		maxBytes  int
-		minTools  int // Ensure we don't accidentally drop tools
-		maxTools  int
+		preset   string
+		maxBytes int
+		minTools int // Ensure we don't accidentally drop tools
+		maxTools int
 	}{
 		{PresetCore, maxCorePresetBytes, 12, 16},
 		{PresetReview, maxReviewPresetBytes, 17, 22},

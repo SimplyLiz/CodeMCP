@@ -16,10 +16,10 @@ const DefaultPageSize = 15
 // If we add plugins or feature flags that dynamically modify tool schemas
 // mid-session, consider adding a SnapshotId field for session-scoped validation.
 type ToolsCursorPayload struct {
-	V           int    `json:"v"`  // cursor version
-	Preset      string `json:"p"`  // active preset
-	Offset      int    `json:"o"`  // position in tool list
-	ToolsetHash string `json:"h"`  // hash of tool definitions
+	V           int    `json:"v"` // cursor version
+	Preset      string `json:"p"` // active preset
+	Offset      int    `json:"o"` // position in tool list
+	ToolsetHash string `json:"h"` // hash of tool definitions
 }
 
 // EncodeToolsCursor encodes cursor data to a URL-safe base64 string

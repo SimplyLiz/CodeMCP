@@ -220,10 +220,10 @@ func TestGetWideResultStats(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open database: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Stats on empty table
-	total, oldest, newest, err := db.GetWideResultStats()
+	total, _, newest, err := db.GetWideResultStats()
 	if err != nil {
 		t.Fatalf("failed to get stats: %v", err)
 	}
@@ -329,5 +329,5 @@ func TestSchemaV10Migration(t *testing.T) {
 		t.Errorf("expected schema version 11, got %d", version)
 	}
 
-	db.Close()
+	_ = db.Close()
 }

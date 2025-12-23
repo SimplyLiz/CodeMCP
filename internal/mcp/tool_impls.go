@@ -163,14 +163,14 @@ func (s *MCPServer) toolExpandToolset(params map[string]interface{}) (*envelope.
 	}
 
 	data := map[string]interface{}{
-		"success":    true,
-		"oldPreset":  oldPreset,
-		"newPreset":  preset,
-		"oldCount":   oldCount,
-		"newCount":   newCount,
-		"reason":     reason,
-		"message":    fmt.Sprintf("Expanded toolset from %s (%d tools) to %s (%d tools).", oldPreset, oldCount, preset, newCount),
-		"fallback":   fmt.Sprintf("If new tools don't appear automatically, restart with: ckb mcp --preset=%s", preset),
+		"success":   true,
+		"oldPreset": oldPreset,
+		"newPreset": preset,
+		"oldCount":  oldCount,
+		"newCount":  newCount,
+		"reason":    reason,
+		"message":   fmt.Sprintf("Expanded toolset from %s (%d tools) to %s (%d tools).", oldPreset, oldCount, preset, newCount),
+		"fallback":  fmt.Sprintf("If new tools don't appear automatically, restart with: ckb mcp --preset=%s", preset),
 	}
 
 	return envelope.New().Data(data).Build(), nil
@@ -1770,7 +1770,9 @@ func (s *MCPServer) toolGetWideResultMetrics(params map[string]interface{}) (*en
 
 	// Sort by tool name for consistent output
 	sort.Slice(tools, func(i, j int) bool {
-		return tools[i]["toolName"].(string) < tools[j]["toolName"].(string)
+		nameI, _ := tools[i]["toolName"].(string)
+		nameJ, _ := tools[j]["toolName"].(string)
+		return nameI < nameJ
 	})
 
 	return OperationalResponse(map[string]interface{}{

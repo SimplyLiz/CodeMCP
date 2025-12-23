@@ -12,12 +12,12 @@ import (
 )
 
 var (
-	metricsFormat  string
-	metricsDays    int
-	metricsTool    string
-	exportVersion  string
-	exportOutput   string
-	exportDays     int
+	metricsFormat string
+	metricsDays   int
+	metricsTool   string
+	exportVersion string
+	exportOutput  string
+	exportDays    int
 )
 
 var metricsCmd = &cobra.Command{
@@ -124,19 +124,19 @@ func runMetrics(cmd *cobra.Command, args []string) {
 		}
 
 		tool := ToolMetricsCLI{
-			Name:             name,
-			QueryCount:       agg.QueryCount,
-			TotalResults:     agg.TotalResults,
-			TotalReturned:    agg.TotalReturned,
-			TotalTruncated:   agg.TotalTruncated,
-			TruncationRate:   agg.AvgTruncationRate(),
-			TotalTokens:      agg.TotalTokens,
-			AvgTokens:        agg.AvgTokens(),
-			TotalBytes:       agg.TotalBytes,
-			AvgBytes:         float64(agg.TotalBytes) / float64(agg.QueryCount),
-			TotalMs:          agg.TotalMs,
-			AvgLatencyMs:     agg.AvgLatencyMs(),
-			NeedsFrontier:    agg.AvgTruncationRate() > 0.30,
+			Name:           name,
+			QueryCount:     agg.QueryCount,
+			TotalResults:   agg.TotalResults,
+			TotalReturned:  agg.TotalReturned,
+			TotalTruncated: agg.TotalTruncated,
+			TruncationRate: agg.AvgTruncationRate(),
+			TotalTokens:    agg.TotalTokens,
+			AvgTokens:      agg.AvgTokens(),
+			TotalBytes:     agg.TotalBytes,
+			AvgBytes:       float64(agg.TotalBytes) / float64(agg.QueryCount),
+			TotalMs:        agg.TotalMs,
+			AvgLatencyMs:   agg.AvgLatencyMs(),
+			NeedsFrontier:  agg.AvgTruncationRate() > 0.30,
 		}
 		response.Tools = append(response.Tools, tool)
 	}

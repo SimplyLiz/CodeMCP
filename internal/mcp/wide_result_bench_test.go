@@ -32,9 +32,9 @@ func BenchmarkWideResultSize(b *testing.B) {
 	}
 
 	scenarios := []struct {
-		name   string
-		tool   string
-		args   map[string]interface{}
+		name string
+		tool string
+		args map[string]interface{}
 	}{
 		{
 			name: "getCallGraph_depth1",
@@ -264,7 +264,7 @@ func findTestSymbolID(tb testing.TB, server *MCPServer) string {
 	}
 
 	// Write to get proper format, then parse
-	server.writeMessage(response)
+	_ = server.writeMessage(response)
 
 	// Parse the response from stdout
 	stdoutStr := stdout.String()
@@ -336,12 +336,20 @@ func sendRequestBench(tb testing.TB, server *MCPServer, method string, id int, p
 	tb.Helper()
 
 	// Use the handler directly instead of stdin/stdout for benchmarks
-	handler := server.tools[params.(map[string]interface{})["name"].(string)]
+	paramsMap, ok := params.(map[string]interface{})
+	if !ok {
+		return &MCPMessage{Error: &MCPError{Code: -1, Message: "invalid params type"}}
+	}
+	toolName, ok := paramsMap["name"].(string)
+	if !ok {
+		return &MCPMessage{Error: &MCPError{Code: -1, Message: "invalid tool name"}}
+	}
+	handler := server.tools[toolName]
 	if handler == nil {
 		return &MCPMessage{Error: &MCPError{Code: -1, Message: "tool not found"}}
 	}
 
-	args, ok := params.(map[string]interface{})["arguments"].(map[string]interface{})
+	args, ok := paramsMap["arguments"].(map[string]interface{})
 	if !ok {
 		return &MCPMessage{Error: &MCPError{Code: -1, Message: "invalid arguments"}}
 	}

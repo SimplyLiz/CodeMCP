@@ -23,9 +23,9 @@ import (
 // Update these when fixture generators change.
 var nfrTokenBaselines = map[string]map[string]int{
 	"searchSymbols": {
-		"small":  3600,   // 20 symbols
-		"medium": 18000,  // 100 symbols
-		"large":  91000,  // 500 symbols
+		"small":  3600,  // 20 symbols
+		"medium": 18000, // 100 symbols
+		"large":  91000, // 500 symbols
 	},
 	"findReferences": {
 		"small":  4500,   // 50 refs
@@ -45,8 +45,8 @@ var nfrTokenBaselines = map[string]map[string]int{
 		"large": 18000, // 100 impact nodes
 	},
 	"getArchitecture": {
-		"small": 1500,  // 5 modules
-		"large": 8000,  // 30 modules
+		"small": 1500, // 5 modules
+		"large": 8000, // 30 modules
 	},
 	"traceUsage": {
 		"small": 800,  // 5 paths

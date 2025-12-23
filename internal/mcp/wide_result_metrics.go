@@ -24,7 +24,7 @@ type WideResultMetrics struct {
 	ReturnedResults int
 	TruncatedCount  int
 	EstimatedTokens int
-	ResponseBytes   int   // Size of actual JSON response
+	ResponseBytes   int // Size of actual JSON response
 	ExecutionMs     int64
 }
 

@@ -61,7 +61,7 @@ func TestPagination(t *testing.T) {
 	server := NewMCPServer("test", nil, logger)
 
 	// Set to full preset for more tools to paginate
-	server.SetPreset("full")
+	_ = server.SetPreset("full")
 	allTools := server.GetFilteredTools()
 	hash := server.GetToolsetHash()
 
