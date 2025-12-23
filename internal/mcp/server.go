@@ -161,6 +161,10 @@ func (s *MCPServer) SetActiveRepo(name, path string, engine *query.Engine) {
 			loadedAt: time.Now(),
 			lastUsed: time.Now(),
 		}
+		// Wire up metrics persistence for multi-repo mode
+		if engine.DB() != nil {
+			SetMetricsDB(engine.DB())
+		}
 	}
 }
 

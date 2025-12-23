@@ -165,15 +165,30 @@ func (db *DB) CleanupOldMetrics(retention time.Duration) (int64, error) {
 
 // GetWideResultStats returns summary statistics for the metrics table
 func (db *DB) GetWideResultStats() (totalRecords int64, oldestRecord, newestRecord *time.Time, err error) {
+	var oldestStr, newestStr sql.NullString
 	err = db.QueryRow(`
 		SELECT
 			COUNT(*),
 			MIN(recorded_at),
 			MAX(recorded_at)
 		FROM wide_result_metrics
-	`).Scan(&totalRecords, &oldestRecord, &newestRecord)
+	`).Scan(&totalRecords, &oldestStr, &newestStr)
 	if err == sql.ErrNoRows {
 		return 0, nil, nil, nil
+	}
+	if err != nil {
+		return 0, nil, nil, err
+	}
+
+	if oldestStr.Valid {
+		if t, parseErr := time.Parse(time.RFC3339, oldestStr.String); parseErr == nil {
+			oldestRecord = &t
+		}
+	}
+	if newestStr.Valid {
+		if t, parseErr := time.Parse(time.RFC3339, newestStr.String); parseErr == nil {
+			newestRecord = &t
+		}
 	}
 	return
 }

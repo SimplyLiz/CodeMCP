@@ -621,7 +621,7 @@ ckb mcp --preset=review      # 19 tools - core + diff, ownership
 ckb mcp --preset=refactor    # 19 tools - core + coupling, dead code
 ckb mcp --preset=federation  # 28 tools - core + cross-repo
 ckb mcp --preset=docs        # 20 tools - core + doc-symbol linking
-ckb mcp --preset=ops         # 24 tools - core + jobs, webhooks
+ckb mcp --preset=ops         # 25 tools - core + jobs, webhooks, metrics
 ckb mcp --preset=full        # 76 tools - all tools (legacy)
 ```
 
