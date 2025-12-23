@@ -944,7 +944,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				"required": []string{"federation"},
 			},
 		},
-		// v7.4 Remote Federation tools (Phase 5)
+		// v7.3 Remote Federation tools (Phase 5)
 		{
 			Name:        "federationAddRemote",
 			Description: "Add a remote CKB index server to a federation. The remote server will be queried alongside local repositories.",
@@ -1749,7 +1749,7 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["federationGetHotspots"] = s.toolFederationGetHotspots
 	s.tools["federationSearchDecisions"] = s.toolFederationSearchDecisions
 	s.tools["federationSync"] = s.toolFederationSync
-	// v7.4 Remote Federation tools
+	// v7.3 Remote Federation tools
 	s.tools["federationAddRemote"] = s.toolFederationAddRemote
 	s.tools["federationRemoveRemote"] = s.toolFederationRemoveRemote
 	s.tools["federationListRemote"] = s.toolFederationListRemote

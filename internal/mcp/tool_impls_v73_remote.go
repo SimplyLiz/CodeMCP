@@ -10,7 +10,7 @@ import (
 	"ckb/internal/logging"
 )
 
-// v7.4 Remote Federation tool implementations (Phase 5)
+// v7.3 Remote Federation tool implementations (Phase 5)
 
 // toolFederationAddRemote adds a remote server to a federation
 func (s *MCPServer) toolFederationAddRemote(params map[string]interface{}) (interface{}, error) {

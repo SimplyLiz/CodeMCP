@@ -229,7 +229,7 @@ CREATE TABLE IF NOT EXISTS proto_imports (
 );
 CREATE INDEX IF NOT EXISTS idx_proto_imports_imported ON proto_imports(imported_contract_id);
 
--- v7.4 Remote server tables (Phase 5)
+-- v7.3 Remote server tables (Phase 5)
 -- Tracks remote server sync state
 CREATE TABLE IF NOT EXISTS remote_servers (
     name TEXT PRIMARY KEY,
