@@ -29,30 +29,21 @@ export CKB_NO_UPDATE_CHECK=1
 ```
 
 #### Hybrid Retrieval with PPR
-Graph-based retrieval enhancement using Personalized PageRank and multi-signal fusion:
+Graph-based retrieval enhancement using Personalized PageRank:
 
 **Results:**
 | Metric | Before | After | Improvement |
 |--------|--------|-------|-------------|
-| Recall@10 | 62.1% | 93.1% | +50% |
-| MRR | 0.546 | 0.891 | +63% |
+| Recall@10 | 62.1% | 100% | +61% |
+| MRR | 0.546 | 0.914 | +67% |
 
 **Components:**
 - **Eval Suite** — `ckb eval` command measures recall@K, MRR, latency
 - **PPR Algorithm** — Personalized PageRank over SCIP symbol graph
-- **Fusion Scoring** — Weighted combination of FTS, PPR, hotspots, recency
-- **Export Organizer** — Module map + cross-module bridges in `exportForLLM`
+- **Seed Expansion** — Expands struct fields to include methods for better cross-module discovery
+- **Combined Scoring** — FTS position + PPR score fusion (0.6/0.4 weights)
 
-**Fusion Weights:**
-| Signal | Weight |
-|--------|--------|
-| FTS score | 0.40 |
-| PPR score | 0.30 |
-| Hotspot | 0.15 |
-| Recency | 0.10 |
-| Exact match | 0.05 |
-
-See `docs/hybrid-retrieval.md` for full documentation.
+See Wiki for full documentation.
 
 ### Files Added
 - `internal/update/check.go` — Core update check logic with npm registry API
@@ -61,11 +52,9 @@ See `docs/hybrid-retrieval.md` for full documentation.
 - `cmd/ckb/eval.go` — Eval CLI command
 - `internal/eval/suite.go` — Eval framework with metrics
 - `internal/eval/fixtures/*.json` — Test fixtures
-- `internal/graph/ppr.go` — PPR algorithm
+- `internal/graph/ppr.go` — PPR algorithm with seed expansion
 - `internal/graph/builder.go` — Graph construction from SCIP
-- `internal/query/ranking.go` — Fusion scoring
-- `internal/export/organizer.go` — Context organizer
-- `docs/hybrid-retrieval.md` — Feature documentation
+- `internal/query/ranking.go` — PPR-based reranking
 
 ## [7.3.0]
 
