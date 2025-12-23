@@ -1,8 +1,15 @@
-# ╔══════════════════════════════════════════════════════════════════════════════╗
-# ║  CKB • Code Intelligence for Pull Requests                                   ║
-# ║  ─────────────────────────────────────────────────────────────────────────── ║
-# ║  PR Comment (signal) → Checks Tab (dashboard) → Artifacts (raw data)         ║
-# ╚══════════════════════════════════════════════════════════════════════════════╝
+# ══════════════════════════════════════════════════════════════════════════════
+#  ██████╗██╗  ██╗██████╗      █████╗ ███╗   ██╗ █████╗ ██╗  ██╗   ██╗███████╗██╗███████╗
+# ██╔════╝██║ ██╔╝██╔══██╗    ██╔══██╗████╗  ██║██╔══██╗██║  ╚██╗ ██╔╝██╔════╝██║██╔════╝
+# ██║     █████╔╝ ██████╔╝    ███████║██╔██╗ ██║███████║██║   ╚████╔╝ ███████╗██║███████╗
+# ██║     ██╔═██╗ ██╔══██╗    ██╔══██║██║╚██╗██║██╔══██║██║    ╚██╔╝  ╚════██║██║╚════██║
+# ╚██████╗██║  ██╗██████╔╝    ██║  ██║██║ ╚████║██║  ██║███████╗██║   ███████║██║███████║
+#  ╚═════╝╚═╝  ╚═╝╚═════╝     ╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝╚══════╝╚═╝   ╚══════╝╚═╝╚══════╝
+# ══════════════════════════════════════════════════════════════════════════════
+# Code Intelligence for Pull Requests
+# Features: Risk Scoring • Complexity Gates • Coupling Detection • Contract Analysis
+#           Dead Code • Documentation Coverage • Ownership Drift • Auto-Reviewers
+# ══════════════════════════════════════════════════════════════════════════════
 
 name: CKB
 
@@ -10,10 +17,10 @@ on:
   pull_request:
     branches: [develop, main]
   schedule:
-    - cron: '0 2 * * *'
+    - cron: '0 3 * * *'
   workflow_dispatch:
     inputs:
-      force_index:
+      force:
         description: 'Force full reindex'
         type: boolean
         default: false
@@ -25,20 +32,32 @@ concurrency:
 permissions:
   contents: read
   pull-requests: write
-  checks: write  # Required for Check Run API
 
 env:
-  CKB_TIER: standard
-  THRESHOLD_CYCLOMATIC: 15
-  THRESHOLD_COGNITIVE: 20
-  THRESHOLD_COUPLING: 0.7
+  # ┌─────────────────────────────────────────────────────────────────────────┐
+  # │ THRESHOLDS - Adjust these for your project                              │
+  # └─────────────────────────────────────────────────────────────────────────┘
+  COMPLEXITY_CYCLOMATIC: 15
+  COMPLEXITY_COGNITIVE: 20
+  COUPLING_MIN: 0.7
+  DOC_COVERAGE_MIN: 70
+  RISK_SCORE_MIN: 60
 
 jobs:
+  # ╔═════════════════════════════════════════════════════════════════════════╗
+  # ║ PR ANALYSIS                                                              ║
+  # ╚═════════════════════════════════════════════════════════════════════════╝
   analyze:
     name: Analyze
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    outputs:
+      risk: ${{ steps.summary.outputs.risk }}
+      score: ${{ steps.summary.outputs.score }}
     steps:
+      # ───────────────────────────────────────────────────────────────────────
+      # Setup
+      # ───────────────────────────────────────────────────────────────────────
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -48,70 +67,135 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
+      - name: Build
+        run: go build -ldflags="-s -w" -o ckb ./cmd/ckb
+
+      # ───────────────────────────────────────────────────────────────────────
+      # Cache & Index
+      # ───────────────────────────────────────────────────────────────────────
       - name: Cache
         id: cache
         uses: actions/cache@v4
         with:
           path: .ckb/
-          key: ckb-${{ runner.os }}-${{ github.base_ref }}-${{ hashFiles('go.sum') }}
+          key: ckb-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.base_ref }}
           restore-keys: ckb-${{ runner.os }}-
-
-      - name: Build
-        run: go build -ldflags="-s -w" -o ckb ./cmd/ckb
 
       - name: Index
         id: index
         run: |
           ./ckb init
           START=$(date +%s)
-          if [ "${{ inputs.force_index }}" = "true" ]; then
+          
+          if [ "${{ inputs.force }}" = "true" ]; then
             ./ckb index --force 2>/dev/null || true
             echo "mode=full" >> $GITHUB_OUTPUT
-          else
-            ./ckb index 2>/dev/null || true
+          elif ./ckb index 2>/dev/null; then
             echo "mode=incremental" >> $GITHUB_OUTPUT
+          else
+            echo "mode=fallback" >> $GITHUB_OUTPUT
           fi
+          
           echo "duration=$(($(date +%s)-START))" >> $GITHUB_OUTPUT
-          ./ckb meta stats --format=json > stats.json 2>/dev/null || echo '{"symbolsIndexed":0}' > stats.json
 
-      - name: Analyze
+      # ───────────────────────────────────────────────────────────────────────
+      # Core Analysis
+      # ───────────────────────────────────────────────────────────────────────
+      - name: PR Summary
+        id: summary
         run: |
           ./ckb pr-summary --base=origin/${{ github.base_ref }} --format=json > analysis.json 2>/dev/null || echo '{}' > analysis.json
           
-          # Complexity
-          echo '[]' > complexity.json
-          for f in $(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(go|ts|js|py)$' | head -20); do
-            [ -f "$f" ] && ./ckb complexity "$f" --format=json 2>/dev/null | jq --arg f "$f" '. + {file: $f}' >> complexity.tmp || true
-          done
-          [ -f complexity.tmp ] && jq -s '.' complexity.tmp > complexity.json 2>/dev/null || true
-          
-          # Coupling
-          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(go|ts|js|py)$' | tr '\n' ',' | sed 's/,$//')
-          [ -n "$CHANGED" ] && ./ckb coupling --files="$CHANGED" --min-correlation=${{ env.THRESHOLD_COUPLING }} --format=json > coupling.json 2>/dev/null || echo '{"missingCoupled":[]}' > coupling.json
-          
-          # Contracts
-          echo '{"breakingChanges":[]}' > contracts.json
-          for c in $(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(proto|graphql)$' || true); do
-            ./ckb contracts impact --path="$c" --format=json 2>/dev/null | jq -s 'add' >> contracts.tmp || true
-          done
-          [ -f contracts.tmp ] && jq -s '{breakingChanges: map(.breakingChanges // []) | add}' contracts.tmp > contracts.json 2>/dev/null || true
-          
-          # Other analyses
-          ./ckb audit --min-score=60 --limit=20 --quick-wins --format=json > audit.json 2>/dev/null || echo '{"items":[],"quickWins":[]}' > audit.json
-          ./ckb docs stale --all --format=json > stale.json 2>/dev/null || echo '{"totalStale":0,"reports":[]}' > stale.json
-          ./ckb telemetry dead-code --threshold=0.9 --limit=10 --format=json > deadcode.json 2>/dev/null || echo '{"candidates":[]}' > deadcode.json
-          ./ckb ownership drift --threshold=0.3 --limit=10 --format=json > drift.json 2>/dev/null || echo '[]' > drift.json
-          ./ckb meta languages --format=json > languages.json 2>/dev/null || echo '{"languages":[]}' > languages.json
-          ./ckb blast-radius --format=json > blast.json 2>/dev/null || echo '{"affectedSymbols":[],"affectedTests":[]}' > blast.json
-          ./ckb audit --factor=security_sensitive --min-score=40 --limit=10 --format=json > security.json 2>/dev/null || echo '{"items":[]}' > security.json
+          echo "risk=$(jq -r '.riskAssessment.level // "unknown"' analysis.json)" >> $GITHUB_OUTPUT
+          echo "score=$(jq -r '.riskAssessment.score // 0' analysis.json)" >> $GITHUB_OUTPUT
 
-      # ════════════════════════════════════════════════════════════════════════════
-      # CHECK RUN + PR COMMENT + STEP SUMMARY
-      # ════════════════════════════════════════════════════════════════════════════
-      - name: Report
+      - name: Complexity
+        id: complexity
+        run: |
+          echo '[]' > complexity.json
+          
+          for f in $(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(go|ts|js|py)$' | head -15); do
+            [ -f "$f" ] || continue
+            r=$(./ckb complexity "$f" --format=json 2>/dev/null || echo '{}')
+            cy=$(echo "$r" | jq '.cyclomatic // 0')
+            cg=$(echo "$r" | jq '.cognitive // 0')
+            
+            [ "$cy" -gt ${{ env.COMPLEXITY_CYCLOMATIC }} ] && \
+              echo "::warning file=$f::Cyclomatic $cy > ${{ env.COMPLEXITY_CYCLOMATIC }}"
+            [ "$cg" -gt ${{ env.COMPLEXITY_COGNITIVE }} ] && \
+              echo "::warning file=$f::Cognitive $cg > ${{ env.COMPLEXITY_COGNITIVE }}"
+            
+            jq -n --arg f "$f" --argjson cy "$cy" --argjson cg "$cg" \
+              '{file:$f,cyclomatic:$cy,cognitive:$cg}' >> complexity.json.tmp
+          done
+          
+          [ -f complexity.json.tmp ] && jq -s '.' complexity.json.tmp > complexity.json || echo '[]' > complexity.json
+          rm -f complexity.json.tmp
+          
+          echo "violations=$(jq '[.[] | select(.cyclomatic > ${{ env.COMPLEXITY_CYCLOMATIC }} or .cognitive > ${{ env.COMPLEXITY_COGNITIVE }})] | length' complexity.json)" >> $GITHUB_OUTPUT
+
+      - name: Coupling
+        id: coupling
+        run: |
+          changed=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(go|ts|js|py)$' | tr '\n' ',' | sed 's/,$//')
+          
+          if [ -n "$changed" ]; then
+            ./ckb coupling --files="$changed" --min-correlation=${{ env.COUPLING_MIN }} --format=json > coupling.json 2>/dev/null || echo '{"missingCoupled":[]}' > coupling.json
+          else
+            echo '{"missingCoupled":[]}' > coupling.json
+          fi
+          
+          echo "missing=$(jq '.missingCoupled | length' coupling.json)" >> $GITHUB_OUTPUT
+
+      - name: Contracts
+        id: contracts
+        run: |
+          echo '{"files":[],"breaking":[]}' > contracts.json
+          
+          contracts=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(proto|graphql)$' || true)
+          
+          if [ -n "$contracts" ]; then
+            echo "$contracts" | jq -R -s 'split("\n") | map(select(length > 0)) | {files: ., breaking: []}' > contracts.json
+            echo "::warning::Contract files changed: $(echo "$contracts" | tr '\n' ' ')"
+          fi
+          
+          echo "changed=$([ -n "$contracts" ] && echo true || echo false)" >> $GITHUB_OUTPUT
+
+      - name: Audit
+        id: audit
+        run: |
+          ./ckb audit --min-score=${{ env.RISK_SCORE_MIN }} --limit=10 --quick-wins --format=json > audit.json 2>/dev/null || echo '{"items":[],"quickWins":[],"summary":{}}' > audit.json
+          
+          echo "critical=$(jq '.summary.critical // 0' audit.json)" >> $GITHUB_OUTPUT
+          echo "high=$(jq '.summary.high // 0' audit.json)" >> $GITHUB_OUTPUT
+
+      - name: Dead Code
+        id: deadcode
+        run: |
+          ./ckb telemetry dead-code --threshold=0.9 --limit=5 --format=json > deadcode.json 2>/dev/null || echo '{"candidates":[]}' > deadcode.json
+          echo "count=$(jq '.candidates | length' deadcode.json)" >> $GITHUB_OUTPUT
+
+      - name: Docs
+        id: docs
+        run: |
+          ./ckb docs index 2>/dev/null || true
+          ./ckb docs coverage --format=json > docs-coverage.json 2>/dev/null || echo '{"coverage":0}' > docs-coverage.json
+          ./ckb docs stale --all --format=json > docs-stale.json 2>/dev/null || echo '{"totalStale":0}' > docs-stale.json
+          
+          echo "coverage=$(jq '.coverage // 0' docs-coverage.json)" >> $GITHUB_OUTPUT
+          echo "stale=$(jq '.totalStale // 0' docs-stale.json)" >> $GITHUB_OUTPUT
+
+      - name: Drift
+        run: |
+          ./ckb ownership drift --threshold=0.3 --limit=5 --format=json > drift.json 2>/dev/null || echo '[]' > drift.json
+
+      # ───────────────────────────────────────────────────────────────────────
+      # Report
+      # ───────────────────────────────────────────────────────────────────────
+      - name: Comment
         uses: actions/github-script@v7
         env:
-          CACHE_HIT: ${{ steps.cache.outputs.cache-hit == 'true' }}
+          CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
           INDEX_MODE: ${{ steps.index.outputs.mode }}
           INDEX_TIME: ${{ steps.index.outputs.duration }}
         with:
@@ -122,342 +206,332 @@ jobs:
             // Load data
             const pr = read('analysis.json', {});
             const complexity = read('complexity.json', []);
-            const coupling = read('coupling.json', {});
-            const contracts = read('contracts.json', {});
-            const audit = read('audit.json', {});
-            const stale = read('stale.json', {});
-            const deadcode = read('deadcode.json', {});
+            const coupling = read('coupling.json', { missingCoupled: [] });
+            const contracts = read('contracts.json', { files: [], breaking: [] });
+            const audit = read('audit.json', { items: [], quickWins: [], summary: {} });
+            const deadcode = read('deadcode.json', { candidates: [] });
+            const docsCov = read('docs-coverage.json', { coverage: 0 });
+            const docsStale = read('docs-stale.json', { totalStale: 0 });
             const drift = read('drift.json', []);
-            const languages = read('languages.json', {});
-            const blast = read('blast.json', {});
-            const stats = read('stats.json', {});
-            const security = read('security.json', {});
             
             const s = pr.summary || {};
             const risk = pr.riskAssessment || {};
             const reviewers = pr.suggestedReviewers || [];
-            const files = pr.changedFiles || [];
-            const auditItems = audit.items || [];
+            const modules = pr.modulesAffected || [];
+            const hotspots = (pr.changedFiles || []).filter(f => f.isHotspot);
+            const breakingChanges = contracts.breaking || [];
             
-            // ══════════════════════════════════════════════════════════════════
-            // COUNTS (Adaptive - only show what matters)
-            // ══════════════════════════════════════════════════════════════════
-            const counts = {
-              critical: auditItems.filter(i => i.riskLevel === 'critical').length,
-              high: auditItems.filter(i => i.riskLevel === 'high').length,
-              security: (security.items || []).filter(i => i.riskLevel === 'critical' || i.riskLevel === 'high').length,
-              breaking: (contracts.breakingChanges || []).length,
-              hotspots: files.filter(f => f.isHotspot).length,
-              complex: complexity.filter(c => (c.cyclomatic||0) > ${{ env.THRESHOLD_CYCLOMATIC }} || (c.cognitive||0) > ${{ env.THRESHOLD_COGNITIVE }}).length,
-              coupled: (coupling.missingCoupled || []).length,
-              blast: (blast.affectedSymbols || []).length + (blast.affectedTests || []).length,
-              modules: (pr.modulesAffected || []).filter(m => m.riskLevel === 'high' || m.riskLevel === 'medium').length,
-              quickWins: (audit.quickWins || []).length,
-              dead: (deadcode.candidates || []).length,
-              stale: stale.totalStale || 0,
-              drift: Array.isArray(drift) ? drift.length : 0,
-              lang: (languages.languages || []).filter(l => (l.quality || 1) < 0.7).length
-            };
+            // Computed
+            const complexViolations = complexity.filter(c => 
+              c.cyclomatic > ${{ env.COMPLEXITY_CYCLOMATIC }} || 
+              c.cognitive > ${{ env.COMPLEXITY_COGNITIVE }}
+            );
+            const criticalItems = (audit.items || []).filter(i => i.riskLevel === 'critical');
+            const highItems = (audit.items || []).filter(i => i.riskLevel === 'high');
+            const riskyModules = modules.filter(m => m.riskLevel === 'high' || m.riskLevel === 'medium');
             
-            const totalIssues = Object.values(counts).reduce((a, b) => a + b, 0);
+            // Helpers
+            const pct = v => Math.round((v || 0) * 100);
             const safetyPct = Math.max(0, Math.round((1 - (risk.score || 0)) * 100));
-            const riskEmoji = { high: '🔴', medium: '🟡', low: '🟢' }[risk.level] || '⚪';
             
-            // Progress bar
-            const bar = (pct, w = 15) => {
-              const safe = Math.round((pct / 100) * w), risky = w - safe;
-              let b = '🟩'.repeat(safe);
-              if (risky > 0) b += pct >= 70 ? '🟨'.repeat(risky) : pct >= 40 ? '🟧'.repeat(Math.ceil(risky/2)) + '🟨'.repeat(Math.floor(risky/2)) : '🟥'.repeat(Math.ceil(risky/2)) + '🟧'.repeat(Math.floor(risky/2));
-              return b;
-            };
+            // Risk styling
+            const riskStyle = {
+              high: { icon: '🔴', color: 'e74c3c', label: 'HIGH' },
+              medium: { icon: '🟡', color: 'f39c12', label: 'MEDIUM' },
+              low: { icon: '🟢', color: '27ae60', label: 'LOW' }
+            }[risk.level] || { icon: '⚪', color: '95a5a6', label: 'UNKNOWN' };
             
-            // ══════════════════════════════════════════════════════════════════
-            // PR COMMENT (Ultra-lean: ~15 lines, signal only)
-            // ══════════════════════════════════════════════════════════════════
-            let comment = ['<!-- ckb -->', ''];
-            comment.push(`## ${riskEmoji} CKB Report`);
-            comment.push('');
-            comment.push(`| ${bar(safetyPct)} | **${safetyPct}%** safe | **${s.totalFiles || 0}** files | **+${s.totalAdditions || 0}** / **-${s.totalDeletions || 0}** |`);
-            comment.push('|:-----|:-----|:-----|:-----|');
-            comment.push('');
+            // Colorful progress bar
+            function makeProgressBar(safetyPercent, width = 15) {
+              const p = Math.max(0, Math.min(100, safetyPercent));
+              const safe = Math.round((p / 100) * width);
+              const risky = width - safe;
+              
+              let bar = '🟩'.repeat(safe);
+              if (risky > 0) {
+                if (p >= 70) bar += '🟨'.repeat(risky);
+                else if (p >= 40) bar += '🟧'.repeat(Math.ceil(risky / 2)) + '🟨'.repeat(Math.floor(risky / 2));
+                else bar += '🟥'.repeat(Math.ceil(risky / 2)) + '🟧'.repeat(Math.floor(risky / 2));
+              }
+              return bar;
+            }
             
-            // Compact issue badges (only non-zero)
-            const badges = [];
-            if (counts.critical) badges.push(`🔴 ${counts.critical}`);
-            if (counts.high) badges.push(`🟠 ${counts.high}`);
-            if (counts.security) badges.push(`🔐 ${counts.security}`);
-            if (counts.breaking) badges.push(`💥 ${counts.breaking}`);
-            if (counts.hotspots) badges.push(`🔥 ${counts.hotspots}`);
-            if (counts.complex) badges.push(`📊 ${counts.complex}`);
-            if (counts.coupled) badges.push(`🔗 ${counts.coupled}`);
-            if (counts.stale) badges.push(`📚 ${counts.stale}`);
+            // Build comment
+            let c = [];
             
-            if (badges.length > 0) {
-              comment.push(`> ${badges.join(' · ')}`);
+            // ═══════════════════════════════════════════════════════════════
+            // HEADER WITH BADGES
+            // ═══════════════════════════════════════════════════════════════
+            c.push('<!-- ckb -->');
+            c.push('');
+            c.push('## CKB Analysis');
+            c.push('');
+            c.push(`![Risk](https://img.shields.io/badge/${riskStyle.label}-${pct(risk.score)}%25-${riskStyle.color}?style=for-the-badge) ` +
+                   `![Files](https://img.shields.io/badge/Files-${s.totalFiles || 0}-3498db?style=flat-square) ` +
+                   `![Lines](https://img.shields.io/badge/%2B${s.totalAdditions || 0}%20%2F%20−${s.totalDeletions || 0}-3498db?style=flat-square) ` +
+                   `![Modules](https://img.shields.io/badge/Modules-${s.totalModules || 0}-3498db?style=flat-square)`);
+            c.push('');
+            
+            // ═══════════════════════════════════════════════════════════════
+            // COLORFUL SAFETY BAR
+            // ═══════════════════════════════════════════════════════════════
+            const progressBar = makeProgressBar(safetyPct, 15);
+            const safetyLabel = safetyPct >= 70 ? `**${safetyPct}%** safe ✓` : 
+                               safetyPct >= 40 ? `**${safetyPct}%** safe` : 
+                               `**${safetyPct}%** safe ⚠️`;
+            
+            c.push(`| Health | ${progressBar} | ${safetyLabel} |`);
+            c.push('|:-------|:-----|:-----|');
+            c.push('');
+            
+            // ═══════════════════════════════════════════════════════════════
+            // ISSUES SUMMARY
+            // ═══════════════════════════════════════════════════════════════
+            const issues = [];
+            if (criticalItems.length) issues.push(`🔴 **${criticalItems.length}** critical`);
+            if (highItems.length) issues.push(`🟠 **${highItems.length}** high`);
+            if (hotspots.length) issues.push(`🔥 **${hotspots.length}** hotspots`);
+            if (complexViolations.length) issues.push(`📊 **${complexViolations.length}** complex`);
+            if (coupling.missingCoupled?.length) issues.push(`🔗 **${coupling.missingCoupled.length}** coupled`);
+            if (breakingChanges.length) issues.push(`💥 **${breakingChanges.length}** breaking`);
+            if (contracts.files?.length) issues.push(`📜 **${contracts.files.length}** contracts`);
+            if (docsStale.totalStale) issues.push(`📚 **${docsStale.totalStale}** stale`);
+            if (deadcode.candidates?.length) issues.push(`💀 **${deadcode.candidates.length}** dead`);
+            
+            if (issues.length > 0) {
+              c.push(`> ⚠️ ${issues.join(' · ')}`);
+              c.push('');
             } else {
-              comment.push('> ✅ All checks passed');
-            }
-            comment.push('');
-            
-            // Reviewers
-            if (reviewers.length > 0) {
-              const revs = reviewers.slice(0, 3).map(r => `${r.owner.startsWith('@') ? r.owner : '@' + r.owner} \`${Math.round((r.coverage || 0) * 100)}%\``).join(' · ');
-              comment.push(`**Review:** ${revs}`);
-              comment.push('');
+              c.push('> ✅ **All checks passed** — No issues detected');
+              c.push('');
             }
             
-            // Link to Checks tab
-            comment.push(`📊 [**View Details**](${context.payload.pull_request.html_url}/checks) · `);
-            comment.push(`<sub>${process.env.CACHE_HIT === 'true' ? '💾' : '🔄'} ${process.env.INDEX_MODE === 'incremental' ? '⚡' : '🔨'} ${process.env.INDEX_TIME}s · ${(stats.symbolsIndexed || 0).toLocaleString()} sym</sub>`);
-            
-            // ══════════════════════════════════════════════════════════════════
-            // CHECK RUN OUTPUT (Full dashboard, up to 65KB)
-            // ══════════════════════════════════════════════════════════════════
-            let summary = [];
-            summary.push(`## ${riskEmoji} Risk: **${(risk.level || 'unknown').toUpperCase()}** (${safetyPct}% safe)`);
-            summary.push('');
-            summary.push(`| Files | Changes | Modules | Hotspots | Issues |`);
-            summary.push(`|------:|--------:|--------:|---------:|-------:|`);
-            summary.push(`| ${s.totalFiles || 0} | +${s.totalAdditions || 0} / -${s.totalDeletions || 0} | ${s.totalModules || 0} | ${s.hotspotsTouched || 0} | ${totalIssues} |`);
-            summary.push('');
-            
-            if (reviewers.length > 0) {
-              summary.push('### 👥 Suggested Reviewers');
-              reviewers.slice(0, 5).forEach(r => summary.push(`- **${r.owner}** — ${Math.round((r.coverage || 0) * 100)}% coverage (${r.reason || ''})`));
-              summary.push('');
+            // ═══════════════════════════════════════════════════════════════
+            // RISK FACTORS
+            // ═══════════════════════════════════════════════════════════════
+            if (risk.factors?.length) {
+              c.push('**Risk factors:** ' + risk.factors.slice(0, 3).join(' • '));
+              c.push('');
             }
             
-            let detail = [];
+            // ═══════════════════════════════════════════════════════════════
+            // REVIEWERS
+            // ═══════════════════════════════════════════════════════════════
+            if (reviewers.length) {
+              const list = reviewers.slice(0, 3).map(r => {
+                const name = r.owner.startsWith('@') ? r.owner : `@${r.owner}`;
+                return `**${name}** (${pct(r.coverage)}%)`;
+              }).join(', ');
+              c.push(`👥 **Suggested:** ${list}`);
+              c.push('');
+            }
             
-            // Helper: render table with cap
-            const table = (title, icon, items, headers, rowFn, cap = 10) => {
-              if (!items.length) return;
-              detail.push(`### ${icon} ${title}`);
-              detail.push('');
-              detail.push(headers);
-              detail.push(headers.replace(/[^|]/g, '-').replace(/\|-/g, '|:').replace(/-\|/g, '-|'));
-              items.slice(0, cap).forEach(i => detail.push(rowFn(i)));
-              if (items.length > cap) detail.push(`| … | +${items.length - cap} more |  |  |`);
-              detail.push('');
-            };
+            // ═══════════════════════════════════════════════════════════════
+            // COLLAPSIBLE SECTIONS
+            // ═══════════════════════════════════════════════════════════════
+            
+            // Breaking Changes (open by default)
+            if (breakingChanges.length > 0) {
+              c.push('<details open>');
+              c.push(`<summary>💥 Breaking changes · ${breakingChanges.length} detected</summary>`);
+              c.push('');
+              c.push('| Symbol | Change |');
+              c.push('|:-------|:-------|');
+              breakingChanges.slice(0, 5).forEach(b => {
+                c.push(`| \`${b.symbol || b.name || '?'}\` | ${b.change || b.description || '?'} |`);
+              });
+              c.push('');
+              c.push('</details>');
+              c.push('');
+            }
             
             // Risk Audit
-            const riskItems = auditItems.filter(i => i.riskLevel === 'critical' || i.riskLevel === 'high');
-            table('Risk Audit', '⚠️', riskItems, 
-              '| Level | File | Score | Factor |',
-              i => `| ${i.riskLevel === 'critical' ? '🔴' : '🟠'} | \`${i.file}\` | ${i.riskScore} | ${(i.factors || [])[0]?.factor || '-'} |`
-            );
-            
-            // Security
-            const secItems = (security.items || []).filter(i => i.riskLevel === 'critical' || i.riskLevel === 'high');
-            table('Security Sensitive', '🔐', secItems,
-              '| File | Score | Contains |',
-              i => `| \`${i.file}\` | ${i.riskScore} | ${(i.factors || []).find(f => f.factor === 'security_sensitive')?.value || 'auth'} |`
-            );
-            
-            // Breaking Changes
-            table('Breaking Changes', '💥', contracts.breakingChanges || [],
-              '| Symbol | Change |',
-              b => `| \`${b.symbol || b.name || '?'}\` | ${b.change || b.description || '?'} |`
-            );
-            
-            // Complexity
-            const complexItems = complexity.filter(c => (c.cyclomatic||0) > ${{ env.THRESHOLD_CYCLOMATIC }} || (c.cognitive||0) > ${{ env.THRESHOLD_COGNITIVE }});
-            table('Complexity Violations', '📊', complexItems,
-              '| File | Cyclomatic | Cognitive | Functions |',
-              c => `| \`${c.file}\` | ${c.cyclomatic || 0} | ${c.cognitive || 0} | ${(c.hotFunctions || []).join(', ') || '-'} |`
-            );
-            
-            // Coupling
-            table('Coupling Warnings', '🔗', coupling.missingCoupled || [],
-              '| Missing | Usually changes with | Correlation |',
-              w => `| \`${w.file}\` | \`${w.coupledTo}\` | ${Math.round((w.correlation || w.couplingScore || 0) * 100)}% |`
-            );
+            if (criticalItems.length + highItems.length > 0) {
+              c.push('<details>');
+              c.push(`<summary>⚠️ Risk audit · ${criticalItems.length} critical · ${highItems.length} high</summary>`);
+              c.push('');
+              c.push('| | File | Score | Factor |');
+              c.push('|:-:|:-----|------:|:-------|');
+              [...criticalItems, ...highItems].slice(0, 6).forEach(item => {
+                const icon = item.riskLevel === 'critical' ? '🔴' : '🟠';
+                const factor = (item.factors || [])[0]?.factor || '—';
+                c.push(`| ${icon} | \`${item.file}\` | ${item.riskScore} | ${factor} |`);
+              });
+              c.push('');
+              c.push('</details>');
+              c.push('');
+            }
             
             // Hotspots
-            const hotspots = files.filter(f => f.isHotspot);
-            table('Hotspots', '🔥', hotspots,
-              '| File | Churn Score |',
-              h => `| \`${h.path}\` | ${(h.hotspotScore || 0).toFixed(2)} |`
-            );
-            
-            // Blast Radius
-            if ((blast.affectedSymbols || []).length || (blast.affectedTests || []).length) {
-              detail.push('### 💣 Blast Radius');
-              detail.push('');
-              if ((blast.affectedSymbols || []).length) {
-                detail.push('**Affected symbols:**');
-                (blast.affectedSymbols || []).slice(0, 8).forEach(s => detail.push(`- \`${s.name || s}\``));
-              }
-              if ((blast.affectedTests || []).length) {
-                detail.push('**Tests to update:**');
-                (blast.affectedTests || []).slice(0, 8).forEach(t => detail.push(`- \`${t.name || t}\``));
-              }
-              detail.push('');
+            if (hotspots.length > 0) {
+              c.push('<details>');
+              c.push(`<summary>🔥 Hotspots · ${hotspots.length} volatile files</summary>`);
+              c.push('');
+              c.push('| File | Churn |');
+              c.push('|:-----|------:|');
+              hotspots.slice(0, 5).forEach(f => {
+                c.push(`| \`${f.path}\` | ${(f.hotspotScore || 0).toFixed(2)} |`);
+              });
+              c.push('');
+              c.push('</details>');
+              c.push('');
             }
             
             // Modules
-            const riskyModules = (pr.modulesAffected || []).filter(m => m.riskLevel === 'high' || m.riskLevel === 'medium');
-            table('Modules at Risk', '📦', riskyModules,
-              '| Module | Files | Risk |',
-              m => `| \`${m.moduleId}\` | ${m.filesChanged} | ${m.riskLevel === 'high' ? '🔴' : '🟡'} |`
-            );
+            if (riskyModules.length > 0) {
+              c.push('<details>');
+              c.push(`<summary>📦 Modules · ${riskyModules.length} at risk</summary>`);
+              c.push('');
+              c.push('| | Module | Files |');
+              c.push('|:-:|:-------|------:|');
+              riskyModules.slice(0, 5).forEach(m => {
+                const icon = m.riskLevel === 'high' ? '🔴' : '🟡';
+                c.push(`| ${icon} | \`${m.moduleId}\` | ${m.filesChanged} |`);
+              });
+              c.push('');
+              c.push('</details>');
+              c.push('');
+            }
+            
+            // Contracts
+            if (contracts.files?.length > 0) {
+              c.push('<details>');
+              c.push(`<summary>📜 Contracts · ${contracts.files.length} changed</summary>`);
+              c.push('');
+              contracts.files.slice(0, 6).forEach(f => c.push(`- \`${f}\``));
+              c.push('');
+              c.push('</details>');
+              c.push('');
+            }
+            
+            // Complexity
+            if (complexViolations.length > 0) {
+              c.push('<details>');
+              c.push(`<summary>📊 Complexity · ${complexViolations.length} violations</summary>`);
+              c.push('');
+              c.push('| File | Cyclomatic | Cognitive |');
+              c.push('|:-----|----------:|----------:|');
+              complexViolations.slice(0, 5).forEach(v => {
+                const cyWarn = v.cyclomatic > ${{ env.COMPLEXITY_CYCLOMATIC }} ? '⚠️ ' : '';
+                const cgWarn = v.cognitive > ${{ env.COMPLEXITY_COGNITIVE }} ? '⚠️ ' : '';
+                c.push(`| \`${v.file}\` | ${cyWarn}${v.cyclomatic} | ${cgWarn}${v.cognitive} |`);
+              });
+              c.push('');
+              c.push('</details>');
+              c.push('');
+            }
+            
+            // Coupling
+            if (coupling.missingCoupled?.length > 0) {
+              c.push('<details>');
+              c.push(`<summary>🔗 Coupling · ${coupling.missingCoupled.length} missing</summary>`);
+              c.push('');
+              c.push('| Missing | Usually with | Score |');
+              c.push('|:--------|:-------------|------:|');
+              coupling.missingCoupled.slice(0, 5).forEach(w => {
+                c.push(`| \`${w.file}\` | \`${w.coupledTo}\` | ${pct(w.correlation || w.couplingScore || 0)}% |`);
+              });
+              c.push('');
+              c.push('</details>');
+              c.push('');
+            }
             
             // Quick Wins
-            table('Quick Wins', '💡', audit.quickWins || [],
-              '| Action | Target | Effort | Impact |',
-              w => `| ${w.action} | \`${w.target}\` | ${w.effort === 'low' ? '🟢' : w.effort === 'medium' ? '🟡' : '🔴'} | ${w.impact === 'high' ? '🟢' : w.impact === 'medium' ? '🟡' : '🔴'} |`
-            );
-            
-            // Dead Code
-            table('Dead Code', '💀', deadcode.candidates || [],
-              '| Symbol | Path | Confidence |',
-              d => `| \`${d.name}\` | \`${d.path || '-'}\` | ${Math.round((d.confidence || 0) * 100)}% |`
-            );
-            
-            // Stale Docs
-            const staleItems = [];
-            (stale.reports || []).forEach(r => (r.stale || []).forEach(s => staleItems.push({ doc: r.docPath, ...s })));
-            table('Stale Documentation', '📚', staleItems,
-              '| Document | Line | Reference | Reason |',
-              s => `| \`${s.doc}\` | ${s.line} | ${s.rawText || '-'} | ${s.reason || '-'} |`, 15
-            );
+            if (audit.quickWins?.length > 0) {
+              c.push('<details>');
+              c.push(`<summary>💡 Quick wins · ${audit.quickWins.length} suggestions</summary>`);
+              c.push('');
+              audit.quickWins.slice(0, 5).forEach(w => {
+                const e = { low: '🟢', medium: '🟡', high: '🔴' }[w.effort] || '⚪';
+                c.push(`- ${e} **${w.action}** → \`${w.target}\``);
+              });
+              c.push('');
+              c.push('</details>');
+              c.push('');
+            }
             
             // Ownership Drift
-            table('Ownership Drift', '👤', Array.isArray(drift) ? drift : [],
-              '| File | CODEOWNERS | Actual |',
-              d => `| \`${d.path}\` | ${d.declaredOwner || '-'} | ${d.actualOwner || '-'} |`
-            );
-            
-            // Language Quality
-            const lowQualityLangs = (languages.languages || []).filter(l => (l.quality || 1) < 0.7);
-            table('Language Issues', '🌐', lowQualityLangs,
-              '| Language | Quality | Issues |',
-              l => `| ${l.name} | ${Math.round((l.quality || 0) * 100)}% | ${(l.issues || []).join(', ') || '-'} |`
-            );
-            
-            // Risk Factors
-            if ((risk.factors || []).length > 0) {
-              detail.push('### 📋 Risk Factors');
-              detail.push('');
-              (risk.factors || []).forEach(f => detail.push(`- ${f}`));
-              detail.push('');
+            if (Array.isArray(drift) && drift.length > 0) {
+              c.push('<details>');
+              c.push(`<summary>👤 Ownership drift · ${drift.length} files</summary>`);
+              c.push('');
+              c.push('| File | Declared | Actual |');
+              c.push('|:-----|:---------|:-------|');
+              drift.slice(0, 5).forEach(d => {
+                c.push(`| \`${d.path}\` | ${d.declaredOwner || '—'} | ${d.actualOwner || '—'} |`);
+              });
+              c.push('');
+              c.push('</details>');
+              c.push('');
             }
             
-            // Analytics
-            detail.push('### 📈 Analytics');
-            detail.push('');
-            detail.push('| Metric | Value |');
-            detail.push('|:-------|------:|');
-            detail.push(`| Symbols indexed | ${(stats.symbolsIndexed || 0).toLocaleString()} |`);
-            detail.push(`| Files indexed | ${(stats.filesIndexed || 0).toLocaleString()} |`);
-            detail.push(`| Index time | ${process.env.INDEX_TIME}s |`);
-            detail.push(`| Index mode | ${process.env.INDEX_MODE} |`);
-            detail.push(`| Cache | ${process.env.CACHE_HIT === 'true' ? '✅ hit' : '❌ miss'} |`);
-            detail.push('');
-            
-            // ══════════════════════════════════════════════════════════════════
-            // CREATE/UPDATE CHECK RUN
-            // ══════════════════════════════════════════════════════════════════
-            const conclusion = counts.critical > 0 ? 'failure' : counts.breaking > 0 || counts.security > 0 ? 'action_required' : counts.high > 0 ? 'neutral' : 'success';
-            
-            // Find existing check run
-            const { data: checkRuns } = await github.rest.checks.listForRef({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: context.payload.pull_request.head.sha,
-              check_name: 'CKB Analysis'
-            });
-            
-            const checkParams = {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              name: 'CKB Analysis',
-              head_sha: context.payload.pull_request.head.sha,
-              status: 'completed',
-              conclusion: conclusion,
-              output: {
-                title: `${riskEmoji} ${(risk.level || 'unknown').toUpperCase()} risk — ${totalIssues} issues`,
-                summary: summary.join('\n'),
-                text: detail.join('\n')
-              }
-            };
-            
-            // Add annotations for top issues
-            const annotations = [];
-            
-            // Security annotations
-            secItems.slice(0, 5).forEach(item => {
-              annotations.push({
-                path: item.file,
-                start_line: 1,
-                end_line: 1,
-                annotation_level: 'warning',
-                message: `🔐 Security-sensitive code: ${(item.factors || []).find(f => f.factor === 'security_sensitive')?.value || 'auth'}`,
-                title: 'Security Review Required'
+            // Dead Code
+            if (deadcode.candidates?.length > 0) {
+              c.push('<details>');
+              c.push(`<summary>💀 Dead code · ${deadcode.candidates.length} candidates</summary>`);
+              c.push('');
+              c.push('| Symbol | Confidence |');
+              c.push('|:-------|:-----------|');
+              deadcode.candidates.slice(0, 5).forEach(d => {
+                c.push(`| \`${d.name}\` | ${pct(d.confidence || 0)}% |`);
               });
-            });
-            
-            // Complexity annotations
-            complexItems.slice(0, 5).forEach(item => {
-              annotations.push({
-                path: item.file,
-                start_line: 1,
-                end_line: 1,
-                annotation_level: 'warning',
-                message: `📊 High complexity: cyclomatic=${item.cyclomatic || 0}, cognitive=${item.cognitive || 0}`,
-                title: 'Complexity Warning'
-              });
-            });
-            
-            if (annotations.length > 0) {
-              checkParams.output.annotations = annotations.slice(0, 50); // GitHub limit
+              c.push('');
+              c.push('</details>');
+              c.push('');
             }
             
-            if (checkRuns.check_runs.length > 0) {
-              await github.rest.checks.update({
-                ...checkParams,
-                check_run_id: checkRuns.check_runs[0].id
+            // Stale Docs
+            if (docsStale.totalStale > 0) {
+              c.push('<details>');
+              c.push(`<summary>📚 Stale docs · ${docsStale.totalStale} references</summary>`);
+              c.push('');
+              (docsStale.reports || []).slice(0, 3).forEach(r => {
+                (r.stale || []).slice(0, 2).forEach(s => {
+                  c.push(`- \`${r.docPath}:${s.line}\` — ${s.rawText}`);
+                });
               });
-            } else {
-              await github.rest.checks.create(checkParams);
+              c.push('');
+              c.push('</details>');
+              c.push('');
             }
             
-            // ══════════════════════════════════════════════════════════════════
-            // POST/UPDATE PR COMMENT
-            // ══════════════════════════════════════════════════════════════════
+            // ═══════════════════════════════════════════════════════════════
+            // FOOTER
+            // ═══════════════════════════════════════════════════════════════
+            c.push('---');
+            const cacheIcon = process.env.CACHE_HIT === 'true' ? '💾' : '🔄';
+            const modeIcon = process.env.INDEX_MODE === 'incremental' ? '⚡' : '🔨';
+            c.push(`<sub>${cacheIcon} ${modeIcon} ${process.env.INDEX_TIME || '?'}s · <a href="https://github.com/SimplyLiz/CodeMCP">CKB</a></sub>`);
+            
+            // Post/update comment
+            const body = c.join('\n');
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number,
+              issue_number: context.issue.number
             });
-            
-            const existing = comments.find(c => c.user.type === 'Bot' && c.body.includes('<!-- ckb -->'));
-            const commentBody = comment.join('\n');
+            const existing = comments.find(comment => comment.body?.includes('<!-- ckb -->'));
             
             if (existing) {
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 comment_id: existing.id,
-                body: commentBody
+                body
               });
             } else {
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
-                body: commentBody
+                body
               });
             }
-            
-            // ══════════════════════════════════════════════════════════════════
-            // STEP SUMMARY (backup)
-            // ══════════════════════════════════════════════════════════════════
-            const stepSummary = [summary.join('\n'), '', '---', '', detail.join('\n')].join('\n');
-            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, stepSummary);
 
-      - name: Request Reviewers
+      # ───────────────────────────────────────────────────────────────────────
+      # Auto-Assign Reviewers
+      # ───────────────────────────────────────────────────────────────────────
+      - name: Reviewers
         if: always()
         continue-on-error: true
         uses: actions/github-script@v7
@@ -465,11 +539,12 @@ jobs:
           script: |
             const fs = require('fs');
             try {
-              const data = JSON.parse(fs.readFileSync('analysis.json'));
-              const reviewers = (data.suggestedReviewers || [])
-                .map(r => r.owner)
-                .filter(r => !r.startsWith('@') && r !== context.actor)
+              const { suggestedReviewers = [] } = JSON.parse(fs.readFileSync('analysis.json'));
+              const reviewers = suggestedReviewers
+                .map(r => r.owner.replace(/^@/, ''))
+                .filter(r => !r.includes('/') && r !== context.actor)
                 .slice(0, 2);
+              
               if (reviewers.length) {
                 await github.rest.pulls.requestReviewers({
                   owner: context.repo.owner,
@@ -480,24 +555,27 @@ jobs:
               }
             } catch {}
 
-      - name: Cache
+      # ───────────────────────────────────────────────────────────────────────
+      # Artifacts
+      # ───────────────────────────────────────────────────────────────────────
+      - name: Save Cache
         if: always()
         uses: actions/cache/save@v4
         with:
           path: .ckb/
-          key: ckb-${{ runner.os }}-${{ github.base_ref }}-${{ hashFiles('go.sum') }}
+          key: ckb-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.base_ref }}
 
-      - name: Artifacts
+      - name: Upload
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ckb-analysis
-          path: "*.json"
-          retention-days: 14
+          path: '*.json'
+          retention-days: 7
 
-  # ════════════════════════════════════════════════════════════════════════════
-  # NIGHTLY REFRESH
-  # ════════════════════════════════════════════════════════════════════════════
+  # ╔═════════════════════════════════════════════════════════════════════════╗
+  # ║ SCHEDULED REFRESH                                                        ║
+  # ╚═════════════════════════════════════════════════════════════════════════╝
   refresh:
     name: Refresh
     runs-on: ubuntu-latest
@@ -512,33 +590,40 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
+      - name: Build
+        run: go build -ldflags="-s -w" -o ckb ./cmd/ckb
+
+      - name: Cache
+        uses: actions/cache@v4
+        with:
+          path: .ckb/
+          key: ckb-${{ runner.os }}-refresh-${{ github.run_id }}
+          restore-keys: ckb-${{ runner.os }}-
+
       - name: Refresh
         run: |
-          go build -ldflags="-s -w" -o ckb ./cmd/ckb
-          ./ckb init && ./ckb index --force
-          ./ckb refresh-architecture --scope=all 2>/dev/null || true
+          ./ckb init
+          ./ckb index --force
           
           mkdir -p reports
           ./ckb hotspots --limit=50 --format=json > reports/hotspots.json 2>/dev/null || true
-          ./ckb audit --min-score=40 --limit=50 --quick-wins --format=json > reports/audit.json 2>/dev/null || true
-          ./ckb docs stale --all --format=json > reports/stale.json 2>/dev/null || true
-          ./ckb meta stats --format=json > reports/stats.json 2>/dev/null || true
-          
-          echo "## 📊 CKB Nightly" >> $GITHUB_STEP_SUMMARY
-          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          ./ckb audit --min-score=40 --limit=50 --format=json > reports/audit.json 2>/dev/null || true
+          ./ckb ownership drift --format=json > reports/drift.json 2>/dev/null || true
+
+      - name: Summary
+        run: |
+          echo "## 📊 CKB Refresh" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
           echo "|--------|------:|" >> $GITHUB_STEP_SUMMARY
-          echo "| Symbols | $(jq '.symbolsIndexed // 0' reports/stats.json) |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🔴 Critical | $(jq '.summary.critical // 0' reports/audit.json) |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🟠 High | $(jq '.summary.high // 0' reports/audit.json) |" >> $GITHUB_STEP_SUMMARY
-          echo "| 📚 Stale | $(jq '.totalStale // 0' reports/stale.json) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Hotspots | $(jq 'length' reports/hotspots.json 2>/dev/null || echo 0) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Critical | $(jq '.summary.critical // 0' reports/audit.json 2>/dev/null || echo 0) |" >> $GITHUB_STEP_SUMMARY
+          echo "| High Risk | $(jq '.summary.high // 0' reports/audit.json 2>/dev/null || echo 0) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Drift | $(jq 'if type == "array" then length else 0 end' reports/drift.json 2>/dev/null || echo 0) |" >> $GITHUB_STEP_SUMMARY
 
-      - uses: actions/cache/save@v4
+      - name: Upload
+        uses: actions/upload-artifact@v4
         with:
-          path: .ckb/
-          key: ckb-${{ runner.os }}-main-nightly
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ckb-nightly
+          name: ckb-refresh
           path: reports/
           retention-days: 30
