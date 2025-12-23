@@ -6,15 +6,19 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 )
 
-// BenchmarkWideResultSize measures output size for wide-result tools.
+// BenchmarkWideResultSize measures output size and latency for wide-result tools.
 // Use with benchstat for before/after comparison when implementing frontierMode:
 //
 //	go test -bench=BenchmarkWideResult ./internal/mcp/... -count=5 > before.txt
 //	# implement frontierMode
 //	go test -bench=BenchmarkWideResult ./internal/mcp/... -count=5 > after.txt
 //	benchstat before.txt after.txt
+//
+// Latency is reported via b.ReportMetric but NOT used as a CI gate (too flaky).
+// Track latency trends via benchstat, not pass/fail tests.
 func BenchmarkWideResultSize(b *testing.B) {
 	server := newTestMCPServerWithIndex(b)
 	if server == nil {
@@ -119,25 +123,31 @@ func BenchmarkWideResultSize(b *testing.B) {
 			b.ReportAllocs()
 
 			var totalBytes int64
+			var totalLatencyNs int64
 			var successCount int
 
 			for i := 0; i < b.N; i++ {
+				start := time.Now()
 				resp := sendRequestBench(b, server, "tools/call", i, map[string]interface{}{
 					"name":      sc.tool,
 					"arguments": sc.args,
 				})
+				elapsed := time.Since(start)
 
 				if resp.Error == nil {
 					data, _ := json.Marshal(resp.Result)
 					totalBytes += int64(len(data))
+					totalLatencyNs += elapsed.Nanoseconds()
 					successCount++
 				}
 			}
 
 			if successCount > 0 {
 				avgBytes := float64(totalBytes) / float64(successCount)
+				avgLatencyMs := float64(totalLatencyNs) / float64(successCount) / 1e6
 				b.ReportMetric(avgBytes, "bytes/op")
 				b.ReportMetric(avgBytes/4, "est_tokens/op")
+				b.ReportMetric(avgLatencyMs, "latency_ms/op")
 			}
 		})
 	}
@@ -182,25 +192,31 @@ func BenchmarkWideResultWithFrontier(b *testing.B) {
 
 			b.ResetTimer()
 			var totalBytes int64
+			var totalLatencyNs int64
 			var successCount int
 
 			for i := 0; i < b.N; i++ {
+				start := time.Now()
 				resp := sendRequestBench(b, server, "tools/call", i, map[string]interface{}{
 					"name":      "getCallGraph",
 					"arguments": args,
 				})
+				elapsed := time.Since(start)
 
 				if resp.Error == nil {
 					data, _ := json.Marshal(resp.Result)
 					totalBytes += int64(len(data))
+					totalLatencyNs += elapsed.Nanoseconds()
 					successCount++
 				}
 			}
 
 			if successCount > 0 {
 				avgBytes := float64(totalBytes) / float64(successCount)
+				avgLatencyMs := float64(totalLatencyNs) / float64(successCount) / 1e6
 				b.ReportMetric(avgBytes, "bytes/op")
 				b.ReportMetric(avgBytes/4, "est_tokens/op")
+				b.ReportMetric(avgLatencyMs, "latency_ms/op")
 			}
 		})
 	}
