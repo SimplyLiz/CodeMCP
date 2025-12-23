@@ -13,11 +13,11 @@ func TestHandleLanguageQuality(t *testing.T) {
 	// Create temp dir and change to it
 	tmpDir := t.TempDir()
 	oldWd, _ := os.Getwd()
-	defer os.Chdir(oldWd)
-	os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(oldWd) }()
+	_ = os.Chdir(tmpDir)
 
 	// Create .ckb directory
-	os.MkdirAll(filepath.Join(tmpDir, ".ckb"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpDir, ".ckb"), 0755)
 
 	server := &Server{}
 	handler := http.HandlerFunc(server.handleLanguageQuality)
@@ -59,8 +59,8 @@ func TestHandlePythonEnv(t *testing.T) {
 	// Create temp dir and change to it
 	tmpDir := t.TempDir()
 	oldWd, _ := os.Getwd()
-	defer os.Chdir(oldWd)
-	os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(oldWd) }()
+	_ = os.Chdir(tmpDir)
 
 	server := &Server{}
 	handler := http.HandlerFunc(server.handlePythonEnv)
@@ -88,12 +88,12 @@ func TestHandlePythonEnv_WithRequirements(t *testing.T) {
 	// Create temp dir and change to it
 	tmpDir := t.TempDir()
 	oldWd, _ := os.Getwd()
-	defer os.Chdir(oldWd)
-	os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(oldWd) }()
+	_ = os.Chdir(tmpDir)
 
 	// Create requirements.txt
 	reqPath := filepath.Join(tmpDir, "requirements.txt")
-	os.WriteFile(reqPath, []byte("flask==2.0\n"), 0644)
+	_ = os.WriteFile(reqPath, []byte("flask==2.0\n"), 0644)
 
 	server := &Server{}
 	handler := http.HandlerFunc(server.handlePythonEnv)
@@ -140,8 +140,8 @@ func TestHandleTSMonorepo(t *testing.T) {
 	// Create temp dir and change to it
 	tmpDir := t.TempDir()
 	oldWd, _ := os.Getwd()
-	defer os.Chdir(oldWd)
-	os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(oldWd) }()
+	_ = os.Chdir(tmpDir)
 
 	server := &Server{}
 	handler := http.HandlerFunc(server.handleTSMonorepo)
@@ -174,16 +174,16 @@ func TestHandleTSMonorepo_WithPnpm(t *testing.T) {
 	// Create temp dir and change to it
 	tmpDir := t.TempDir()
 	oldWd, _ := os.Getwd()
-	defer os.Chdir(oldWd)
-	os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(oldWd) }()
+	_ = os.Chdir(tmpDir)
 
 	// Create pnpm-workspace.yaml
 	workspacePath := filepath.Join(tmpDir, "pnpm-workspace.yaml")
-	os.WriteFile(workspacePath, []byte("packages:\n  - packages/*\n"), 0644)
+	_ = os.WriteFile(workspacePath, []byte("packages:\n  - packages/*\n"), 0644)
 
 	// Create tsconfig.json
 	tsconfigPath := filepath.Join(tmpDir, "tsconfig.json")
-	os.WriteFile(tsconfigPath, []byte("{}"), 0644)
+	_ = os.WriteFile(tsconfigPath, []byte("{}"), 0644)
 
 	server := &Server{}
 	handler := http.HandlerFunc(server.handleTSMonorepo)

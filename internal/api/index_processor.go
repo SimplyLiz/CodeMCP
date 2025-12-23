@@ -73,7 +73,7 @@ func (p *SCIPProcessor) ProcessUpload(repoID string, scipPath string, meta Uploa
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Initialize schema
 	if err := p.initSchema(db); err != nil {
@@ -146,7 +146,7 @@ func (p *SCIPProcessor) ProcessDeltaUpload(repoID string, scipPath string, meta 
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Get total file count before changes
 	var totalFiles int
@@ -200,7 +200,7 @@ func (p *SCIPProcessor) processDeltaIndex(db *sql.DB, index *scip.SCIPIndex, met
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Build change map for quick lookup
 	changeMap := make(map[string]*DeltaChangedFile)
@@ -217,19 +217,19 @@ func (p *SCIPProcessor) processDeltaIndex(db *sql.DB, index *scip.SCIPIndex, met
 	if err != nil {
 		return err
 	}
-	defer deleteSymbolsStmt.Close()
+	defer func() { _ = deleteSymbolsStmt.Close() }()
 
 	deleteCallsStmt, err := tx.Prepare("DELETE FROM callgraph WHERE caller_file = ?")
 	if err != nil {
 		return err
 	}
-	defer deleteCallsStmt.Close()
+	defer func() { _ = deleteCallsStmt.Close() }()
 
 	deleteFileStmt, err := tx.Prepare("DELETE FROM indexed_files WHERE path = ?")
 	if err != nil {
 		return err
 	}
-	defer deleteFileStmt.Close()
+	defer func() { _ = deleteFileStmt.Close() }()
 
 	symbolStmt, err := tx.Prepare(`
 		INSERT INTO symbol_mappings (
@@ -240,7 +240,7 @@ func (p *SCIPProcessor) processDeltaIndex(db *sql.DB, index *scip.SCIPIndex, met
 	if err != nil {
 		return err
 	}
-	defer symbolStmt.Close()
+	defer func() { _ = symbolStmt.Close() }()
 
 	fileStmt, err := tx.Prepare(`
 		INSERT OR REPLACE INTO indexed_files (path, hash, indexed_at, symbol_count)
@@ -249,7 +249,7 @@ func (p *SCIPProcessor) processDeltaIndex(db *sql.DB, index *scip.SCIPIndex, met
 	if err != nil {
 		return err
 	}
-	defer fileStmt.Close()
+	defer func() { _ = fileStmt.Close() }()
 
 	callStmt, err := tx.Prepare(`
 		INSERT OR IGNORE INTO callgraph (caller_id, callee_id, caller_file, call_line, call_col, call_end_col)
@@ -258,7 +258,7 @@ func (p *SCIPProcessor) processDeltaIndex(db *sql.DB, index *scip.SCIPIndex, met
 	if err != nil {
 		return err
 	}
-	defer callStmt.Close()
+	defer func() { _ = callStmt.Close() }()
 
 	now := time.Now().Format(time.RFC3339)
 	langSet := make(map[string]bool)
@@ -270,15 +270,15 @@ func (p *SCIPProcessor) processDeltaIndex(db *sql.DB, index *scip.SCIPIndex, met
 			pathToDelete = cf.OldPath // For renames, delete old path
 		}
 
-		deleteSymbolsStmt.Exec(pathToDelete)
-		deleteCallsStmt.Exec(pathToDelete)
-		deleteFileStmt.Exec(pathToDelete)
+		_, _ = deleteSymbolsStmt.Exec(pathToDelete)
+		_, _ = deleteCallsStmt.Exec(pathToDelete)
+		_, _ = deleteFileStmt.Exec(pathToDelete)
 
 		// Also delete new path for renames/additions to avoid duplicates
 		if cf.OldPath != "" || cf.ChangeType == "modified" {
-			deleteSymbolsStmt.Exec(cf.Path)
-			deleteCallsStmt.Exec(cf.Path)
-			deleteFileStmt.Exec(cf.Path)
+			_, _ = deleteSymbolsStmt.Exec(cf.Path)
+			_, _ = deleteCallsStmt.Exec(cf.Path)
+			_, _ = deleteFileStmt.Exec(cf.Path)
 		}
 	}
 
@@ -353,7 +353,7 @@ func (p *SCIPProcessor) processDeltaIndex(db *sql.DB, index *scip.SCIPIndex, met
 
 		// Insert/update file record
 		fileHash := computeFileHash(doc)
-		fileStmt.Exec(doc.RelativePath, fileHash, time.Now().Unix(), fileSymbolCount)
+		_, _ = fileStmt.Exec(doc.RelativePath, fileHash, time.Now().Unix(), fileSymbolCount)
 		result.FileCount++
 	}
 
@@ -388,7 +388,7 @@ func (p *SCIPProcessor) openDatabase(dbPath string) (*sql.DB, error) {
 
 	for _, pragma := range pragmas {
 		if _, err := db.Exec(pragma); err != nil {
-			db.Close()
+			_ = db.Close()
 			return nil, fmt.Errorf("failed to set pragma: %w", err)
 		}
 	}
@@ -488,7 +488,7 @@ func (p *SCIPProcessor) processIndex(db *sql.DB, index *scip.SCIPIndex, result *
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Clear existing data (full replace)
 	tables := []string{"symbol_mappings", "indexed_files", "callgraph"}
@@ -508,7 +508,7 @@ func (p *SCIPProcessor) processIndex(db *sql.DB, index *scip.SCIPIndex, result *
 	if err != nil {
 		return err
 	}
-	defer symbolStmt.Close()
+	defer func() { _ = symbolStmt.Close() }()
 
 	fileStmt, err := tx.Prepare(`
 		INSERT INTO indexed_files (path, hash, indexed_at, symbol_count)
@@ -517,7 +517,7 @@ func (p *SCIPProcessor) processIndex(db *sql.DB, index *scip.SCIPIndex, result *
 	if err != nil {
 		return err
 	}
-	defer fileStmt.Close()
+	defer func() { _ = fileStmt.Close() }()
 
 	callStmt, err := tx.Prepare(`
 		INSERT OR IGNORE INTO callgraph (caller_id, callee_id, caller_file, call_line, call_col, call_end_col)
@@ -526,7 +526,7 @@ func (p *SCIPProcessor) processIndex(db *sql.DB, index *scip.SCIPIndex, result *
 	if err != nil {
 		return err
 	}
-	defer callStmt.Close()
+	defer func() { _ = callStmt.Close() }()
 
 	// Track languages
 	langSet := make(map[string]bool)

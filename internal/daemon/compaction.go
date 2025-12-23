@@ -256,7 +256,7 @@ func (c *Compactor) pruneChangeJournal(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to open database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Check if change_journal table exists
 	var tableName string
@@ -300,7 +300,7 @@ func (c *Compactor) vacuumFTS(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if c.config.DryRun {
 		c.logger.Info("Would vacuum FTS tables (dry-run)", nil)

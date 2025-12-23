@@ -264,7 +264,7 @@ func (s *Server) getStorageHealthInfo(ctx context.Context) *StorageHealthInfo {
 	// Get FTS symbol count
 	db, err := sql.Open("sqlite", dbPath)
 	if err == nil {
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 
 		var count int
 		err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM symbols_fts_content").Scan(&count)
@@ -294,7 +294,7 @@ func (s *Server) getJournalHealthInfo(ctx context.Context) *JournalHealthInfo {
 	if err != nil {
 		return info
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Check if change_journal table exists
 	var tableName string

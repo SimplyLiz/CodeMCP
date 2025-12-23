@@ -43,7 +43,7 @@ func TestCompactor_DryRun(t *testing.T) {
 		// Make the first file old
 		if i == 0 {
 			oldTime := time.Now().AddDate(0, 0, -60) // 60 days old
-			os.Chtimes(path, oldTime, oldTime)
+			_ = os.Chtimes(path, oldTime, oldTime)
 		}
 	}
 
@@ -107,7 +107,7 @@ func TestCompactor_ActualDeletion(t *testing.T) {
 			t.Fatalf("Failed to create test snapshot: %v", err)
 		}
 		modTime := now.Add(-snap.age)
-		os.Chtimes(path, modTime, modTime)
+		_ = os.Chtimes(path, modTime, modTime)
 	}
 
 	logger := logging.NewLogger(logging.Config{

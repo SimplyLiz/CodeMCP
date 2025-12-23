@@ -110,7 +110,7 @@ func (s *Server) HandleIndexCreateRepo(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // HandleIndexDeleteRepo handles DELETE /index/repos/{repo}
@@ -154,7 +154,7 @@ func (s *Server) HandleIndexDeleteRepo(w http.ResponseWriter, r *http.Request) {
 	})
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // HandleIndexUpload handles POST /index/repos/{repo}/upload
@@ -203,7 +203,7 @@ func (s *Server) HandleIndexUpload(w http.ResponseWriter, r *http.Request) {
 		writeIndexError(w, http.StatusBadRequest, "upload_failed", err.Error())
 		return
 	}
-	defer s.indexManager.Storage().CleanupUpload(streamResult.Path)
+	defer func() { _ = s.indexManager.Storage().CleanupUpload(streamResult.Path) }()
 
 	logFields := map[string]interface{}{
 		"repo_id":           repoID,
@@ -260,7 +260,7 @@ func (s *Server) HandleIndexUpload(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // StreamResult contains the result of streaming an upload to a file
@@ -315,7 +315,7 @@ func (s *Server) streamUploadToFile(r *http.Request, maxSize int64) (*StreamResu
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Wrap body in counting reader to track compressed size
 	counter := &countingReader{reader: r.Body}
@@ -327,7 +327,7 @@ func (s *Server) streamUploadToFile(r *http.Request, maxSize int64) (*StreamResu
 	// Check if encoding is supported (uses config if available)
 	if s.config.IndexServer != nil {
 		if !s.config.IndexServer.IsEncodingSupported(encoding) {
-			storage.CleanupUpload(path)
+			_ = storage.CleanupUpload(path)
 			return nil, fmt.Errorf("Content-Encoding %q not supported (compression may be disabled)", encoding)
 		}
 	}
@@ -337,25 +337,25 @@ func (s *Server) streamUploadToFile(r *http.Request, maxSize int64) (*StreamResu
 		var gr *gzip.Reader
 		gr, err = gzip.NewReader(reader)
 		if err != nil {
-			storage.CleanupUpload(path)
+			_ = storage.CleanupUpload(path)
 			return nil, fmt.Errorf("invalid gzip stream: %w", err)
 		}
-		defer gr.Close()
+		defer func() { _ = gr.Close() }()
 		reader = gr
 	case "zstd":
 		var zr *zstd.Decoder
 		zr, err = zstd.NewReader(reader)
 		if err != nil {
-			storage.CleanupUpload(path)
+			_ = storage.CleanupUpload(path)
 			return nil, fmt.Errorf("invalid zstd stream: %w", err)
 		}
-		defer zr.Close()
+		defer func() { zr.Close() }()
 		reader = zr
 	case "", "identity":
 		// No compression, use raw body
 		encoding = ""
 	default:
-		storage.CleanupUpload(path)
+		_ = storage.CleanupUpload(path)
 		return nil, fmt.Errorf("unsupported Content-Encoding: %s", encoding)
 	}
 
@@ -384,19 +384,19 @@ func (s *Server) streamUploadToFile(r *http.Request, maxSize int64) (*StreamResu
 	limitReader := io.LimitReader(reader, maxSize+1)
 	written, err := io.Copy(pw, limitReader)
 	if err != nil {
-		storage.CleanupUpload(path)
+		_ = storage.CleanupUpload(path)
 		return nil, fmt.Errorf("failed to write upload: %w", err)
 	}
 
 	// Check if decompressed size hit the limit
 	if written > maxSize {
-		storage.CleanupUpload(path)
+		_ = storage.CleanupUpload(path)
 		return nil, fmt.Errorf("decompressed upload exceeds max size of %d bytes", maxSize)
 	}
 
 	// Check minimum size (SCIP files should be at least a few bytes)
 	if written < 10 {
-		storage.CleanupUpload(path)
+		_ = storage.CleanupUpload(path)
 		return nil, fmt.Errorf("upload too small to be a valid SCIP index")
 	}
 

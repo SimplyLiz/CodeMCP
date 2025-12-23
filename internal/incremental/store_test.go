@@ -292,7 +292,7 @@ func TestStoreGetIndexState_PendingAdjustsState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open database: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	testStore := NewStore(db, logger)
 

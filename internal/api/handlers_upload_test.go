@@ -168,8 +168,8 @@ func TestIndexStorage(t *testing.T) {
 		if err != nil {
 			t.Errorf("CreateUploadFile failed: %v", err)
 		}
-		defer file.Close()
-		defer storage.CleanupUpload(path)
+		defer func() { _ = file.Close() }()
+		defer func() { _ = storage.CleanupUpload(path) }()
 
 		if !strings.HasPrefix(path, storage.uploadDir) {
 			t.Errorf("Upload path %q not in upload dir %q", path, storage.uploadDir)
@@ -437,7 +437,7 @@ func TestProgressWriter(t *testing.T) {
 	// Write 25 bytes - should trigger 1 callback (single write exceeds interval)
 	// Note: callbacks only fire at end of Write, not in a loop
 	data := make([]byte, 25)
-	pw.Write(data)
+	_, _ = pw.Write(data)
 
 	if pw.written != 25 {
 		t.Errorf("written = %d, want 25", pw.written)
@@ -450,7 +450,7 @@ func TestProgressWriter(t *testing.T) {
 	}
 
 	// Write another 15 bytes (total 40) - should trigger another callback
-	pw.Write(make([]byte, 15))
+	_, _ = pw.Write(make([]byte, 15))
 	if pw.written != 40 {
 		t.Errorf("written = %d, want 40", pw.written)
 	}
