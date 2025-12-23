@@ -70,6 +70,11 @@ func NewMCPServer(version string, engine *query.Engine, logger *logging.Logger) 
 	// Compute initial toolset hash
 	server.updateToolsetHash()
 
+	// Wire up metrics persistence if database is available
+	if engine != nil && engine.DB() != nil {
+		SetMetricsDB(engine.DB())
+	}
+
 	return server
 }
 
