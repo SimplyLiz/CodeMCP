@@ -145,20 +145,27 @@ jobs:
                   reg_val = f"{len(fails)} failed, {len(warns)} regressed" if fails else f"{len(warns)} regressed"
                   print(f"**Regressions:** {reg_val}\n")
               else:
-                  print("**Regressions:** none ✅\n")
+                  print(f"**Regressions:** {len(regressions)} ✅\n")
 
-              # Diff block preview (top 3 each)
+              print("**Thresholds:** WARN ≥ +5% • FAIL ≥ +10% • Hotspot ≥ 90% budget\n")
+
+              # Diff block preview (top 3 each category)
               preview_bad = sorted([r for r in rows if r["diff_pct"] >= 5], key=lambda r: -r["diff_pct"])[:3]
+              # Hotspots: ≥90% budget but not already a regression
+              preview_hot = sorted([r for r in rows if r["budget_pct"] >= 90 and r["diff_pct"] < 5], key=lambda r: -r["budget_pct"])[:3]
               preview_good = sorted([r for r in rows if r["diff_pct"] <= -5], key=lambda r: r["diff_pct"])[:3]
 
-              if preview_bad or preview_good:
+              if preview_bad or preview_hot or preview_good:
                   # Calculate max width for alignment
-                  all_preview = preview_bad + preview_good
+                  all_preview = preview_bad + preview_hot + preview_good
                   max_name = max(len(f"{r['tool']}/{r['tier']}") for r in all_preview)
                   print("```diff")
                   for r in preview_bad:
                       name = f"{r['tool']}/{r['tier']}"
                       print(f"- {r['verdict']:4} {name:<{max_name}}  {r['diff_pct']:+6.1f}%  {r['actual']:>9,}B  budget {r['budget_pct']:>2.0f}%  {r['timing']}")
+                  for r in preview_hot:
+                      name = f"{r['tool']}/{r['tier']}"
+                      print(f"! HOT  {name:<{max_name}}  {r['diff_pct']:+6.1f}%  {r['actual']:>9,}B  budget {r['budget_pct']:>2.0f}%  {r['timing']}")
                   for r in preview_good:
                       name = f"{r['tool']}/{r['tier']}"
                       print(f"+ SAVE {name:<{max_name}}  {r['diff_pct']:+6.1f}%  {r['actual']:>9,}B  budget {r['budget_pct']:>2.0f}%  {r['timing']}")
