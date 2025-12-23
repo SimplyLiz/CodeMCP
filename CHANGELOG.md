@@ -19,18 +19,34 @@ Major performance improvements to the SCIP backend through pre-computed indexes:
 **Changes:**
 - **RefIndex**: Inverted reference index built during SCIP load for O(1) reference lookups instead of O(n×m) scans
 - **ConvertedSymbols Cache**: Pre-converted symbols avoid repeated parsing of SCIP identifiers, visibility inference, and location lookups
+- **ContainerIndex**: Maps occurrence positions to containing symbols for O(1) containment lookup instead of O(n²) nested loops
 - **Fast Location Lookup**: `findSymbolLocationFast` uses RefIndex for O(k) definition lookup where k = number of occurrences
 - **RateLimiter Cleanup**: Added graceful shutdown with `Stop()` method to prevent goroutine leaks
 
 **Files Changed:**
-- `internal/backends/scip/loader.go` — Added `OccurrenceRef`, `RefIndex`, `ConvertedSymbols` to `SCIPIndex`
-- `internal/backends/scip/references.go` — `FindReferences` uses inverted index
+- `internal/backends/scip/loader.go` — Added `OccurrenceRef`, `RefIndex`, `ConvertedSymbols`, `ContainerIndex` to `SCIPIndex`
+- `internal/backends/scip/references.go` — `FindReferences` uses inverted index, added `findContainingSymbolFast`
 - `internal/backends/scip/symbols.go` — Added `GetCachedSymbol`, `findSymbolLocationFast`, cached `SearchSymbols`
 - `internal/backends/limiter.go` — Added `done` channel and `Stop()` method
 
 **Tests Added:**
-- `internal/backends/scip/performance_test.go` — 8 unit tests + 7 benchmarks
+- `internal/backends/scip/performance_test.go` — 11 unit tests + 10 benchmarks
 - `internal/backends/limiter_test.go` — 5 unit tests + 1 benchmark
+
+#### Git Backend Optimizations
+Major performance improvement to `getHotspots` by consolidating git commands:
+
+| Operation | Before | After | Improvement |
+|-----------|--------|-------|-------------|
+| getHotspots | 26.7s | 498ms | **53x faster** |
+
+**Problem:** For each changed file, ran 4 separate git commands (rev-list, shortlog, log × 2).
+With 100+ files = 400+ process spawns.
+
+**Solution:** Single `git log --format=%H|%an|%aI --numstat` command parses all data in one pass.
+
+**Files Changed:**
+- `internal/backends/git/churn.go` — Rewrote `GetHotspots` to use single git command
 
 ### Added
 
