@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"ckb/internal/config"
 	"ckb/internal/logging"
@@ -141,8 +142,10 @@ func TestNFRScenarios(t *testing.T) {
 
 	for _, sc := range scenarios {
 		t.Run(sc.name, func(t *testing.T) {
-			// Generate fixture JSON
+			// Generate fixture JSON with timing
+			start := time.Now()
 			responseJSON := sc.genJSON(sc.fixtures)
+			elapsed := time.Since(start)
 			actualBytes := len(responseJSON)
 
 			// Get baseline
@@ -157,7 +160,7 @@ func TestNFRScenarios(t *testing.T) {
 
 			// Check against baseline with tolerance
 			maxAllowed := int(float64(baseline) * tolerance)
-			t.Logf("%s: %d bytes (baseline: %d, max: %d)", sc.name, actualBytes, baseline, maxAllowed)
+			t.Logf("%s: %d bytes (baseline: %d, max: %d) [%v]", sc.name, actualBytes, baseline, maxAllowed, elapsed)
 
 			if actualBytes > maxAllowed {
 				t.Errorf("REGRESSION: %s exceeds baseline by >10%%: %d bytes (max: %d)",

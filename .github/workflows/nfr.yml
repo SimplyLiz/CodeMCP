@@ -74,10 +74,10 @@ jobs:
           with open("nfr-output.txt", "r") as f:
               content = f.read()
 
-          # Parse: "searchSymbols_small: 3500 bytes (baseline: 3600, max: 3960)"
-          pattern = r'(\w+)_(\w+): (\d+) bytes \(baseline: (\d+), max: (\d+)\)'
+          # Parse: "searchSymbols_small: 3500 bytes (baseline: 3600, max: 3960) [1.234ms]"
+          pattern = r'(\w+)_(\w+): (\d+) bytes \(baseline: (\d+), max: (\d+)\) \[([^\]]+)\]'
           for match in re.finditer(pattern, content):
-              tool, tier, actual, baseline, max_allowed = match.groups()
+              tool, tier, actual, baseline, max_allowed, timing = match.groups()
               actual, baseline = int(actual), int(baseline)
               diff_pct = ((actual - baseline) / baseline) * 100
 
@@ -94,11 +94,11 @@ jobs:
                   status = "⚪"
                   trend = f"~{diff_pct:+.1f}%"
 
-              results.append(f"| {tool} | {tier} | {actual:,} | {baseline:,} | {trend} | {status} |")
+              results.append(f"| {tool} | {tier} | {actual:,} | {baseline:,} | {trend} | {timing} | {status} |")
 
           if results:
-              print("| Tool | Tier | Actual | Baseline | Change | Status |")
-              print("|------|------|-------:|----------:|-------:|:------:|")
+              print("| Tool | Tier | Actual | Baseline | Change | Timing | Status |")
+              print("|------|------|-------:|----------:|-------:|-------:|:------:|")
               for r in results:
                   print(r)
           else:
