@@ -126,43 +126,24 @@ jobs:
               hotspot_count = sum(1 for r in rows if r["budget_pct"] >= 90)
 
               total = len(rows)
-              oks = [r for r in rows if r["verdict"] == "OK"]
-              passed = len(oks) + len(goods)
 
-              # Headline with breakdown
-              parts = []
+              # Headline
               if fails:
-                  parts.append(f"{len(fails)} failed")
-              if warns:
-                  parts.append(f"{len(warns)} regressed")
-              parts.append(f"{passed} passed")
-              if goods:
-                  parts.append(f"📉 {len(goods)} improved")
-
-              if fails:
-                  print(f"## Response Size ❌ {' · '.join(parts)}\n")
+                  print(f"## Response Size ❌ {len(fails)} failed\n")
               elif warns:
-                  print(f"## Response Size ⚠️ {' · '.join(parts)}\n")
+                  print(f"## Response Size ⚠️ {len(warns)} regressed\n")
               else:
-                  print(f"## Response Size ✅ {' · '.join(parts)}\n")
+                  print(f"## Response Size ✅ {total} passed\n")
 
-              # Key metrics
-              if worst_reg:
-                  print(f"**Worst regression:** `{worst_reg['tool']}/{worst_reg['tier']}` **+{worst_reg['diff_pct']:.1f}%** ({worst_reg['actual']:,}B) • Budget {worst_reg['budget_pct']:.0f}%  ")
-              else:
-                  print("**Regressions:** none ✅  ")
-              print(f"**Best saving:** `{best_impr['tool']}/{best_impr['tier']}` **{best_impr['diff_pct']:.1f}%** ({best_impr['actual']:,}B) • Budget {best_impr['budget_pct']:.0f}%  ")
-              if hotspots:
-                  hs = ", ".join([f"`{h['tool']}/{h['tier']}` {h['budget_pct']:.0f}% (margin {100-h['budget_pct']:.0f}%)" for h in hotspots])
-                  print(f"**Hotspots:** {hs}\n")
-              else:
-                  print("**Hotspots:** none ≥90% ✅\n")
-
-              # Summary counts
-              reg_str = f"{len(fails)} FAIL / {len(warns)} WARN" if regressions else "0"
-              print("| Regressions | Savings | Hotspots ≥90% | Scenarios |")
-              print("|---:|---:|---:|---:|")
-              print(f"| {reg_str} | {len(savings)} | {hotspot_count} | {total} |\n")
+              # Key/Value summary table
+              reg_val = f"{len(fails)} FAIL / {len(warns)} WARN" if regressions else "none ✓"
+              print("| Key | Value |")
+              print("|---|---|")
+              print(f"| Regressions | {reg_val} |")
+              print(f"| Savings | {len(savings)} |")
+              print(f"| Hotspots ≥90% | {hotspot_count} |")
+              print(f"| Scenarios | {total} |")
+              print()
 
               # Diff block preview (top 3 each)
               preview_bad = sorted([r for r in rows if r["diff_pct"] >= 5], key=lambda r: -r["diff_pct"])[:3]
@@ -173,28 +154,17 @@ jobs:
                   for r in preview_bad:
                       print(f"- {r['verdict']:4} {r['tool']}/{r['tier']:<20} +{r['diff_pct']:5.1f}%  {r['actual']:>8,}B  budget {r['budget_pct']:>2.0f}%  {r['timing']}")
                   for r in preview_good:
-                      print(f"+ GOOD {r['tool']}/{r['tier']:<20} {r['diff_pct']:+5.1f}%  {r['actual']:>8,}B  budget {r['budget_pct']:>2.0f}%  {r['timing']}")
+                      print(f"+ SAVE {r['tool']}/{r['tier']:<20} {r['diff_pct']:+5.1f}%  {r['actual']:>8,}B  budget {r['budget_pct']:>2.0f}%  {r['timing']}")
                   print("```\n")
 
-              # Regressions table
-              if regressions:
-                  print("### Regressions\n")
-                  print("| Scenario | Actual (B) | Δ | Budget | Margin | Time | Verdict |")
-                  print("|---|---:|---:|---:|---:|---:|---|")
-                  for r in sorted(regressions, key=lambda x: -x["diff_pct"]):
-                      v = f"**{r['verdict']}**" if r["verdict"] == "FAIL" else r["verdict"]
-                      margin = 100 - r["budget_pct"]
-                      print(f"| {r['tool']} / {r['tier']} | {r['actual']:,} | +{r['diff_pct']:.1f}% | {r['budget_pct']:.0f}% | {margin:.0f}% | {r['timing']} | {v} |")
-                  print()
-
-              # Savings table
-              if savings:
-                  print("### Savings\n")
-                  print("| Scenario | Actual (B) | Δ | Budget | Margin | Time |")
-                  print("|---|---:|---:|---:|---:|---:|")
-                  for r in sorted(savings, key=lambda x: x["diff_pct"]):
-                      margin = 100 - r["budget_pct"]
-                      print(f"| {r['tool']} / {r['tier']} | {r['actual']:,} | {r['diff_pct']:.1f}% | {r['budget_pct']:.0f}% | {margin:.0f}% | {r['timing']} |")
+              # Hotspots table (if any)
+              if hotspots:
+                  print("### Hotspots (closest to limit)\n")
+                  print("| Scenario | Budget | Margin |")
+                  print("|---|---:|---:|")
+                  for h in hotspots:
+                      margin = 100 - h["budget_pct"]
+                      print(f"| {h['tool']} / {h['tier']} | {h['budget_pct']:.0f}% | {margin:.0f}% |")
                   print()
 
               # Full breakdown in details
