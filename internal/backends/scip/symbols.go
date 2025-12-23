@@ -73,7 +73,14 @@ func (idx *SCIPIndex) FindSymbolsByKind(kind SymbolKind) ([]*SCIPSymbol, error) 
 }
 
 // convertToSCIPSymbol converts SymbolInformation to SCIPSymbol
+// Deprecated: Use GetCachedSymbol for better performance when possible
 func convertToSCIPSymbol(symInfo *SymbolInformation, idx *SCIPIndex) (*SCIPSymbol, error) {
+	return convertToSCIPSymbolWithIndex(symInfo, idx)
+}
+
+// convertToSCIPSymbolWithIndex converts SymbolInformation to SCIPSymbol
+// This is the internal conversion function used during index loading
+func convertToSCIPSymbolWithIndex(symInfo *SymbolInformation, idx *SCIPIndex) (*SCIPSymbol, error) {
 	// Parse SCIP identifier
 	scipId, err := ParseSCIPIdentifier(symInfo.Symbol)
 	if err != nil {
@@ -92,8 +99,13 @@ func convertToSCIPSymbol(symInfo *SymbolInformation, idx *SCIPIndex) (*SCIPSymbo
 	// Extract documentation
 	documentation := strings.Join(symInfo.Documentation, "\n")
 
-	// Find location
-	location := findSymbolLocation(symInfo.Symbol, idx)
+	// Find location using RefIndex if available for O(1) lookup
+	var location *Location
+	if idx.RefIndex != nil {
+		location = findSymbolLocationFast(symInfo.Symbol, idx)
+	} else {
+		location = findSymbolLocation(symInfo.Symbol, idx)
+	}
 
 	// Extract modifiers
 	modifiers := extractModifiers(symInfo)
@@ -122,6 +134,24 @@ func convertToSCIPSymbol(symInfo *SymbolInformation, idx *SCIPIndex) (*SCIPSymbo
 		ContainerName:       containerName,
 		Visibility:          visibility,
 	}, nil
+}
+
+// GetCachedSymbol retrieves a pre-converted symbol from the cache
+// Falls back to conversion if not cached
+func (idx *SCIPIndex) GetCachedSymbol(symbolId string) (*SCIPSymbol, error) {
+	// Try cache first
+	if idx.ConvertedSymbols != nil {
+		if cached, ok := idx.ConvertedSymbols[symbolId]; ok {
+			return cached, nil
+		}
+	}
+
+	// Fall back to conversion
+	symInfo := idx.GetSymbol(symbolId)
+	if symInfo == nil {
+		return nil, fmt.Errorf("symbol not found: %s", symbolId)
+	}
+	return convertToSCIPSymbolWithIndex(symInfo, idx)
 }
 
 // inferSymbolKind infers the symbol kind from various sources
@@ -161,6 +191,7 @@ func inferSymbolKind(symInfo *SymbolInformation, scipId *SCIPIdentifier) SymbolK
 }
 
 // findSymbolLocation finds the definition location of a symbol
+// This is the O(n*m) fallback when RefIndex is not available
 func findSymbolLocation(symbolId string, idx *SCIPIndex) *Location {
 	// Search through all documents for the definition occurrence
 	for _, doc := range idx.Documents {
@@ -171,6 +202,23 @@ func findSymbolLocation(symbolId string, idx *SCIPIndex) *Location {
 					return parseOccurrenceRange(occ, doc.RelativePath)
 				}
 			}
+		}
+	}
+
+	return nil
+}
+
+// findSymbolLocationFast finds the definition location using the inverted index
+// O(k) where k is the number of occurrences of this symbol (typically small)
+func findSymbolLocationFast(symbolId string, idx *SCIPIndex) *Location {
+	refs, ok := idx.RefIndex[symbolId]
+	if !ok {
+		return nil
+	}
+
+	for _, ref := range refs {
+		if ref.Occ.SymbolRoles&SymbolRoleDefinition != 0 {
+			return parseOccurrenceRange(ref.Occ, ref.Doc.RelativePath)
 		}
 	}
 
@@ -282,22 +330,36 @@ func GetSymbolSignature(symInfo *SymbolInformation, scipId *SCIPIdentifier) stri
 }
 
 // SearchSymbols performs a search across all symbols
+// Uses pre-converted symbol cache for O(n) iteration without conversion overhead
 func (idx *SCIPIndex) SearchSymbols(query string, options SearchOptions) ([]*SCIPSymbol, error) {
 	var matches []*SCIPSymbol
 	queryLower := strings.ToLower(query)
 
+	// Use cached symbols if available (O(n) with no conversion overhead)
+	if len(idx.ConvertedSymbols) > 0 {
+		for _, scipSym := range idx.ConvertedSymbols {
+			if matchesQuery(scipSym, queryLower, options) {
+				matches = append(matches, scipSym)
+			}
+
+			if options.MaxResults > 0 && len(matches) >= options.MaxResults {
+				break
+			}
+		}
+		return matches, nil
+	}
+
+	// Fallback: convert on-the-fly (for backwards compatibility)
 	for _, symInfo := range idx.Symbols {
 		scipSym, err := convertToSCIPSymbol(symInfo, idx)
 		if err != nil {
 			continue
 		}
 
-		// Check if symbol matches query
 		if matchesQuery(scipSym, queryLower, options) {
 			matches = append(matches, scipSym)
 		}
 
-		// Limit results if specified
 		if options.MaxResults > 0 && len(matches) >= options.MaxResults {
 			break
 		}

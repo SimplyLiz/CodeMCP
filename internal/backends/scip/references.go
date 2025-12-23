@@ -8,55 +8,79 @@ import (
 )
 
 // FindReferences finds all references to a symbol
+// Uses RefIndex for O(1) lookup when available, falls back to O(n*m) scan otherwise
 func (idx *SCIPIndex) FindReferences(symbolId string, options ReferenceOptions) ([]*SCIPReference, error) {
 	references := make([]*SCIPReference, 0)
 
-	// Search through all documents for occurrences of this symbol
+	// Use inverted index for O(1) lookup if available
+	if idx.RefIndex != nil {
+		occRefs, ok := idx.RefIndex[symbolId]
+		if !ok {
+			return references, nil // No references found
+		}
+
+		for _, occRef := range occRefs {
+			ref := idx.processOccurrence(symbolId, occRef.Doc, occRef.Occ, options)
+			if ref != nil {
+				references = append(references, ref)
+				if options.MaxResults > 0 && len(references) >= options.MaxResults {
+					return references, nil
+				}
+			}
+		}
+		return references, nil
+	}
+
+	// Fallback: O(n*m) scan through all documents (for backwards compatibility)
 	for _, doc := range idx.Documents {
 		for _, occ := range doc.Occurrences {
 			if occ.Symbol == symbolId {
-				// Determine reference kind from symbol roles
-				kind := determineReferenceKind(occ)
-
-				// Skip definition if not included
-				if kind == RefDefinition && !options.IncludeDefinition {
-					continue
-				}
-
-				// Parse location
-				location := parseOccurrenceRange(occ, doc.RelativePath)
-				if location == nil {
-					continue
-				}
-
-				// Get context if file path is available
-				context := ""
-				if options.IncludeContext {
-					context = extractContext(doc.RelativePath, location, idx)
-				}
-
-				// Determine the containing symbol
-				fromSymbol := findContainingSymbol(doc, occ)
-
-				ref := &SCIPReference{
-					SymbolId:   symbolId,
-					Location:   location,
-					Kind:       kind,
-					FromSymbol: fromSymbol,
-					Context:    context,
-				}
-
-				references = append(references, ref)
-
-				// Limit results if specified
-				if options.MaxResults > 0 && len(references) >= options.MaxResults {
-					return references, nil
+				ref := idx.processOccurrence(symbolId, doc, occ, options)
+				if ref != nil {
+					references = append(references, ref)
+					if options.MaxResults > 0 && len(references) >= options.MaxResults {
+						return references, nil
+					}
 				}
 			}
 		}
 	}
 
 	return references, nil
+}
+
+// processOccurrence converts an occurrence to a reference, applying filters
+func (idx *SCIPIndex) processOccurrence(symbolId string, doc *Document, occ *Occurrence, options ReferenceOptions) *SCIPReference {
+	// Determine reference kind from symbol roles
+	kind := determineReferenceKind(occ)
+
+	// Skip definition if not included
+	if kind == RefDefinition && !options.IncludeDefinition {
+		return nil
+	}
+
+	// Parse location
+	location := parseOccurrenceRange(occ, doc.RelativePath)
+	if location == nil {
+		return nil
+	}
+
+	// Get context if file path is available
+	context := ""
+	if options.IncludeContext {
+		context = extractContext(doc.RelativePath, location, idx)
+	}
+
+	// Determine the containing symbol
+	fromSymbol := findContainingSymbol(doc, occ)
+
+	return &SCIPReference{
+		SymbolId:   symbolId,
+		Location:   location,
+		Kind:       kind,
+		FromSymbol: fromSymbol,
+		Context:    context,
+	}
 }
 
 // ReferenceOptions contains options for finding references

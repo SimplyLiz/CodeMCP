@@ -12,6 +12,12 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// OccurrenceRef is a lightweight reference to an occurrence for the inverted index
+type OccurrenceRef struct {
+	Doc *Document
+	Occ *Occurrence
+}
+
 // SCIPIndex represents a loaded SCIP index
 type SCIPIndex struct {
 	// Metadata contains index metadata
@@ -22,6 +28,12 @@ type SCIPIndex struct {
 
 	// Symbols maps symbol IDs to symbol information
 	Symbols map[string]*SymbolInformation
+
+	// RefIndex is an inverted index for O(1) reference lookups: symbolId -> occurrences
+	RefIndex map[string][]*OccurrenceRef
+
+	// ConvertedSymbols caches pre-converted SCIPSymbol objects to avoid repeated conversion
+	ConvertedSymbols map[string]*SCIPSymbol
 
 	// LoadedAt is when the index was loaded
 	LoadedAt time.Time
@@ -79,17 +91,37 @@ func LoadSCIPIndex(path string) (*SCIPIndex, error) {
 
 	// Convert to internal representation
 	scipIndex := &SCIPIndex{
-		Metadata:  convertMetadata(index.Metadata),
-		Documents: convertDocuments(index.Documents),
-		Symbols:   make(map[string]*SymbolInformation),
-		LoadedAt:  time.Now(),
-		raw:       &index,
+		Metadata:         convertMetadata(index.Metadata),
+		Documents:        convertDocuments(index.Documents),
+		Symbols:          make(map[string]*SymbolInformation),
+		RefIndex:         make(map[string][]*OccurrenceRef),
+		ConvertedSymbols: make(map[string]*SCIPSymbol),
+		LoadedAt:         time.Now(),
+		raw:              &index,
 	}
 
-	// Build symbol map
+	// Build symbol map and reference index in a single pass
 	for _, doc := range scipIndex.Documents {
+		// Index symbols
 		for _, sym := range doc.Symbols {
 			scipIndex.Symbols[sym.Symbol] = sym
+		}
+
+		// Build inverted reference index for O(1) lookups
+		for _, occ := range doc.Occurrences {
+			if occ.Symbol != "" {
+				scipIndex.RefIndex[occ.Symbol] = append(
+					scipIndex.RefIndex[occ.Symbol],
+					&OccurrenceRef{Doc: doc, Occ: occ},
+				)
+			}
+		}
+	}
+
+	// Pre-convert all symbols to avoid repeated conversion during queries
+	for symbolId, symInfo := range scipIndex.Symbols {
+		if converted, err := convertToSCIPSymbol(symInfo, scipIndex); err == nil {
+			scipIndex.ConvertedSymbols[symbolId] = converted
 		}
 	}
 
