@@ -374,13 +374,15 @@ func TestScopedAuthMiddlewareRateLimiting(t *testing.T) {
 	logger := testMiddlewareLogger()
 
 	// Create auth manager with rate limiting
+	// Use very low refill rate (1/minute = 1/60 per second) so tokens don't
+	// refill between requests even on slow CI machines
 	config := auth.ManagerConfig{
 		Enabled:     true,
 		RequireAuth: true,
 		RateLimiting: auth.RateLimitConfig{
 			Enabled:      true,
-			DefaultLimit: 60, // 1 per second
-			BurstSize:    2,  // Very low burst for testing
+			DefaultLimit: 1, // 1 per minute - very slow refill to avoid CI flakiness
+			BurstSize:    2, // Low burst for testing
 		},
 		StaticKeys: []auth.StaticKeyConfig{
 			{
