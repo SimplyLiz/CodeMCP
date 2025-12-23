@@ -503,3 +503,12 @@ func (s *SCIPAdapter) GetReferenceCount(symbolId string) int {
 
 	return s.index.GetReferenceCount(symbolId)
 }
+
+// GetIndex returns the underlying SCIP index for direct access.
+// This is used by FTS population and other systems that need raw symbol data.
+func (s *SCIPAdapter) GetIndex() *SCIPIndex {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.index
+}

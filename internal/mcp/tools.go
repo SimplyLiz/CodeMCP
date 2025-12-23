@@ -944,6 +944,163 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				"required": []string{"federation"},
 			},
 		},
+		// v7.4 Remote Federation tools (Phase 5)
+		{
+			Name:        "federationAddRemote",
+			Description: "Add a remote CKB index server to a federation. The remote server will be queried alongside local repositories.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"federation": map[string]interface{}{
+						"type":        "string",
+						"description": "Name of the federation",
+					},
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "Name for the remote server",
+					},
+					"url": map[string]interface{}{
+						"type":        "string",
+						"description": "URL of the remote index server",
+					},
+					"token": map[string]interface{}{
+						"type":        "string",
+						"description": "Auth token (supports ${ENV_VAR} expansion)",
+					},
+					"cacheTtl": map[string]interface{}{
+						"type":        "string",
+						"default":     "1h",
+						"description": "Cache TTL (e.g., 15m, 1h)",
+					},
+					"timeout": map[string]interface{}{
+						"type":        "string",
+						"default":     "30s",
+						"description": "Request timeout",
+					},
+				},
+				"required": []string{"federation", "name", "url"},
+			},
+		},
+		{
+			Name:        "federationRemoveRemote",
+			Description: "Remove a remote server from a federation.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"federation": map[string]interface{}{
+						"type":        "string",
+						"description": "Name of the federation",
+					},
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "Name of the remote server to remove",
+					},
+				},
+				"required": []string{"federation", "name"},
+			},
+		},
+		{
+			Name:        "federationListRemote",
+			Description: "List remote servers configured in a federation.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"federation": map[string]interface{}{
+						"type":        "string",
+						"description": "Name of the federation",
+					},
+				},
+				"required": []string{"federation"},
+			},
+		},
+		{
+			Name:        "federationSyncRemote",
+			Description: "Sync metadata from remote server(s). If name is provided, syncs that server only; otherwise syncs all enabled servers.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"federation": map[string]interface{}{
+						"type":        "string",
+						"description": "Name of the federation",
+					},
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional server name to sync (default: all)",
+					},
+				},
+				"required": []string{"federation"},
+			},
+		},
+		{
+			Name:        "federationStatusRemote",
+			Description: "Check remote server connectivity and status.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"federation": map[string]interface{}{
+						"type":        "string",
+						"description": "Name of the federation",
+					},
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "Name of the remote server",
+					},
+				},
+				"required": []string{"federation", "name"},
+			},
+		},
+		{
+			Name:        "federationSearchSymbolsHybrid",
+			Description: "Search symbols across local federation and remote servers. Returns results with source attribution.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"federation": map[string]interface{}{
+						"type":        "string",
+						"description": "Name of the federation",
+					},
+					"query": map[string]interface{}{
+						"type":        "string",
+						"description": "Search query",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"default":     100,
+						"description": "Maximum results to return",
+					},
+					"language": map[string]interface{}{
+						"type":        "string",
+						"description": "Filter by language",
+					},
+					"kind": map[string]interface{}{
+						"type":        "string",
+						"description": "Filter by symbol kind",
+					},
+					"servers": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Optional list of server names to query (default: all enabled)",
+					},
+				},
+				"required": []string{"federation", "query"},
+			},
+		},
+		{
+			Name:        "federationListAllRepos",
+			Description: "List all repositories from local federation and remote servers.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"federation": map[string]interface{}{
+						"type":        "string",
+						"description": "Name of the federation",
+					},
+				},
+				"required": []string{"federation"},
+			},
+		},
 		// v6.2.1 Daemon tools
 		{
 			Name:        "daemonStatus",
@@ -1514,6 +1671,37 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		// v7.3 Multi-Repo Management tools
+		{
+			Name:        "listRepos",
+			Description: "List all registered repositories with their state and active status. Shows which repos are valid, uninitialized, or missing.",
+			InputSchema: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+		},
+		{
+			Name:        "switchRepo",
+			Description: "Switch to a different repository. The repository must be registered and initialized. Use listRepos to see available repos.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "The name of the repository to switch to (from registry)",
+					},
+				},
+				"required": []string{"name"},
+			},
+		},
+		{
+			Name:        "getActiveRepo",
+			Description: "Get information about the currently active repository including name, path, and state.",
+			InputSchema: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+		},
 	}
 }
 
@@ -1561,6 +1749,14 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["federationGetHotspots"] = s.toolFederationGetHotspots
 	s.tools["federationSearchDecisions"] = s.toolFederationSearchDecisions
 	s.tools["federationSync"] = s.toolFederationSync
+	// v7.4 Remote Federation tools
+	s.tools["federationAddRemote"] = s.toolFederationAddRemote
+	s.tools["federationRemoveRemote"] = s.toolFederationRemoveRemote
+	s.tools["federationListRemote"] = s.toolFederationListRemote
+	s.tools["federationSyncRemote"] = s.toolFederationSyncRemote
+	s.tools["federationStatusRemote"] = s.toolFederationStatusRemote
+	s.tools["federationSearchSymbolsHybrid"] = s.toolFederationSearchSymbolsHybrid
+	s.tools["federationListAllRepos"] = s.toolFederationListAllRepos
 	// v6.2.1 Daemon tools
 	s.tools["daemonStatus"] = s.toolDaemonStatus
 	s.tools["listSchedules"] = s.toolListSchedules
@@ -1593,4 +1789,8 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["checkDocStaleness"] = s.toolCheckDocStaleness
 	s.tools["indexDocs"] = s.toolIndexDocs
 	s.tools["getDocCoverage"] = s.toolGetDocCoverage
+	// v7.3 Multi-Repo Management tools
+	s.tools["listRepos"] = s.toolListRepos
+	s.tools["switchRepo"] = s.toolSwitchRepo
+	s.tools["getActiveRepo"] = s.toolGetActiveRepo
 }

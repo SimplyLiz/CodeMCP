@@ -227,6 +227,15 @@ func (e *Engine) initializeBackends(cfg *config.Config) error {
 			// Update tier detector
 			if scipAdapter.IsAvailable() {
 				e.tierDetector.SetScipAvailable(true)
+
+				// Populate FTS index from SCIP symbols
+				ctx := context.Background()
+				if err := e.PopulateFTSFromSCIP(ctx); err != nil {
+					e.logger.Warn("Failed to populate FTS from SCIP", map[string]interface{}{
+						"error": err.Error(),
+					})
+					// Don't fail initialization - FTS is optional optimization
+				}
 			}
 		}
 	}

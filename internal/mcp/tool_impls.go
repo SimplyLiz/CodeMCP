@@ -20,7 +20,7 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (interface{}, e
 	})
 
 	ctx := context.Background()
-	statusResp, err := s.engine.GetStatus(ctx)
+	statusResp, err := s.engine().GetStatus(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get status: %w", err)
 	}
@@ -73,7 +73,7 @@ func (s *MCPServer) toolDoctor(params map[string]interface{}) (interface{}, erro
 	})
 
 	ctx := context.Background()
-	doctorResp, err := s.engine.Doctor(ctx, "")
+	doctorResp, err := s.engine().Doctor(ctx, "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to run diagnostics: %w", err)
 	}
@@ -131,7 +131,7 @@ func (s *MCPServer) toolGetSymbol(params map[string]interface{}) (interface{}, e
 		RepoStateMode: repoStateMode,
 	}
 
-	symbolResp, err := s.engine.GetSymbol(ctx, opts)
+	symbolResp, err := s.engine().GetSymbol(ctx, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get symbol: %w", err)
 	}
@@ -235,7 +235,7 @@ func (s *MCPServer) toolSearchSymbols(params map[string]interface{}) (interface{
 		Limit: limit,
 	}
 
-	searchResp, err := s.engine.SearchSymbols(ctx, opts)
+	searchResp, err := s.engine().SearchSymbols(ctx, opts)
 	if err != nil {
 		return nil, fmt.Errorf("search failed: %w", err)
 	}
@@ -336,7 +336,7 @@ func (s *MCPServer) toolFindReferences(params map[string]interface{}) (interface
 		Limit:        limit,
 	}
 
-	refsResp, err := s.engine.FindReferences(ctx, opts)
+	refsResp, err := s.engine().FindReferences(ctx, opts)
 	if err != nil {
 		return nil, fmt.Errorf("find references failed: %w", err)
 	}
@@ -417,7 +417,7 @@ func (s *MCPServer) toolGetArchitecture(params map[string]interface{}) (interfac
 		Refresh:             refresh,
 	}
 
-	archResp, err := s.engine.GetArchitecture(ctx, opts)
+	archResp, err := s.engine().GetArchitecture(ctx, opts)
 	if err != nil {
 		return nil, fmt.Errorf("architecture analysis failed: %w", err)
 	}
@@ -529,7 +529,7 @@ func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (interface{
 		TelemetryPeriod:  telemetryPeriod,
 	}
 
-	impactResp, err := s.engine.AnalyzeImpact(ctx, opts)
+	impactResp, err := s.engine().AnalyzeImpact(ctx, opts)
 	if err != nil {
 		return nil, fmt.Errorf("impact analysis failed: %w", err)
 	}
@@ -641,7 +641,7 @@ func (s *MCPServer) toolExplainSymbol(params map[string]interface{}) (interface{
 	})
 
 	ctx := context.Background()
-	resp, err := s.engine.ExplainSymbol(ctx, query.ExplainSymbolOptions{SymbolId: symbolId})
+	resp, err := s.engine().ExplainSymbol(ctx, query.ExplainSymbolOptions{SymbolId: symbolId})
 	if err != nil {
 		return nil, fmt.Errorf("explainSymbol failed: %w", err)
 	}
@@ -666,7 +666,7 @@ func (s *MCPServer) toolJustifySymbol(params map[string]interface{}) (interface{
 	})
 
 	ctx := context.Background()
-	resp, err := s.engine.JustifySymbol(ctx, query.JustifySymbolOptions{SymbolId: symbolId})
+	resp, err := s.engine().JustifySymbol(ctx, query.JustifySymbolOptions{SymbolId: symbolId})
 	if err != nil {
 		return nil, fmt.Errorf("justifySymbol failed: %w", err)
 	}
@@ -703,7 +703,7 @@ func (s *MCPServer) toolGetCallGraph(params map[string]interface{}) (interface{}
 	})
 
 	ctx := context.Background()
-	resp, err := s.engine.GetCallGraph(ctx, query.CallGraphOptions{
+	resp, err := s.engine().GetCallGraph(ctx, query.CallGraphOptions{
 		SymbolId:  symbolId,
 		Direction: direction,
 		Depth:     depth,
@@ -731,7 +731,7 @@ func (s *MCPServer) toolGetModuleOverview(params map[string]interface{}) (interf
 	})
 
 	ctx := context.Background()
-	resp, err := s.engine.GetModuleOverview(ctx, query.ModuleOverviewOptions{
+	resp, err := s.engine().GetModuleOverview(ctx, query.ModuleOverviewOptions{
 		Path: path,
 		Name: name,
 	})
@@ -759,7 +759,7 @@ func (s *MCPServer) toolExplainFile(params map[string]interface{}) (interface{},
 	})
 
 	ctx := context.Background()
-	resp, err := s.engine.ExplainFile(ctx, query.ExplainFileOptions{
+	resp, err := s.engine().ExplainFile(ctx, query.ExplainFileOptions{
 		FilePath: filePath,
 	})
 	if err != nil {
@@ -872,7 +872,7 @@ func (s *MCPServer) toolListEntrypoints(params map[string]interface{}) (interfac
 	})
 
 	ctx := context.Background()
-	resp, err := s.engine.ListEntrypoints(ctx, query.ListEntrypointsOptions{
+	resp, err := s.engine().ListEntrypoints(ctx, query.ListEntrypointsOptions{
 		ModuleFilter: moduleFilter,
 		Limit:        limit,
 	})
@@ -977,7 +977,7 @@ func (s *MCPServer) toolTraceUsage(params map[string]interface{}) (interface{}, 
 	})
 
 	ctx := context.Background()
-	resp, err := s.engine.TraceUsage(ctx, query.TraceUsageOptions{
+	resp, err := s.engine().TraceUsage(ctx, query.TraceUsageOptions{
 		SymbolId: symbolId,
 		MaxPaths: maxPaths,
 		MaxDepth: maxDepth,
@@ -1113,7 +1113,7 @@ func (s *MCPServer) toolSummarizeDiff(params map[string]interface{}) (interface{
 		}
 	}
 
-	resp, err := s.engine.SummarizeDiff(ctx, opts)
+	resp, err := s.engine().SummarizeDiff(ctx, opts)
 	if err != nil {
 		return nil, fmt.Errorf("summarizeDiff failed: %w", err)
 	}
@@ -1283,7 +1283,7 @@ func (s *MCPServer) toolGetHotspots(params map[string]interface{}) (interface{},
 		opts.Limit = int(limit)
 	}
 
-	resp, err := s.engine.GetHotspots(ctx, opts)
+	resp, err := s.engine().GetHotspots(ctx, opts)
 	if err != nil {
 		return nil, fmt.Errorf("getHotspots failed: %w", err)
 	}
@@ -1395,7 +1395,7 @@ func (s *MCPServer) toolExplainPath(params map[string]interface{}) (interface{},
 		opts.ContextHint = contextHint
 	}
 
-	resp, err := s.engine.ExplainPath(ctx, opts)
+	resp, err := s.engine().ExplainPath(ctx, opts)
 	if err != nil {
 		return nil, fmt.Errorf("explainPath failed: %w", err)
 	}
@@ -1475,7 +1475,7 @@ func (s *MCPServer) toolListKeyConcepts(params map[string]interface{}) (interfac
 		limit = int(limitVal)
 	}
 
-	resp, err := s.engine.ListKeyConcepts(ctx, query.ListKeyConceptsOptions{Limit: limit})
+	resp, err := s.engine().ListKeyConcepts(ctx, query.ListKeyConceptsOptions{Limit: limit})
 	if err != nil {
 		return nil, fmt.Errorf("listKeyConcepts failed: %w", err)
 	}
@@ -1577,7 +1577,7 @@ func (s *MCPServer) toolRecentlyRelevant(params map[string]interface{}) (interfa
 		opts.Limit = int(limit)
 	}
 
-	resp, err := s.engine.RecentlyRelevant(ctx, opts)
+	resp, err := s.engine().RecentlyRelevant(ctx, opts)
 	if err != nil {
 		return nil, fmt.Errorf("recentlyRelevant failed: %w", err)
 	}
@@ -1697,7 +1697,7 @@ func (s *MCPServer) toolRefreshArchitecture(params map[string]interface{}) (inte
 		Async:  async,
 	}
 
-	resp, err := s.engine.RefreshArchitecture(ctx, opts)
+	resp, err := s.engine().RefreshArchitecture(ctx, opts)
 	if err != nil {
 		return nil, fmt.Errorf("refreshArchitecture failed: %w", err)
 	}
@@ -1796,7 +1796,7 @@ func (s *MCPServer) toolGetOwnership(params map[string]interface{}) (interface{}
 		IncludeHistory: includeHistory,
 	}
 
-	resp, err := s.engine.GetOwnership(ctx, opts)
+	resp, err := s.engine().GetOwnership(ctx, opts)
 	if err != nil {
 		return nil, fmt.Errorf("getOwnership failed: %w", err)
 	}
@@ -1933,7 +1933,7 @@ func (s *MCPServer) toolGetModuleResponsibilities(params map[string]interface{})
 		Limit:        limit,
 	}
 
-	resp, err := s.engine.GetModuleResponsibilities(ctx, opts)
+	resp, err := s.engine().GetModuleResponsibilities(ctx, opts)
 	if err != nil {
 		return nil, fmt.Errorf("getModuleResponsibilities failed: %w", err)
 	}
@@ -2081,7 +2081,7 @@ func (s *MCPServer) toolRecordDecision(params map[string]interface{}) (interface
 		Status:          status,
 	}
 
-	resp, err := s.engine.RecordDecision(input)
+	resp, err := s.engine().RecordDecision(input)
 	if err != nil {
 		return nil, fmt.Errorf("recordDecision failed: %w", err)
 	}
@@ -2119,7 +2119,7 @@ func (s *MCPServer) toolGetDecisions(params map[string]interface{}) (interface{}
 			"id": id,
 		})
 
-		resp, err := s.engine.GetDecision(id)
+		resp, err := s.engine().GetDecision(id)
 		if err != nil {
 			return nil, fmt.Errorf("getDecision failed: %w", err)
 		}
@@ -2186,7 +2186,7 @@ func (s *MCPServer) toolGetDecisions(params map[string]interface{}) (interface{}
 		"limit":    queryOpts.Limit,
 	})
 
-	resp, err := s.engine.GetDecisions(queryOpts)
+	resp, err := s.engine().GetDecisions(queryOpts)
 	if err != nil {
 		return nil, fmt.Errorf("getDecisions failed: %w", err)
 	}
@@ -2305,7 +2305,7 @@ func (s *MCPServer) toolAnnotateModule(params map[string]interface{}) (interface
 		InternalPaths:  internalPaths,
 	}
 
-	resp, err := s.engine.AnnotateModule(input)
+	resp, err := s.engine().AnnotateModule(input)
 	if err != nil {
 		return nil, fmt.Errorf("annotateModule failed: %w", err)
 	}
@@ -2363,7 +2363,7 @@ func (s *MCPServer) toolGetJobStatus(params map[string]interface{}) (interface{}
 		"jobId": jobId,
 	})
 
-	job, err := s.engine.GetJob(jobId)
+	job, err := s.engine().GetJob(jobId)
 	if err != nil {
 		return nil, fmt.Errorf("getJobStatus failed: %w", err)
 	}
@@ -2446,7 +2446,7 @@ func (s *MCPServer) toolListJobs(params map[string]interface{}) (interface{}, er
 		opts.Limit = 20
 	}
 
-	resp, err := s.engine.ListJobs(opts)
+	resp, err := s.engine().ListJobs(opts)
 	if err != nil {
 		return nil, fmt.Errorf("listJobs failed: %w", err)
 	}
@@ -2501,7 +2501,7 @@ func (s *MCPServer) toolCancelJob(params map[string]interface{}) (interface{}, e
 		"jobId": jobId,
 	})
 
-	err := s.engine.CancelJob(jobId)
+	err := s.engine().CancelJob(jobId)
 	if err != nil {
 		return nil, fmt.Errorf("cancelJob failed: %w", err)
 	}
@@ -2557,7 +2557,7 @@ func (s *MCPServer) toolSummarizePr(params map[string]interface{}) (interface{},
 		IncludeOwnership: includeOwnership,
 	}
 
-	resp, err := s.engine.SummarizePR(ctx, opts)
+	resp, err := s.engine().SummarizePR(ctx, opts)
 	if err != nil {
 		return nil, fmt.Errorf("summarizePr failed: %w", err)
 	}
@@ -2604,7 +2604,7 @@ func (s *MCPServer) toolGetOwnershipDrift(params map[string]interface{}) (interf
 		Limit:     limit,
 	}
 
-	resp, err := s.engine.GetOwnershipDrift(ctx, opts)
+	resp, err := s.engine().GetOwnershipDrift(ctx, opts)
 	if err != nil {
 		return nil, fmt.Errorf("getOwnershipDrift failed: %w", err)
 	}
@@ -2655,7 +2655,7 @@ func (s *MCPServer) toolGetFileComplexity(params map[string]interface{}) (interf
 	// Resolve the file path
 	absPath := filePath
 	if !filepath.IsAbs(filePath) {
-		absPath = filepath.Join(s.engine.GetRepoRoot(), filePath)
+		absPath = filepath.Join(s.engine().GetRepoRoot(), filePath)
 	}
 
 	// Check if file exists

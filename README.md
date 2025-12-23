@@ -139,30 +139,27 @@ Now Claude can answer questions like:
 - **Hotspot Detection** — Track churn trends, get 30-day risk projections
 - **Architectural Decisions** — Record and query ADRs with full-text search
 
-### Production Ready (v6.1)
-- **Background Jobs** — Queue long operations, track progress, cancel jobs
-- **CI/CD Integration** — PR risk analysis, ownership drift detection
-
-### Cross-Repository (v6.2+)
+### Advanced Capabilities
 - **Federation** — Query across multiple repos organization-wide
-- **Daemon Mode** — Always-on service with HTTP API, scheduled tasks, file watching, webhooks
-- **Tree-sitter Complexity** — Language-agnostic cyclomatic/cognitive complexity for 7 languages
+- **Multi-Repo Management** — Named repo registry with quick MCP context switching
+- **Daemon Mode** — Always-on service with HTTP API, scheduled tasks, webhooks
+- **Contract Analysis** — Protobuf and OpenAPI discovery with cross-repo impact
+- **Runtime Observability** — OpenTelemetry integration for dead code detection
+- **Developer Intelligence** — Symbol origins, co-change coupling, risk audit
 
-### Contract-Aware (v6.3)
-- **API Boundary Detection** — Protobuf and OpenAPI contract discovery
-- **Consumer Tracking** — Three evidence tiers for cross-repo dependencies
-- **Cross-Repo Impact** — "What breaks if I change this shared API?"
+### Fast Indexing
+- **Zero-Index Operation** — Tree-sitter fallback works without SCIP index
+- **Incremental Updates** — O(changed files) instead of full reindex (Go)
+- **Smart Caching** — Skip-if-fresh, watch mode, transitive invalidation
 
-### Runtime Observability (v6.4)
-- **OpenTelemetry Integration** — See real call counts, not just static analysis
-- **Dead Code Confidence** — Find symbols with zero runtime calls
-- **Observed Callers** — Enrich impact analysis with production data
+### Remote Index Server
+- **Index Serving** — Serve symbol indexes over HTTP for federation
+- **Index Upload** — Push SCIP indexes with compression (gzip/zstd)
+- **Delta Updates** — Upload only changed files
+- **API Key Auth** — Scoped keys with rate limiting
+- **Remote Federation** — Connect to remote CKB servers and query alongside local repos
 
-### Developer Intelligence (v6.5)
-- **Symbol Origins** — Why does this code exist? Git history, linked issues/PRs
-- **Co-change Coupling** — Find files that historically change together
-- **LLM Export** — Token-efficient codebase summaries with importance ranking
-- **Risk Audit** — 8-factor scoring (complexity, coverage, bus factor, security, staleness, errors, coupling, churn)
+📋 **[Full Changelog](https://github.com/SimplyLiz/CodeMCP/blob/main/CHANGELOG.md)** — Detailed version history from v5.1 to current
 
 ### Zero-Friction UX (v7.0)
 - **npm Distribution** — `npm install -g @tastehub/ckb` or `npx @tastehub/ckb`
@@ -191,7 +188,21 @@ Now Claude can answer questions like:
 - **Rename Awareness** — Suggest new names when documented symbols are renamed
 - **CI Enforcement** — `--fail-under` flag for documentation coverage thresholds
 
-## MCP Tools (64 Available)
+### Production Hardening (v7.3)
+- **Delta Artifacts** — CI-generated diffs for O(delta) ingestion instead of O(N)
+- **FTS5 Search** — SQLite FTS5 for instant search (replaces LIKE scans)
+- **Compaction Scheduler** — Automatic snapshot cleanup and database maintenance
+- **Prometheus Metrics** — `/metrics` endpoint for monitoring and alerting
+- **Load Shedding** — Graceful degradation under load with priority endpoints
+- **Health Details** — `/health/detailed` endpoint with per-repo and storage metrics
+
+### Language Quality (v7.3)
+- **Quality Tiers** — 4-tier classification (Tier 1: Go, Tier 2: TS/Python, Tier 3: Rust/Java, Tier 4: Experimental)
+- **Quality Assessment** — Per-language metrics (ref accuracy, callgraph quality)
+- **Python Venv Detection** — Auto-detect virtual environments with activation recommendations
+- **TypeScript Monorepo** — Detect pnpm, lerna, nx, yarn workspaces with per-package tsconfig status
+
+## MCP Tools (74 Available)
 
 CKB exposes code intelligence through the Model Context Protocol:
 
@@ -297,6 +308,32 @@ CKB exposes code intelligence through the Model Context Protocol:
 
 </details>
 
+<details>
+<summary><strong>v7.3 — Multi-Repo Management</strong></summary>
+
+| Tool | Purpose |
+|------|---------|
+| `listRepos` | List registered repos with state |
+| `switchRepo` | Switch active repo context |
+| `getActiveRepo` | Get current repo info |
+
+</details>
+
+<details>
+<summary><strong>v7.3 — Remote Federation</strong></summary>
+
+| Tool | Purpose |
+|------|---------|
+| `federationAddRemote` | Add a remote CKB index server |
+| `federationRemoveRemote` | Remove a remote server |
+| `federationListRemote` | List remote servers in federation |
+| `federationSyncRemote` | Sync metadata from remote servers |
+| `federationStatusRemote` | Check remote server connectivity |
+| `federationSearchSymbolsHybrid` | Search across local + remote |
+| `federationListAllRepos` | List repos from local and remote |
+
+</details>
+
 ## CLI Usage
 
 ```bash
@@ -341,6 +378,12 @@ ckb federation add platform --repo-id=api --path=/code/api
 ckb federation status platform
 ckb federation sync platform
 
+# Remote Federation (v7.3)
+ckb federation add-remote platform prod --url=https://ckb.company.com --token=$CKB_TOKEN
+ckb federation list-remote platform
+ckb federation sync-remote platform
+ckb federation status-remote platform prod
+
 # Daemon (v6.2.1)
 ckb daemon start [--port=9120]
 ckb daemon status
@@ -379,6 +422,32 @@ curl "http://localhost:8080/search?q=NewServer"
 curl http://localhost:8080/architecture
 curl "http://localhost:8080/ownership?path=internal/api"
 curl http://localhost:8080/hotspots
+
+# Index Server Mode (v7.3) - serve indexes to remote clients
+ckb serve --port 8080 --index-server --index-config config.toml
+
+# Index server endpoints
+curl http://localhost:8080/index/repos
+curl http://localhost:8080/index/repos/company%2Fcore-lib/meta
+curl "http://localhost:8080/index/repos/company%2Fcore-lib/symbols?limit=100"
+curl "http://localhost:8080/index/repos/company%2Fcore-lib/search/symbols?q=Handler"
+
+# Upload endpoints (with compression + auth)
+curl -X POST http://localhost:8080/index/repos \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ckb_xxx" \
+  -d '{"id":"my-org/my-repo","name":"My Repo"}'
+
+gzip -c index.scip | curl -X POST http://localhost:8080/index/repos/my-org%2Fmy-repo/upload \
+  -H "Content-Encoding: gzip" \
+  -H "Authorization: Bearer ckb_xxx" \
+  --data-binary @-
+
+# Token management (index server admin)
+ckb token create --name "ci-upload" --scope upload    # Create API key
+ckb token list                                         # List all tokens
+ckb token revoke ckb_xxx                              # Revoke a token
+ckb token rotate ckb_xxx                              # Rotate (new secret, same ID)
 ```
 
 ## MCP Integration
@@ -485,18 +554,30 @@ Add to `opencode.json` in project root:
 <details>
 <summary><strong>Claude Desktop</strong></summary>
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+Claude Desktop doesn't have a project context, so you must specify the repository path.
+
+**Automatic setup** (recommended):
+```bash
+cd /path/to/your/repo
+ckb setup --tool=claude-desktop
+```
+
+**Manual configuration** — add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 ```json
 {
   "mcpServers": {
     "ckb": {
       "command": "npx",
-      "args": ["@tastehub/ckb", "mcp"],
-      "cwd": "/path/to/your/repo"
+      "args": ["-y", "@tastehub/ckb", "mcp"],
+      "env": {
+        "CKB_REPO": "/path/to/your/repo"
+      }
     }
   }
 }
 ```
+
+The `CKB_REPO` environment variable tells CKB which repository to analyze. Claude Desktop can only work with one repository at a time.
 
 </details>
 
@@ -550,10 +631,14 @@ See the **[Full Documentation Wiki](https://github.com/SimplyLiz/CodeMCP/wiki)**
 - [Language Support](https://github.com/SimplyLiz/CodeMCP/wiki/Language-Support) — SCIP indexers and support tiers
 - [Practical Limits](https://github.com/SimplyLiz/CodeMCP/wiki/Practical-Limits) — Accuracy notes, blind spots
 - [User Guide](https://github.com/SimplyLiz/CodeMCP/wiki/User-Guide) — CLI commands and best practices
+- [Incremental Indexing](https://github.com/SimplyLiz/CodeMCP/wiki/Incremental-Indexing) — Fast index updates for Go projects
 - [Doc-Symbol Linking](https://github.com/SimplyLiz/CodeMCP/wiki/Doc-Symbol-Linking) — Symbol detection in docs, staleness checking
-- [MCP Integration](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration) — Claude Code setup, 58 tools
+- [Authentication](https://github.com/SimplyLiz/CodeMCP/wiki/Authentication) — API tokens, scopes, rate limiting
+- [MCP Integration](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration) — Claude Code setup, 71 tools
 - [API Reference](https://github.com/SimplyLiz/CodeMCP/wiki/API-Reference) — HTTP API documentation
+- [Daemon Mode](https://github.com/SimplyLiz/CodeMCP/wiki/Daemon-Mode) — Always-on service with scheduler, webhooks
 - [Configuration](https://github.com/SimplyLiz/CodeMCP/wiki/Configuration) — All options including MODULES.toml
+- [Architecture](https://github.com/SimplyLiz/CodeMCP/wiki/Architecture) — System design and components
 - [Telemetry](https://github.com/SimplyLiz/CodeMCP/wiki/Telemetry) — Runtime observability, dead code detection
 - [Federation](https://github.com/SimplyLiz/CodeMCP/wiki/Federation) — Cross-repository queries
 - [CI/CD Integration](https://github.com/SimplyLiz/CodeMCP/wiki/CI-CD-Integration) — GitHub Actions, PR analysis

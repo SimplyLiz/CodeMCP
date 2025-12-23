@@ -10,6 +10,7 @@ import (
 func (s *Server) registerRoutes() {
 	// Health and readiness checks
 	s.router.HandleFunc("/health", s.handleHealth)
+	s.router.HandleFunc("/health/detailed", s.handleHealthDetailed)
 	s.router.HandleFunc("/ready", s.handleReady)
 
 	// System status and diagnostics
@@ -51,13 +52,31 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("/telemetry/", s.handleTelemetryRoutes) // /telemetry/status, /telemetry/usage/:id, /telemetry/dead-code
 	s.router.HandleFunc("/telemetry", s.handleTelemetryStatus)  // GET /telemetry (alias for /telemetry/status)
 
+	// v7.3 Language quality endpoints
+	s.router.HandleFunc("/meta/languages", s.handleLanguageQuality)      // GET - language quality dashboard
+	s.router.HandleFunc("/meta/python-env", s.handlePythonEnv)           // GET - Python environment detection
+	s.router.HandleFunc("/meta/typescript-monorepo", s.handleTSMonorepo) // GET - TypeScript monorepo detection
+
+	// Delta ingestion endpoints (incremental indexing)
+	s.router.HandleFunc("/delta", s.handleDeltaRoutes)
+	s.router.HandleFunc("/delta/", s.handleDeltaRoutes)
+
 	// POST endpoints
 	s.router.HandleFunc("/doctor/fix", s.handleDoctorFix)
 	s.router.HandleFunc("/cache/warm", s.handleCacheWarm)
 	s.router.HandleFunc("/cache/clear", s.handleCacheClear)
 
+	// Index-serving endpoints (when index server is enabled)
+	if s.indexManager != nil {
+		s.router.HandleFunc("/index/repos", s.HandleIndexListRepos)
+		s.router.HandleFunc("/index/repos/", s.handleIndexRepoRoutes)
+	}
+
 	// OpenAPI spec
 	s.router.HandleFunc("/openapi.json", s.handleOpenAPISpec)
+
+	// Prometheus metrics
+	s.router.HandleFunc("/metrics", s.handleMetrics)
 
 	// Root endpoint
 	s.router.HandleFunc("/", s.handleRoot)
@@ -81,6 +100,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		"version": version.Version,
 		"endpoints": []string{
 			"GET /health - Health check",
+			"GET /health/detailed - Detailed health status",
 			"GET /ready - Readiness check",
 			"GET /status - System status",
 			"GET /doctor - Diagnostic checks",
@@ -115,10 +135,31 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 			"GET /telemetry/status - Telemetry system status and coverage",
 			"GET /telemetry/usage/:id - Observed usage for a symbol",
 			"GET /telemetry/dead-code - Find dead code candidates",
+			"GET /delta - Delta ingestion info",
+			"POST /delta/ingest - Ingest delta artifact for incremental indexing",
+			"POST /delta/validate - Validate delta artifact without ingesting",
+			"GET /meta/languages - Language quality dashboard",
+			"GET /meta/python-env - Python environment detection",
+			"GET /meta/typescript-monorepo - TypeScript monorepo detection",
 			"POST /doctor/fix - Get fix script",
 			"POST /cache/warm - Warm cache",
 			"POST /cache/clear - Clear cache",
 			"GET /openapi.json - OpenAPI specification",
+			"GET /metrics - Prometheus metrics",
+			"GET /index/repos - List indexed repositories (index-server mode)",
+			"POST /index/repos - Create new repo for upload",
+			"DELETE /index/repos/:repo - Delete uploaded repo",
+			"POST /index/repos/:repo/upload - Upload SCIP index (supports gzip, zstd)",
+			"POST /index/repos/:repo/upload/delta - Delta upload (incremental)",
+			"GET /index/repos/:repo/meta - Repository metadata and capabilities",
+			"GET /index/repos/:repo/files - List files with pagination",
+			"GET /index/repos/:repo/symbols - List symbols with pagination",
+			"GET /index/repos/:repo/symbols/:id - Get symbol by ID",
+			"POST /index/repos/:repo/symbols:batchGet - Batch get symbols",
+			"GET /index/repos/:repo/refs - List references with pagination",
+			"GET /index/repos/:repo/callgraph - List call edges with pagination",
+			"GET /index/repos/:repo/search/symbols - Search symbols",
+			"GET /index/repos/:repo/search/files - Search files",
 		},
 		"documentation": "/openapi.json",
 	}

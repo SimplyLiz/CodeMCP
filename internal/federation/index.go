@@ -228,9 +228,52 @@ CREATE TABLE IF NOT EXISTS proto_imports (
     FOREIGN KEY (imported_contract_id) REFERENCES contracts(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_proto_imports_imported ON proto_imports(imported_contract_id);
+
+-- v7.4 Remote server tables (Phase 5)
+-- Tracks remote server sync state
+CREATE TABLE IF NOT EXISTS remote_servers (
+    name TEXT PRIMARY KEY,
+    url TEXT NOT NULL,
+    token_hash TEXT,                   -- For change detection, not auth
+    cache_ttl_seconds INTEGER,
+    timeout_seconds INTEGER,
+    enabled INTEGER DEFAULT 1,
+    added_at TEXT,
+    last_synced_at TEXT,
+    last_error TEXT
+);
+
+-- Cached repository info from remote servers
+CREATE TABLE IF NOT EXISTS remote_repos (
+    server_name TEXT NOT NULL,
+    repo_id TEXT NOT NULL,
+    name TEXT,
+    description TEXT,
+    commit TEXT,
+    languages TEXT,                    -- JSON array
+    symbol_count INTEGER,
+    file_count INTEGER,
+    sync_seq INTEGER,
+    index_version TEXT,
+    cached_at TEXT NOT NULL,
+    PRIMARY KEY (server_name, repo_id)
+);
+CREATE INDEX IF NOT EXISTS idx_remote_repos_server ON remote_repos(server_name);
+
+-- Response cache for remote queries
+CREATE TABLE IF NOT EXISTS remote_cache (
+    server_name TEXT NOT NULL,
+    repo_id TEXT NOT NULL,
+    cache_key TEXT NOT NULL,           -- e.g., "symbols:query:auth"
+    data TEXT NOT NULL,                -- JSON response
+    cached_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    PRIMARY KEY (server_name, repo_id, cache_key)
+);
+CREATE INDEX IF NOT EXISTS idx_remote_cache_expires ON remote_cache(expires_at);
 `
 
-const currentSchemaVersion = 2
+const currentSchemaVersion = 3
 
 // OpenIndex opens or creates the federation index database
 func OpenIndex(federationName string) (*Index, error) {
@@ -313,6 +356,53 @@ func (idx *Index) migrate(fromVersion int) error {
 			if err != nil {
 				return fmt.Errorf("failed to add suppression_reason column: %w", err)
 			}
+		}
+	}
+
+	// Migration from v2 to v3: add remote server tables (Phase 5)
+	if fromVersion < 3 {
+		remoteTables := `
+		CREATE TABLE IF NOT EXISTS remote_servers (
+			name TEXT PRIMARY KEY,
+			url TEXT NOT NULL,
+			token_hash TEXT,
+			cache_ttl_seconds INTEGER,
+			timeout_seconds INTEGER,
+			enabled INTEGER DEFAULT 1,
+			added_at TEXT,
+			last_synced_at TEXT,
+			last_error TEXT
+		);
+
+		CREATE TABLE IF NOT EXISTS remote_repos (
+			server_name TEXT NOT NULL,
+			repo_id TEXT NOT NULL,
+			name TEXT,
+			description TEXT,
+			commit TEXT,
+			languages TEXT,
+			symbol_count INTEGER,
+			file_count INTEGER,
+			sync_seq INTEGER,
+			index_version TEXT,
+			cached_at TEXT NOT NULL,
+			PRIMARY KEY (server_name, repo_id)
+		);
+		CREATE INDEX IF NOT EXISTS idx_remote_repos_server ON remote_repos(server_name);
+
+		CREATE TABLE IF NOT EXISTS remote_cache (
+			server_name TEXT NOT NULL,
+			repo_id TEXT NOT NULL,
+			cache_key TEXT NOT NULL,
+			data TEXT NOT NULL,
+			cached_at TEXT NOT NULL,
+			expires_at TEXT NOT NULL,
+			PRIMARY KEY (server_name, repo_id, cache_key)
+		);
+		CREATE INDEX IF NOT EXISTS idx_remote_cache_expires ON remote_cache(expires_at);
+		`
+		if _, err := idx.db.Exec(remoteTables); err != nil {
+			return fmt.Errorf("failed to create remote tables: %w", err)
 		}
 	}
 
@@ -478,4 +568,171 @@ func parseTime(s string) *time.Time {
 		return nil
 	}
 	return &t
+}
+
+// Remote cache methods (Phase 5)
+
+// ClearRemoteCache clears all cached data for a remote server
+func (idx *Index) ClearRemoteCache(serverName string) error {
+	tx, err := idx.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Clear cached repos
+	if _, err := tx.Exec("DELETE FROM remote_repos WHERE server_name = ?", serverName); err != nil {
+		return fmt.Errorf("failed to clear remote repos: %w", err)
+	}
+
+	// Clear response cache
+	if _, err := tx.Exec("DELETE FROM remote_cache WHERE server_name = ?", serverName); err != nil {
+		return fmt.Errorf("failed to clear remote cache: %w", err)
+	}
+
+	return tx.Commit()
+}
+
+// GetRemoteCacheEntry retrieves a cached response for a remote query
+func (idx *Index) GetRemoteCacheEntry(serverName, repoID, cacheKey string) ([]byte, bool, error) {
+	var data string
+	var expiresAt string
+
+	err := idx.db.QueryRow(`
+		SELECT data, expires_at FROM remote_cache
+		WHERE server_name = ? AND repo_id = ? AND cache_key = ?
+	`, serverName, repoID, cacheKey).Scan(&data, &expiresAt)
+
+	if err == sql.ErrNoRows {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+
+	// Check if expired (parse error or past expiration = cache miss, not error)
+	expires, parseErr := time.Parse(time.RFC3339, expiresAt)
+	if parseErr != nil || time.Now().After(expires) {
+		// Expired or invalid, delete and return not found
+		_, _ = idx.db.Exec(`
+			DELETE FROM remote_cache
+			WHERE server_name = ? AND repo_id = ? AND cache_key = ?
+		`, serverName, repoID, cacheKey)
+		return nil, false, nil //nolint:nilerr // intentional: cache miss is not an error
+	}
+
+	return []byte(data), true, nil
+}
+
+// SetRemoteCacheEntry stores a cached response for a remote query
+func (idx *Index) SetRemoteCacheEntry(serverName, repoID, cacheKey string, data []byte, ttl time.Duration) error {
+	now := time.Now()
+	expiresAt := now.Add(ttl)
+
+	_, err := idx.db.Exec(`
+		INSERT OR REPLACE INTO remote_cache (server_name, repo_id, cache_key, data, cached_at, expires_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, serverName, repoID, cacheKey, string(data), now.Format(time.RFC3339), expiresAt.Format(time.RFC3339))
+
+	return err
+}
+
+// CleanupExpiredCache removes all expired cache entries
+func (idx *Index) CleanupExpiredCache() (int64, error) {
+	result, err := idx.db.Exec(`
+		DELETE FROM remote_cache WHERE expires_at < ?
+	`, time.Now().Format(time.RFC3339))
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+// CachedRemoteRepo represents a cached repository from a remote server
+type CachedRemoteRepo struct {
+	ServerName   string
+	RepoID       string
+	Name         string
+	Description  string
+	Commit       string
+	Languages    string // JSON array
+	SymbolCount  int
+	FileCount    int
+	SyncSeq      int64
+	IndexVersion string
+	CachedAt     time.Time
+}
+
+// UpsertRemoteRepo inserts or updates a cached remote repository
+func (idx *Index) UpsertRemoteRepo(repo *CachedRemoteRepo) error {
+	_, err := idx.db.Exec(`
+		INSERT OR REPLACE INTO remote_repos
+		(server_name, repo_id, name, description, commit, languages, symbol_count, file_count, sync_seq, index_version, cached_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, repo.ServerName, repo.RepoID, repo.Name, repo.Description, repo.Commit,
+		repo.Languages, repo.SymbolCount, repo.FileCount, repo.SyncSeq, repo.IndexVersion,
+		repo.CachedAt.Format(time.RFC3339))
+	return err
+}
+
+// GetRemoteRepos returns all cached repos for a server
+func (idx *Index) GetRemoteRepos(serverName string) ([]*CachedRemoteRepo, error) {
+	rows, err := idx.db.Query(`
+		SELECT server_name, repo_id, name, description, commit, languages,
+			   symbol_count, file_count, sync_seq, index_version, cached_at
+		FROM remote_repos WHERE server_name = ? ORDER BY repo_id
+	`, serverName)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var repos []*CachedRemoteRepo
+	for rows.Next() {
+		repo := &CachedRemoteRepo{}
+		var cachedAt string
+		if err := rows.Scan(
+			&repo.ServerName, &repo.RepoID, &repo.Name, &repo.Description,
+			&repo.Commit, &repo.Languages, &repo.SymbolCount, &repo.FileCount,
+			&repo.SyncSeq, &repo.IndexVersion, &cachedAt); err != nil {
+			return nil, err
+		}
+		if t, err := time.Parse(time.RFC3339, cachedAt); err == nil {
+			repo.CachedAt = t
+		}
+		repos = append(repos, repo)
+	}
+
+	return repos, rows.Err()
+}
+
+// GetAllRemoteRepos returns all cached repos from all servers
+func (idx *Index) GetAllRemoteRepos() ([]*CachedRemoteRepo, error) {
+	rows, err := idx.db.Query(`
+		SELECT server_name, repo_id, name, description, commit, languages,
+			   symbol_count, file_count, sync_seq, index_version, cached_at
+		FROM remote_repos ORDER BY server_name, repo_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var repos []*CachedRemoteRepo
+	for rows.Next() {
+		repo := &CachedRemoteRepo{}
+		var cachedAt string
+		if err := rows.Scan(
+			&repo.ServerName, &repo.RepoID, &repo.Name, &repo.Description,
+			&repo.Commit, &repo.Languages, &repo.SymbolCount, &repo.FileCount,
+			&repo.SyncSeq, &repo.IndexVersion, &cachedAt); err != nil {
+			return nil, err
+		}
+		if t, err := time.Parse(time.RFC3339, cachedAt); err == nil {
+			repo.CachedAt = t
+		}
+		repos = append(repos, repo)
+	}
+
+	return repos, rows.Err()
 }

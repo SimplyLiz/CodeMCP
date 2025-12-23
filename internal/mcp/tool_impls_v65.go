@@ -34,7 +34,7 @@ func (s *MCPServer) toolExplainOrigin(params map[string]interface{}) (interface{
 		historyLimit = int(v)
 	}
 
-	repoRoot := s.engine.GetRepoRoot()
+	repoRoot := s.engine().GetRepoRoot()
 	explainer := explain.NewExplainer(repoRoot, s.logger)
 
 	ctx := context.Background()
@@ -75,7 +75,7 @@ func (s *MCPServer) toolAnalyzeCoupling(params map[string]interface{}) (interfac
 		limit = int(v)
 	}
 
-	repoRoot := s.engine.GetRepoRoot()
+	repoRoot := s.engine().GetRepoRoot()
 	analyzer := coupling.NewAnalyzer(repoRoot, s.logger)
 
 	ctx := context.Background()
@@ -131,7 +131,7 @@ func (s *MCPServer) toolExportForLLM(params map[string]interface{}) (interface{}
 		maxSymbols = int(v)
 	}
 
-	repoRoot := s.engine.GetRepoRoot()
+	repoRoot := s.engine().GetRepoRoot()
 	exporter := export.NewExporter(repoRoot, s.logger)
 
 	ctx := context.Background()
@@ -186,7 +186,7 @@ func (s *MCPServer) toolAuditRisk(params map[string]interface{}) (interface{}, e
 		quickWins = v
 	}
 
-	repoRoot := s.engine.GetRepoRoot()
+	repoRoot := s.engine().GetRepoRoot()
 	analyzer := audit.NewAnalyzer(repoRoot, s.logger)
 
 	ctx := context.Background()
