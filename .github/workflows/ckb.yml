@@ -4,6 +4,10 @@ on:
   pull_request:
     branches: [develop, main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   pull-requests: write
@@ -20,16 +24,18 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version-file: 'go.mod'
           cache: true
 
       - name: Build CKB
-        run: go build -o ckb ./cmd/ckb
+        run: go build -ldflags="-s -w" -o ckb ./cmd/ckb
 
       - name: Initialize CKB
         run: |
           ./ckb init
-          ./ckb index || echo "Index generation failed, continuing with git-only analysis"
+          if ! ./ckb index; then
+            echo "::warning::Index generation failed, continuing with git-only analysis"
+          fi
 
       - name: Run CKB Doctor
         run: ./ckb doctor
@@ -111,3 +117,4 @@ ${analysis}
         with:
           name: ckb-analysis
           path: pr-analysis.json
+          retention-days: 7
