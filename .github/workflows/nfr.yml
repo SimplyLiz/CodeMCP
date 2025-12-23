@@ -150,11 +150,16 @@ jobs:
               preview_good = sorted([r for r in rows if r["diff_pct"] <= -5], key=lambda r: r["diff_pct"])[:3]
 
               if preview_bad or preview_good:
+                  # Calculate max width for alignment
+                  all_preview = preview_bad + preview_good
+                  max_name = max(len(f"{r['tool']}/{r['tier']}") for r in all_preview)
                   print("```diff")
                   for r in preview_bad:
-                      print(f"- {r['verdict']:4} {r['tool']}/{r['tier']:<20} +{r['diff_pct']:5.1f}%  {r['actual']:>8,}B  budget {r['budget_pct']:>2.0f}%  {r['timing']}")
+                      name = f"{r['tool']}/{r['tier']}"
+                      print(f"- {r['verdict']:4} {name:<{max_name}}  {r['diff_pct']:+6.1f}%  {r['actual']:>9,}B  budget {r['budget_pct']:>2.0f}%  {r['timing']}")
                   for r in preview_good:
-                      print(f"+ SAVE {r['tool']}/{r['tier']:<20} {r['diff_pct']:+5.1f}%  {r['actual']:>8,}B  budget {r['budget_pct']:>2.0f}%  {r['timing']}")
+                      name = f"{r['tool']}/{r['tier']}"
+                      print(f"+ SAVE {name:<{max_name}}  {r['diff_pct']:+6.1f}%  {r['actual']:>9,}B  budget {r['budget_pct']:>2.0f}%  {r['timing']}")
                   print("```\n")
 
               # Hotspots table (if any)
