@@ -32,7 +32,7 @@ jobs:
 
       - name: Initialize CKB
         run: |
-          ./ckb init
+          ./ckb init --force
           if ! ./ckb index; then
             echo "::warning::Index generation failed, continuing with git-only analysis"
           fi
