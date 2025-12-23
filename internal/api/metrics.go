@@ -410,7 +410,9 @@ func (c *Counter) labelsToKey(values []string) string {
 func (h *Histogram) Observe(value float64, labelValues ...string) {
 	key := h.labelsToKey(labelValues)
 
-	val, loaded := h.values.LoadOrStore(key, &histogramValue{
+	// Create new histogramValue with buckets pre-initialized
+	// LoadOrStore is atomic - either stores the new value or returns existing
+	val, _ := h.values.LoadOrStore(key, &histogramValue{
 		buckets: make([]uint64, len(h.buckets)+1), // +1 for +Inf
 	})
 
@@ -418,10 +420,8 @@ func (h *Histogram) Observe(value float64, labelValues ...string) {
 	if !ok {
 		return
 	}
-	if !loaded {
-		hv.buckets = make([]uint64, len(h.buckets)+1)
-	}
 
+	// Lock before any access to hv fields
 	hv.mu.Lock()
 	defer hv.mu.Unlock()
 
