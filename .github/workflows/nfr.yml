@@ -69,6 +69,18 @@ jobs:
           cat > parse_nfr.py << 'EOF'
           import re
 
+          def fmt_time(t):
+              """Normalize timing: µs if <1ms, else ms"""
+              t = t.strip()
+              if "ms" in t and "µs" not in t:
+                  return t  # already ms
+              if "µs" in t:
+                  val = float(t.replace("µs", ""))
+                  if val >= 1000:
+                      return f"{val/1000:.2f}ms"
+                  return f"{val:.0f}µs"
+              return t
+
           rows = []
 
           with open("nfr-output.txt", "r") as f:
@@ -95,7 +107,7 @@ jobs:
                   "tool": tool, "tier": tier, "actual": actual,
                   "baseline": baseline, "max": max_allowed,
                   "diff_pct": diff_pct, "budget_pct": budget_pct,
-                  "timing": timing, "verdict": verdict
+                  "timing": fmt_time(timing), "verdict": verdict
               })
 
           if rows:
@@ -104,12 +116,14 @@ jobs:
               warns = [r for r in rows if r["verdict"] == "WARN"]
               goods = [r for r in rows if r["verdict"] == "GOOD"]
               regressions = fails + warns
-              improvements = goods
+              savings = goods
 
               # Find highlights
-              worst = max(rows, key=lambda r: r["diff_pct"])
-              best = min(rows, key=lambda r: r["diff_pct"])
-              riskiest = max(rows, key=lambda r: r["budget_pct"])
+              increases = [r for r in rows if r["diff_pct"] > 0]
+              worst_reg = max(increases, key=lambda r: r["diff_pct"]) if increases else None
+              best_impr = min(rows, key=lambda r: r["diff_pct"])
+              hotspots = sorted([r for r in rows if r["budget_pct"] >= 90], key=lambda r: -r["budget_pct"])[:3]
+              hotspot_count = sum(1 for r in rows if r["budget_pct"] >= 90)
 
               total = len(rows)
               passed = total - len(fails)
@@ -120,54 +134,64 @@ jobs:
               else:
                   print(f"## NFR Budget ✅ {passed} passed\n")
 
-              # Three key metrics
-              print(f"**Worst regression:** `{worst['tool']}/{worst['tier']}` **{worst['diff_pct']:+.1f}%** ({worst['actual']:,}B) • Budget {worst['budget_pct']:.0f}%  ")
-              print(f"**Best improvement:** `{best['tool']}/{best['tier']}` **{best['diff_pct']:+.1f}%** ({best['actual']:,}B) • Budget {best['budget_pct']:.0f}%  ")
-              if riskiest["budget_pct"] >= 90:
-                  print(f"**Closest to limit:** `{riskiest['tool']}/{riskiest['tier']}` Budget **{riskiest['budget_pct']:.0f}%** (risk)\n")
+              # Key metrics
+              if worst_reg:
+                  print(f"**Worst regression:** `{worst_reg['tool']}/{worst_reg['tier']}` **+{worst_reg['diff_pct']:.1f}%** ({worst_reg['actual']:,}B) • Budget {worst_reg['budget_pct']:.0f}%  ")
               else:
-                  print(f"**Closest to limit:** `{riskiest['tool']}/{riskiest['tier']}` Budget {riskiest['budget_pct']:.0f}%\n")
+                  print("**Regressions:** none ✅  ")
+              print(f"**Best saving:** `{best_impr['tool']}/{best_impr['tier']}` **{best_impr['diff_pct']:.1f}%** ({best_impr['actual']:,}B) • Budget {best_impr['budget_pct']:.0f}%  ")
+              if hotspots:
+                  hs = ", ".join([f"`{h['tool']}/{h['tier']}` {h['budget_pct']:.0f}% (margin {100-h['budget_pct']:.0f}%)" for h in hotspots])
+                  print(f"**Hotspots:** {hs}\n")
+              else:
+                  print("**Hotspots:** none ≥90% ✅\n")
 
               # Summary counts
               reg_str = f"{len(fails)} FAIL / {len(warns)} WARN" if regressions else "0"
-              print("| Regressions (FAIL ≥+10%, WARN ≥+5%) | Improvements (≤-5%) | Scenarios |")
-              print("|---:|---:|---:|")
-              print(f"| {reg_str} | {len(improvements)} | {total} |\n")
+              print("| Regressions | Savings | Hotspots ≥90% | Scenarios |")
+              print("|---:|---:|---:|---:|")
+              print(f"| {reg_str} | {len(savings)} | {hotspot_count} | {total} |\n")
 
-              # Diff block for quick visual scan
-              if regressions or improvements:
+              # Diff block preview (top 3 each)
+              preview_bad = sorted([r for r in rows if r["diff_pct"] >= 5], key=lambda r: -r["diff_pct"])[:3]
+              preview_good = sorted([r for r in rows if r["diff_pct"] <= -5], key=lambda r: r["diff_pct"])[:3]
+
+              if preview_bad or preview_good:
                   print("```diff")
-                  for r in sorted(regressions, key=lambda x: -x["diff_pct"])[:3]:
-                      print(f"- {r['verdict']:4} {r['tool']}/{r['tier']:<20} {r['diff_pct']:+6.1f}%  {r['actual']:>8,}B  budget {r['budget_pct']:>2.0f}%  {r['timing']}")
-                  for r in sorted(improvements, key=lambda x: x["diff_pct"])[:3]:
-                      print(f"+ GOOD {r['tool']}/{r['tier']:<20} {r['diff_pct']:+6.1f}%  {r['actual']:>8,}B  budget {r['budget_pct']:>2.0f}%  {r['timing']}")
+                  for r in preview_bad:
+                      print(f"- {r['verdict']:4} {r['tool']}/{r['tier']:<20} +{r['diff_pct']:5.1f}%  {r['actual']:>8,}B  budget {r['budget_pct']:>2.0f}%  {r['timing']}")
+                  for r in preview_good:
+                      print(f"+ GOOD {r['tool']}/{r['tier']:<20} {r['diff_pct']:+5.1f}%  {r['actual']:>8,}B  budget {r['budget_pct']:>2.0f}%  {r['timing']}")
                   print("```\n")
 
               # Regressions table
               if regressions:
                   print("### Regressions\n")
-                  print("| Scenario | Actual (B) | Δ vs base | Budget | Time | Verdict |")
-                  print("|---|---:|---:|---:|---:|---|")
+                  print("| Scenario | Actual (B) | Δ | Budget | Margin | Time | Verdict |")
+                  print("|---|---:|---:|---:|---:|---:|---|")
                   for r in sorted(regressions, key=lambda x: -x["diff_pct"]):
                       v = f"**{r['verdict']}**" if r["verdict"] == "FAIL" else r["verdict"]
-                      print(f"| {r['tool']} / {r['tier']} | {r['actual']:,} | {r['diff_pct']:+.1f}% | {r['budget_pct']:.0f}% | {r['timing']} | {v} |")
+                      margin = 100 - r["budget_pct"]
+                      print(f"| {r['tool']} / {r['tier']} | {r['actual']:,} | +{r['diff_pct']:.1f}% | {r['budget_pct']:.0f}% | {margin:.0f}% | {r['timing']} | {v} |")
                   print()
 
-              # Improvements table
-              if improvements:
-                  print("### Improvements\n")
-                  print("| Scenario | Actual (B) | Δ vs base | Budget | Time | Verdict |")
-                  print("|---|---:|---:|---:|---:|---|")
-                  for r in sorted(improvements, key=lambda x: x["diff_pct"]):
-                      print(f"| {r['tool']} / {r['tier']} | {r['actual']:,} | {r['diff_pct']:+.1f}% | {r['budget_pct']:.0f}% | {r['timing']} | GOOD |")
+              # Savings table
+              if savings:
+                  print("### Savings\n")
+                  print("| Scenario | Actual (B) | Δ | Budget | Margin | Time |")
+                  print("|---|---:|---:|---:|---:|---:|")
+                  for r in sorted(savings, key=lambda x: x["diff_pct"]):
+                      margin = 100 - r["budget_pct"]
+                      print(f"| {r['tool']} / {r['tier']} | {r['actual']:,} | {r['diff_pct']:.1f}% | {r['budget_pct']:.0f}% | {margin:.0f}% | {r['timing']} |")
                   print()
 
               # Full breakdown in details
               print("<details><summary>All scenarios</summary>\n")
-              print("| Scenario | Actual (B) | Baseline (B) | Max (B) | Δ | Budget | Time |")
-              print("|---|---:|---:|---:|---:|---:|---:|")
+              print("| Scenario | Actual (B) | Baseline | Max | Δ | Budget | Margin | Time |")
+              print("|---|---:|---:|---:|---:|---:|---:|---:|")
               for r in sorted(rows, key=lambda x: -x["diff_pct"]):
-                  print(f"| {r['tool']} / {r['tier']} | {r['actual']:,} | {r['baseline']:,} | {r['max']:,} | {r['diff_pct']:+.1f}% | {r['budget_pct']:.0f}% | {r['timing']} |")
+                  margin = 100 - r["budget_pct"]
+                  print(f"| {r['tool']} / {r['tier']} | {r['actual']:,} | {r['baseline']:,} | {r['max']:,} | {r['diff_pct']:+.1f}% | {r['budget_pct']:.0f}% | {margin:.0f}% | {r['timing']} |")
               print("\n</details>")
           else:
               print("No token metrics found in output")
