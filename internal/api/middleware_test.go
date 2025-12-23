@@ -261,7 +261,7 @@ func TestGetAuthResult(t *testing.T) {
 
 func TestScopedAuthMiddleware(t *testing.T) {
 	db := testMiddlewareDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := testMiddlewareLogger()
 
@@ -369,7 +369,7 @@ func TestScopedAuthMiddleware(t *testing.T) {
 
 func TestScopedAuthMiddlewareRateLimiting(t *testing.T) {
 	db := testMiddlewareDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := testMiddlewareLogger()
 
