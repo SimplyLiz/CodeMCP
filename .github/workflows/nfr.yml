@@ -1,0 +1,75 @@
+name: NFR Tests
+
+on:
+  pull_request:
+    branches: [develop, main]
+
+jobs:
+  nfr:
+    name: NFR Scenarios
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run NFR Tests
+        id: nfr
+        run: |
+          echo "## 📊 NFR Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Run NFR tests and capture output
+          set +e
+          go test -v -run TestNFRScenarios ./internal/mcp/... 2>&1 | tee nfr-output.txt
+          TEST_EXIT=$?
+          set -e
+
+          # Parse results for summary
+          PASS=$(grep -c "^--- PASS" nfr-output.txt || echo "0")
+          FAIL=$(grep -c "^--- FAIL" nfr-output.txt || echo "0")
+          TOTAL=$((PASS + FAIL))
+
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| ✅ Passed | $PASS |" >> $GITHUB_STEP_SUMMARY
+          echo "| ❌ Failed | $FAIL |" >> $GITHUB_STEP_SUMMARY
+          echo "| 📊 Total | $TOTAL |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Show baseline info
+          echo "### Token Baselines (10% tolerance)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Tool | Tier | Baseline |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|----------|" >> $GITHUB_STEP_SUMMARY
+          echo "| searchSymbols | small/medium/large | 3.6K / 18K / 91K |" >> $GITHUB_STEP_SUMMARY
+          echo "| findReferences | small/medium/large | 4.5K / 45K / 450K |" >> $GITHUB_STEP_SUMMARY
+          echo "| getCallGraph | shallow/deep | 900 / 16K |" >> $GITHUB_STEP_SUMMARY
+          echo "| getHotspots | small/large | 900 / 17K |" >> $GITHUB_STEP_SUMMARY
+          echo "| analyzeImpact | small/large | 2K / 18K |" >> $GITHUB_STEP_SUMMARY
+          echo "| getArchitecture | small/large | 1.5K / 8K |" >> $GITHUB_STEP_SUMMARY
+          echo "| traceUsage | small/large | 800 / 7.8K |" >> $GITHUB_STEP_SUMMARY
+
+          # Show any failures in detail
+          if [ "$FAIL" -gt 0 ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### ❌ Failed Scenarios" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            grep -A2 "REGRESSION:" nfr-output.txt >> $GITHUB_STEP_SUMMARY || true
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+          exit $TEST_EXIT
+
+      - name: Upload NFR results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nfr-results
+          path: nfr-output.txt
