@@ -59,6 +59,7 @@ Infrastructure for monitoring tool output sizes and truncation rates:
 - **Per-tool aggregation** — Invocations, bytes, tokens, truncations
 - **Response byte tracking** — Actual JSON payload size for each tool response
 - **`ckb metrics` CLI** — View aggregated metrics with `--days`, `--tool`, `--format` flags
+- **`ckb metrics export`** — Export versioned metrics to JSON for cross-version comparison
 
 Tracked tools: searchSymbols, findReferences, analyzeImpact, getCallGraph, getHotspots, summarizePr
 
