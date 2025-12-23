@@ -4,6 +4,10 @@ on:
   pull_request:
     branches: [develop, main]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   nfr:
     name: NFR Scenarios
@@ -15,6 +19,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.24'
+          cache: true
 
       - name: Download dependencies
         run: go mod download
@@ -22,16 +27,19 @@ jobs:
       - name: Run NFR Tests
         id: nfr
         run: |
+          # Run NFR tests with JSON output for parsing
+          set +e
+          go test -v -json -run TestNFRScenarios ./internal/mcp/... 2>&1 | tee nfr-output.json
+          TEST_EXIT=${PIPESTATUS[0]}
+          set -e
+
+          # Also run plain output for human reading
+          go test -v -run TestNFRScenarios ./internal/mcp/... 2>&1 | tee nfr-output.txt || true
+
+          # Parse timing from test output
           echo "## 📊 NFR Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Run NFR tests and capture output
-          set +e
-          go test -v -run TestNFRScenarios ./internal/mcp/... 2>&1 | tee nfr-output.txt
-          TEST_EXIT=$?
-          set -e
-
-          # Parse results for summary
           PASS=$(grep -c "^--- PASS" nfr-output.txt || echo "0")
           FAIL=$(grep -c "^--- FAIL" nfr-output.txt || echo "0")
           TOTAL=$((PASS + FAIL))
@@ -41,35 +49,142 @@ jobs:
           echo "| ✅ Passed | $PASS |" >> $GITHUB_STEP_SUMMARY
           echo "| ❌ Failed | $FAIL |" >> $GITHUB_STEP_SUMMARY
           echo "| 📊 Total | $TOTAL |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Show baseline info
-          echo "### Token Baselines (10% tolerance)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Tool | Tier | Baseline |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|------|----------|" >> $GITHUB_STEP_SUMMARY
-          echo "| searchSymbols | small/medium/large | 3.6K / 18K / 91K |" >> $GITHUB_STEP_SUMMARY
-          echo "| findReferences | small/medium/large | 4.5K / 45K / 450K |" >> $GITHUB_STEP_SUMMARY
-          echo "| getCallGraph | shallow/deep | 900 / 16K |" >> $GITHUB_STEP_SUMMARY
-          echo "| getHotspots | small/large | 900 / 17K |" >> $GITHUB_STEP_SUMMARY
-          echo "| analyzeImpact | small/large | 2K / 18K |" >> $GITHUB_STEP_SUMMARY
-          echo "| getArchitecture | small/large | 1.5K / 8K |" >> $GITHUB_STEP_SUMMARY
-          echo "| traceUsage | small/large | 800 / 7.8K |" >> $GITHUB_STEP_SUMMARY
-
-          # Show any failures in detail
-          if [ "$FAIL" -gt 0 ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### ❌ Failed Scenarios" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            grep -A2 "REGRESSION:" nfr-output.txt >> $GITHUB_STEP_SUMMARY || true
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          fi
+          # Set outputs for PR comment
+          echo "pass=$PASS" >> $GITHUB_OUTPUT
+          echo "fail=$FAIL" >> $GITHUB_OUTPUT
+          echo "total=$TOTAL" >> $GITHUB_OUTPUT
+          echo "exit_code=$TEST_EXIT" >> $GITHUB_OUTPUT
 
           exit $TEST_EXIT
+
+      - name: Parse NFR metrics
+        id: metrics
+        if: always()
+        run: |
+          # Extract actual token counts and timings from test output
+          # Format: tool_tier_actual_baseline_status
+
+          cat > parse_nfr.py << 'EOF'
+          import re
+
+          results = []
+
+          with open("nfr-output.txt", "r") as f:
+              content = f.read()
+
+          # Parse: "searchSymbols_small: 3500 bytes (baseline: 3600, max: 3960)"
+          pattern = r'(\w+)_(\w+): (\d+) bytes \(baseline: (\d+), max: (\d+)\)'
+          for match in re.finditer(pattern, content):
+              tool, tier, actual, baseline, max_allowed = match.groups()
+              actual, baseline = int(actual), int(baseline)
+              diff_pct = ((actual - baseline) / baseline) * 100
+
+              if diff_pct <= -5:
+                  status = "🟢"
+                  trend = f"↓{abs(diff_pct):.1f}%"
+              elif diff_pct >= 10:
+                  status = "🔴"
+                  trend = f"↑{diff_pct:.1f}%"
+              elif diff_pct >= 5:
+                  status = "🟡"
+                  trend = f"↑{diff_pct:.1f}%"
+              else:
+                  status = "⚪"
+                  trend = f"~{diff_pct:+.1f}%"
+
+              results.append(f"| {tool} | {tier} | {actual:,} | {baseline:,} | {trend} | {status} |")
+
+          if results:
+              print("| Tool | Tier | Actual | Baseline | Change | Status |")
+              print("|------|------|-------:|----------:|-------:|:------:|")
+              for r in results:
+                  print(r)
+          else:
+              print("No token metrics found in output")
+          EOF
+
+          python3 parse_nfr.py > nfr-table.md 2>/dev/null || echo "No metrics parsed" > nfr-table.md
+          cat nfr-table.md
+
+      - name: Comment on PR
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            const pass = '${{ steps.nfr.outputs.pass }}';
+            const fail = '${{ steps.nfr.outputs.fail }}';
+            const exitCode = '${{ steps.nfr.outputs.exit_code }}';
+
+            let metricsTable = 'No detailed metrics available';
+            try {
+              metricsTable = fs.readFileSync('nfr-table.md', 'utf8');
+            } catch (e) {}
+
+            const status = exitCode === '0' ? '✅ Passed' : '❌ Failed';
+            const emoji = exitCode === '0' ? '🎉' : '⚠️';
+
+            const body = `## ${emoji} NFR Test Results
+
+            **Status:** ${status}
+
+            | Metric | Count |
+            |--------|------:|
+            | ✅ Passed | ${pass} |
+            | ❌ Failed | ${fail} |
+
+            ### Token Budget Analysis
+
+            ${metricsTable}
+
+            <details>
+            <summary>Legend</summary>
+
+            - 🟢 **Improved** - 5%+ better than baseline
+            - ⚪ **Stable** - Within ±5% of baseline
+            - 🟡 **Warning** - 5-10% above baseline
+            - 🔴 **Regression** - 10%+ above baseline (fails CI)
+
+            </details>
+
+            ---
+            <sub>Generated by NFR workflow • [View details](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID})</sub>`;
+
+            // Find existing comment to update
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes('NFR Test Results')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
 
       - name: Upload NFR results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: nfr-results
-          path: nfr-output.txt
+          path: |
+            nfr-output.txt
+            nfr-output.json
+            nfr-table.md
