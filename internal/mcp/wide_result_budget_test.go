@@ -40,6 +40,18 @@ var nfrTokenBaselines = map[string]map[string]int{
 		"small": 900,   // 10 hotspots
 		"large": 17000, // 200 hotspots
 	},
+	"analyzeImpact": {
+		"small": 2000,  // 10 impact nodes
+		"large": 18000, // 100 impact nodes
+	},
+	"getArchitecture": {
+		"small": 1500,  // 5 modules
+		"large": 8000,  // 30 modules
+	},
+	"traceUsage": {
+		"small": 800,  // 5 paths
+		"large": 7800, // 50 paths
+	},
 }
 
 // Wide-result token budgets for integration tests (legacy).
@@ -97,6 +109,18 @@ func TestNFRScenarios(t *testing.T) {
 		// getHotspots scenarios
 		{"getHotspots_small", "getHotspots", "small", testdata.SmallFixtures(), (*testdata.FixtureSet).ToGetHotspotsJSON},
 		{"getHotspots_large", "getHotspots", "large", testdata.LargeFixtures(), (*testdata.FixtureSet).ToGetHotspotsJSON},
+
+		// analyzeImpact scenarios
+		{"analyzeImpact_small", "analyzeImpact", "small", testdata.SmallFixtures(), (*testdata.FixtureSet).ToAnalyzeImpactJSON},
+		{"analyzeImpact_large", "analyzeImpact", "large", testdata.LargeFixtures(), (*testdata.FixtureSet).ToAnalyzeImpactJSON},
+
+		// getArchitecture scenarios
+		{"getArchitecture_small", "getArchitecture", "small", testdata.SmallFixtures(), (*testdata.FixtureSet).ToGetArchitectureJSON},
+		{"getArchitecture_large", "getArchitecture", "large", testdata.LargeFixtures(), (*testdata.FixtureSet).ToGetArchitectureJSON},
+
+		// traceUsage scenarios
+		{"traceUsage_small", "traceUsage", "small", testdata.SmallFixtures(), (*testdata.FixtureSet).ToTraceUsageJSON},
+		{"traceUsage_large", "traceUsage", "large", testdata.LargeFixtures(), (*testdata.FixtureSet).ToTraceUsageJSON},
 	}
 
 	for _, sc := range scenarios {

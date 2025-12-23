@@ -49,6 +49,35 @@ type CallGraphNodeFixture struct {
 	Callees  []string
 }
 
+// ImpactNodeFixture represents a node in impact analysis.
+type ImpactNodeFixture struct {
+	SymbolID   string
+	Name       string
+	Kind       string
+	FilePath   string
+	Depth      int
+	RiskLevel  string
+	Dependents int
+}
+
+// ModuleFixture represents a module in architecture.
+type ModuleFixture struct {
+	Path         string
+	Name         string
+	FileCount    int
+	SymbolCount  int
+	Dependencies []string
+	Dependents   []string
+}
+
+// UsagePathFixture represents a usage trace path.
+type UsagePathFixture struct {
+	Entrypoint string
+	Target     string
+	Path       []string
+	Depth      int
+}
+
 // GenerateSymbols creates n synthetic symbols.
 func GenerateSymbols(n int) []SymbolFixture {
 	symbols := make([]SymbolFixture, n)
@@ -134,45 +163,127 @@ func generateCallGraphLevel(symbolID string, depth int, branching int, nodes *[]
 	}
 }
 
+// GenerateImpactNodes creates n synthetic impact analysis nodes.
+func GenerateImpactNodes(n int, maxDepth int) []ImpactNodeFixture {
+	nodes := make([]ImpactNodeFixture, n)
+	riskLevels := []string{"high", "medium", "low"}
+
+	for i := 0; i < n; i++ {
+		nodes[i] = ImpactNodeFixture{
+			SymbolID:   fmt.Sprintf("ckb:test:sym:%08x", i),
+			Name:       fmt.Sprintf("AffectedSymbol%d", i),
+			Kind:       "function",
+			FilePath:   fmt.Sprintf("internal/module%d/file%d.go", i/10, i%10),
+			Depth:      i % maxDepth,
+			RiskLevel:  riskLevels[i%len(riskLevels)],
+			Dependents: (n - i) / 2,
+		}
+	}
+	return nodes
+}
+
+// GenerateModules creates n synthetic modules for architecture.
+func GenerateModules(n int) []ModuleFixture {
+	modules := make([]ModuleFixture, n)
+
+	for i := 0; i < n; i++ {
+		deps := make([]string, 0, 3)
+		dependents := make([]string, 0, 3)
+
+		// Create some dependencies (modules depend on lower-numbered modules)
+		for j := 0; j < 3 && i-j-1 >= 0; j++ {
+			deps = append(deps, fmt.Sprintf("internal/module%d", i-j-1))
+		}
+		// Create some dependents (higher-numbered modules depend on this)
+		for j := 1; j <= 3 && i+j < n; j++ {
+			dependents = append(dependents, fmt.Sprintf("internal/module%d", i+j))
+		}
+
+		modules[i] = ModuleFixture{
+			Path:         fmt.Sprintf("internal/module%d", i),
+			Name:         fmt.Sprintf("module%d", i),
+			FileCount:    10 + i%20,
+			SymbolCount:  50 + i%100,
+			Dependencies: deps,
+			Dependents:   dependents,
+		}
+	}
+	return modules
+}
+
+// GenerateUsagePaths creates n synthetic usage trace paths.
+func GenerateUsagePaths(n int, maxDepth int) []UsagePathFixture {
+	paths := make([]UsagePathFixture, n)
+	entrypoints := []string{"main", "handleRequest", "processJob", "apiHandler", "cliCommand"}
+
+	for i := 0; i < n; i++ {
+		depth := (i % maxDepth) + 1
+		path := make([]string, depth)
+		for j := 0; j < depth; j++ {
+			path[j] = fmt.Sprintf("ckb:test:sym:%08x", i*10+j)
+		}
+
+		paths[i] = UsagePathFixture{
+			Entrypoint: entrypoints[i%len(entrypoints)],
+			Target:     fmt.Sprintf("ckb:test:sym:%08x", i),
+			Path:       path,
+			Depth:      depth,
+		}
+	}
+	return paths
+}
+
 // FixtureSet contains fixtures for a specific size tier.
 type FixtureSet struct {
-	Tier       string
-	Symbols    []SymbolFixture
-	References []ReferenceFixture
-	Hotspots   []HotspotFixture
-	CallGraph  []CallGraphNodeFixture
+	Tier        string
+	Symbols     []SymbolFixture
+	References  []ReferenceFixture
+	Hotspots    []HotspotFixture
+	CallGraph   []CallGraphNodeFixture
+	ImpactNodes []ImpactNodeFixture
+	Modules     []ModuleFixture
+	UsagePaths  []UsagePathFixture
 }
 
 // SmallFixtures returns fixtures for small result sets.
 func SmallFixtures() *FixtureSet {
 	return &FixtureSet{
-		Tier:       TierSmall,
-		Symbols:    GenerateSymbols(20),
-		References: GenerateReferences(50),
-		Hotspots:   GenerateHotspots(10),
-		CallGraph:  GenerateCallGraph("root", 2, 3),
+		Tier:        TierSmall,
+		Symbols:     GenerateSymbols(20),
+		References:  GenerateReferences(50),
+		Hotspots:    GenerateHotspots(10),
+		CallGraph:   GenerateCallGraph("root", 2, 3),
+		ImpactNodes: GenerateImpactNodes(10, 2),
+		Modules:     GenerateModules(5),
+		UsagePaths:  GenerateUsagePaths(5, 3),
 	}
 }
 
 // MediumFixtures returns fixtures for medium result sets.
 func MediumFixtures() *FixtureSet {
 	return &FixtureSet{
-		Tier:       TierMedium,
-		Symbols:    GenerateSymbols(100),
-		References: GenerateReferences(500),
-		Hotspots:   GenerateHotspots(50),
-		CallGraph:  GenerateCallGraph("root", 3, 4),
+		Tier:        TierMedium,
+		Symbols:     GenerateSymbols(100),
+		References:  GenerateReferences(500),
+		Hotspots:    GenerateHotspots(50),
+		CallGraph:   GenerateCallGraph("root", 3, 4),
+		ImpactNodes: GenerateImpactNodes(40, 3),
+		Modules:     GenerateModules(15),
+		UsagePaths:  GenerateUsagePaths(20, 4),
 	}
 }
 
 // LargeFixtures returns fixtures for large result sets (stress test).
 func LargeFixtures() *FixtureSet {
 	return &FixtureSet{
-		Tier:       TierLarge,
-		Symbols:    GenerateSymbols(500),
-		References: GenerateReferences(5000),
-		Hotspots:   GenerateHotspots(200),
-		CallGraph:  GenerateCallGraph("root", 4, 5),
+		Tier:        TierLarge,
+		Symbols:     GenerateSymbols(500),
+		References:  GenerateReferences(5000),
+		Hotspots:    GenerateHotspots(200),
+		CallGraph:   GenerateCallGraph("root", 4, 5),
+		ImpactNodes: GenerateImpactNodes(100, 4),
+		Modules:     GenerateModules(30),
+		UsagePaths:  GenerateUsagePaths(50, 5),
 	}
 }
 
@@ -269,5 +380,89 @@ func (f *FixtureSet) ToGetCallGraphJSON() string {
 	}
 
 	sb.WriteString(`],"depth":2,"truncated":false}}`)
+	return sb.String()
+}
+
+// ToAnalyzeImpactJSON converts impact nodes to analyzeImpact response JSON.
+func (f *FixtureSet) ToAnalyzeImpactJSON() string {
+	var sb strings.Builder
+	sb.WriteString(`{"schemaVersion":"1.0","data":{"rootSymbol":"ckb:test:sym:root","affectedSymbols":[`)
+
+	for i, node := range f.ImpactNodes {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(fmt.Sprintf(
+			`{"symbolId":"%s","name":"%s","kind":"%s","location":{"path":"%s"},"depth":%d,"riskLevel":"%s","dependentCount":%d}`,
+			node.SymbolID, node.Name, node.Kind, node.FilePath, node.Depth, node.RiskLevel, node.Dependents,
+		))
+	}
+
+	sb.WriteString(`],"maxDepth":4,"totalAffected":`)
+	sb.WriteString(fmt.Sprintf("%d", len(f.ImpactNodes)))
+	sb.WriteString(`,"riskSummary":{"high":3,"medium":4,"low":3}}}`)
+	return sb.String()
+}
+
+// ToGetArchitectureJSON converts modules to getArchitecture response JSON.
+func (f *FixtureSet) ToGetArchitectureJSON() string {
+	var sb strings.Builder
+	sb.WriteString(`{"schemaVersion":"1.0","data":{"modules":[`)
+
+	for i, mod := range f.Modules {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(fmt.Sprintf(
+			`{"path":"%s","name":"%s","fileCount":%d,"symbolCount":%d,"dependencies":[`,
+			mod.Path, mod.Name, mod.FileCount, mod.SymbolCount,
+		))
+		for j, dep := range mod.Dependencies {
+			if j > 0 {
+				sb.WriteString(",")
+			}
+			sb.WriteString(fmt.Sprintf(`"%s"`, dep))
+		}
+		sb.WriteString(`],"dependents":[`)
+		for j, dep := range mod.Dependents {
+			if j > 0 {
+				sb.WriteString(",")
+			}
+			sb.WriteString(fmt.Sprintf(`"%s"`, dep))
+		}
+		sb.WriteString(`]}`)
+	}
+
+	sb.WriteString(`],"depth":2,"totalModules":`)
+	sb.WriteString(fmt.Sprintf("%d", len(f.Modules)))
+	sb.WriteString(`}}`)
+	return sb.String()
+}
+
+// ToTraceUsageJSON converts usage paths to traceUsage response JSON.
+func (f *FixtureSet) ToTraceUsageJSON() string {
+	var sb strings.Builder
+	sb.WriteString(`{"schemaVersion":"1.0","data":{"targetSymbol":"ckb:test:sym:target","paths":[`)
+
+	for i, path := range f.UsagePaths {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(fmt.Sprintf(
+			`{"entrypoint":"%s","target":"%s","depth":%d,"steps":[`,
+			path.Entrypoint, path.Target, path.Depth,
+		))
+		for j, step := range path.Path {
+			if j > 0 {
+				sb.WriteString(",")
+			}
+			sb.WriteString(fmt.Sprintf(`"%s"`, step))
+		}
+		sb.WriteString(`]}`)
+	}
+
+	sb.WriteString(`],"totalPaths":`)
+	sb.WriteString(fmt.Sprintf("%d", len(f.UsagePaths)))
+	sb.WriteString(`,"maxDepth":5}}`)
 	return sb.String()
 }

@@ -41,15 +41,24 @@ These tests use synthetic fixtures and always run (no SCIP index required). They
 | getCallGraph_deep | getCallGraph | deep | 16,000 | depth=4, branching=5 |
 | getHotspots_small | getHotspots | small | 900 | 10 hotspots |
 | getHotspots_large | getHotspots | large | 17,000 | 200 hotspots |
+| analyzeImpact_small | analyzeImpact | small | 2,000 | 10 impact nodes |
+| analyzeImpact_large | analyzeImpact | large | 18,000 | 100 impact nodes |
+| getArchitecture_small | getArchitecture | small | 1,500 | 5 modules |
+| getArchitecture_large | getArchitecture | large | 8,000 | 30 modules |
+| traceUsage_small | traceUsage | small | 800 | 5 paths |
+| traceUsage_large | traceUsage | large | 7,800 | 50 paths |
 
 ### Token Baselines (`nfrTokenBaselines`)
 
 ```go
 var nfrTokenBaselines = map[string]map[string]int{
-    "searchSymbols":   {"small": 3600, "medium": 18000, "large": 91000},
-    "findReferences":  {"small": 4500, "medium": 45000, "large": 450000},
-    "getCallGraph":    {"shallow": 900, "deep": 16000},
-    "getHotspots":     {"small": 900, "large": 17000},
+    "searchSymbols":    {"small": 3600, "medium": 18000, "large": 91000},
+    "findReferences":   {"small": 4500, "medium": 45000, "large": 450000},
+    "getCallGraph":     {"shallow": 900, "deep": 16000},
+    "getHotspots":      {"small": 900, "large": 17000},
+    "analyzeImpact":    {"small": 2000, "large": 18000},
+    "getArchitecture":  {"small": 1500, "large": 8000},
+    "traceUsage":       {"small": 800, "large": 7800},
 }
 ```
 
@@ -63,11 +72,14 @@ Fixture generators for deterministic testing:
 | `GenerateReferences(n)` | `[]ReferenceFixture` | findReferences scenarios |
 | `GenerateHotspots(n)` | `[]HotspotFixture` | getHotspots scenarios |
 | `GenerateCallGraph(root, depth, branching)` | `[]CallGraphNodeFixture` | getCallGraph scenarios |
+| `GenerateImpactNodes(n, maxDepth)` | `[]ImpactNodeFixture` | analyzeImpact scenarios |
+| `GenerateModules(n)` | `[]ModuleFixture` | getArchitecture scenarios |
+| `GenerateUsagePaths(n, maxDepth)` | `[]UsagePathFixture` | traceUsage scenarios |
 
 Preset fixture sets:
-- `SmallFixtures()` - 20 symbols, 50 refs, 10 hotspots, depth=2 call graph
-- `MediumFixtures()` - 100 symbols, 500 refs, 50 hotspots, depth=3 call graph
-- `LargeFixtures()` - 500 symbols, 5000 refs, 200 hotspots, depth=4 call graph
+- `SmallFixtures()` - 20 symbols, 50 refs, 10 hotspots, 10 impact nodes, 5 modules, 5 paths
+- `MediumFixtures()` - 100 symbols, 500 refs, 50 hotspots, 40 impact nodes, 15 modules, 20 paths
+- `LargeFixtures()` - 500 symbols, 5000 refs, 200 hotspots, 100 impact nodes, 30 modules, 50 paths
 
 ---
 
@@ -238,11 +250,11 @@ Tests with real SCIP index data. Skipped if no index available.
 
 ## Summary
 
-**Total:** ~70 benchmarks + 10 deterministic NFR scenarios across 15 test files
+**Total:** ~70 benchmarks + 16 deterministic NFR scenarios across 15 test files
 
 | Category | Files | Tests/Benchmarks |
 |----------|-------|------------------|
-| NFR Scenarios (CI gate) | 1 | 10 |
+| NFR Scenarios (CI gate) | 1 | 16 |
 | MCP Token/Wide-Result | 4 | ~15 |
 | SCIP Backend | 1 | 11 |
 | Query Navigation | 2 | ~19 |
