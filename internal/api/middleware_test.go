@@ -468,3 +468,63 @@ func TestScopedAuthMiddlewareDisabled(t *testing.T) {
 		t.Errorf("disabled auth: expected 200, got %d", w.Code)
 	}
 }
+
+func TestScopedAuthMiddlewareHealthEndpointExemption(t *testing.T) {
+	db := testMiddlewareDB(t)
+	defer func() { _ = db.Close() }()
+
+	logger := testMiddlewareLogger()
+
+	// Create auth manager with strict auth enabled
+	config := auth.ManagerConfig{
+		Enabled:     true,
+		RequireAuth: true,
+		StaticKeys: []auth.StaticKeyConfig{
+			{
+				ID:     "test-key",
+				Name:   "Test Key",
+				Token:  "test-token-123",
+				Scopes: []string{"read"},
+			},
+		},
+	}
+
+	manager, err := auth.NewManager(config, db, logger)
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("OK"))
+	})
+
+	wrapped := ScopedAuthMiddleware(manager, logger)(handler)
+
+	// Health endpoints should be accessible without authentication
+	// This is critical for Kubernetes probes and load balancer health checks
+	exemptPaths := []string{"/health", "/ready", "/health/detailed"}
+
+	for _, path := range exemptPaths {
+		t.Run("GET "+path+" without token", func(t *testing.T) {
+			req := httptest.NewRequest("GET", path, nil)
+			w := httptest.NewRecorder()
+			wrapped.ServeHTTP(w, req)
+
+			if w.Code != http.StatusOK {
+				t.Errorf("health endpoint %s should be exempt from auth, got status %d", path, w.Code)
+			}
+		})
+	}
+
+	// Verify that other endpoints still require auth
+	t.Run("GET /status requires auth", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/status", nil)
+		w := httptest.NewRecorder()
+		wrapped.ServeHTTP(w, req)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("/status should require auth, got status %d", w.Code)
+		}
+	})
+}

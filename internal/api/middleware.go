@@ -239,6 +239,14 @@ func AuthMiddleware(config AuthConfig, logger *logging.Logger) func(http.Handler
 func ScopedAuthMiddleware(authManager *auth.Manager, logger *logging.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Exempt health check endpoints from authentication
+			// These must remain accessible for Kubernetes probes and load balancer health checks
+			path := r.URL.Path
+			if path == "/health" || path == "/ready" || path == "/health/detailed" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			// Determine required scope from method and path
 			scope := determineRequiredScope(r)
 			repoID := extractRepoIDFromRequest(r)

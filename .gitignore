@@ -8,6 +8,7 @@ bin/
 /ckb
 /ckb-test
 *_test
+*.scip
 
 # Go build artifacts
 *.exe
