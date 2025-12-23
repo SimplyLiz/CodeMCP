@@ -123,9 +123,9 @@
   {
     "id": "expansion-mcp-tools",
     "type": "expansion",
-    "description": "MCP server should connect to tool implementations",
+    "description": "MCP server should connect to tool infrastructure",
     "query": "MCPServer",
-    "expectedSymbols": ["MCPServer", "toolSearchSymbols", "toolGetCallGraph"],
+    "expectedSymbols": ["MCPServer", "Start", "RegisterTools"],
     "scope": "internal/mcp",
     "topK": 20
   }
