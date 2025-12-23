@@ -191,238 +191,14 @@ jobs:
             try { riskAudit = JSON.parse(fs.readFileSync('risk-audit.json', 'utf8')); } catch {}
             try { docStaleness = JSON.parse(fs.readFileSync('doc-staleness.json', 'utf8')); } catch {}
 
-            if (prData.error) {
-              const body = '## CKB Analysis ⚠️\n\nAnalysis failed: ' + prData.error;
-              await postComment(body);
-              return;
-            }
-
-            const s = prData.summary || {};
-            const risk = prData.riskAssessment || {};
-            const modules = prData.modulesAffected || [];
-            const reviewers = prData.suggestedReviewers || [];
-            const files = prData.changedFiles || [];
-
-            // Risk styling
-            const riskConfig = {
-              high: { emoji: '🔴', badge: '![Risk: High](https://img.shields.io/badge/Risk-High-red)' },
-              medium: { emoji: '🟡', badge: '![Risk: Medium](https://img.shields.io/badge/Risk-Medium-yellow)' },
-              low: { emoji: '🟢', badge: '![Risk: Low](https://img.shields.io/badge/Risk-Low-green)' }
-            };
-            const rc = riskConfig[risk.level] || { emoji: '⚪', badge: '' };
-
-            // Build comment sections
-            let sections = [];
-
-            // Header
-            sections.push('## CKB Analysis ' + rc.emoji + ' **' + (risk.level || 'unknown').toUpperCase() + '**');
-            sections.push('');
-
-            // Summary table
-            sections.push('| Metric | Value |');
-            sections.push('|:-------|------:|');
-            sections.push('| **Files** | ' + (s.totalFiles || 0) + ' |');
-            sections.push('| **Additions** | +' + (s.totalAdditions || 0).toLocaleString() + ' |');
-            sections.push('| **Deletions** | -' + (s.totalDeletions || 0).toLocaleString() + ' |');
-            sections.push('| **Modules** | ' + (s.totalModules || 0) + ' |');
-            sections.push('| **Hotspots** | ' + (s.hotspotsTouched || 0) + ' |');
-            sections.push('');
-
-            // Suggested reviewers (clickable @mentions)
-            if (reviewers.length > 0) {
-              sections.push('### 👥 Suggested Reviewers');
-              sections.push('');
-              const reviewerList = reviewers.slice(0, 4).map(r => {
-                const name = r.owner.startsWith('@') ? r.owner : '@' + r.owner;
-                const pct = Math.round((r.coverage || 0) * 100);
-                return '| ' + name + ' | ' + pct + '% | ' + (r.reason || '') + ' |';
-              });
-              sections.push('| Reviewer | Coverage | Reason |');
-              sections.push('|:---------|:--------:|:-------|');
-              sections.push(reviewerList.join('\n'));
-              sections.push('');
-            }
-
-            // Risk factors
-            const factors = risk.factors || [];
-            if (factors.length > 0) {
-              sections.push('### ⚠️ Risk Factors');
-              sections.push('');
-              factors.forEach(f => sections.push('- ' + f));
-              sections.push('');
-            }
-
-            // Risk audit summary (critical/high items)
-            const auditItems = riskAudit.items || [];
-            const criticalItems = auditItems.filter(i => i.riskLevel === 'critical');
-            const highItems = auditItems.filter(i => i.riskLevel === 'high');
-            if (criticalItems.length > 0 || highItems.length > 0) {
-              sections.push('<details>');
-              sections.push('<summary><strong>🎯 Risk Audit (' + criticalItems.length + ' critical, ' + highItems.length + ' high)</strong></summary>');
-              sections.push('');
-              sections.push('| File | Score | Top Factor |');
-              sections.push('|:-----|------:|:-----------|');
-              [...criticalItems, ...highItems].slice(0, 8).forEach(item => {
-                const topFactor = (item.factors || [])[0];
-                const factorStr = topFactor ? topFactor.factor + ' (' + topFactor.value + ')' : '';
-                const emoji = item.riskLevel === 'critical' ? '🔴' : '🟠';
-                sections.push('| ' + emoji + ' `' + item.file + '` | ' + item.riskScore + ' | ' + factorStr + ' |');
-              });
-              sections.push('');
-              sections.push('</details>');
-              sections.push('');
-            }
-
-            // Quick wins
-            const quickWins = riskAudit.quickWins || [];
-            if (quickWins.length > 0) {
-              sections.push('<details>');
-              sections.push('<summary><strong>💡 Quick Wins (' + quickWins.length + ')</strong></summary>');
-              sections.push('');
-              quickWins.slice(0, 5).forEach(w => {
-                sections.push('- **' + w.action + '**: `' + w.target + '` (effort: ' + w.effort + ', impact: ' + w.impact + ')');
-              });
-              sections.push('');
-              sections.push('</details>');
-              sections.push('');
-            }
-
-            // Modules at risk
-            const riskyModules = modules.filter(m => m.riskLevel === 'high' || m.riskLevel === 'medium').slice(0, 6);
-            if (riskyModules.length > 0) {
-              sections.push('<details>');
-              sections.push('<summary><strong>📦 Modules at Risk (' + riskyModules.length + ')</strong></summary>');
-              sections.push('');
-              sections.push('| Module | Files | Risk |');
-              sections.push('|:-------|------:|:-----|');
-              riskyModules.forEach(m => {
-                const emoji = m.riskLevel === 'high' ? '🔴' : '🟡';
-                sections.push('| ' + emoji + ' `' + m.moduleId + '` | ' + m.filesChanged + ' | ' + m.riskLevel + ' |');
-              });
-              sections.push('');
-              sections.push('</details>');
-              sections.push('');
-            }
-
-            // Hotspots touched
-            const hotspots = files.filter(f => f.isHotspot).slice(0, 5);
-            if (hotspots.length > 0) {
-              sections.push('<details>');
-              sections.push('<summary><strong>🔥 Hotspots Touched (' + hotspots.length + ')</strong></summary>');
-              sections.push('');
-              sections.push('| File | Score |');
-              sections.push('|:-----|------:|');
-              hotspots.forEach(f => {
-                sections.push('| `' + f.path + '` | ' + (f.hotspotScore || 0).toFixed(2) + ' |');
-              });
-              sections.push('');
-              sections.push('</details>');
-              sections.push('');
-            }
-
-            // Complexity warnings
-            if (complexityWarnings.length > 0) {
-              sections.push('<details>');
-              sections.push('<summary><strong>📊 Complexity Warnings (' + complexityWarnings.length + ')</strong></summary>');
-              sections.push('');
-              sections.push('| File | Type | Value | Threshold |');
-              sections.push('|:-----|:-----|------:|----------:|');
-              complexityWarnings.forEach(w => {
-                const threshold = w.type === 'cyclomatic' ? 15 : 20;
-                sections.push('| `' + w.file + '` | ' + w.type + ' | **' + w.value + '** | ' + threshold + ' |');
-              });
-              sections.push('');
-              sections.push('</details>');
-              sections.push('');
-            }
-
-            // Coupling warnings
-            if (couplingWarnings.length > 0) {
-              sections.push('<details>');
-              sections.push('<summary><strong>🔗 Coupling Warnings (' + couplingWarnings.length + ')</strong></summary>');
-              sections.push('');
-              sections.push('These files usually change together but weren\'t included:');
-              sections.push('');
-              sections.push('| Missing File | Usually Changes With | Correlation |');
-              sections.push('|:-------------|:---------------------|------------:|');
-              couplingWarnings.slice(0, 5).forEach(w => {
-                const pct = Math.round((w.couplingScore || 0) * 100);
-                sections.push('| `' + w.file + '` | `' + w.coupledTo + '` | ' + pct + '% |');
-              });
-              sections.push('');
-              sections.push('</details>');
-              sections.push('');
-            }
-
-            // Ownership drift
-            if (Array.isArray(ownershipDrift) && ownershipDrift.length > 0) {
-              sections.push('<details>');
-              sections.push('<summary><strong>👤 Ownership Drift (' + ownershipDrift.length + ')</strong></summary>');
-              sections.push('');
-              sections.push('Files where CODEOWNERS differs from actual contributors:');
-              sections.push('');
-              sections.push('| File | Declared | Actual | Drift |');
-              sections.push('|:-----|:---------|:-------|------:|');
-              ownershipDrift.slice(0, 5).forEach(d => {
-                const pct = Math.round((d.driftScore || 0) * 100);
-                sections.push('| `' + d.path + '` | ' + (d.declaredOwner || 'none') + ' | ' + (d.actualOwner || 'none') + ' | ' + pct + '% |');
-              });
-              sections.push('');
-              sections.push('</details>');
-              sections.push('');
-            }
-
-            // Dead code candidates
-            const deadCandidates = deadCode.candidates || [];
-            if (deadCandidates.length > 0) {
-              sections.push('<details>');
-              sections.push('<summary><strong>💀 Dead Code Candidates (' + deadCandidates.length + ')</strong></summary>');
-              sections.push('');
-              sections.push('Symbols with no observed usage (from telemetry):');
-              sections.push('');
-              sections.push('| Symbol | Last Seen | Confidence |');
-              sections.push('|:-------|:----------|----------:|');
-              deadCandidates.slice(0, 5).forEach(c => {
-                const pct = Math.round((c.confidence || 0) * 100);
-                sections.push('| `' + c.name + '` | ' + (c.lastSeen || 'never') + ' | ' + pct + '% |');
-              });
-              sections.push('');
-              sections.push('</details>');
-              sections.push('');
-            }
-
-            // Stale documentation
-            const staleCount = docStaleness.totalStale || 0;
-            if (staleCount > 0) {
-              sections.push('<details>');
-              sections.push('<summary><strong>📚 Stale Documentation (' + staleCount + ')</strong></summary>');
-              sections.push('');
-              sections.push('Documentation with broken symbol references:');
-              sections.push('');
-              const reports = docStaleness.reports || [];
-              reports.slice(0, 5).forEach(r => {
-                const staleRefs = (r.stale || []).slice(0, 3);
-                staleRefs.forEach(ref => {
-                  sections.push('- `' + r.docPath + ':' + ref.line + '`: ' + ref.rawText + ' (' + ref.reason + ')');
-                });
-              });
-              sections.push('');
-              sections.push('</details>');
-              sections.push('');
-            }
-
-            const body = sections.join('\n');
-
-            // Post or update comment
+            // Post or update comment helper
             async function postComment(content) {
               const { data: comments } = await github.rest.issues.listComments({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
               });
-
-              const botComment = comments.find(c => c.user.type === 'Bot' && c.body.includes('CKB Analysis'));
-
+              const botComment = comments.find(c => c.user.type === 'Bot' && c.body.includes('## CKB'));
               if (botComment) {
                 await github.rest.issues.updateComment({
                   owner: context.repo.owner,
@@ -440,7 +216,260 @@ jobs:
               }
             }
 
-            await postComment(body);
+            if (prData.error) {
+              await postComment('## CKB\n\n> **Analysis failed:** ' + prData.error);
+              return;
+            }
+
+            const s = prData.summary || {};
+            const risk = prData.riskAssessment || {};
+            const modules = prData.modulesAffected || [];
+            const reviewers = prData.suggestedReviewers || [];
+            const files = prData.changedFiles || [];
+
+            // Helper: Create progress bar using Unicode blocks
+            function progressBar(value, max, width = 10) {
+              const filled = Math.round((value / max) * width);
+              const empty = width - filled;
+              return '`' + '█'.repeat(filled) + '░'.repeat(empty) + '`';
+            }
+
+            // Helper: Format number compactly
+            function fmt(n) {
+              if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+              return String(n);
+            }
+
+            // Risk configuration
+            const riskConfig = {
+              high: { color: 'e74c3c', label: 'HIGH', icon: '🔴' },
+              medium: { color: 'f39c12', label: 'MEDIUM', icon: '🟡' },
+              low: { color: '27ae60', label: 'LOW', icon: '🟢' }
+            };
+            const rc = riskConfig[risk.level] || { color: '95a5a6', label: 'UNKNOWN', icon: '⚪' };
+
+            // Collect findings for summary
+            const auditItems = riskAudit.items || [];
+            const criticalCount = auditItems.filter(i => i.riskLevel === 'critical').length;
+            const highCount = auditItems.filter(i => i.riskLevel === 'high').length;
+            const quickWins = riskAudit.quickWins || [];
+            const hotspots = files.filter(f => f.isHotspot);
+            const riskyModules = modules.filter(m => m.riskLevel === 'high' || m.riskLevel === 'medium');
+            const staleCount = docStaleness.totalStale || 0;
+            const deadCandidates = deadCode.candidates || [];
+
+            // Build comment
+            let sections = [];
+
+            // ═══════════════════════════════════════════════════════════════
+            // HEADER - Clean banner with risk badge
+            // ═══════════════════════════════════════════════════════════════
+            sections.push('## CKB');
+            sections.push('');
+            sections.push('![Risk](https://img.shields.io/badge/Risk-' + rc.label + '-' + rc.color + '?style=flat-square) ' +
+                         '![Files](https://img.shields.io/badge/Files-' + (s.totalFiles || 0) + '-blue?style=flat-square) ' +
+                         '![Changes](https://img.shields.io/badge/Changes-' + fmt(s.totalAdditions || 0) + '%2F' + fmt(s.totalDeletions || 0) + '-blue?style=flat-square) ' +
+                         '![Modules](https://img.shields.io/badge/Modules-' + (s.totalModules || 0) + '-blue?style=flat-square)');
+            sections.push('');
+
+            // ═══════════════════════════════════════════════════════════════
+            // QUICK STATS - Compact findings overview
+            // ═══════════════════════════════════════════════════════════════
+            const findings = [];
+            if (hotspots.length > 0) findings.push('🔥 ' + hotspots.length + ' hotspot' + (hotspots.length > 1 ? 's' : ''));
+            if (criticalCount + highCount > 0) findings.push('⚠️ ' + (criticalCount + highCount) + ' risk item' + (criticalCount + highCount > 1 ? 's' : ''));
+            if (complexityWarnings.length > 0) findings.push('📊 ' + complexityWarnings.length + ' complex');
+            if (couplingWarnings.length > 0) findings.push('🔗 ' + couplingWarnings.length + ' coupled');
+            if (staleCount > 0) findings.push('📚 ' + staleCount + ' stale doc' + (staleCount > 1 ? 's' : ''));
+
+            if (findings.length > 0) {
+              sections.push('**Findings:** ' + findings.join(' · '));
+              sections.push('');
+            }
+
+            // ═══════════════════════════════════════════════════════════════
+            // RISK FACTORS - Only if present, as blockquote
+            // ═══════════════════════════════════════════════════════════════
+            const factors = risk.factors || [];
+            if (factors.length > 0) {
+              sections.push('> ' + factors.map(f => '• ' + f).join('<br>\n> '));
+              sections.push('');
+            }
+
+            // ═══════════════════════════════════════════════════════════════
+            // SUGGESTED REVIEWERS - Prominent if present
+            // ═══════════════════════════════════════════════════════════════
+            if (reviewers.length > 0) {
+              const reviewerBadges = reviewers.slice(0, 3).map(r => {
+                const name = r.owner.startsWith('@') ? r.owner : '@' + r.owner;
+                const pct = Math.round((r.coverage || 0) * 100);
+                return name + ' (' + pct + '%)';
+              });
+              sections.push('**Suggested reviewers:** ' + reviewerBadges.join(', '));
+              sections.push('');
+            }
+
+            // ═══════════════════════════════════════════════════════════════
+            // DETAILS SECTIONS - Collapsible groups
+            // ═══════════════════════════════════════════════════════════════
+
+            // Risk Audit (critical/high items)
+            const criticalItems = auditItems.filter(i => i.riskLevel === 'critical');
+            const highItems = auditItems.filter(i => i.riskLevel === 'high');
+            if (criticalItems.length > 0 || highItems.length > 0) {
+              sections.push('<details>');
+              sections.push('<summary>⚠️ <b>Risk Audit</b> — ' + criticalItems.length + ' critical, ' + highItems.length + ' high</summary>');
+              sections.push('');
+              sections.push('| | File | Score | Top Factor |');
+              sections.push('|:--|:-----|------:|:-----------|');
+              [...criticalItems, ...highItems].slice(0, 6).forEach(item => {
+                const topFactor = (item.factors || [])[0];
+                const factorStr = topFactor ? topFactor.factor : '';
+                const icon = item.riskLevel === 'critical' ? '🔴' : '🟠';
+                sections.push('| ' + icon + ' | `' + item.file + '` | ' + item.riskScore + ' | ' + factorStr + ' |');
+              });
+              sections.push('');
+              sections.push('</details>');
+              sections.push('');
+            }
+
+            // Hotspots
+            if (hotspots.length > 0) {
+              sections.push('<details>');
+              sections.push('<summary>🔥 <b>Hotspots</b> — ' + hotspots.length + ' volatile file' + (hotspots.length > 1 ? 's' : '') + ' touched</summary>');
+              sections.push('');
+              sections.push('| File | Churn Score |');
+              sections.push('|:-----|------------:|');
+              hotspots.slice(0, 5).forEach(f => {
+                const score = (f.hotspotScore || 0);
+                const bar = progressBar(Math.min(score, 1), 1, 8);
+                sections.push('| `' + f.path + '` | ' + bar + ' ' + score.toFixed(2) + ' |');
+              });
+              sections.push('');
+              sections.push('</details>');
+              sections.push('');
+            }
+
+            // Modules at Risk
+            if (riskyModules.length > 0) {
+              sections.push('<details>');
+              sections.push('<summary>📦 <b>Modules at Risk</b> — ' + riskyModules.length + ' module' + (riskyModules.length > 1 ? 's' : '') + '</summary>');
+              sections.push('');
+              sections.push('| | Module | Files |');
+              sections.push('|:--|:-------|------:|');
+              riskyModules.slice(0, 5).forEach(m => {
+                const icon = m.riskLevel === 'high' ? '🔴' : '🟡';
+                sections.push('| ' + icon + ' | `' + m.moduleId + '` | ' + m.filesChanged + ' |');
+              });
+              sections.push('');
+              sections.push('</details>');
+              sections.push('');
+            }
+
+            // Quick Wins
+            if (quickWins.length > 0) {
+              sections.push('<details>');
+              sections.push('<summary>💡 <b>Quick Wins</b> — ' + quickWins.length + ' improvement' + (quickWins.length > 1 ? 's' : '') + '</summary>');
+              sections.push('');
+              quickWins.slice(0, 5).forEach(w => {
+                const effortIcon = w.effort === 'low' ? '🟢' : w.effort === 'medium' ? '🟡' : '🔴';
+                sections.push('- ' + effortIcon + ' **' + w.action + '** on `' + w.target + '`');
+              });
+              sections.push('');
+              sections.push('</details>');
+              sections.push('');
+            }
+
+            // Complexity Warnings
+            if (complexityWarnings.length > 0) {
+              sections.push('<details>');
+              sections.push('<summary>📊 <b>Complexity</b> — ' + complexityWarnings.length + ' warning' + (complexityWarnings.length > 1 ? 's' : '') + '</summary>');
+              sections.push('');
+              sections.push('| File | Type | Value |');
+              sections.push('|:-----|:-----|------:|');
+              complexityWarnings.forEach(w => {
+                const threshold = w.type === 'cyclomatic' ? 15 : 20;
+                const ratio = w.value / threshold;
+                const icon = ratio > 1.5 ? '🔴' : '🟡';
+                sections.push('| `' + w.file + '` | ' + w.type + ' | ' + icon + ' ' + w.value + ' |');
+              });
+              sections.push('');
+              sections.push('</details>');
+              sections.push('');
+            }
+
+            // Coupling Warnings
+            if (couplingWarnings.length > 0) {
+              sections.push('<details>');
+              sections.push('<summary>🔗 <b>Coupling</b> — ' + couplingWarnings.length + ' file' + (couplingWarnings.length > 1 ? 's' : '') + ' usually change together</summary>');
+              sections.push('');
+              sections.push('| Missing | Usually Changes With | Score |');
+              sections.push('|:--------|:---------------------|------:|');
+              couplingWarnings.slice(0, 5).forEach(w => {
+                const pct = Math.round((w.couplingScore || 0) * 100);
+                sections.push('| `' + w.file + '` | `' + w.coupledTo + '` | ' + pct + '% |');
+              });
+              sections.push('');
+              sections.push('</details>');
+              sections.push('');
+            }
+
+            // Ownership Drift
+            if (Array.isArray(ownershipDrift) && ownershipDrift.length > 0) {
+              sections.push('<details>');
+              sections.push('<summary>👤 <b>Ownership Drift</b> — ' + ownershipDrift.length + ' file' + (ownershipDrift.length > 1 ? 's' : '') + '</summary>');
+              sections.push('');
+              sections.push('| File | Declared | Actual |');
+              sections.push('|:-----|:---------|:-------|');
+              ownershipDrift.slice(0, 5).forEach(d => {
+                sections.push('| `' + d.path + '` | ' + (d.declaredOwner || '—') + ' | ' + (d.actualOwner || '—') + ' |');
+              });
+              sections.push('');
+              sections.push('</details>');
+              sections.push('');
+            }
+
+            // Dead Code
+            if (deadCandidates.length > 0) {
+              sections.push('<details>');
+              sections.push('<summary>💀 <b>Dead Code</b> — ' + deadCandidates.length + ' candidate' + (deadCandidates.length > 1 ? 's' : '') + '</summary>');
+              sections.push('');
+              sections.push('| Symbol | Last Seen | Confidence |');
+              sections.push('|:-------|:----------|:-----------|');
+              deadCandidates.slice(0, 5).forEach(c => {
+                const pct = Math.round((c.confidence || 0) * 100);
+                const bar = progressBar(c.confidence || 0, 1, 6);
+                sections.push('| `' + c.name + '` | ' + (c.lastSeen || 'never') + ' | ' + bar + ' ' + pct + '% |');
+              });
+              sections.push('');
+              sections.push('</details>');
+              sections.push('');
+            }
+
+            // Stale Documentation
+            if (staleCount > 0) {
+              const reports = docStaleness.reports || [];
+              sections.push('<details>');
+              sections.push('<summary>📚 <b>Stale Docs</b> — ' + staleCount + ' broken reference' + (staleCount > 1 ? 's' : '') + '</summary>');
+              sections.push('');
+              reports.slice(0, 4).forEach(r => {
+                const staleRefs = (r.stale || []).slice(0, 2);
+                staleRefs.forEach(ref => {
+                  sections.push('- `' + r.docPath + ':' + ref.line + '` — ' + ref.rawText);
+                });
+              });
+              sections.push('');
+              sections.push('</details>');
+              sections.push('');
+            }
+
+            // ═══════════════════════════════════════════════════════════════
+            // FOOTER
+            // ═══════════════════════════════════════════════════════════════
+            sections.push('---');
+            sections.push('<sub>Generated by [CKB](https://github.com/anthropics/ckb) · [Docs](https://github.com/anthropics/ckb#readme)</sub>');
+
+            await postComment(sections.join('\n'));
 
       - name: Auto-Request Reviewers
         if: always() && steps.analyze.outputs.risk_level != 'unknown'
