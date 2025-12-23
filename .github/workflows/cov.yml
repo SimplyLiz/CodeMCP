@@ -30,36 +30,35 @@ jobs:
         id: test
         run: |
           set +e
-          go test -v -race -coverprofile=coverage.out ./... 2>&1 | tee test-output.txt
+          go test -v -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./... 2>&1 | tee test-output.txt
           TEST_EXIT=${PIPESTATUS[0]}
           set -e
 
-          go tool cover -func=coverage.out -o coverage.txt
-
-          COVERAGE=$(grep total coverage.txt | awk '{print $3}' | sed 's/%//')
+          COVERAGE="N/A"
           THRESHOLD=50
+          BELOW_THRESHOLD="false"
+
+          if [ -f coverage.out ]; then
+            go tool cover -func=coverage.out -o coverage.txt
+            COVERAGE=$(grep "^total:" coverage.txt | awk '{print $3}' | sed 's/%//')
+
+            if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
+              BELOW_THRESHOLD="true"
+            fi
+          else
+            echo "coverage.out missing (tests likely failed); skipping coverage report."
+            : > coverage.txt
+          fi
 
           echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
           echo "threshold=$THRESHOLD" >> $GITHUB_OUTPUT
           echo "exit_code=$TEST_EXIT" >> $GITHUB_OUTPUT
+          echo "below_threshold=$BELOW_THRESHOLD" >> $GITHUB_OUTPUT
+          echo "tests_passed=$( [ "$TEST_EXIT" -eq 0 ] && echo true || echo false )" >> $GITHUB_OUTPUT
 
-          # Check threshold
-          if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
-            echo "below_threshold=true" >> $GITHUB_OUTPUT
-          else
-            echo "below_threshold=false" >> $GITHUB_OUTPUT
-          fi
-
-          # Check test result
-          if [ "$TEST_EXIT" -eq 0 ]; then
-            echo "tests_passed=true" >> $GITHUB_OUTPUT
-          else
-            echo "tests_passed=false" >> $GITHUB_OUTPUT
-          fi
-
-          # Job summary - headline first
+          # Job summary
           TEST_ICON=$( [ "$TEST_EXIT" -eq 0 ] && echo "✅" || echo "❌" )
-          GATE_ICON=$( (( $(echo "$COVERAGE >= $THRESHOLD" | bc -l) )) && echo "✅" || echo "❌" )
+          GATE_ICON=$( [ "$BELOW_THRESHOLD" = "false" ] && echo "✅" || echo "❌" )
 
           echo "### ${TEST_ICON} Tests | ${COVERAGE}% Coverage | ${GATE_ICON} Gate (≥${THRESHOLD}%)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -91,8 +90,9 @@ jobs:
           if [ "${{ steps.test.outputs.tests_passed }}" == "false" ]; then
             echo "::error::Tests failed"
           fi
-          if [ "${{ steps.test.outputs.below_threshold }}" == "true" ]; then
-            echo "::error::Coverage ${{ steps.test.outputs.coverage }}% is below threshold ${{ steps.test.outputs.threshold }}%"
+          COVERAGE="${{ steps.test.outputs.coverage }}"
+          if [ "${{ steps.test.outputs.below_threshold }}" == "true" ] && [ "$COVERAGE" != "N/A" ]; then
+            echo "::error::Coverage ${COVERAGE}% is below threshold ${{ steps.test.outputs.threshold }}%"
           fi
           exit 1
 
