@@ -37,14 +37,14 @@ jobs:
           TEST_EXIT=${PIPESTATUS[0]}
           set -e
 
-          # Parse results (remove ^ anchor to count subtests too)
-          echo "## 📊 NFR Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          PASS=$(grep -c -- "--- PASS" nfr-output.txt || echo "0")
-          FAIL=$(grep -c -- "--- FAIL" nfr-output.txt || echo "0")
+          # Parse results - count all PASS/FAIL lines including subtests
+          PASS=$(grep -c "--- PASS" nfr-output.txt) || PASS=0
+          FAIL=$(grep -c "--- FAIL" nfr-output.txt) || FAIL=0
           TOTAL=$((PASS + FAIL))
 
+          # Job summary
+          echo "## 📊 NFR Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| ✅ Passed | $PASS |" >> $GITHUB_STEP_SUMMARY
@@ -105,7 +105,10 @@ jobs:
               print("No token metrics found in output")
           EOF
 
-          python3 parse_nfr.py > nfr-table.md 2>/dev/null || echo "No metrics parsed" > nfr-table.md
+          if ! python3 parse_nfr.py > nfr-table.md 2>&1; then
+            echo "::warning::Failed to parse NFR metrics"
+            echo "No metrics parsed" > nfr-table.md
+          fi
           cat nfr-table.md
 
       - name: Comment on PR
