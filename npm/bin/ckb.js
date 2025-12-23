@@ -14,9 +14,17 @@ const PLATFORMS = {
 };
 
 /**
- * Find repo root by walking up from cwd looking for .ckb/ or .git/
- * This handles npx running from temp directories and MCP clients
- * that don't guarantee working directory.
+ * Find repo root by walking up from the correct starting directory.
+ *
+ * Key insight: When running via npx, process.cwd() is a temp directory
+ * (~/.npm/_npx/...), NOT the user's project. npm sets INIT_CWD to the
+ * directory where the user ran npx from.
+ *
+ * Priority:
+ * 1. CKB_REPO env var (explicit override)
+ * 2. --repo CLI argument (explicit override)
+ * 3. INIT_CWD (where user ran npx from)
+ * 4. process.cwd() (fallback)
  */
 function findRepoRoot() {
   // If CKB_REPO is already set, respect it
@@ -24,7 +32,17 @@ function findRepoRoot() {
     return process.env.CKB_REPO;
   }
 
-  let dir = process.cwd();
+  // Check if --repo was passed as argument
+  const repoArgIndex = process.argv.indexOf('--repo');
+  if (repoArgIndex !== -1 && process.argv[repoArgIndex + 1]) {
+    return process.argv[repoArgIndex + 1];
+  }
+
+  // INIT_CWD is set by npm to the directory where npx was invoked
+  // This is the key fix for the npx sandbox problem
+  const startDir = process.env.INIT_CWD || process.cwd();
+
+  let dir = startDir;
   const root = path.parse(dir).root;
 
   while (dir !== root) {
@@ -70,9 +88,21 @@ function getBinaryPath() {
   }
 }
 
+// Debug logging when CKB_DEBUG is set
+function debug(msg) {
+  if (process.env.CKB_DEBUG) {
+    console.error(`[ckb-wrapper] ${msg}`);
+  }
+}
+
 try {
   const binPath = getBinaryPath();
   const repoRoot = findRepoRoot();
+
+  debug(`INIT_CWD: ${process.env.INIT_CWD || '(not set)'}`);
+  debug(`process.cwd(): ${process.cwd()}`);
+  debug(`Resolved repo root: ${repoRoot || '(not found)'}`);
+  debug(`Binary path: ${binPath}`);
 
   // Pass repo root via environment variable
   const env = { ...process.env };
@@ -88,6 +118,18 @@ try {
   if (e.status !== undefined) {
     process.exit(e.status);
   }
-  console.error(`Failed to run CKB: ${e.message}`);
+
+  // Provide helpful error message for common issues
+  const msg = e.message || '';
+  if (msg.includes('ENOENT') || msg.includes('not found')) {
+    console.error('CKB Error: Binary not found');
+    console.error('');
+    console.error('This usually means the platform-specific package failed to install.');
+    console.error('Try reinstalling: npm install -g @tastehub/ckb');
+    console.error('');
+    console.error('For debugging, run with CKB_DEBUG=1');
+  } else {
+    console.error(`Failed to run CKB: ${msg}`);
+  }
   process.exit(1);
 }
