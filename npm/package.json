@@ -12,11 +12,17 @@
     "analysis"
   ],
   "homepage": "https://github.com/simplyliz/ckb",
+  "bugs": {
+    "url": "https://github.com/simplyliz/ckb/issues"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/simplyliz/ckb.git"
   },
   "license": "MIT",
+  "scripts": {
+    "prepublishOnly": "cp ../README.md ./README.md && cp ../LICENSE ./LICENSE"
+  },
   "author": "SimplyLiz",
   "bin": {
     "ckb": "bin/ckb.js"
