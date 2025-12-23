@@ -2,6 +2,36 @@
 
 All notable changes to CKB will be documented in this file.
 
+## [7.5.0]
+
+### Performance
+
+#### SCIP Backend Optimizations
+Major performance improvements to the SCIP backend through pre-computed indexes:
+
+| Operation | Before | After | Improvement |
+|-----------|--------|-------|-------------|
+| FindReferences | 340μs | 2.5μs | **136x faster** |
+| SearchSymbols | 930μs | 136μs | **7x faster** |
+| FindSymbolLocation | 70μs | 28ns | **2,500x faster** |
+| GetCachedSymbol | 210ns | 7.5ns | **28x faster** |
+
+**Changes:**
+- **RefIndex**: Inverted reference index built during SCIP load for O(1) reference lookups instead of O(n×m) scans
+- **ConvertedSymbols Cache**: Pre-converted symbols avoid repeated parsing of SCIP identifiers, visibility inference, and location lookups
+- **Fast Location Lookup**: `findSymbolLocationFast` uses RefIndex for O(k) definition lookup where k = number of occurrences
+- **RateLimiter Cleanup**: Added graceful shutdown with `Stop()` method to prevent goroutine leaks
+
+**Files Changed:**
+- `internal/backends/scip/loader.go` — Added `OccurrenceRef`, `RefIndex`, `ConvertedSymbols` to `SCIPIndex`
+- `internal/backends/scip/references.go` — `FindReferences` uses inverted index
+- `internal/backends/scip/symbols.go` — Added `GetCachedSymbol`, `findSymbolLocationFast`, cached `SearchSymbols`
+- `internal/backends/limiter.go` — Added `done` channel and `Stop()` method
+
+**Tests Added:**
+- `internal/backends/scip/performance_test.go` — 8 unit tests + 7 benchmarks
+- `internal/backends/limiter_test.go` — 5 unit tests + 1 benchmark
+
 ## [7.4.0]
 
 ### Added
