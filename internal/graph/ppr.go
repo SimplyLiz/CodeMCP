@@ -147,6 +147,11 @@ func (g *Graph) NumEdges() int {
 	return total
 }
 
+// AllNodes returns all node IDs in the graph.
+func (g *Graph) AllNodes() []string {
+	return g.nodes
+}
+
 // PPR computes Personalized PageRank with the given seed nodes.
 // Seeds should be symbol IDs that exist in the graph.
 func (g *Graph) PPR(_ context.Context, seeds []string, opts PPROptions) (*PPROutput, error) {

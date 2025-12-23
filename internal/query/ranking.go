@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"sort"
+	"strings"
 
 	"ckb/internal/backends/scip"
 	"ckb/internal/graph"
@@ -240,6 +241,10 @@ func RerankWithPPR(ctx context.Context, g *graph.Graph, results []SearchResultIt
 		seeds = append(seeds, results[i].StableId)
 	}
 
+	// Expand seeds to include struct methods when we have struct fields
+	// This helps PPR find cross-module dependencies through method calls
+	seeds = expandSeedsWithMethods(seeds, g)
+
 	// Run PPR
 	opts := graph.DefaultPPROptions()
 	opts.TopK = topK * 2 // Get extra for merging
@@ -291,4 +296,112 @@ func RerankWithPPR(ctx context.Context, g *graph.Graph, results []SearchResultIt
 // sigmoid applies sigmoid normalization.
 func sigmoid(x float64) float64 {
 	return 1.0 / (1.0 + math.Exp(-x))
+}
+
+// expandSeedsWithMethods expands seeds to include struct methods.
+// When seeds contain struct fields (e.g., "Engine#field."), this adds
+// methods from the same struct (e.g., "Engine#Initialize()") to help
+// PPR traverse cross-module call relationships.
+func expandSeedsWithMethods(seeds []string, g *graph.Graph) []string {
+	if g == nil || len(seeds) == 0 {
+		return seeds
+	}
+
+	// Extract struct prefixes from seeds
+	prefixes := make(map[string]bool)
+	for _, seed := range seeds {
+		prefix := extractStructPrefix(seed)
+		if prefix != "" {
+			prefixes[prefix] = true
+		}
+	}
+
+	if len(prefixes) == 0 {
+		return seeds
+	}
+
+	// Find methods in the graph that match these prefixes
+	seedSet := make(map[string]bool, len(seeds))
+	for _, s := range seeds {
+		seedSet[s] = true
+	}
+
+	// Check all nodes in graph for matching methods
+	for _, nodeID := range g.AllNodes() {
+		// Skip if already in seeds
+		if seedSet[nodeID] {
+			continue
+		}
+
+		// Check if this is a method on one of our structs
+		if isMethodOf(nodeID, prefixes) {
+			seeds = append(seeds, nodeID)
+			// Limit expansion to avoid explosion
+			if len(seeds) >= 30 {
+				break
+			}
+		}
+	}
+
+	return seeds
+}
+
+// extractStructPrefix extracts the struct prefix from a symbol ID.
+// e.g., "scip-go ... Engine#cacheMisses." -> finds "Engine#" pattern
+func extractStructPrefix(symbolID string) string {
+	// Look for Type#member pattern
+	hashIdx := -1
+	for i := len(symbolID) - 1; i >= 0; i-- {
+		if symbolID[i] == '#' {
+			hashIdx = i
+			break
+		}
+		// Stop at module boundary
+		if symbolID[i] == '/' || symbolID[i] == '`' {
+			break
+		}
+	}
+
+	if hashIdx < 0 {
+		return ""
+	}
+
+	// Find the start of the type name (after / or `)
+	startIdx := hashIdx
+	for i := hashIdx - 1; i >= 0; i-- {
+		if symbolID[i] == '/' || symbolID[i] == '`' {
+			startIdx = i + 1
+			break
+		}
+	}
+
+	if startIdx >= hashIdx {
+		return ""
+	}
+
+	// Return the struct prefix including the #
+	return symbolID[startIdx : hashIdx+1]
+}
+
+// isMethodOf checks if a symbol ID is a method of one of the given struct prefixes.
+func isMethodOf(symbolID string, prefixes map[string]bool) bool {
+	// Must end with () to be a method
+	if len(symbolID) < 3 || symbolID[len(symbolID)-2:] != "()" {
+		return false
+	}
+
+	// Check if it matches any prefix
+	for prefix := range prefixes {
+		// Find this prefix in the symbol
+		idx := strings.Index(symbolID, prefix)
+		if idx >= 0 {
+			// Verify it's followed by method name and ()
+			remainder := symbolID[idx+len(prefix):]
+			if len(remainder) > 2 && remainder[len(remainder)-2:] == "()" {
+				return true
+			}
+		}
+	}
+
+	return false
 }

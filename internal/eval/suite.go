@@ -336,6 +336,7 @@ func (s *Suite) evaluateExpansion(_ context.Context, symbols []query.SearchResul
 
 // matchSymbol checks if a search result matches an expected pattern.
 // Supports exact name match, suffix match, and stableId prefix match.
+// All matches are case-insensitive to handle Go naming conventions.
 func matchSymbol(sym query.SearchResultItem, pattern string) bool {
 	// Exact name match
 	if sym.Name == pattern {
@@ -347,13 +348,17 @@ func matchSymbol(sym query.SearchResultItem, pattern string) bool {
 		return true
 	}
 
-	// Suffix match (e.g., "Engine" matches "query.Engine")
-	if strings.HasSuffix(sym.Name, pattern) {
+	// Case-insensitive suffix match (e.g., "Engine" matches "query.Engine")
+	nameLower := strings.ToLower(sym.Name)
+	patternLower := strings.ToLower(pattern)
+	if strings.HasSuffix(nameLower, patternLower) {
 		return true
 	}
 
-	// StableId prefix/contains match
-	if strings.Contains(sym.StableId, pattern) {
+	// Case-insensitive StableId contains match
+	// This handles Go naming (e.g., "orchestrator" field vs "Orchestrator" type)
+	stableIdLower := strings.ToLower(sym.StableId)
+	if strings.Contains(stableIdLower, patternLower) {
 		return true
 	}
 
