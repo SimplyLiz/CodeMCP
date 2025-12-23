@@ -128,30 +128,11 @@ jobs:
             } catch (e) {}
 
             const passed = exitCode === '0';
+            const status = passed ? pass + ' passed' : fail + ' failed, ' + pass + ' passed';
             const emoji = passed ? '✅' : '❌';
-            const summary = passed
-              ? `${pass} passed`
-              : `${fail} failed, ${pass} passed`;
 
-            const body = `## NFR Test Results ${emoji} ${summary}
+            const body = '## NFR Test Results ' + emoji + ' ' + status + '\n\n' + metricsTable;
 
-${metricsTable}
-
-<details>
-<summary>Legend</summary>
-
-| Status | Meaning |
-|:------:|---------|
-| 🟢 | **Improved** — 5%+ better than baseline |
-| ⚪ | **Stable** — within ±5% of baseline |
-| 🟡 | **Warning** — 5-10% above baseline |
-| 🔴 | **Regression** — 10%+ above baseline (fails CI) |
-
-</details>
-
-<sub>[View workflow run](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID})</sub>`;
-
-            // Find existing comment to update
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
