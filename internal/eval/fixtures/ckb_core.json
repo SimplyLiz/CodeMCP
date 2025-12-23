@@ -1,0 +1,132 @@
+[
+  {
+    "id": "needle-query-engine",
+    "type": "needle",
+    "description": "Find the main query engine struct",
+    "query": "Engine",
+    "expectedSymbols": ["query.Engine", "Engine"],
+    "scope": "internal/query",
+    "kinds": ["class"],
+    "topK": 10
+  },
+  {
+    "id": "needle-orchestrator",
+    "type": "needle",
+    "description": "Find the backend orchestrator",
+    "query": "Orchestrator",
+    "expectedSymbols": ["Orchestrator", "backends.Orchestrator"],
+    "kinds": ["class"],
+    "topK": 10
+  },
+  {
+    "id": "needle-search-symbols",
+    "type": "needle",
+    "description": "Find the symbol search function",
+    "query": "SearchSymbols",
+    "expectedSymbols": ["SearchSymbols"],
+    "kinds": ["function", "method"],
+    "topK": 10
+  },
+  {
+    "id": "needle-mcp-server",
+    "type": "needle",
+    "description": "Find the MCP server implementation",
+    "query": "MCPServer",
+    "expectedSymbols": ["MCPServer"],
+    "scope": "internal/mcp",
+    "topK": 10
+  },
+  {
+    "id": "needle-call-graph",
+    "type": "needle",
+    "description": "Find call graph related code",
+    "query": "CallGraph",
+    "expectedSymbols": ["CallGraph", "GetCallGraph", "BuildCallGraph"],
+    "topK": 10
+  },
+  {
+    "id": "needle-find-references",
+    "type": "needle",
+    "description": "Find the find references function",
+    "query": "FindReferences",
+    "expectedSymbols": ["FindReferences"],
+    "kinds": ["function", "method"],
+    "topK": 10
+  },
+  {
+    "id": "needle-scip-adapter",
+    "type": "needle",
+    "description": "Find the SCIP backend adapter",
+    "query": "SCIPAdapter",
+    "expectedSymbols": ["SCIPAdapter", "Adapter"],
+    "scope": "internal/backends/scip",
+    "topK": 10
+  },
+  {
+    "id": "needle-hotspots",
+    "type": "needle",
+    "description": "Find hotspot analysis code",
+    "query": "Hotspot",
+    "expectedSymbols": ["Hotspot", "GetHotspots", "HotspotEntry"],
+    "topK": 10
+  },
+  {
+    "id": "needle-ownership",
+    "type": "needle",
+    "description": "Find code ownership functionality",
+    "query": "Ownership",
+    "expectedSymbols": ["GetOwnership", "Ownership"],
+    "topK": 10
+  },
+  {
+    "id": "needle-explain-symbol",
+    "type": "needle",
+    "description": "Find the explain symbol function",
+    "query": "ExplainSymbol",
+    "expectedSymbols": ["ExplainSymbol"],
+    "kinds": ["function", "method"],
+    "topK": 10
+  },
+  {
+    "id": "ranking-engine-first",
+    "type": "ranking",
+    "description": "Engine should rank highly for 'query engine'",
+    "query": "query engine",
+    "expectedSymbols": ["Engine"],
+    "topK": 5
+  },
+  {
+    "id": "ranking-analyze-impact",
+    "type": "ranking",
+    "description": "analyzeImpact should be top result for 'impact'",
+    "query": "analyzeImpact",
+    "expectedSymbols": ["AnalyzeImpact", "analyzeImpact"],
+    "topK": 3
+  },
+  {
+    "id": "ranking-trace-usage",
+    "type": "ranking",
+    "description": "TraceUsage should be top for 'trace usage'",
+    "query": "TraceUsage",
+    "expectedSymbols": ["TraceUsage"],
+    "topK": 3
+  },
+  {
+    "id": "expansion-engine-deps",
+    "type": "expansion",
+    "description": "Engine should connect to Orchestrator and backends",
+    "query": "Engine",
+    "expectedSymbols": ["Engine", "Orchestrator", "SCIPAdapter"],
+    "scope": "internal/query",
+    "topK": 20
+  },
+  {
+    "id": "expansion-mcp-tools",
+    "type": "expansion",
+    "description": "MCP server should connect to tool implementations",
+    "query": "MCPServer",
+    "expectedSymbols": ["MCPServer", "toolSearchSymbols", "toolGetCallGraph"],
+    "scope": "internal/mcp",
+    "topK": 20
+  }
+]

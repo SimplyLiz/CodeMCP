@@ -2,6 +2,71 @@
 
 All notable changes to CKB will be documented in this file.
 
+## [7.4.0]
+
+### Added
+
+#### npm Update Notifications
+Automatic update checking for npm installations:
+
+- **Auto-detection** — Detects when running from `npm install -g @tastehub/ckb`
+- **Non-blocking check** — Runs asynchronously, never delays command execution
+- **24-hour cache** — Checks npm registry at most once per day
+- **Silent failures** — Network timeouts (3s), errors, and offline mode fail silently
+- **Protocol-safe** — Skips `mcp` and `serve` commands to avoid breaking protocols
+
+**Disable with:**
+```bash
+export CKB_NO_UPDATE_CHECK=1
+```
+
+**Example output:**
+```
+╭─────────────────────────────────────────────────────╮
+│  Update available: 7.3.0 → 7.4.0                    │
+│  Run: npm update -g @tastehub/ckb                   │
+╰─────────────────────────────────────────────────────╯
+```
+
+#### Hybrid Retrieval with PPR
+Graph-based retrieval enhancement using Personalized PageRank and multi-signal fusion:
+
+**Results:**
+| Metric | Before | After | Improvement |
+|--------|--------|-------|-------------|
+| Recall@10 | 62.1% | 93.1% | +50% |
+| MRR | 0.546 | 0.891 | +63% |
+
+**Components:**
+- **Eval Suite** — `ckb eval` command measures recall@K, MRR, latency
+- **PPR Algorithm** — Personalized PageRank over SCIP symbol graph
+- **Fusion Scoring** — Weighted combination of FTS, PPR, hotspots, recency
+- **Export Organizer** — Module map + cross-module bridges in `exportForLLM`
+
+**Fusion Weights:**
+| Signal | Weight |
+|--------|--------|
+| FTS score | 0.40 |
+| PPR score | 0.30 |
+| Hotspot | 0.15 |
+| Recency | 0.10 |
+| Exact match | 0.05 |
+
+See `docs/hybrid-retrieval.md` for full documentation.
+
+### Files Added
+- `internal/update/check.go` — Core update check logic with npm registry API
+- `internal/update/cache.go` — 24-hour cache in `~/.ckb/update-check.json`
+- `internal/update/check_test.go` — Tests for version comparison and caching
+- `cmd/ckb/eval.go` — Eval CLI command
+- `internal/eval/suite.go` — Eval framework with metrics
+- `internal/eval/fixtures/*.json` — Test fixtures
+- `internal/graph/ppr.go` — PPR algorithm
+- `internal/graph/builder.go` — Graph construction from SCIP
+- `internal/query/ranking.go` — Fusion scoring
+- `internal/export/organizer.go` — Context organizer
+- `docs/hybrid-retrieval.md` — Feature documentation
+
 ## [7.3.0]
 
 ### Added
