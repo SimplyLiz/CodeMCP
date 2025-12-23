@@ -126,24 +126,20 @@ jobs:
               hotspot_count = sum(1 for r in rows if r["budget_pct"] >= 90)
 
               total = len(rows)
+              oks = [r for r in rows if r["verdict"] == "OK"]
 
-              # Headline
+              # Headline with horizontal indicators
+              indicators = []
               if fails:
-                  print(f"## Response Size ❌ {len(fails)} failed\n")
-              elif warns:
-                  print(f"## Response Size ⚠️ {len(warns)} regressed\n")
-              else:
-                  print(f"## Response Size ✅ {total} passed\n")
+                  indicators.append(f"❌ {len(fails)} failed")
+              if warns:
+                  indicators.append(f"⚠️ {len(warns)} regressed")
+              if goods:
+                  indicators.append(f"📈 {len(goods)} improved")
+              indicators.append(f"✅ {len(oks)} passed")
 
-              # Key/Value summary table
-              reg_val = f"{len(fails)} FAIL / {len(warns)} WARN" if regressions else "none ✓"
-              print("| Key | Value |")
-              print("|---|---|")
-              print(f"| Regressions | {reg_val} |")
-              print(f"| Savings | {len(savings)} |")
-              print(f"| Hotspots ≥90% | {hotspot_count} |")
-              print(f"| Scenarios | {total} |")
-              print()
+              status = "❌" if fails else "⚠️" if warns else "✅"
+              print(f"## NFR Tests {status} {' · '.join(indicators)}\n")
 
               # Diff block preview (top 3 each)
               preview_bad = sorted([r for r in rows if r["diff_pct"] >= 5], key=lambda r: -r["diff_pct"])[:3]
@@ -174,11 +170,19 @@ jobs:
 
               # Full breakdown in details
               print("<details><summary>All scenarios</summary>\n")
-              print("| Scenario | Actual (B) | Baseline | Max | Δ | Budget | Margin | Time |")
-              print("|---|---:|---:|---:|---:|---:|---:|---:|")
+              print("| | Scenario | Change | Actual (B) | Baseline | Max | Budget | Margin | Time |")
+              print("|:---:|---|---:|---:|---:|---:|---:|---:|---:|")
               for r in sorted(rows, key=lambda x: -x["diff_pct"]):
                   margin = 100 - r["budget_pct"]
-                  print(f"| {r['tool']} / {r['tier']} | {r['actual']:,} | {r['baseline']:,} | {r['max']:,} | {r['diff_pct']:+.1f}% | {r['budget_pct']:.0f}% | {margin:.0f}% | {r['timing']} |")
+                  if r["verdict"] == "FAIL":
+                      icon = "🔴"
+                  elif r["verdict"] == "WARN":
+                      icon = "🟡"
+                  elif r["verdict"] == "GOOD":
+                      icon = "🟢"
+                  else:
+                      icon = "⚪"
+                  print(f"| {icon} | {r['tool']} / {r['tier']} | {r['diff_pct']:+.1f}% | {r['actual']:,} | {r['baseline']:,} | {r['max']:,} | {r['budget_pct']:.0f}% | {margin:.0f}% | {r['timing']} |")
               print("\n</details>")
           else:
               print("No token metrics found in output")
