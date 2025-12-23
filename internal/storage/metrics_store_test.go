@@ -325,8 +325,8 @@ func TestSchemaV10Migration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to get schema version: %v", err)
 	}
-	if version != 10 {
-		t.Errorf("expected schema version 10, got %d", version)
+	if version != 11 {
+		t.Errorf("expected schema version 11, got %d", version)
 	}
 
 	db.Close()

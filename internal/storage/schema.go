@@ -16,7 +16,8 @@ import (
 // v8: Transitive Invalidation (file_deps, rescan_queue for dependency tracking)
 // v9: FTS5 Symbol Search (symbols_fts_content, symbols_fts)
 // v10: Wide-Result Metrics (wide_result_metrics for MCP tool telemetry)
-const currentSchemaVersion = 10
+// v11: Response Bytes (adds response_bytes column to wide_result_metrics)
+const currentSchemaVersion = 11
 
 // initializeSchema creates all tables for a new database
 func (db *DB) initializeSchema() error {
@@ -188,6 +189,12 @@ func (db *DB) runMigrations() error {
 	if version < 10 {
 		if err := db.migrateToV10(); err != nil {
 			return fmt.Errorf("failed to migrate to v10: %w", err)
+		}
+	}
+
+	if version < 11 {
+		if err := db.migrateToV11(); err != nil {
+			return fmt.Errorf("failed to migrate to v11: %w", err)
 		}
 	}
 
@@ -1453,4 +1460,42 @@ func createWideResultMetricsTable(tx *sql.Tx) error {
 	}
 
 	return nil
+}
+
+// ============================================================================
+// v11 Schema: Wide-Result Metrics Response Bytes
+// ============================================================================
+
+// migrateToV11 migrates the database from v10 to v11 (adds response_bytes column)
+func (db *DB) migrateToV11() error {
+	return db.WithTx(func(tx *sql.Tx) error {
+		db.logger.Info("Migrating database to v11 (Response Bytes)", nil)
+
+		// Check if response_bytes column exists
+		var count int
+		err := tx.QueryRow(`
+			SELECT COUNT(*) FROM pragma_table_info('wide_result_metrics')
+			WHERE name = 'response_bytes'
+		`).Scan(&count)
+		if err != nil {
+			return fmt.Errorf("failed to check for response_bytes column: %w", err)
+		}
+
+		if count == 0 {
+			// Add response_bytes column
+			_, err := tx.Exec(`ALTER TABLE wide_result_metrics ADD COLUMN response_bytes INTEGER NOT NULL DEFAULT 0`)
+			if err != nil {
+				return fmt.Errorf("failed to add response_bytes column: %w", err)
+			}
+			db.logger.Info("Added response_bytes column to wide_result_metrics", nil)
+		}
+
+		// Update schema version
+		if err := setSchemaVersion(tx, 11); err != nil {
+			return err
+		}
+
+		db.logger.Info("Database migrated to v11", nil)
+		return nil
+	})
 }
