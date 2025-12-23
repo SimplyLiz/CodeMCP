@@ -141,6 +141,14 @@ func runServe(cmd *cobra.Command, args []string) error {
 			logger.Warn("Index server enabled without config file - no repositories configured", nil)
 		}
 		serverConfig.IndexServer.Enabled = true
+
+		// Security: require authentication for index-server mode
+		// Index server exposes write endpoints (repo creation, uploads) that must be protected
+		hasLegacyAuth := serverConfig.Auth.Enabled
+		hasScopedAuth := serverConfig.IndexServer.Auth.Enabled
+		if !hasLegacyAuth && !hasScopedAuth {
+			return fmt.Errorf("--index-server requires authentication: set --auth-token, CKB_AUTH_TOKEN, or enable auth in config file")
+		}
 	}
 
 	// Create server
