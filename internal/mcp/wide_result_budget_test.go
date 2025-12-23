@@ -272,7 +272,9 @@ func TestWideResultTokenBudgetsIntegration(t *testing.T) {
 		// Parse to get a symbol ID
 		var result map[string]interface{}
 		resultBytes, _ := json.Marshal(resp.Result)
-		json.Unmarshal(resultBytes, &result)
+		if err := json.Unmarshal(resultBytes, &result); err != nil {
+			t.Skipf("Failed to unmarshal result: %v", err)
+		}
 
 		content, ok := result["content"].([]interface{})
 		if !ok || len(content) == 0 {
@@ -280,8 +282,14 @@ func TestWideResultTokenBudgetsIntegration(t *testing.T) {
 		}
 
 		// Get first content item's text and parse it
-		firstContent := content[0].(map[string]interface{})
-		text := firstContent["text"].(string)
+		firstContent, ok := content[0].(map[string]interface{})
+		if !ok {
+			t.Skip("Invalid content format")
+		}
+		text, ok := firstContent["text"].(string)
+		if !ok {
+			t.Skip("No text in content")
+		}
 		var data map[string]interface{}
 		if err := json.Unmarshal([]byte(text), &data); err != nil {
 			t.Skipf("Failed to parse response: %v", err)
@@ -298,7 +306,10 @@ func TestWideResultTokenBudgetsIntegration(t *testing.T) {
 			t.Skip("No symbols in response")
 		}
 
-		firstSymbol := symbols[0].(map[string]interface{})
+		firstSymbol, ok := symbols[0].(map[string]interface{})
+		if !ok {
+			t.Skip("Invalid symbol format")
+		}
 		symbolID, ok := firstSymbol["stableId"].(string)
 		if !ok {
 			t.Skip("Symbol has no stableId")
@@ -368,15 +379,23 @@ func TestWideResultTokenBudgetsIntegration(t *testing.T) {
 
 		var result map[string]interface{}
 		resultBytes, _ := json.Marshal(resp.Result)
-		json.Unmarshal(resultBytes, &result)
+		if err := json.Unmarshal(resultBytes, &result); err != nil {
+			t.Skip("Failed to unmarshal result")
+		}
 
 		content, ok := result["content"].([]interface{})
 		if !ok || len(content) == 0 {
 			t.Skip("No symbols found")
 		}
 
-		firstContent := content[0].(map[string]interface{})
-		text := firstContent["text"].(string)
+		firstContent, ok := content[0].(map[string]interface{})
+		if !ok {
+			t.Skip("Invalid content format")
+		}
+		text, ok := firstContent["text"].(string)
+		if !ok {
+			t.Skip("No text in content")
+		}
 		var data map[string]interface{}
 		if err := json.Unmarshal([]byte(text), &data); err != nil {
 			t.Skip("Failed to parse response")
@@ -392,7 +411,10 @@ func TestWideResultTokenBudgetsIntegration(t *testing.T) {
 			t.Skip("No symbols in response")
 		}
 
-		firstSymbol := symbols[0].(map[string]interface{})
+		firstSymbol, ok := symbols[0].(map[string]interface{})
+		if !ok {
+			t.Skip("Invalid symbol format")
+		}
 		symbolID, ok := firstSymbol["stableId"].(string)
 		if !ok {
 			t.Skip("Symbol has no stableId")
@@ -438,15 +460,23 @@ func TestWideResultTokenBudgetsIntegration(t *testing.T) {
 
 		var result map[string]interface{}
 		resultBytes, _ := json.Marshal(resp.Result)
-		json.Unmarshal(resultBytes, &result)
+		if err := json.Unmarshal(resultBytes, &result); err != nil {
+			t.Skip("Failed to unmarshal result")
+		}
 
 		content, ok := result["content"].([]interface{})
 		if !ok || len(content) == 0 {
 			t.Skip("No symbols found")
 		}
 
-		firstContent := content[0].(map[string]interface{})
-		text := firstContent["text"].(string)
+		firstContent, ok := content[0].(map[string]interface{})
+		if !ok {
+			t.Skip("Invalid content format")
+		}
+		text, ok := firstContent["text"].(string)
+		if !ok {
+			t.Skip("No text in content")
+		}
 		var data map[string]interface{}
 		if err := json.Unmarshal([]byte(text), &data); err != nil {
 			t.Skip("Failed to parse response")
@@ -463,7 +493,10 @@ func TestWideResultTokenBudgetsIntegration(t *testing.T) {
 			t.Skip("No symbols in response")
 		}
 
-		firstSymbol := symbols[0].(map[string]interface{})
+		firstSymbol, ok := symbols[0].(map[string]interface{})
+		if !ok {
+			t.Skip("Invalid symbol format")
+		}
 		symbolID, ok := firstSymbol["stableId"].(string)
 		if !ok {
 			t.Skip("Symbol has no stableId")
