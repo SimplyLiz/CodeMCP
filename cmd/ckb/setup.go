@@ -18,6 +18,7 @@ var (
 	setupGlobal bool
 	setupNpx    bool
 	setupTool   string
+	setupPreset string
 )
 
 // aiTool represents an AI coding tool that supports MCP
@@ -58,6 +59,7 @@ func init() {
 	setupCmd.Flags().BoolVar(&setupGlobal, "global", false, "Configure globally for all projects")
 	setupCmd.Flags().BoolVar(&setupNpx, "npx", false, "Use npx @tastehub/ckb for portable setup")
 	setupCmd.Flags().StringVar(&setupTool, "tool", "", "AI tool to configure (claude-code, cursor, windsurf, vscode, opencode, claude-desktop)")
+	setupCmd.Flags().StringVar(&setupPreset, "preset", "", "Tool preset: core (default), review, refactor, federation, docs, ops, full")
 	rootCmd.AddCommand(setupCmd)
 }
 
@@ -167,6 +169,32 @@ func runSetup(cmd *cobra.Command, args []string) error {
 		global = true
 	}
 
+	// Determine preset
+	preset := setupPreset
+	if preset == "" && setupTool == "" {
+		// Interactive preset selection
+		var err error
+		preset, err = selectPreset()
+		if err != nil {
+			return err
+		}
+	}
+
+	// Validate preset if provided
+	if preset != "" {
+		validPresets := map[string]bool{
+			"core": true, "review": true, "refactor": true,
+			"federation": true, "docs": true, "ops": true, "full": true,
+		}
+		if !validPresets[preset] {
+			return fmt.Errorf("unknown preset: %s. Valid options: core, review, refactor, federation, docs, ops, full", preset)
+		}
+		// Add preset to args (only if not "core" which is the default)
+		if preset != "core" {
+			ckbArgs = append(ckbArgs, "--preset="+preset)
+		}
+	}
+
 	// Configure
 	return configureTool(selectedTool, global, ckbCommand, ckbArgs)
 }
@@ -222,6 +250,54 @@ func selectScope(tool *aiTool) (bool, error) {
 		default:
 			fmt.Println("Invalid choice. Please enter 1 or 2.")
 		}
+	}
+}
+
+// presetInfo holds display info for a preset
+type presetInfo struct {
+	id          string
+	name        string
+	description string
+}
+
+var presets = []presetInfo{
+	{id: "core", name: "Core", description: "Essential tools for navigation and analysis (14 tools, recommended)"},
+	{id: "review", name: "Review", description: "Code review focused: PR summary, hotspots, ownership (19 tools)"},
+	{id: "refactor", name: "Refactor", description: "Refactoring focused: impact analysis, coupling, complexity (19 tools)"},
+	{id: "docs", name: "Docs", description: "Documentation focused: doc coverage, staleness checks (20 tools)"},
+	{id: "ops", name: "Ops", description: "Operations: jobs, webhooks, scheduling (24 tools)"},
+	{id: "federation", name: "Federation", description: "Multi-repo analysis and cross-repo search (28 tools)"},
+	{id: "full", name: "Full", description: "All available tools (76 tools)"},
+}
+
+func selectPreset() (string, error) {
+	fmt.Println("\nSelect tool preset:")
+	fmt.Println()
+	for i, p := range presets {
+		fmt.Printf("  %d. %s - %s\n", i+1, p.name, p.description)
+	}
+	fmt.Println()
+
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Printf("Enter choice [1-%d] (default: 1): ", len(presets))
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			return "", fmt.Errorf("failed to read input: %w", err)
+		}
+
+		input = strings.TrimSpace(input)
+		if input == "" {
+			return "core", nil // default
+		}
+
+		choice, err := strconv.Atoi(input)
+		if err != nil || choice < 1 || choice > len(presets) {
+			fmt.Printf("Invalid choice. Please enter a number between 1 and %d.\n", len(presets))
+			continue
+		}
+
+		return presets[choice-1].id, nil
 	}
 }
 

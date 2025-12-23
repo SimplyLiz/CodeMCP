@@ -219,10 +219,80 @@ func TestWideResultTokenBudgets(t *testing.T) {
 		}
 	})
 
+	// Test findReferences
+	t.Run("findReferences", func(t *testing.T) {
+		// Search for a symbol first
+		resp := sendRequest(t, server, "tools/call", 4, map[string]interface{}{
+			"name": "searchSymbols",
+			"arguments": map[string]interface{}{
+				"query": "Engine",
+				"limit": 1,
+			},
+		})
+
+		if resp.Error != nil {
+			t.Skip("searchSymbols failed")
+		}
+
+		var result map[string]interface{}
+		resultBytes, _ := json.Marshal(resp.Result)
+		json.Unmarshal(resultBytes, &result)
+
+		content, ok := result["content"].([]interface{})
+		if !ok || len(content) == 0 {
+			t.Skip("No symbols found")
+		}
+
+		firstContent := content[0].(map[string]interface{})
+		text := firstContent["text"].(string)
+		var data map[string]interface{}
+		if err := json.Unmarshal([]byte(text), &data); err != nil {
+			t.Skip("Failed to parse response")
+		}
+
+		dataField, ok := data["data"].(map[string]interface{})
+		if !ok {
+			t.Skip("No data field in response")
+		}
+
+		symbols, ok := dataField["symbols"].([]interface{})
+		if !ok || len(symbols) == 0 {
+			t.Skip("No symbols in response")
+		}
+
+		firstSymbol := symbols[0].(map[string]interface{})
+		symbolID, ok := firstSymbol["stableId"].(string)
+		if !ok {
+			t.Skip("Symbol has no stableId")
+		}
+
+		// Test findReferences
+		refsResp := sendRequest(t, server, "tools/call", 5, map[string]interface{}{
+			"name": "findReferences",
+			"arguments": map[string]interface{}{
+				"symbolId": symbolID,
+				"limit":    100,
+			},
+		})
+
+		if refsResp.Error != nil {
+			t.Logf("findReferences returned error (may be expected): %v", refsResp.Error)
+			return
+		}
+
+		metrics := measureToolResponse("findReferences", refsResp.Result)
+		t.Logf("findReferences: %d bytes (~%d tokens)", metrics.JSONBytes, metrics.EstimatedTokens)
+
+		if metrics.JSONBytes > maxFindReferencesBytes {
+			t.Errorf("findReferences exceeds token budget: %d bytes (max %d)",
+				metrics.JSONBytes, maxFindReferencesBytes)
+		}
+	})
+
 	// Test analyzeImpact
 	t.Run("analyzeImpact", func(t *testing.T) {
 		// Search for a symbol first
-		resp := sendRequest(t, server, "tools/call", 4, map[string]interface{}{
+		resp := sendRequest(t, server, "tools/call", 6, map[string]interface{}{
 			"name": "searchSymbols",
 			"arguments": map[string]interface{}{
 				"query": "Search",

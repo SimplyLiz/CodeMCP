@@ -40,7 +40,7 @@ func (s *MCPServer) handleInitialize(params map[string]interface{}) (*Initialize
 		ProtocolVersion: "2024-11-05",
 		Capabilities: ServerCapabilities{
 			Tools: &ToolsCapability{
-				ListChanged: false,
+				ListChanged: true, // Enables expandToolset dynamic preset expansion
 			},
 			Resources: &ResourcesCapability{
 				Subscribe:   false,

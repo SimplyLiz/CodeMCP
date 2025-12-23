@@ -606,6 +606,41 @@ Use `cmd /c` wrapper in any config above:
 
 </details>
 
+<details>
+<summary><strong>Presets (Token Optimization)</strong></summary>
+
+CKB exposes 76 tools, but most sessions only need a subset. Use presets to reduce token overhead by up to 83%:
+
+```bash
+# Default: core preset (14 essential tools)
+ckb mcp
+
+# Workflow-specific presets
+ckb mcp --preset=core        # 14 tools - search, explain, impact (default)
+ckb mcp --preset=review      # 19 tools - core + diff, ownership
+ckb mcp --preset=refactor    # 19 tools - core + coupling, dead code
+ckb mcp --preset=federation  # 28 tools - core + cross-repo
+ckb mcp --preset=docs        # 20 tools - core + doc-symbol linking
+ckb mcp --preset=ops         # 24 tools - core + jobs, webhooks
+ckb mcp --preset=full        # 76 tools - all tools (legacy)
+```
+
+In MCP config:
+```json
+{
+  "mcpServers": {
+    "ckb": {
+      "command": "npx",
+      "args": ["@tastehub/ckb", "mcp", "--preset=review"]
+    }
+  }
+}
+```
+
+The AI can dynamically expand the toolset mid-session using the `expandToolset` tool.
+
+</details>
+
 ## Under the Hood
 
 CKB orchestrates multiple code intelligence backends:
