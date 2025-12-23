@@ -135,12 +135,12 @@ func (s *Server) handleCouplingAnalyze(w http.ResponseWriter, r *http.Request) {
 
 	// Parse optional parameters
 	if minCorr := r.URL.Query().Get("minCorrelation"); minCorr != "" {
-		if v, err := strconv.ParseFloat(minCorr, 64); err == nil {
+		if v, parseErr := strconv.ParseFloat(minCorr, 64); parseErr == nil {
 			opts.MinCorrelation = v
 		}
 	}
 	if limit := r.URL.Query().Get("limit"); limit != "" {
-		if v, err := strconv.Atoi(limit); err == nil {
+		if v, parseErr := strconv.Atoi(limit); parseErr == nil {
 			opts.Limit = v
 		}
 	}
@@ -262,12 +262,12 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 
 	// Parse optional parameters
 	if minScore := r.URL.Query().Get("minScore"); minScore != "" {
-		if v, err := strconv.ParseFloat(minScore, 64); err == nil {
+		if v, parseErr := strconv.ParseFloat(minScore, 64); parseErr == nil {
 			opts.MinScore = v
 		}
 	}
 	if limit := r.URL.Query().Get("limit"); limit != "" {
-		if v, err := strconv.Atoi(limit); err == nil {
+		if v, parseErr := strconv.Atoi(limit); parseErr == nil {
 			opts.Limit = v
 		}
 	}
