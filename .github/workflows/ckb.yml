@@ -43,8 +43,8 @@ jobs:
       - name: Analyze PR
         id: analyze
         run: |
-          # Get PR analysis
-          if ! ./ckb pr-summary --base=${{ github.base_ref }} > pr-analysis.json 2>pr-analysis-err.txt; then
+          # Get PR analysis (use origin/ prefix for remote ref)
+          if ! ./ckb pr-summary --base=origin/${{ github.base_ref }} > pr-analysis.json 2>pr-analysis-err.txt; then
             echo "::warning::PR analysis failed"
             cat pr-analysis-err.txt
             # Create empty JSON so downstream steps work
