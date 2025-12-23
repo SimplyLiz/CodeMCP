@@ -10,6 +10,11 @@ import (
 const DefaultPageSize = 15
 
 // ToolsCursorPayload contains pagination state for tools/list
+//
+// Design note: We use toolsetHash for cursor invalidation rather than session
+// snapshots because tool definitions are currently static within a session.
+// If we add plugins or feature flags that dynamically modify tool schemas
+// mid-session, consider adding a SnapshotId field for session-scoped validation.
 type ToolsCursorPayload struct {
 	V           int    `json:"v"`  // cursor version
 	Preset      string `json:"p"`  // active preset
