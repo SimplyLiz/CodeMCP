@@ -46,26 +46,11 @@ jobs:
             echo "::warning::Index generation failed, continuing with git-only analysis"
           fi
 
-      - name: Start CKB Server
-        run: |
-          ./ckb serve --port 8080 &
-          echo "CKB_PID=$!" >> $GITHUB_ENV
-          # Wait for server to be ready
-          for i in {1..30}; do
-            if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
-              echo "CKB server ready"
-              break
-            fi
-            sleep 1
-          done
-
       - name: Analyze PR
         id: analyze
         run: |
-          # Get PR analysis
-          if ! curl -sf -X POST http://localhost:8080/pr/summary \
-            -H "Content-Type: application/json" \
-            -d '{"baseBranch": "${{ github.base_ref }}"}' > pr-analysis.json 2>pr-analysis-err.txt; then
+          # Get PR analysis using CLI
+          if ! ./ckb pr-summary --base=origin/${{ github.base_ref }} --format=json > pr-analysis.json 2>pr-analysis-err.txt; then
             echo "::warning::PR analysis failed"
             cat pr-analysis-err.txt
             echo '{"error": "analysis failed"}' > pr-analysis.json
@@ -84,7 +69,7 @@ jobs:
 
           for FILE in $(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(go|ts|js|py)$' | head -20); do
             if [ -f "$FILE" ]; then
-              RESULT=$(curl -sf "http://localhost:8080/complexity?path=$FILE" 2>/dev/null || echo '{}')
+              RESULT=$(./ckb complexity "$FILE" --format=json 2>/dev/null || echo '{}')
               CYCLO=$(echo "$RESULT" | jq '.cyclomatic // 0')
               COGNITIVE=$(echo "$RESULT" | jq '.cognitive // 0')
 
@@ -106,56 +91,28 @@ jobs:
         continue-on-error: true
         run: |
           echo '[]' > coupling-warnings.json
-          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | tr '\n' ',' | sed 's/,$//')
-
-          if [ -n "$CHANGED" ]; then
-            curl -sf -X POST "http://localhost:8080/coupling/check" \
-              -H "Content-Type: application/json" \
-              -d "{\"files\": \"$CHANGED\"}" > coupling-result.json 2>/dev/null || echo '{}' > coupling-result.json
-            jq '.missingCoupled // []' coupling-result.json > coupling-warnings.json
-          fi
-
-          COUNT=$(jq 'length' coupling-warnings.json 2>/dev/null || echo 0)
-          echo "warning_count=$COUNT" >> $GITHUB_OUTPUT
-
-      - name: Check Contract Impact
-        id: contracts
-        continue-on-error: true
-        run: |
-          echo '[]' > contract-warnings.json
           WARNINGS='[]'
 
-          # Find changed contract files (proto, openapi)
-          CONTRACTS=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(proto|yaml|json)$' | grep -E '(proto/|openapi/|api/)' || true)
+          # Check each changed file for coupling
+          for FILE in $(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(go|ts|js|py)$' | head -10); do
+            if [ -f "$FILE" ]; then
+              RESULT=$(./ckb coupling "$FILE" --min-correlation=0.7 --format=json 2>/dev/null || echo '{"coupled": []}')
+              COUPLED=$(echo "$RESULT" | jq '.coupled // []')
 
-          if [ -n "$CONTRACTS" ]; then
-            for CONTRACT in $CONTRACTS; do
-              RESULT=$(curl -sf "http://localhost:8080/contracts/impact?path=$CONTRACT" 2>/dev/null || echo '{}')
-              RISK=$(echo "$RESULT" | jq -r '.riskLevel // "unknown"')
-              CONSUMERS=$(echo "$RESULT" | jq '.consumers | length // 0')
+              # Check if any coupled files are missing from the PR
+              for COUPLED_FILE in $(echo "$COUPLED" | jq -r '.[].file // empty'); do
+                if ! git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -q "^${COUPLED_FILE}$"; then
+                  SCORE=$(echo "$COUPLED" | jq -r --arg f "$COUPLED_FILE" '.[] | select(.file == $f) | .correlation // 0')
+                  WARNINGS=$(echo "$WARNINGS" | jq --arg f "$COUPLED_FILE" --arg c "$FILE" --arg s "$SCORE" \
+                    '. + [{"file": $f, "coupledTo": $c, "couplingScore": ($s | tonumber)}]')
+                fi
+              done
+            fi
+          done
 
-              if [ "$RISK" = "high" ] || [ "$CONSUMERS" -gt 0 ]; then
-                WARNINGS=$(echo "$WARNINGS" | jq --arg f "$CONTRACT" --arg r "$RISK" --argjson c "$CONSUMERS" \
-                  '. + [{"file": $f, "risk": $r, "consumers": $c}]')
-              fi
-            done
-          fi
-
-          echo "$WARNINGS" > contract-warnings.json
+          echo "$WARNINGS" > coupling-warnings.json
           COUNT=$(echo "$WARNINGS" | jq 'length')
           echo "warning_count=$COUNT" >> $GITHUB_OUTPUT
-
-      - name: Check Dead Code
-        id: deadcode
-        continue-on-error: true
-        run: |
-          echo '{"candidates": []}' > deadcode.json
-
-          RESULT=$(curl -sf "http://localhost:8080/telemetry/dead-code?threshold=0.9&limit=10" 2>/dev/null || echo '{"candidates": []}')
-          echo "$RESULT" > deadcode.json
-
-          COUNT=$(echo "$RESULT" | jq '.candidates | length // 0')
-          echo "candidate_count=$COUNT" >> $GITHUB_OUTPUT
 
       - name: Check Ownership Drift
         id: drift
@@ -163,10 +120,10 @@ jobs:
         run: |
           echo '[]' > ownership-drift.json
 
-          RESULT=$(curl -sf "http://localhost:8080/ownership/drift?threshold=0.3&limit=10" 2>/dev/null || echo '[]')
+          RESULT=$(./ckb ownership drift --threshold=0.3 --limit=10 --format=json 2>/dev/null || echo '[]')
           echo "$RESULT" > ownership-drift.json
 
-          COUNT=$(echo "$RESULT" | jq 'length // 0')
+          COUNT=$(echo "$RESULT" | jq 'if type == "array" then length else 0 end')
           echo "drift_count=$COUNT" >> $GITHUB_OUTPUT
 
       - name: Run Risk Audit
@@ -175,7 +132,7 @@ jobs:
         run: |
           echo '{"items": [], "quickWins": []}' > risk-audit.json
 
-          RESULT=$(curl -sf "http://localhost:8080/audit?minScore=60&limit=10&quickWins=true" 2>/dev/null || echo '{"items": [], "quickWins": []}')
+          RESULT=$(./ckb audit --min-score=60 --limit=10 --quick-wins --format=json 2>/dev/null || echo '{"items": [], "quickWins": []}')
           echo "$RESULT" > risk-audit.json
 
           CRITICAL=$(echo "$RESULT" | jq '.summary.critical // 0')
@@ -183,17 +140,17 @@ jobs:
           echo "critical_count=$CRITICAL" >> $GITHUB_OUTPUT
           echo "high_count=$HIGH" >> $GITHUB_OUTPUT
 
-      - name: Check Language Quality
-        id: languages
+      - name: Check Dead Code
+        id: deadcode
         continue-on-error: true
         run: |
-          echo '{"languages": []}' > language-quality.json
+          echo '{"candidates": []}' > deadcode.json
 
-          RESULT=$(curl -sf "http://localhost:8080/meta/languages" 2>/dev/null || echo '{"languages": []}')
-          echo "$RESULT" > language-quality.json
+          RESULT=$(./ckb telemetry dead-code --threshold=0.9 --limit=10 --format=json 2>/dev/null || echo '{"candidates": []}')
+          echo "$RESULT" > deadcode.json
 
-          LOW_QUALITY=$(echo "$RESULT" | jq '[.languages[] | select(.quality < 0.7)] | length // 0')
-          echo "low_quality_count=$LOW_QUALITY" >> $GITHUB_OUTPUT
+          COUNT=$(echo "$RESULT" | jq '.candidates | length // 0')
+          echo "candidate_count=$COUNT" >> $GITHUB_OUTPUT
 
       - name: Check Doc Staleness
         id: docs
@@ -202,9 +159,9 @@ jobs:
           echo '{"totalStale": 0, "reports": []}' > doc-staleness.json
 
           # Index docs first
-          curl -sf -X POST "http://localhost:8080/docs/index" 2>/dev/null || true
+          ./ckb docs index 2>/dev/null || true
 
-          RESULT=$(curl -sf "http://localhost:8080/docs/stale?all=true" 2>/dev/null || echo '{"totalStale": 0, "reports": []}')
+          RESULT=$(./ckb docs stale --all --format=json 2>/dev/null || echo '{"totalStale": 0, "reports": []}')
           echo "$RESULT" > doc-staleness.json
 
           STALE=$(echo "$RESULT" | jq '.totalStale // 0')
@@ -221,21 +178,17 @@ jobs:
             let prData = {};
             let complexityWarnings = [];
             let couplingWarnings = [];
-            let contractWarnings = [];
             let deadCode = { candidates: [] };
             let ownershipDrift = [];
             let riskAudit = { items: [], quickWins: [], summary: {} };
-            let languageQuality = { languages: [] };
             let docStaleness = { totalStale: 0, reports: [] };
 
             try { prData = JSON.parse(fs.readFileSync('pr-analysis.json', 'utf8')); } catch {}
             try { complexityWarnings = JSON.parse(fs.readFileSync('complexity-warnings.json', 'utf8')); } catch {}
             try { couplingWarnings = JSON.parse(fs.readFileSync('coupling-warnings.json', 'utf8')); } catch {}
-            try { contractWarnings = JSON.parse(fs.readFileSync('contract-warnings.json', 'utf8')); } catch {}
             try { deadCode = JSON.parse(fs.readFileSync('deadcode.json', 'utf8')); } catch {}
             try { ownershipDrift = JSON.parse(fs.readFileSync('ownership-drift.json', 'utf8')); } catch {}
             try { riskAudit = JSON.parse(fs.readFileSync('risk-audit.json', 'utf8')); } catch {}
-            try { languageQuality = JSON.parse(fs.readFileSync('language-quality.json', 'utf8')); } catch {}
             try { docStaleness = JSON.parse(fs.readFileSync('doc-staleness.json', 'utf8')); } catch {}
 
             if (prData.error) {
@@ -328,22 +281,6 @@ jobs:
               sections.push('');
               quickWins.slice(0, 5).forEach(w => {
                 sections.push('- **' + w.action + '**: `' + w.target + '` (effort: ' + w.effort + ', impact: ' + w.impact + ')');
-              });
-              sections.push('');
-              sections.push('</details>');
-              sections.push('');
-            }
-
-            // Contract warnings
-            if (contractWarnings.length > 0) {
-              sections.push('<details>');
-              sections.push('<summary><strong>📜 Contract Changes (' + contractWarnings.length + ')</strong></summary>');
-              sections.push('');
-              sections.push('| Contract | Risk | Consumers |');
-              sections.push('|:---------|:-----|----------:|');
-              contractWarnings.forEach(w => {
-                const emoji = w.risk === 'high' ? '🔴' : w.risk === 'medium' ? '🟡' : '🟢';
-                sections.push('| ' + emoji + ' `' + w.file + '` | ' + w.risk + ' | ' + w.consumers + ' |');
               });
               sections.push('');
               sections.push('</details>');
@@ -454,24 +391,6 @@ jobs:
               sections.push('');
             }
 
-            // Language quality issues
-            const lowQualityLangs = (languageQuality.languages || []).filter(l => l.quality < 0.7);
-            if (lowQualityLangs.length > 0) {
-              sections.push('<details>');
-              sections.push('<summary><strong>🌐 Language Quality Issues (' + lowQualityLangs.length + ')</strong></summary>');
-              sections.push('');
-              sections.push('| Language | Quality | Issues |');
-              sections.push('|:---------|--------:|:-------|');
-              lowQualityLangs.forEach(l => {
-                const pct = Math.round((l.quality || 0) * 100);
-                const issues = (l.issues || []).join(', ') || 'none';
-                sections.push('| ' + l.name + ' | ' + pct + '% | ' + issues + ' |');
-              });
-              sections.push('');
-              sections.push('</details>');
-              sections.push('');
-            }
-
             // Stale documentation
             const staleCount = docStaleness.totalStale || 0;
             if (staleCount > 0) {
@@ -552,13 +471,6 @@ jobs:
               console.log('Could not request reviewers:', e.message);
             }
 
-      - name: Stop CKB Server
-        if: always()
-        run: |
-          if [ -n "$CKB_PID" ]; then
-            kill $CKB_PID 2>/dev/null || true
-          fi
-
       - name: Save CKB Cache
         if: always()
         uses: actions/cache/save@v4
@@ -576,10 +488,8 @@ jobs:
             pr-analysis-err.txt
             complexity-warnings.json
             coupling-warnings.json
-            contract-warnings.json
             deadcode.json
             ownership-drift.json
             risk-audit.json
-            language-quality.json
             doc-staleness.json
           retention-days: 7
