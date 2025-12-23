@@ -78,6 +78,38 @@ type UsagePathFixture struct {
 	Depth      int
 }
 
+// DiffFileFixture represents a file change in a diff summary.
+type DiffFileFixture struct {
+	Path         string
+	Status       string
+	Additions    int
+	Deletions    int
+	RiskLevel    string
+	AffectedSyms []string
+}
+
+// DiffSummaryFixture represents a summarizeDiff response.
+type DiffSummaryFixture struct {
+	Files         []DiffFileFixture
+	TotalAdded    int
+	TotalDeleted  int
+	FilesChanged  int
+	RiskSummary   map[string]int
+	AffectedPaths []string
+}
+
+// EntrypointFixture represents a system entrypoint.
+type EntrypointFixture struct {
+	SymbolID    string
+	Name        string
+	Kind        string
+	FilePath    string
+	Line        int
+	EntryKind   string
+	Centrality  float64
+	Description string
+}
+
 // GenerateSymbols creates n synthetic symbols.
 func GenerateSymbols(n int) []SymbolFixture {
 	symbols := make([]SymbolFixture, n)
@@ -233,6 +265,73 @@ func GenerateUsagePaths(n int, maxDepth int) []UsagePathFixture {
 	return paths
 }
 
+// GenerateDiffSummary creates a synthetic diff summary with n files.
+func GenerateDiffSummary(n int) DiffSummaryFixture {
+	files := make([]DiffFileFixture, n)
+	statuses := []string{"modified", "added", "deleted", "renamed"}
+	riskLevels := []string{"high", "medium", "low"}
+	totalAdded := 0
+	totalDeleted := 0
+	riskSummary := map[string]int{"high": 0, "medium": 0, "low": 0}
+	affectedPaths := make([]string, 0, n)
+
+	for i := 0; i < n; i++ {
+		additions := (i*17 + 5) % 200
+		deletions := (i*11 + 3) % 150
+		riskLevel := riskLevels[i%len(riskLevels)]
+		path := fmt.Sprintf("internal/module%d/file%d.go", i/10, i%10)
+
+		affectedSyms := make([]string, (i%5)+1)
+		for j := range affectedSyms {
+			affectedSyms[j] = fmt.Sprintf("ckb:test:sym:%08x", i*10+j)
+		}
+
+		files[i] = DiffFileFixture{
+			Path:         path,
+			Status:       statuses[i%len(statuses)],
+			Additions:    additions,
+			Deletions:    deletions,
+			RiskLevel:    riskLevel,
+			AffectedSyms: affectedSyms,
+		}
+
+		totalAdded += additions
+		totalDeleted += deletions
+		riskSummary[riskLevel]++
+		affectedPaths = append(affectedPaths, path)
+	}
+
+	return DiffSummaryFixture{
+		Files:         files,
+		TotalAdded:    totalAdded,
+		TotalDeleted:  totalDeleted,
+		FilesChanged:  n,
+		RiskSummary:   riskSummary,
+		AffectedPaths: affectedPaths,
+	}
+}
+
+// GenerateEntrypoints creates n synthetic entrypoints.
+func GenerateEntrypoints(n int) []EntrypointFixture {
+	entrypoints := make([]EntrypointFixture, n)
+	kinds := []string{"api_handler", "cli_command", "main", "job_handler", "webhook"}
+	funcKinds := []string{"function", "method"}
+
+	for i := 0; i < n; i++ {
+		entrypoints[i] = EntrypointFixture{
+			SymbolID:    fmt.Sprintf("ckb:test:sym:%08x", i),
+			Name:        fmt.Sprintf("Handle%s%d", strings.Title(kinds[i%len(kinds)]), i),
+			Kind:        funcKinds[i%len(funcKinds)],
+			FilePath:    fmt.Sprintf("internal/handlers/handler%d.go", i),
+			Line:        (i % 500) + 10,
+			EntryKind:   kinds[i%len(kinds)],
+			Centrality:  1.0 - float64(i)/float64(n+1),
+			Description: fmt.Sprintf("Entry point %d - %s handler", i, kinds[i%len(kinds)]),
+		}
+	}
+	return entrypoints
+}
+
 // FixtureSet contains fixtures for a specific size tier.
 type FixtureSet struct {
 	Tier        string
@@ -243,6 +342,8 @@ type FixtureSet struct {
 	ImpactNodes []ImpactNodeFixture
 	Modules     []ModuleFixture
 	UsagePaths  []UsagePathFixture
+	DiffSummary DiffSummaryFixture
+	Entrypoints []EntrypointFixture
 }
 
 // SmallFixtures returns fixtures for small result sets.
@@ -256,6 +357,8 @@ func SmallFixtures() *FixtureSet {
 		ImpactNodes: GenerateImpactNodes(10, 2),
 		Modules:     GenerateModules(5),
 		UsagePaths:  GenerateUsagePaths(5, 3),
+		DiffSummary: GenerateDiffSummary(10),
+		Entrypoints: GenerateEntrypoints(20),
 	}
 }
 
@@ -270,6 +373,8 @@ func MediumFixtures() *FixtureSet {
 		ImpactNodes: GenerateImpactNodes(40, 3),
 		Modules:     GenerateModules(15),
 		UsagePaths:  GenerateUsagePaths(20, 4),
+		DiffSummary: GenerateDiffSummary(50),
+		Entrypoints: GenerateEntrypoints(50),
 	}
 }
 
@@ -284,6 +389,8 @@ func LargeFixtures() *FixtureSet {
 		ImpactNodes: GenerateImpactNodes(100, 4),
 		Modules:     GenerateModules(30),
 		UsagePaths:  GenerateUsagePaths(50, 5),
+		DiffSummary: GenerateDiffSummary(100),
+		Entrypoints: GenerateEntrypoints(100),
 	}
 }
 
@@ -464,5 +571,60 @@ func (f *FixtureSet) ToTraceUsageJSON() string {
 	sb.WriteString(`],"totalPaths":`)
 	sb.WriteString(fmt.Sprintf("%d", len(f.UsagePaths)))
 	sb.WriteString(`,"maxDepth":5}}`)
+	return sb.String()
+}
+
+// ToSummarizeDiffJSON converts diff summary to summarizeDiff response JSON.
+func (f *FixtureSet) ToSummarizeDiffJSON() string {
+	var sb strings.Builder
+	sb.WriteString(`{"schemaVersion":"1.0","data":{"files":[`)
+
+	for i, file := range f.DiffSummary.Files {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(fmt.Sprintf(
+			`{"path":"%s","status":"%s","additions":%d,"deletions":%d,"riskLevel":"%s","affectedSymbols":[`,
+			file.Path, file.Status, file.Additions, file.Deletions, file.RiskLevel,
+		))
+		for j, sym := range file.AffectedSyms {
+			if j > 0 {
+				sb.WriteString(",")
+			}
+			sb.WriteString(fmt.Sprintf(`"%s"`, sym))
+		}
+		sb.WriteString(`]}`)
+	}
+
+	sb.WriteString(`],"summary":{`)
+	sb.WriteString(fmt.Sprintf(`"filesChanged":%d,`, f.DiffSummary.FilesChanged))
+	sb.WriteString(fmt.Sprintf(`"totalAdditions":%d,`, f.DiffSummary.TotalAdded))
+	sb.WriteString(fmt.Sprintf(`"totalDeletions":%d,`, f.DiffSummary.TotalDeleted))
+	sb.WriteString(fmt.Sprintf(`"riskBreakdown":{"high":%d,"medium":%d,"low":%d}`,
+		f.DiffSummary.RiskSummary["high"],
+		f.DiffSummary.RiskSummary["medium"],
+		f.DiffSummary.RiskSummary["low"]))
+	sb.WriteString(`}}}`)
+	return sb.String()
+}
+
+// ToListEntrypointsJSON converts entrypoints to listEntrypoints response JSON.
+func (f *FixtureSet) ToListEntrypointsJSON() string {
+	var sb strings.Builder
+	sb.WriteString(`{"schemaVersion":"1.0","data":{"entrypoints":[`)
+
+	for i, ep := range f.Entrypoints {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(fmt.Sprintf(
+			`{"symbolId":"%s","name":"%s","kind":"%s","location":{"path":"%s","line":%d},"entryKind":"%s","centrality":%.3f,"description":"%s"}`,
+			ep.SymbolID, ep.Name, ep.Kind, ep.FilePath, ep.Line, ep.EntryKind, ep.Centrality, ep.Description,
+		))
+	}
+
+	sb.WriteString(`],"total":`)
+	sb.WriteString(fmt.Sprintf("%d", len(f.Entrypoints)))
+	sb.WriteString(`,"truncated":false}}`)
 	return sb.String()
 }

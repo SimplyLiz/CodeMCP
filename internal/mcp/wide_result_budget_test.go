@@ -52,6 +52,14 @@ var nfrTokenBaselines = map[string]map[string]int{
 		"small": 800,  // 5 paths
 		"large": 7800, // 50 paths
 	},
+	"summarizeDiff": {
+		"small": 2200,  // 10 files
+		"large": 20000, // 100 files
+	},
+	"listEntrypoints": {
+		"small": 4800,  // 20 entrypoints
+		"large": 24000, // 100 entrypoints
+	},
 }
 
 // Wide-result token budgets for integration tests (legacy).
@@ -121,6 +129,14 @@ func TestNFRScenarios(t *testing.T) {
 		// traceUsage scenarios
 		{"traceUsage_small", "traceUsage", "small", testdata.SmallFixtures(), (*testdata.FixtureSet).ToTraceUsageJSON},
 		{"traceUsage_large", "traceUsage", "large", testdata.LargeFixtures(), (*testdata.FixtureSet).ToTraceUsageJSON},
+
+		// summarizeDiff scenarios
+		{"summarizeDiff_small", "summarizeDiff", "small", testdata.SmallFixtures(), (*testdata.FixtureSet).ToSummarizeDiffJSON},
+		{"summarizeDiff_large", "summarizeDiff", "large", testdata.LargeFixtures(), (*testdata.FixtureSet).ToSummarizeDiffJSON},
+
+		// listEntrypoints scenarios
+		{"listEntrypoints_small", "listEntrypoints", "small", testdata.SmallFixtures(), (*testdata.FixtureSet).ToListEntrypointsJSON},
+		{"listEntrypoints_large", "listEntrypoints", "large", testdata.LargeFixtures(), (*testdata.FixtureSet).ToListEntrypointsJSON},
 	}
 
 	for _, sc := range scenarios {
