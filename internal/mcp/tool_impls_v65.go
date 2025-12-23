@@ -151,16 +151,22 @@ func (s *MCPServer) toolExportForLLM(params map[string]interface{}) (interface{}
 		return nil, fmt.Errorf("failed to export for LLM: %w", err)
 	}
 
-	// Format output as text for LLM consumption
-	formatted := exporter.FormatText(result, export.ExportOptions{
+	// Use organizer for structured output
+	organizer := export.NewOrganizer(result)
+	organized := organizer.Organize()
+
+	// Format with module map and bridges for better LLM comprehension
+	formatted := export.FormatOrganizedText(organized, export.ExportOptions{
 		IncludeComplexity: includeComplexity,
 		IncludeUsage:      includeUsage,
 		IncludeContracts:  includeContracts,
 	})
 
 	return map[string]interface{}{
-		"text":     formatted,
-		"metadata": result.Metadata,
+		"text":      formatted,
+		"metadata":  result.Metadata,
+		"moduleMap": organized.ModuleMap,
+		"bridges":   organized.Bridges,
 	}, nil
 }
 

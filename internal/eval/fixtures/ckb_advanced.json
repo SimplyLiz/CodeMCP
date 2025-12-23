@@ -1,0 +1,117 @@
+[
+  {
+    "id": "needle-federation",
+    "type": "needle",
+    "description": "Find federation-related code",
+    "query": "Federation",
+    "expectedSymbols": ["Federation", "FederationClient"],
+    "scope": "internal/federation",
+    "topK": 10
+  },
+  {
+    "id": "needle-complexity",
+    "type": "needle",
+    "description": "Find complexity analysis code",
+    "query": "Complexity",
+    "expectedSymbols": ["Complexity", "GetFileComplexity", "CyclomaticComplexity"],
+    "topK": 10
+  },
+  {
+    "id": "needle-decisions-adr",
+    "type": "needle",
+    "description": "Find ADR/decision recording code",
+    "query": "Decision",
+    "expectedSymbols": ["Decision", "RecordDecision", "GetDecisions"],
+    "topK": 10
+  },
+  {
+    "id": "needle-coupling",
+    "type": "needle",
+    "description": "Find co-change coupling analysis",
+    "query": "Coupling",
+    "expectedSymbols": ["Coupling", "AnalyzeCoupling", "Analyzer"],
+    "scope": "internal/coupling",
+    "topK": 10
+  },
+  {
+    "id": "needle-telemetry",
+    "type": "needle",
+    "description": "Find telemetry integration code",
+    "query": "Telemetry",
+    "expectedSymbols": ["Telemetry", "TelemetryClient"],
+    "topK": 10
+  },
+  {
+    "id": "needle-audit-risk",
+    "type": "needle",
+    "description": "Find risk audit functionality",
+    "query": "AuditRisk",
+    "expectedSymbols": ["AuditRisk", "Audit", "RiskScore"],
+    "topK": 10
+  },
+  {
+    "id": "needle-export-llm",
+    "type": "needle",
+    "description": "Find LLM export functionality",
+    "query": "ExportForLLM",
+    "expectedSymbols": ["ExportForLLM", "Export", "Exporter"],
+    "topK": 10
+  },
+  {
+    "id": "needle-fts",
+    "type": "needle",
+    "description": "Find full-text search code",
+    "query": "FTS",
+    "expectedSymbols": ["FTS", "FTSManager", "SearchFTS"],
+    "topK": 10
+  },
+  {
+    "id": "needle-identity",
+    "type": "needle",
+    "description": "Find symbol identity/fingerprinting code",
+    "query": "Identity",
+    "expectedSymbols": ["Identity", "Fingerprint", "StableId"],
+    "scope": "internal/identity",
+    "topK": 10
+  },
+  {
+    "id": "needle-compression",
+    "type": "needle",
+    "description": "Find response compression/budget code",
+    "query": "Compression",
+    "expectedSymbols": ["Compression", "Budget", "Compressor"],
+    "topK": 10
+  },
+  {
+    "id": "ranking-provenance",
+    "type": "ranking",
+    "description": "Provenance struct should rank high",
+    "query": "Provenance",
+    "expectedSymbols": ["Provenance"],
+    "topK": 5
+  },
+  {
+    "id": "ranking-drilldown",
+    "type": "ranking",
+    "description": "Drilldown should be top result",
+    "query": "Drilldown",
+    "expectedSymbols": ["Drilldown"],
+    "topK": 5
+  },
+  {
+    "id": "hard-partial-match",
+    "type": "needle",
+    "description": "Find by partial camelCase match",
+    "query": "SymbolId",
+    "expectedSymbols": ["SymbolId", "symbolId", "StableId"],
+    "topK": 15
+  },
+  {
+    "id": "hard-conceptual-query",
+    "type": "needle",
+    "description": "Find symbol resolution by concept",
+    "query": "resolve symbol",
+    "expectedSymbols": ["ResolveSymbolId", "Resolver"],
+    "topK": 10
+  }
+]
