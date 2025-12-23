@@ -190,7 +190,7 @@ Now Claude can answer questions like:
 - **CI Enforcement** — `--fail-under` flag for documentation coverage thresholds
 
 ### Standardized Response Envelope (v7.4)
-- **Unified Metadata** — All 74 MCP tool responses now include structured metadata
+- **Unified Metadata** — All 76 MCP tool responses now include structured metadata
 - **Confidence Tiers** — High/Medium/Low/Speculative tiers based on data freshness and source
 - **Provenance Tracking** — Know which backends (SCIP, Git, LSP) contributed to results
 - **Truncation Awareness** — Metadata shows when results are truncated and total counts

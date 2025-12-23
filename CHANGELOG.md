@@ -109,7 +109,7 @@ With 100+ files = 400+ process spawns.
 ### Added
 
 #### Standardized Response Envelope
-All 74 MCP tool responses now include structured metadata in a consistent envelope format:
+All 76 MCP tool responses now include structured metadata in a consistent envelope format:
 
 **Envelope Schema:**
 ```json

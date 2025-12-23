@@ -16,14 +16,14 @@ import (
 
 // Wide-result token budgets for CI regression detection.
 // These are per-response limits to catch token bloat.
+// Note: summarizePr is excluded - it requires git branch context that may not exist in tests.
 const (
 	// Wide-result tool output budgets (bytes)
 	// These should decrease with frontierMode implementation
-	maxCallGraphBytes     = 15000 // ~3750 tokens
+	maxCallGraphBytes      = 15000 // ~3750 tokens
 	maxFindReferencesBytes = 12000 // ~3000 tokens
 	maxAnalyzeImpactBytes  = 16000 // ~4000 tokens
 	maxGetHotspotsBytes    = 10000 // ~2500 tokens
-	maxSummarizePrBytes    = 12000 // ~3000 tokens
 )
 
 // testResponseMetrics captures token-related metrics for a tool response (test-local).
