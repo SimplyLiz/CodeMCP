@@ -27,7 +27,7 @@ func TestMetricsStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open database: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Verify the table exists
 	var tableName string
@@ -117,7 +117,7 @@ func TestGetWideResultRecords(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open database: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Insert some records
 	for i := 0; i < 10; i++ {
@@ -169,7 +169,7 @@ func TestCleanupOldMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open database: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Insert a record
 	err = db.RecordWideResult("testTool", 100, 50, 50, 1000, 4000, 10)
@@ -223,7 +223,7 @@ func TestGetWideResultStats(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	// Stats on empty table
-	total, _, newest, err := db.GetWideResultStats()
+	total, _, _, err := db.GetWideResultStats()
 	if err != nil {
 		t.Fatalf("failed to get stats: %v", err)
 	}
@@ -242,7 +242,7 @@ func TestGetWideResultStats(t *testing.T) {
 		t.Fatalf("failed to record: %v", err)
 	}
 
-	total, oldest, newest, err = db.GetWideResultStats()
+	total, oldest, newest, err := db.GetWideResultStats()
 	if err != nil {
 		t.Fatalf("failed to get stats: %v", err)
 	}

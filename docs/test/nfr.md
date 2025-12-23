@@ -47,6 +47,10 @@ These tests use synthetic fixtures and always run (no SCIP index required). They
 | getArchitecture_large | getArchitecture | large | 8,000 | 30 modules |
 | traceUsage_small | traceUsage | small | 800 | 5 paths |
 | traceUsage_large | traceUsage | large | 7,800 | 50 paths |
+| summarizeDiff_small | summarizeDiff | small | 2,200 | 10 files |
+| summarizeDiff_large | summarizeDiff | large | 20,000 | 100 files |
+| listEntrypoints_small | listEntrypoints | small | 4,800 | 20 entrypoints |
+| listEntrypoints_large | listEntrypoints | large | 24,000 | 100 entrypoints |
 
 ### Token Baselines (`nfrTokenBaselines`)
 
@@ -59,6 +63,8 @@ var nfrTokenBaselines = map[string]map[string]int{
     "analyzeImpact":    {"small": 2000, "large": 18000},
     "getArchitecture":  {"small": 1500, "large": 8000},
     "traceUsage":       {"small": 800, "large": 7800},
+    "summarizeDiff":    {"small": 2200, "large": 20000},
+    "listEntrypoints":  {"small": 4800, "large": 24000},
 }
 ```
 
@@ -75,11 +81,13 @@ Fixture generators for deterministic testing:
 | `GenerateImpactNodes(n, maxDepth)` | `[]ImpactNodeFixture` | analyzeImpact scenarios |
 | `GenerateModules(n)` | `[]ModuleFixture` | getArchitecture scenarios |
 | `GenerateUsagePaths(n, maxDepth)` | `[]UsagePathFixture` | traceUsage scenarios |
+| `GenerateDiffSummary(n)` | `DiffSummaryFixture` | summarizeDiff scenarios |
+| `GenerateEntrypoints(n)` | `[]EntrypointFixture` | listEntrypoints scenarios |
 
 Preset fixture sets:
-- `SmallFixtures()` - 20 symbols, 50 refs, 10 hotspots, 10 impact nodes, 5 modules, 5 paths
-- `MediumFixtures()` - 100 symbols, 500 refs, 50 hotspots, 40 impact nodes, 15 modules, 20 paths
-- `LargeFixtures()` - 500 symbols, 5000 refs, 200 hotspots, 100 impact nodes, 30 modules, 50 paths
+- `SmallFixtures()` - 20 symbols, 50 refs, 10 hotspots, 10 impact nodes, 5 modules, 5 paths, 10 diff files, 20 entrypoints
+- `MediumFixtures()` - 100 symbols, 500 refs, 50 hotspots, 40 impact nodes, 15 modules, 20 paths, 50 diff files, 50 entrypoints
+- `LargeFixtures()` - 500 symbols, 5000 refs, 200 hotspots, 100 impact nodes, 30 modules, 50 paths, 100 diff files, 100 entrypoints
 
 ---
 
@@ -250,11 +258,11 @@ Tests with real SCIP index data. Skipped if no index available.
 
 ## Summary
 
-**Total:** ~70 benchmarks + 16 deterministic NFR scenarios across 15 test files
+**Total:** ~70 benchmarks + 20 deterministic NFR scenarios across 15 test files
 
 | Category | Files | Tests/Benchmarks |
 |----------|-------|------------------|
-| NFR Scenarios (CI gate) | 1 | 16 |
+| NFR Scenarios (CI gate) | 1 | 20 |
 | MCP Token/Wide-Result | 4 | ~15 |
 | SCIP Backend | 1 | 11 |
 | Query Navigation | 2 | ~19 |

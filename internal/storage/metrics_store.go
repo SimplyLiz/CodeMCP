@@ -85,7 +85,7 @@ func (db *DB) GetWideResultAggregates(since time.Time) (map[string]*WideResultAg
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	result := make(map[string]*WideResultAggregate)
 	for rows.Next() {
@@ -135,7 +135,7 @@ func (db *DB) GetWideResultRecords(limit int, toolFilter string) ([]WideResultRe
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var records []WideResultRecord
 	for rows.Next() {
