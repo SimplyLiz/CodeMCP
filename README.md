@@ -161,9 +161,10 @@ Now Claude can answer questions like:
 
 📋 **[Full Changelog](https://github.com/SimplyLiz/CodeMCP/blob/main/CHANGELOG.md)** — Detailed version history from v5.1 to current
 
-### Zero-Friction UX (v7.0)
+### Zero-Friction UX (v7.0+)
 - **npm Distribution** — `npm install -g @tastehub/ckb` or `npx @tastehub/ckb`
 - **Auto-Setup** — `ckb setup` configures Claude Code integration automatically
+- **Update Notifications** — Automatic update check for npm installs (disable with `CKB_NO_UPDATE_CHECK=1`)
 
 ### Zero-Index Operation (v7.1)
 - **Tree-sitter Fallback** — Symbol search works without SCIP index (8 languages)

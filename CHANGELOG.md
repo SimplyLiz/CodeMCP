@@ -2,6 +2,37 @@
 
 All notable changes to CKB will be documented in this file.
 
+## [7.4.0]
+
+### Added
+
+#### npm Update Notifications
+Automatic update checking for npm installations:
+
+- **Auto-detection** — Detects when running from `npm install -g @tastehub/ckb`
+- **Non-blocking check** — Runs asynchronously, never delays command execution
+- **24-hour cache** — Checks npm registry at most once per day
+- **Silent failures** — Network timeouts (3s), errors, and offline mode fail silently
+- **Protocol-safe** — Skips `mcp` and `serve` commands to avoid breaking protocols
+
+**Disable with:**
+```bash
+export CKB_NO_UPDATE_CHECK=1
+```
+
+**Example output:**
+```
+╭─────────────────────────────────────────────────────╮
+│  Update available: 7.3.0 → 7.4.0                    │
+│  Run: npm update -g @tastehub/ckb                   │
+╰─────────────────────────────────────────────────────╯
+```
+
+### Files Added
+- `internal/update/check.go` — Core update check logic with npm registry API
+- `internal/update/cache.go` — 24-hour cache in `~/.ckb/update-check.json`
+- `internal/update/check_test.go` — Tests for version comparison and caching
+
 ## [7.3.0]
 
 ### Added
