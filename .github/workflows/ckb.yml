@@ -273,7 +273,7 @@ jobs:
             c.push('');
             c.push('## CKB Analysis');
             c.push('');
-            c.push(`![Risk](https://img.shields.io/badge/${riskStyle.label}-${pct(risk.score)}%25-${riskStyle.color}?style=for-the-badge) ` +
+            c.push(`![Risk](https://img.shields.io/badge/${riskStyle.label}-${Math.round(risk.score || 0)}-${riskStyle.color}?style=for-the-badge) ` +
                    `![Files](https://img.shields.io/badge/Files-${s.totalFiles || 0}-3498db?style=flat-square) ` +
                    `![Lines](https://img.shields.io/badge/%2B${s.totalAdditions || 0}%20%2F%20−${s.totalDeletions || 0}-3498db?style=flat-square) ` +
                    `![Modules](https://img.shields.io/badge/Modules-${s.totalModules || 0}-3498db?style=flat-square)`);
