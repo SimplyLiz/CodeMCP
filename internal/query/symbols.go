@@ -504,6 +504,16 @@ func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (
 		return results[i].Score > results[j].Score
 	})
 
+	// Apply PPR re-ranking if SCIP graph is available
+	if e.scipAdapter != nil && e.scipAdapter.IsAvailable() && len(results) > 3 {
+		// Build graph and re-rank (lazy graph building)
+		if symbolGraph, err := BuildGraphFromSCIP(ctx, e.scipAdapter, e.logger); err == nil && symbolGraph.NumNodes() > 0 {
+			if reranked, err := RerankWithPPR(ctx, symbolGraph, results, opts.Limit); err == nil {
+				results = reranked
+			}
+		}
+	}
+
 	// Apply limit and track truncation
 	totalCount := len(results)
 	var truncationInfo *TruncationInfo
