@@ -52,15 +52,29 @@ ckb mcp --preset=full        # All 76 tools (legacy)
 - `cmd/ckb/setup.go` — Preset selection in wizard
 
 #### Wide-Result Metrics Tracking
-Infrastructure for monitoring tool output sizes:
+Infrastructure for monitoring tool output sizes and truncation rates:
 
 - **`getWideResultMetrics` tool** — Expose wide-result statistics
 - **SQLite persistence** — Historical tracking for optimization work
 - **Per-tool aggregation** — Invocations, bytes, tokens, truncations
+- **Response byte tracking** — Actual JSON payload size for each tool response
+- **`ckb metrics` CLI** — View aggregated metrics with `--days`, `--tool`, `--format` flags
+
+Tracked tools: searchSymbols, findReferences, analyzeImpact, getCallGraph, getHotspots, summarizePr
+
+**Telemetry Findings:**
+| Tool | Truncation Rate | Needs Frontier? |
+|------|-----------------|-----------------|
+| searchSymbols | 45% | Yes |
+| getHotspots | 50% | Yes |
+| findReferences | 18% | No |
+| getCallGraph | 0% | No |
+| analyzeImpact | 0% | No |
 
 **Files Added:**
 - `internal/mcp/wide_result_metrics.go` — In-memory aggregation with DB persistence
 - `internal/storage/metrics_store.go` — SQLite metrics storage
+- `cmd/ckb/metrics.go` — CLI metrics command
 
 ### Performance
 
