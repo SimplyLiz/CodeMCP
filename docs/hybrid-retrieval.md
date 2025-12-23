@@ -17,7 +17,7 @@ This approach is based on 2024-2025 research showing graph-augmented retrieval o
 |--------|--------|-------|-------------|
 | Recall@10 | 62.1% | 100% | +61% |
 | MRR | 0.546 | 0.914 | +67% |
-| Latency | 29.4ms | 4.5ms | -85% |
+| Latency | 29.4ms | 7.0ms | -76% |
 
 ## Components
 

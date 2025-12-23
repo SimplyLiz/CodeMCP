@@ -34,23 +34,23 @@ Graph-based retrieval enhancement using Personalized PageRank and multi-signal f
 **Results:**
 | Metric | Before | After | Improvement |
 |--------|--------|-------|-------------|
-| Recall@10 | 62.1% | 93.1% | +50% |
-| MRR | 0.546 | 0.891 | +63% |
+| Recall@10 | 62.1% | 100% | +61% |
+| MRR | 0.546 | 0.914 | +67% |
+| Latency | 29.4ms | 7.0ms | -76% |
 
 **Components:**
 - **Eval Suite** — `ckb eval` command measures recall@K, MRR, latency
-- **PPR Algorithm** — Personalized PageRank over SCIP symbol graph
+- **PPR Algorithm** — Personalized PageRank over SCIP symbol graph with seed expansion
 - **Fusion Scoring** — Weighted combination of FTS, PPR, hotspots, recency
 - **Export Organizer** — Module map + cross-module bridges in `exportForLLM`
 
 **Fusion Weights:**
-| Signal | Weight |
-|--------|--------|
-| FTS score | 0.40 |
-| PPR score | 0.30 |
-| Hotspot | 0.15 |
-| Recency | 0.10 |
-| Exact match | 0.05 |
+| Signal | Weight | Source |
+|--------|--------|--------|
+| FTS score | 0.40 | Full-text search ranking |
+| PPR score | 0.30 | Graph proximity via PageRank |
+| Hotspot | 0.15 | Git churn metrics (cached) |
+| Recency | 0.15 | File modification time |
 
 See `docs/hybrid-retrieval.md` for full documentation.
 
