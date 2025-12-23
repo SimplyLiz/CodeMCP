@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main, develop]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     name: Lint
@@ -16,7 +20,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version-file: 'go.mod'
           cache: true
 
       - name: Run golangci-lint
@@ -34,24 +38,33 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version-file: 'go.mod'
           cache: true
 
       - name: Run tests with coverage
         run: |
           go test -v -race -coverprofile=coverage.out ./...
-          
-          # Show coverage in job summary
-          echo "## 📊 Test Coverage" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}')
-          echo "**Total: ${COVERAGE}**" >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=coverage.out -o coverage.txt
+
+      - name: Coverage quality gate
+        run: |
+          COVERAGE=$(grep total coverage.txt | awk '{print $3}' | sed 's/%//')
+          THRESHOLD=50
+          echo "Coverage: ${COVERAGE}%"
+
+          if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
+            echo "::error::Coverage ${COVERAGE}% is below threshold ${THRESHOLD}%"
+            exit 1
+          fi
+
+          # Job summary
+          echo "## 📊 Test Coverage: ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "<details>" >> $GITHUB_STEP_SUMMARY
           echo "<summary>Coverage by package</summary>" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          go tool cover -func=coverage.out | head -50 >> $GITHUB_STEP_SUMMARY
+          head -50 coverage.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           echo "</details>" >> $GITHUB_STEP_SUMMARY
 
@@ -59,7 +72,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage
-          path: coverage.out
+          path: |
+            coverage.out
+            coverage.txt
+          retention-days: 7
 
   tidycheck:
     name: Go Mod Tidy
@@ -70,13 +86,17 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version-file: 'go.mod'
           cache: true
 
       - name: Check go mod tidy
         run: |
           go mod tidy
-          git diff --exit-code go.mod go.sum
+          if ! git diff --quiet go.mod go.sum; then
+            echo "::error::go.mod or go.sum not tidy. Run 'go mod tidy' and commit."
+            git diff go.mod go.sum
+            exit 1
+          fi
 
   security:
     name: Security Scan
@@ -87,13 +107,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version-file: 'go.mod'
           cache: true
 
       - name: Run govulncheck
-        uses: golang/govulncheck-action@v1
-        with:
-          go-version-input: '1.24'
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
 
       - name: Run Trivy filesystem scan
         uses: aquasecurity/trivy-action@0.33.1
@@ -106,18 +126,18 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    needs: [lint, test, tidycheck, security]
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version-file: 'go.mod'
           cache: true
 
       - name: Build binary
-        run: go build -o ckb ./cmd/ckb
+        run: go build -ldflags="-s -w" -o ckb ./cmd/ckb
 
       - name: Verify binary
         run: ./ckb version
@@ -127,13 +147,15 @@ jobs:
         with:
           name: ckb-linux-amd64
           path: ckb
+          retention-days: 7
 
   build-matrix:
     name: Build (${{ matrix.os }}/${{ matrix.arch }})
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    needs: [lint, test, tidycheck, security]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: linux
@@ -150,7 +172,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version-file: 'go.mod'
           cache: true
 
       - name: Build
@@ -162,10 +184,11 @@ jobs:
           if [ "${{ matrix.os }}" = "windows" ]; then
             ext=".exe"
           fi
-          go build -o ckb-${{ matrix.os }}-${{ matrix.arch }}${ext} ./cmd/ckb
+          go build -ldflags="-s -w" -o ckb-${{ matrix.os }}-${{ matrix.arch }}${ext} ./cmd/ckb
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ckb-${{ matrix.os }}-${{ matrix.arch }}
           path: ckb-${{ matrix.os }}-${{ matrix.arch }}*
+          retention-days: 30
