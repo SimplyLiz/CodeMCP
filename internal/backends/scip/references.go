@@ -71,8 +71,8 @@ func (idx *SCIPIndex) processOccurrence(symbolId string, doc *Document, occ *Occ
 		context = extractContext(doc.RelativePath, location, idx)
 	}
 
-	// Determine the containing symbol
-	fromSymbol := findContainingSymbol(doc, occ)
+	// Determine the containing symbol (O(1) with ContainerIndex)
+	fromSymbol := findContainingSymbolFast(doc, occ, idx)
 
 	return &SCIPReference{
 		SymbolId:   symbolId,
@@ -126,7 +126,7 @@ func determineReferenceKind(occ *Occurrence) ReferenceKind {
 	return RefReference
 }
 
-// findContainingSymbol finds the symbol that contains this occurrence
+// findContainingSymbol finds the symbol that contains this occurrence (O(n²) fallback)
 func findContainingSymbol(doc *Document, occ *Occurrence) string {
 	// Use enclosing range to find containing symbol
 	if len(occ.EnclosingRange) > 0 {
@@ -142,6 +142,20 @@ func findContainingSymbol(doc *Document, occ *Occurrence) string {
 				}
 			}
 		}
+	}
+
+	return ""
+}
+
+// findContainingSymbolFast uses the pre-built ContainerIndex for O(1) lookup
+func findContainingSymbolFast(doc *Document, occ *Occurrence, idx *SCIPIndex) string {
+	if idx == nil || idx.ContainerIndex == nil || len(occ.Range) < 2 {
+		return findContainingSymbol(doc, occ) // fallback to O(n²)
+	}
+
+	key := fmt.Sprintf("%s:%d:%d", doc.RelativePath, occ.Range[0], occ.Range[1])
+	if container, ok := idx.ContainerIndex[key]; ok {
+		return container
 	}
 
 	return ""

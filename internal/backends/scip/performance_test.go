@@ -606,6 +606,179 @@ func TestRefIndexConsistency(t *testing.T) {
 	}
 }
 
+// BenchmarkFindContainingSymbolSlow benchmarks the O(n²) containment lookup
+// Note: Skips if no occurrences with enclosing ranges (e.g., scip-go doesn't emit them)
+func BenchmarkFindContainingSymbolSlow(b *testing.B) {
+	repoRoot, err := findRepoRoot()
+	if err != nil {
+		b.Skipf("Could not find repo root: %v", err)
+	}
+
+	indexPath := filepath.Join(repoRoot, ".scip", "index.scip")
+	if _, err := os.Stat(indexPath); os.IsNotExist(err) {
+		b.Skip("SCIP index not found")
+	}
+
+	index, err := LoadSCIPIndex(indexPath)
+	if err != nil {
+		b.Fatalf("Failed to load index: %v", err)
+	}
+
+	// Find a document with occurrences to test
+	var testDoc *Document
+	var testOcc *Occurrence
+	for _, doc := range index.Documents {
+		for _, occ := range doc.Occurrences {
+			if len(occ.EnclosingRange) > 0 {
+				testDoc = doc
+				testOcc = occ
+				break
+			}
+		}
+		if testDoc != nil {
+			break
+		}
+	}
+
+	if testDoc == nil {
+		b.Skip("No occurrence with enclosing range found (scip-go doesn't emit them)")
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = findContainingSymbol(testDoc, testOcc)
+	}
+}
+
+// BenchmarkFindContainingSymbolFast benchmarks the O(1) containment lookup
+// Note: Skips if no occurrences with enclosing ranges (e.g., scip-go doesn't emit them)
+func BenchmarkFindContainingSymbolFast(b *testing.B) {
+	repoRoot, err := findRepoRoot()
+	if err != nil {
+		b.Skipf("Could not find repo root: %v", err)
+	}
+
+	indexPath := filepath.Join(repoRoot, ".scip", "index.scip")
+	if _, err := os.Stat(indexPath); os.IsNotExist(err) {
+		b.Skip("SCIP index not found")
+	}
+
+	index, err := LoadSCIPIndex(indexPath)
+	if err != nil {
+		b.Fatalf("Failed to load index: %v", err)
+	}
+
+	// Find a document with occurrences to test
+	var testDoc *Document
+	var testOcc *Occurrence
+	for _, doc := range index.Documents {
+		for _, occ := range doc.Occurrences {
+			if len(occ.EnclosingRange) > 0 {
+				testDoc = doc
+				testOcc = occ
+				break
+			}
+		}
+		if testDoc != nil {
+			break
+		}
+	}
+
+	if testDoc == nil {
+		b.Skip("No occurrence with enclosing range found (scip-go doesn't emit them)")
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = findContainingSymbolFast(testDoc, testOcc, index)
+	}
+}
+
+// BenchmarkProcessOccurrence benchmarks the full processOccurrence path
+// This includes the containment lookup via findContainingSymbolFast
+func BenchmarkProcessOccurrence(b *testing.B) {
+	repoRoot, err := findRepoRoot()
+	if err != nil {
+		b.Skipf("Could not find repo root: %v", err)
+	}
+
+	indexPath := filepath.Join(repoRoot, ".scip", "index.scip")
+	if _, err := os.Stat(indexPath); os.IsNotExist(err) {
+		b.Skip("SCIP index not found")
+	}
+
+	index, err := LoadSCIPIndex(indexPath)
+	if err != nil {
+		b.Fatalf("Failed to load index: %v", err)
+	}
+
+	// Find a document with occurrences to test
+	var testDoc *Document
+	var testOcc *Occurrence
+	var testSymbolId string
+	for _, doc := range index.Documents {
+		for _, occ := range doc.Occurrences {
+			if occ.Symbol != "" {
+				testDoc = doc
+				testOcc = occ
+				testSymbolId = occ.Symbol
+				break
+			}
+		}
+		if testDoc != nil {
+			break
+		}
+	}
+
+	if testDoc == nil {
+		b.Skip("No occurrence found")
+	}
+
+	opts := ReferenceOptions{
+		IncludeDefinition: true,
+		MaxResults:        100,
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = index.processOccurrence(testSymbolId, testDoc, testOcc, opts)
+	}
+}
+
+// TestContainerIndexBuiltDuringLoad verifies ContainerIndex is populated during load
+func TestContainerIndexBuiltDuringLoad(t *testing.T) {
+	adapter := getTestAdapter(t)
+	index := adapter.GetIndex()
+
+	if index == nil {
+		t.Fatal("Index is nil")
+	}
+
+	if index.ContainerIndex == nil {
+		t.Fatal("ContainerIndex was not initialized")
+	}
+
+	t.Logf("ContainerIndex contains %d entries", len(index.ContainerIndex))
+
+	// Verify some entries exist if there are occurrences with enclosing ranges
+	hasEnclosingRanges := false
+	for _, doc := range index.Documents {
+		for _, occ := range doc.Occurrences {
+			if len(occ.EnclosingRange) > 0 {
+				hasEnclosingRanges = true
+				break
+			}
+		}
+		if hasEnclosingRanges {
+			break
+		}
+	}
+
+	if hasEnclosingRanges && len(index.ContainerIndex) == 0 {
+		t.Error("ContainerIndex is empty but occurrences with enclosing ranges exist")
+	}
+}
+
 // TestIndexLoadPerformance measures index loading time
 func TestIndexLoadPerformance(t *testing.T) {
 	repoRoot, err := findRepoRoot()
