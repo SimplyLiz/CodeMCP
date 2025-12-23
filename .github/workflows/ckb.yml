@@ -64,45 +64,126 @@ jobs:
           script: |
             const fs = require('fs');
 
-            let analysis = 'Analysis not available';
-            try {
-              const raw = fs.readFileSync('pr-analysis.json', 'utf8');
-              try {
-                const data = JSON.parse(raw);
+            function buildDashboard(data) {
+              const s = data.summary || {};
+              const risk = data.riskAssessment || {};
+              const modules = data.modulesAffected || [];
+              const files = data.changedFiles || [];
 
-                // Risk assessment
-                const risk = data.riskAssessment || {};
-                const riskLevel = risk.level ? risk.level.toUpperCase() : 'N/A';
-                const riskScore = risk.score ? risk.score.toFixed(1) : 'N/A';
-                const riskFactors = (risk.factors || []).map(f => '  - ' + f).join('\n') || '  None';
+              // Risk emoji and color
+              const riskEmoji = {
+                'high': '🔴',
+                'medium': '🟡',
+                'low': '🟢'
+              }[risk.level] || '⚪';
 
-                // Affected modules (top 10 by risk)
-                const modules = (data.modulesAffected || [])
-                  .filter(m => m.riskLevel === 'high' || m.riskLevel === 'medium')
-                  .slice(0, 10);
-                const moduleList = modules.length > 0
-                  ? modules.map(m => '- `' + m.moduleId + '` (' + m.filesChanged + ' files, ' + m.riskLevel + ')').join('\n')
-                  : 'None at elevated risk';
+              // Header with risk level
+              const header = '## CKB PR Analysis ' + riskEmoji + ' ' + (risk.level || 'unknown').toUpperCase();
 
-                // Summary stats
-                const summary = data.summary || {};
-                const stats = '**Files:** ' + (summary.totalFiles || 0) +
-                  ' | **Additions:** +' + (summary.totalAdditions || 0) +
-                  ' | **Deletions:** -' + (summary.totalDeletions || 0) +
-                  ' | **Hotspots:** ' + (summary.hotspotsTouched || 0);
+              // Summary table
+              const summaryTable = [
+                '| Metric | Value |',
+                '|--------|------:|',
+                '| Files Changed | ' + (s.totalFiles || 0) + ' |',
+                '| Lines Added | +' + (s.totalAdditions || 0).toLocaleString() + ' |',
+                '| Lines Deleted | -' + (s.totalDeletions || 0).toLocaleString() + ' |',
+                '| Modules Affected | ' + (s.totalModules || 0) + ' |',
+                '| Hotspots Touched | ' + (s.hotspotsTouched || 0) + ' |',
+                '| Languages | ' + (s.languages || []).join(', ') + ' |'
+              ].join('\n');
 
-                analysis = '**Risk Level:** ' + riskLevel + ' (score: ' + riskScore + ')\n\n' +
-                  stats + '\n\n' +
-                  '**Risk Factors:**\n' + riskFactors + '\n\n' +
-                  '**Modules at Risk:**\n' + moduleList;
-              } catch {
-                analysis = '```\n' + raw.slice(0, 2000) + '\n```';
+              // Risk factors
+              const factors = (risk.factors || []);
+              const factorsList = factors.length > 0
+                ? factors.map(function(f) { return '- ' + f; }).join('\n')
+                : '_None identified_';
+
+              // Modules at risk (high and medium only)
+              const riskyModules = modules
+                .filter(function(m) { return m.riskLevel === 'high' || m.riskLevel === 'medium'; })
+                .slice(0, 8);
+
+              let modulesTable = '';
+              if (riskyModules.length > 0) {
+                const moduleRows = riskyModules.map(function(m) {
+                  const emoji = m.riskLevel === 'high' ? '🔴' : '🟡';
+                  return '| ' + emoji + ' `' + m.moduleId + '` | ' + m.filesChanged + ' | ' + m.riskLevel + ' |';
+                });
+                modulesTable = [
+                  '',
+                  '### Modules at Risk',
+                  '',
+                  '| Module | Files | Risk |',
+                  '|--------|------:|------|',
+                  moduleRows.join('\n')
+                ].join('\n');
               }
-            } catch (e) {
-              analysis = 'Could not read analysis output';
+
+              // Top hotspots
+              const hotspots = files
+                .filter(function(f) { return f.isHotspot; })
+                .sort(function(a, b) { return (b.hotspotScore || 0) - (a.hotspotScore || 0); })
+                .slice(0, 5);
+
+              let hotspotsTable = '';
+              if (hotspots.length > 0) {
+                const hotspotRows = hotspots.map(function(f) {
+                  return '| `' + f.path + '` | ' + (f.hotspotScore || 0).toFixed(1) + ' |';
+                });
+                hotspotsTable = [
+                  '',
+                  '<details>',
+                  '<summary>🔥 Top Hotspots (' + hotspots.length + ')</summary>',
+                  '',
+                  '| File | Score |',
+                  '|------|------:|',
+                  hotspotRows.join('\n'),
+                  '',
+                  '</details>'
+                ].join('\n');
+              }
+
+              // Suggestions
+              const suggestions = (risk.suggestions || []);
+              let suggestionsSection = '';
+              if (suggestions.length > 0) {
+                suggestionsSection = [
+                  '',
+                  '<details>',
+                  '<summary>💡 Suggestions</summary>',
+                  '',
+                  suggestions.map(function(s) { return '- ' + s; }).join('\n'),
+                  '',
+                  '</details>'
+                ].join('\n');
+              }
+
+              return [
+                header,
+                '',
+                summaryTable,
+                '',
+                '### Risk Factors',
+                '',
+                factorsList,
+                modulesTable,
+                hotspotsTable,
+                suggestionsSection
+              ].join('\n');
             }
 
-            const body = '## CKB PR Analysis\n\n' + analysis;
+            let body = '## CKB PR Analysis\n\nAnalysis not available';
+            try {
+              const raw = fs.readFileSync('pr-analysis.json', 'utf8');
+              const data = JSON.parse(raw);
+              if (data.error) {
+                body = '## CKB PR Analysis ⚠️\n\nAnalysis failed: ' + data.error;
+              } else {
+                body = buildDashboard(data);
+              }
+            } catch (e) {
+              body = '## CKB PR Analysis ⚠️\n\nCould not read analysis: ' + e.message;
+            }
 
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
@@ -110,9 +191,9 @@ jobs:
               issue_number: context.issue.number,
             });
 
-            const botComment = comments.find(c =>
-              c.user.type === 'Bot' && c.body.includes('CKB PR Analysis')
-            );
+            const botComment = comments.find(function(c) {
+              return c.user.type === 'Bot' && c.body.includes('CKB PR Analysis');
+            });
 
             if (botComment) {
               await github.rest.issues.updateComment({
