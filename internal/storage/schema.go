@@ -1431,6 +1431,7 @@ func createWideResultMetricsTable(tx *sql.Tx) error {
 			returned_results INTEGER NOT NULL,
 			truncated_count INTEGER NOT NULL,
 			estimated_tokens INTEGER NOT NULL DEFAULT 0,
+			response_bytes INTEGER NOT NULL DEFAULT 0,
 			execution_ms INTEGER NOT NULL DEFAULT 0,
 			recorded_at TEXT NOT NULL
 		)

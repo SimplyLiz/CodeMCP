@@ -25,6 +25,7 @@ type WideResultAggregate struct {
 	TotalReturned  int64   `json:"totalReturned"`
 	TotalTruncated int64   `json:"totalTruncated"`
 	TotalTokens    int64   `json:"totalTokens"`
+	TotalBytes     int64   `json:"totalBytes"`
 	TotalMs        int64   `json:"totalMs"`
 	AvgTruncation  float64 `json:"avgTruncationRate"`
 }
@@ -54,13 +55,13 @@ func (a *WideResultAggregate) AvgLatencyMs() float64 {
 }
 
 // RecordWideResult persists a wide-result tool invocation to SQLite
-func (db *DB) RecordWideResult(toolName string, totalResults, returnedResults, truncatedCount, estimatedTokens int, executionMs int64) error {
+func (db *DB) RecordWideResult(toolName string, totalResults, returnedResults, truncatedCount, estimatedTokens, responseBytes int, executionMs int64) error {
 	_, err := db.Exec(`
 		INSERT INTO wide_result_metrics (
 			tool_name, total_results, returned_results, truncated_count,
-			estimated_tokens, execution_ms, recorded_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, toolName, totalResults, returnedResults, truncatedCount, estimatedTokens, executionMs, time.Now().UTC().Format(time.RFC3339))
+			estimated_tokens, response_bytes, execution_ms, recorded_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, toolName, totalResults, returnedResults, truncatedCount, estimatedTokens, responseBytes, executionMs, time.Now().UTC().Format(time.RFC3339))
 	return err
 }
 
@@ -74,6 +75,7 @@ func (db *DB) GetWideResultAggregates(since time.Time) (map[string]*WideResultAg
 			SUM(returned_results) as total_returned,
 			SUM(truncated_count) as total_truncated,
 			SUM(estimated_tokens) as total_tokens,
+			COALESCE(SUM(response_bytes), 0) as total_bytes,
 			SUM(execution_ms) as total_ms
 		FROM wide_result_metrics
 		WHERE recorded_at >= ?
@@ -95,6 +97,7 @@ func (db *DB) GetWideResultAggregates(since time.Time) (map[string]*WideResultAg
 			&agg.TotalReturned,
 			&agg.TotalTruncated,
 			&agg.TotalTokens,
+			&agg.TotalBytes,
 			&agg.TotalMs,
 		); err != nil {
 			return nil, err

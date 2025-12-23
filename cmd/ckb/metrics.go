@@ -103,6 +103,8 @@ func runMetrics(cmd *cobra.Command, args []string) {
 			TruncationRate:   agg.AvgTruncationRate(),
 			TotalTokens:      agg.TotalTokens,
 			AvgTokens:        agg.AvgTokens(),
+			TotalBytes:       agg.TotalBytes,
+			AvgBytes:         float64(agg.TotalBytes) / float64(agg.QueryCount),
 			TotalMs:          agg.TotalMs,
 			AvgLatencyMs:     agg.AvgLatencyMs(),
 			NeedsFrontier:    agg.AvgTruncationRate() > 0.30,
@@ -139,6 +141,8 @@ type ToolMetricsCLI struct {
 	TruncationRate float64 `json:"truncationRate"`
 	TotalTokens    int64   `json:"totalTokens"`
 	AvgTokens      float64 `json:"avgTokens"`
+	TotalBytes     int64   `json:"totalBytes"`
+	AvgBytes       float64 `json:"avgBytes"`
 	TotalMs        int64   `json:"totalMs"`
 	AvgLatencyMs   float64 `json:"avgLatencyMs"`
 	NeedsFrontier  bool    `json:"needsFrontier"`

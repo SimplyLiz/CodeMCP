@@ -346,11 +346,14 @@ func (s *MCPServer) toolSearchSymbols(params map[string]interface{}) (*envelope.
 	}
 
 	// Record wide-result metrics
+	responseBytes := MeasureJSONSize(data)
 	RecordWideResult(WideResultMetrics{
 		ToolName:        "searchSymbols",
 		TotalResults:    searchResp.TotalCount,
 		ReturnedResults: len(symbols),
 		TruncatedCount:  searchResp.TotalCount - len(symbols),
+		ResponseBytes:   responseBytes,
+		EstimatedTokens: EstimateTokens(responseBytes),
 		ExecutionMs:     timer.ElapsedMs(),
 	})
 
@@ -432,11 +435,14 @@ func (s *MCPServer) toolFindReferences(params map[string]interface{}) (*envelope
 	}
 
 	// Record wide-result metrics
+	responseBytes := MeasureJSONSize(data)
 	RecordWideResult(WideResultMetrics{
 		ToolName:        "findReferences",
 		TotalResults:    refsResp.TotalCount,
 		ReturnedResults: len(refs),
 		TruncatedCount:  refsResp.TotalCount - len(refs),
+		ResponseBytes:   responseBytes,
+		EstimatedTokens: EstimateTokens(responseBytes),
 		ExecutionMs:     timer.ElapsedMs(),
 	})
 
@@ -657,11 +663,14 @@ func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (*envelope.
 
 	// Record wide-result metrics
 	totalImpact := len(impactResp.DirectImpact) + len(impactResp.TransitiveImpact)
+	responseBytes := MeasureJSONSize(data)
 	RecordWideResult(WideResultMetrics{
 		ToolName:        "analyzeImpact",
 		TotalResults:    totalImpact,
 		ReturnedResults: totalImpact,
 		TruncatedCount:  0, // analyzeImpact doesn't truncate currently
+		ResponseBytes:   responseBytes,
+		EstimatedTokens: EstimateTokens(responseBytes),
 		ExecutionMs:     timer.ElapsedMs(),
 	})
 
@@ -753,11 +762,14 @@ func (s *MCPServer) toolGetCallGraph(params map[string]interface{}) (*envelope.R
 	}
 
 	// Record wide-result metrics (nodes = callers + callees + root)
+	responseBytes := MeasureJSONSize(resp)
 	RecordWideResult(WideResultMetrics{
 		ToolName:        "getCallGraph",
 		TotalResults:    len(resp.Nodes),
 		ReturnedResults: len(resp.Nodes),
 		TruncatedCount:  0, // getCallGraph doesn't truncate currently
+		ResponseBytes:   responseBytes,
+		EstimatedTokens: EstimateTokens(responseBytes),
 		ExecutionMs:     timer.ElapsedMs(),
 	})
 
@@ -970,11 +982,14 @@ func (s *MCPServer) toolGetHotspots(params map[string]interface{}) (*envelope.Re
 	}
 
 	// Record wide-result metrics
+	responseBytes := MeasureJSONSize(resp)
 	RecordWideResult(WideResultMetrics{
 		ToolName:        "getHotspots",
 		TotalResults:    resp.TotalCount,
 		ReturnedResults: len(resp.Hotspots),
 		TruncatedCount:  resp.TotalCount - len(resp.Hotspots),
+		ResponseBytes:   responseBytes,
+		EstimatedTokens: EstimateTokens(responseBytes),
 		ExecutionMs:     timer.ElapsedMs(),
 	})
 
@@ -1539,11 +1554,14 @@ func (s *MCPServer) toolSummarizePr(params map[string]interface{}) (*envelope.Re
 	}
 
 	// Record wide-result metrics
+	responseBytes := MeasureJSONSize(resp)
 	RecordWideResult(WideResultMetrics{
 		ToolName:        "summarizePr",
 		TotalResults:    len(resp.ChangedFiles),
 		ReturnedResults: len(resp.ChangedFiles),
 		TruncatedCount:  0, // summarizePr doesn't truncate currently
+		ResponseBytes:   responseBytes,
+		EstimatedTokens: EstimateTokens(responseBytes),
 		ExecutionMs:     timer.ElapsedMs(),
 	})
 

@@ -40,17 +40,17 @@ func TestMetricsStore(t *testing.T) {
 	}
 
 	// Test RecordWideResult
-	err = db.RecordWideResult("findReferences", 100, 50, 50, 1000, 25)
+	err = db.RecordWideResult("findReferences", 100, 50, 50, 1000, 4000, 25)
 	if err != nil {
 		t.Fatalf("failed to record wide result: %v", err)
 	}
 
-	err = db.RecordWideResult("findReferences", 200, 100, 100, 2000, 50)
+	err = db.RecordWideResult("findReferences", 200, 100, 100, 2000, 8000, 50)
 	if err != nil {
 		t.Fatalf("failed to record second wide result: %v", err)
 	}
 
-	err = db.RecordWideResult("getCallGraph", 10, 10, 0, 500, 10)
+	err = db.RecordWideResult("getCallGraph", 10, 10, 0, 500, 2000, 10)
 	if err != nil {
 		t.Fatalf("failed to record getCallGraph result: %v", err)
 	}
@@ -85,6 +85,9 @@ func TestMetricsStore(t *testing.T) {
 	if fr.TotalMs != 75 {
 		t.Errorf("expected TotalMs=75, got %d", fr.TotalMs)
 	}
+	if fr.TotalBytes != 12000 { // 4000 + 8000
+		t.Errorf("expected TotalBytes=12000, got %d", fr.TotalBytes)
+	}
 
 	// Verify getCallGraph aggregate
 	cg, ok := aggregates["getCallGraph"]
@@ -118,7 +121,7 @@ func TestGetWideResultRecords(t *testing.T) {
 
 	// Insert some records
 	for i := 0; i < 10; i++ {
-		err = db.RecordWideResult("testTool", 100, 50, 50, 1000, int64(i))
+		err = db.RecordWideResult("testTool", 100, 50, 50, 1000, 4000, int64(i))
 		if err != nil {
 			t.Fatalf("failed to record: %v", err)
 		}
@@ -169,7 +172,7 @@ func TestCleanupOldMetrics(t *testing.T) {
 	defer db.Close()
 
 	// Insert a record
-	err = db.RecordWideResult("testTool", 100, 50, 50, 1000, 10)
+	err = db.RecordWideResult("testTool", 100, 50, 50, 1000, 4000, 10)
 	if err != nil {
 		t.Fatalf("failed to record: %v", err)
 	}
@@ -229,12 +232,12 @@ func TestGetWideResultStats(t *testing.T) {
 	}
 
 	// Add some records
-	err = db.RecordWideResult("tool1", 10, 5, 5, 100, 10)
+	err = db.RecordWideResult("tool1", 10, 5, 5, 100, 400, 10)
 	if err != nil {
 		t.Fatalf("failed to record: %v", err)
 	}
 	time.Sleep(10 * time.Millisecond) // ensure different timestamps
-	err = db.RecordWideResult("tool2", 20, 10, 10, 200, 20)
+	err = db.RecordWideResult("tool2", 20, 10, 10, 200, 800, 20)
 	if err != nil {
 		t.Fatalf("failed to record: %v", err)
 	}

@@ -1,11 +1,21 @@
 package mcp
 
 import (
+	"encoding/json"
 	"sync"
 	"time"
 
 	"ckb/internal/storage"
 )
+
+// MeasureJSONSize returns the approximate byte size of a value when JSON-encoded
+func MeasureJSONSize(v interface{}) int {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return 0
+	}
+	return len(data)
+}
 
 // WideResultMetrics captures data about wide-result tool responses
 type WideResultMetrics struct {
@@ -14,6 +24,7 @@ type WideResultMetrics struct {
 	ReturnedResults int
 	TruncatedCount  int
 	EstimatedTokens int
+	ResponseBytes   int   // Size of actual JSON response
 	ExecutionMs     int64
 }
 
@@ -40,6 +51,7 @@ type ToolMetricsSummary struct {
 	TotalReturned  int64   `json:"totalReturned"`
 	TotalTruncated int64   `json:"totalTruncated"`
 	TotalTokens    int64   `json:"totalTokens"`
+	TotalBytes     int64   `json:"totalBytes"`
 	TotalMs        int64   `json:"totalMs"`
 	AvgTruncation  float64 `json:"avgTruncationRate"` // computed on read
 }
@@ -66,6 +78,14 @@ func (s *ToolMetricsSummary) AvgLatencyMs() float64 {
 		return 0
 	}
 	return float64(s.TotalMs) / float64(s.QueryCount)
+}
+
+// AvgBytes returns the average response bytes per query
+func (s *ToolMetricsSummary) AvgBytes() float64 {
+	if s.QueryCount == 0 {
+		return 0
+	}
+	return float64(s.TotalBytes) / float64(s.QueryCount)
 }
 
 // Global aggregator instance
@@ -98,6 +118,7 @@ func RecordWideResult(m WideResultMetrics) {
 	summary.TotalReturned += int64(m.ReturnedResults)
 	summary.TotalTruncated += int64(m.TruncatedCount)
 	summary.TotalTokens += int64(m.EstimatedTokens)
+	summary.TotalBytes += int64(m.ResponseBytes)
 	summary.TotalMs += m.ExecutionMs
 
 	// SQLite persistence (non-blocking, errors are logged but not returned)
@@ -109,6 +130,7 @@ func RecordWideResult(m WideResultMetrics) {
 				m.ReturnedResults,
 				m.TruncatedCount,
 				m.EstimatedTokens,
+				m.ResponseBytes,
 				m.ExecutionMs,
 			)
 		}()
