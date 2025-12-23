@@ -159,7 +159,7 @@ func (s *KeyStore) GetByTokenPrefix(prefix string) ([]*APIKey, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query by prefix: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return s.scanKeys(rows)
 }
@@ -181,7 +181,7 @@ func (s *KeyStore) List(includeRevoked bool) ([]*APIKey, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list keys: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return s.scanKeys(rows)
 }

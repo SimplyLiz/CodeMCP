@@ -144,7 +144,7 @@ func (m *FTSManager) BulkInsert(ctx context.Context, symbols []SymbolFTSRecord) 
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Drop triggers for bulk operation
 	triggerDrops := []string{
@@ -171,7 +171,7 @@ func (m *FTSManager) BulkInsert(ctx context.Context, symbols []SymbolFTSRecord) 
 	if err != nil {
 		return fmt.Errorf("failed to prepare statement: %w", err)
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	// Insert all symbols
 	for _, sym := range symbols {
@@ -300,7 +300,7 @@ func (m *FTSManager) searchExact(ctx context.Context, query string, limit int) (
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var results []FTSSearchResult
 	for rows.Next() {
@@ -339,7 +339,7 @@ func (m *FTSManager) searchPrefix(ctx context.Context, query string, limit int) 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var results []FTSSearchResult
 	for rows.Next() {
@@ -373,7 +373,7 @@ func (m *FTSManager) searchLike(ctx context.Context, query string, limit int) ([
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var results []FTSSearchResult
 	for rows.Next() {
@@ -412,7 +412,7 @@ func (m *FTSManager) IntegrityCheck(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	// If no rows returned or no error, integrity is good
 	return true, nil
@@ -424,7 +424,7 @@ func (m *FTSManager) Clear(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(ctx, "DELETE FROM symbols_fts_content"); err != nil {
 		return err
