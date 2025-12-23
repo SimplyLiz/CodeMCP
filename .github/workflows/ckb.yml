@@ -1,36 +1,32 @@
-# ═══════════════════════════════════════════════════════════════════════════════
-# CKB PR Analysis Workflow
-# ═══════════════════════════════════════════════════════════════════════════════
-# Comprehensive code intelligence analysis for pull requests
-# Features: Risk scoring, complexity gates, coupling analysis, contract detection,
-#           documentation coverage, dead code detection, ownership drift, and more
-# ═══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
+#  ██████╗██╗  ██╗██████╗      █████╗ ███╗   ██╗ █████╗ ██╗  ██╗   ██╗███████╗██╗███████╗
+# ██╔════╝██║ ██╔╝██╔══██╗    ██╔══██╗████╗  ██║██╔══██╗██║  ╚██╗ ██╔╝██╔════╝██║██╔════╝
+# ██║     █████╔╝ ██████╔╝    ███████║██╔██╗ ██║███████║██║   ╚████╔╝ ███████╗██║███████╗
+# ██║     ██╔═██╗ ██╔══██╗    ██╔══██║██║╚██╗██║██╔══██║██║    ╚██╔╝  ╚════██║██║╚════██║
+# ╚██████╗██║  ██╗██████╔╝    ██║  ██║██║ ╚████║██║  ██║███████╗██║   ███████║██║███████║
+#  ╚═════╝╚═╝  ╚═╝╚═════╝     ╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝╚══════╝╚═╝   ╚══════╝╚═╝╚══════╝
+# ══════════════════════════════════════════════════════════════════════════════
+# Code Intelligence for Pull Requests
+# Features: Risk Scoring • Complexity Gates • Coupling Detection • Contract Analysis
+#           Dead Code • Documentation Coverage • Ownership Drift • Auto-Reviewers
+# ══════════════════════════════════════════════════════════════════════════════
 
-name: CKB Analysis
+name: CKB
 
 on:
   pull_request:
     branches: [develop, main]
-  # Scheduled refresh for keeping architectural data fresh
   schedule:
-    - cron: '0 2 * * *'  # Daily at 2 AM UTC
+    - cron: '0 3 * * *' # Daily 3 AM UTC
   workflow_dispatch:
     inputs:
-      force_full_index:
-        description: 'Force full reindex (slower but more accurate)'
+      force:
+        description: 'Force full reindex'
         type: boolean
         default: false
-      analysis_tier:
-        description: 'Analysis tier'
-        type: choice
-        options:
-          - fast
-          - standard
-          - full
-        default: standard
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ckb-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -38,839 +34,493 @@ permissions:
   pull-requests: write
 
 env:
-  CKB_LOG_LEVEL: info
-  CKB_TIER: ${{ inputs.analysis_tier || 'standard' }}
-  # Thresholds (customize per project)
-  CYCLOMATIC_THRESHOLD: 15
-  COGNITIVE_THRESHOLD: 20
-  COUPLING_THRESHOLD: 0.7
-  DOC_COVERAGE_THRESHOLD: 70
-  RISK_SCORE_THRESHOLD: 60
+  # ┌─────────────────────────────────────────────────────────────────────────┐
+  # │ THRESHOLDS - Adjust these for your project                              │
+  # └─────────────────────────────────────────────────────────────────────────┘
+  COMPLEXITY_CYCLOMATIC: 15
+  COMPLEXITY_COGNITIVE: 20
+  COUPLING_MIN: 0.7
+  DOC_COVERAGE_MIN: 70
+  RISK_SCORE_MIN: 60
 
 jobs:
-  # ═══════════════════════════════════════════════════════════════════════════
-  # ENVIRONMENT VALIDATION
-  # ═══════════════════════════════════════════════════════════════════════════
-  validate:
-    name: Validate Environment
-    runs-on: ubuntu-latest
-    outputs:
-      tier_ready: ${{ steps.doctor.outputs.ready }}
-      missing_tools: ${{ steps.doctor.outputs.missing }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: 'go.mod'
-          cache: true
-
-      - name: Build CKB
-        run: go build -ldflags="-s -w" -o ckb ./cmd/ckb
-
-      - name: Validate CKB Environment
-        id: doctor
-        run: |
-          RESULT=$(./ckb doctor --tier=${{ env.CKB_TIER }} --format=json 2>/dev/null || echo '{"ready": false}')
-          
-          READY=$(echo "$RESULT" | jq -r '.ready // false')
-          MISSING=$(echo "$RESULT" | jq -c '[.languages[]? | select(.status == "missing")] // []')
-          
-          echo "ready=$READY" >> $GITHUB_OUTPUT
-          echo "missing=$MISSING" >> $GITHUB_OUTPUT
-          
-          if [ "$READY" != "true" ]; then
-            echo "::warning::Environment not fully ready for ${{ env.CKB_TIER }} tier"
-            echo "$RESULT" | jq '.languages[]? | select(.status == "missing") | "\(.name): \(.installCmd // "install manually")"'
-          fi
-
-  # ═══════════════════════════════════════════════════════════════════════════
-  # MAIN ANALYSIS JOB
-  # ═══════════════════════════════════════════════════════════════════════════
+  # ╔═════════════════════════════════════════════════════════════════════════╗
+  # ║ PR ANALYSIS                                                              ║
+  # ╚═════════════════════════════════════════════════════════════════════════╝
   analyze:
-    name: PR Analysis
+    name: Analyze
     runs-on: ubuntu-latest
-    needs: validate
     if: github.event_name == 'pull_request'
     outputs:
-      risk_level: ${{ steps.analyze.outputs.risk_level }}
-      risk_score: ${{ steps.analyze.outputs.risk_score }}
+      risk: ${{ steps.summary.outputs.risk }}
+      score: ${{ steps.summary.outputs.score }}
     steps:
+      # ───────────────────────────────────────────────────────────────────────
+      # Setup
+      # ───────────────────────────────────────────────────────────────────────
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history required for git-blame and ownership analysis
+          fetch-depth: 0
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
           cache: true
 
-      # ─────────────────────────────────────────────────────────────────────────
-      # CACHE RESTORATION
-      # ─────────────────────────────────────────────────────────────────────────
-      - name: Restore CKB Cache
+      - name: Build
+        run: go build -ldflags="-s -w" -o ckb ./cmd/ckb
+
+      # ───────────────────────────────────────────────────────────────────────
+      # Cache & Index
+      # ───────────────────────────────────────────────────────────────────────
+      - name: Cache
         id: cache
         uses: actions/cache@v4
         with:
           path: .ckb/
-          key: ckb-${{ runner.os }}-${{ github.base_ref }}-${{ github.sha }}
-          restore-keys: |
-            ckb-${{ runner.os }}-${{ github.base_ref }}-
-            ckb-${{ runner.os }}-
+          key: ckb-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.base_ref }}
+          restore-keys: ckb-${{ runner.os }}-
 
-      - name: Build CKB
-        run: go build -ldflags="-s -w" -o ckb ./cmd/ckb
-
-      # ─────────────────────────────────────────────────────────────────────────
-      # INITIALIZATION & INDEXING
-      # ─────────────────────────────────────────────────────────────────────────
-      - name: Initialize CKB
-        id: init
+      - name: Index
+        id: index
         run: |
           ./ckb init
           
-          # Use incremental indexing for PRs, full for manual runs with force flag
-          if [ "${{ inputs.force_full_index }}" = "true" ]; then
-            echo "Running full index (forced)..."
-            ./ckb index --force
-            echo "incremental=false" >> $GITHUB_OUTPUT
+          if ./ckb index 2>/dev/null; then
+            echo "mode=incremental" >> $GITHUB_OUTPUT
           else
-            echo "Running incremental index..."
-            if ./ckb index 2>index-err.txt; then
-              echo "incremental=true" >> $GITHUB_OUTPUT
-            else
-              echo "::warning::Index generation failed, continuing with git-only analysis"
-              cat index-err.txt
-              echo "incremental=false" >> $GITHUB_OUTPUT
-            fi
-          fi
-          
-          # Record index stats
-          if [ -f ".ckb/index.json" ]; then
-            SYMBOLS=$(jq '.symbolCount // 0' .ckb/index.json 2>/dev/null || echo 0)
-            echo "symbols_indexed=$SYMBOLS" >> $GITHUB_OUTPUT
+            echo "mode=fallback" >> $GITHUB_OUTPUT
           fi
 
-      # ─────────────────────────────────────────────────────────────────────────
-      # PR SUMMARY ANALYSIS
-      # ─────────────────────────────────────────────────────────────────────────
-      - name: Analyze PR
-        id: analyze
+      # ───────────────────────────────────────────────────────────────────────
+      # Core Analysis
+      # ───────────────────────────────────────────────────────────────────────
+      - name: PR Summary
+        id: summary
         run: |
-          if ! ./ckb pr-summary --base=origin/${{ github.base_ref }} --format=json > pr-analysis.json 2>pr-analysis-err.txt; then
-            echo "::warning::PR analysis failed"
-            cat pr-analysis-err.txt
-            echo '{"error": "analysis failed", "summary": {}, "riskAssessment": {"level": "unknown", "score": 0}}' > pr-analysis.json
-          fi
-
-          # Extract key metrics for outputs
-          RISK_LEVEL=$(jq -r '.riskAssessment.level // "unknown"' pr-analysis.json)
-          RISK_SCORE=$(jq -r '.riskAssessment.score // 0' pr-analysis.json)
-          FILES=$(jq -r '.summary.totalFiles // 0' pr-analysis.json)
-          HOTSPOTS=$(jq -r '.summary.hotspotsTouched // 0' pr-analysis.json)
-          MODULES=$(jq -r '.summary.totalModules // 0' pr-analysis.json)
+          ./ckb pr-summary --base=origin/${{ github.base_ref }} --format=json > analysis.json 2>/dev/null || echo '{}' > analysis.json
           
-          echo "risk_level=$RISK_LEVEL" >> $GITHUB_OUTPUT
-          echo "risk_score=$RISK_SCORE" >> $GITHUB_OUTPUT
-          echo "files_changed=$FILES" >> $GITHUB_OUTPUT
-          echo "hotspots_touched=$HOTSPOTS" >> $GITHUB_OUTPUT
-          echo "modules_affected=$MODULES" >> $GITHUB_OUTPUT
-          
-          # Summary for job output
-          echo "### PR Analysis Summary" >> $GITHUB_STEP_SUMMARY
-          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Risk Level | $RISK_LEVEL |" >> $GITHUB_STEP_SUMMARY
-          echo "| Risk Score | $RISK_SCORE |" >> $GITHUB_STEP_SUMMARY
-          echo "| Files Changed | $FILES |" >> $GITHUB_STEP_SUMMARY
-          echo "| Hotspots Touched | $HOTSPOTS |" >> $GITHUB_STEP_SUMMARY
-          echo "| Modules Affected | $MODULES |" >> $GITHUB_STEP_SUMMARY
+          echo "risk=$(jq -r '.riskAssessment.level // "unknown"' analysis.json)" >> $GITHUB_OUTPUT
+          echo "score=$(jq -r '.riskAssessment.score // 0' analysis.json)" >> $GITHUB_OUTPUT
 
-      # ─────────────────────────────────────────────────────────────────────────
-      # COMPLEXITY GATE
-      # ─────────────────────────────────────────────────────────────────────────
-      - name: Check Complexity
+      - name: Complexity
         id: complexity
-        continue-on-error: true
         run: |
-          echo '[]' > complexity-warnings.json
-          WARNINGS='[]'
-          VIOLATIONS=0
-
-          for FILE in $(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(go|ts|js|py)$' | head -20); do
-            if [ -f "$FILE" ]; then
-              RESULT=$(./ckb complexity "$FILE" --format=json 2>/dev/null || echo '{}')
-              CYCLO=$(echo "$RESULT" | jq '.cyclomatic // 0')
-              COGNITIVE=$(echo "$RESULT" | jq '.cognitive // 0')
-
-              if [ "$CYCLO" -gt "${{ env.CYCLOMATIC_THRESHOLD }}" ] 2>/dev/null; then
-                WARNINGS=$(echo "$WARNINGS" | jq --arg f "$FILE" --arg c "$CYCLO" --arg t "cyclomatic" \
-                  '. + [{"file": $f, "type": $t, "value": ($c | tonumber), "threshold": ${{ env.CYCLOMATIC_THRESHOLD }}}]')
-                VIOLATIONS=$((VIOLATIONS + 1))
-                echo "::warning file=$FILE::Cyclomatic complexity $CYCLO exceeds threshold (${{ env.CYCLOMATIC_THRESHOLD }})"
-              fi
-              if [ "$COGNITIVE" -gt "${{ env.COGNITIVE_THRESHOLD }}" ] 2>/dev/null; then
-                WARNINGS=$(echo "$WARNINGS" | jq --arg f "$FILE" --arg c "$COGNITIVE" --arg t "cognitive" \
-                  '. + [{"file": $f, "type": $t, "value": ($c | tonumber), "threshold": ${{ env.COGNITIVE_THRESHOLD }}}]')
-                VIOLATIONS=$((VIOLATIONS + 1))
-                echo "::warning file=$FILE::Cognitive complexity $COGNITIVE exceeds threshold (${{ env.COGNITIVE_THRESHOLD }})"
-              fi
-            fi
+          echo '[]' > complexity.json
+          
+          for f in $(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(go|ts|js|py)$' | head -15); do
+            [ -f "$f" ] || continue
+            r=$(./ckb complexity "$f" --format=json 2>/dev/null || echo '{}')
+            cy=$(echo "$r" | jq '.cyclomatic // 0')
+            cg=$(echo "$r" | jq '.cognitive // 0')
+            
+            [ "$cy" -gt ${{ env.COMPLEXITY_CYCLOMATIC }} ] && \
+              echo "::warning file=$f::Cyclomatic $cy > ${{ env.COMPLEXITY_CYCLOMATIC }}"
+            [ "$cg" -gt ${{ env.COMPLEXITY_COGNITIVE }} ] && \
+              echo "::warning file=$f::Cognitive $cg > ${{ env.COMPLEXITY_COGNITIVE }}"
+            
+            jq -n --arg f "$f" --argjson cy "$cy" --argjson cg "$cg" \
+              '{file:$f,cyclomatic:$cy,cognitive:$cg}' >> complexity.json.tmp
           done
+          
+          [ -f complexity.json.tmp ] && jq -s '.' complexity.json.tmp > complexity.json || echo '[]' > complexity.json
+          rm -f complexity.json.tmp
+          
+          echo "violations=$(jq '[.[] | select(.cyclomatic > ${{ env.COMPLEXITY_CYCLOMATIC }} or .cognitive > ${{ env.COMPLEXITY_COGNITIVE }})] | length' complexity.json)" >> $GITHUB_OUTPUT
 
-          echo "$WARNINGS" > complexity-warnings.json
-          COUNT=$(echo "$WARNINGS" | jq 'length')
-          echo "warning_count=$COUNT" >> $GITHUB_OUTPUT
-          echo "violation_count=$VIOLATIONS" >> $GITHUB_OUTPUT
-
-      # ─────────────────────────────────────────────────────────────────────────
-      # COUPLING ANALYSIS
-      # ─────────────────────────────────────────────────────────────────────────
-      - name: Check Coupling
+      - name: Coupling
         id: coupling
-        continue-on-error: true
         run: |
-          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(go|ts|js|py)$' | tr '\n' ',' | sed 's/,$//')
+          changed=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(go|ts|js|py)$' | tr '\n' ',' | sed 's/,$//')
           
-          if [ -n "$CHANGED" ]; then
-            ./ckb coupling --files="$CHANGED" --min-correlation=${{ env.COUPLING_THRESHOLD }} --format=json > coupling-result.json 2>/dev/null || echo '{"missingCoupled": []}' > coupling-result.json
+          if [ -n "$changed" ]; then
+            ./ckb coupling --files="$changed" --min-correlation=${{ env.COUPLING_MIN }} --format=json > coupling.json 2>/dev/null || echo '{"missingCoupled":[]}' > coupling.json
           else
-            echo '{"missingCoupled": []}' > coupling-result.json
+            echo '{"missingCoupled":[]}' > coupling.json
           fi
           
-          MISSING=$(jq '.missingCoupled // [] | length' coupling-result.json)
-          echo "missing_count=$MISSING" >> $GITHUB_OUTPUT
-          
-          if [ "$MISSING" -gt 0 ]; then
-            echo "::warning::$MISSING tightly-coupled files may need updates"
-            jq -r '.missingCoupled[]? | "  - \(.file) (coupled with \(.coupledTo), \((.correlation * 100) | floor)%)"' coupling-result.json
-          fi
+          echo "missing=$(jq '.missingCoupled | length' coupling.json)" >> $GITHUB_OUTPUT
 
-      # ─────────────────────────────────────────────────────────────────────────
-      # CONTRACT CHANGE DETECTION
-      # ─────────────────────────────────────────────────────────────────────────
-      - name: Check Contract Changes
+      - name: Contracts
         id: contracts
-        continue-on-error: true
         run: |
-          echo '{"changed": false, "files": [], "consumers": [], "breakingChanges": false}' > contract-analysis.json
+          echo '{"files":[],"breaking":false}' > contracts.json
           
-          # Find changed contract files (proto, OpenAPI, GraphQL)
-          CONTRACTS=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(proto|yaml|json|graphql)$' | grep -E '(proto/|openapi/|api/|graphql/)' || true)
+          contracts=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(proto|graphql)$' || true)
           
-          if [ -n "$CONTRACTS" ]; then
-            echo "Contract files changed:"
-            echo "$CONTRACTS"
-            
-            RESULT='{"changed": true, "files": [], "consumers": [], "breakingChanges": false}'
-            
-            for CONTRACT in $CONTRACTS; do
-              RESULT=$(echo "$RESULT" | jq --arg f "$CONTRACT" '.files += [$f]')
-              
-              # Check impact if CKB supports contract analysis
-              IMPACT=$(./ckb contracts impact --path="$CONTRACT" --format=json 2>/dev/null || echo '{}')
-              if [ -n "$(echo "$IMPACT" | jq '.consumers // empty')" ]; then
-                RESULT=$(echo "$RESULT" | jq --argjson i "$IMPACT" '.consumers += ($i.consumers // [])')
-                if [ "$(echo "$IMPACT" | jq '.breakingChanges // false')" = "true" ]; then
-                  RESULT=$(echo "$RESULT" | jq '.breakingChanges = true')
-                  echo "::error file=$CONTRACT::Breaking changes detected in contract"
-                fi
-              fi
-            done
-            
-            echo "$RESULT" > contract-analysis.json
-            echo "contracts_changed=true" >> $GITHUB_OUTPUT
-            echo "breaking_changes=$(echo "$RESULT" | jq -r '.breakingChanges')" >> $GITHUB_OUTPUT
-          else
-            echo "contracts_changed=false" >> $GITHUB_OUTPUT
-            echo "breaking_changes=false" >> $GITHUB_OUTPUT
+          if [ -n "$contracts" ]; then
+            echo "$contracts" | jq -R -s 'split("\n") | map(select(length > 0)) | {files: ., breaking: false}' > contracts.json
+            echo "::warning::Contract files changed: $(echo "$contracts" | tr '\n' ' ')"
           fi
+          
+          echo "changed=$([ -n "$contracts" ] && echo true || echo false)" >> $GITHUB_OUTPUT
 
-      # ─────────────────────────────────────────────────────────────────────────
-      # OWNERSHIP DRIFT CHECK
-      # ─────────────────────────────────────────────────────────────────────────
-      - name: Check Ownership Drift
-        id: drift
-        continue-on-error: true
-        run: |
-          RESULT=$(./ckb ownership drift --threshold=0.3 --limit=10 --format=json 2>/dev/null || echo '[]')
-          echo "$RESULT" > ownership-drift.json
-
-          COUNT=$(echo "$RESULT" | jq 'if type == "array" then length else 0 end')
-          echo "drift_count=$COUNT" >> $GITHUB_OUTPUT
-
-      # ─────────────────────────────────────────────────────────────────────────
-      # RISK AUDIT (8-Factor Analysis)
-      # ─────────────────────────────────────────────────────────────────────────
-      - name: Run Risk Audit
+      - name: Audit
         id: audit
-        continue-on-error: true
         run: |
-          RESULT=$(./ckb audit --min-score=${{ env.RISK_SCORE_THRESHOLD }} --limit=15 --quick-wins --format=json 2>/dev/null || echo '{"items": [], "quickWins": [], "summary": {}}')
-          echo "$RESULT" > risk-audit.json
-
-          CRITICAL=$(echo "$RESULT" | jq '.summary.critical // 0')
-          HIGH=$(echo "$RESULT" | jq '.summary.high // 0')
-          MEDIUM=$(echo "$RESULT" | jq '.summary.medium // 0')
-          QUICK_WINS=$(echo "$RESULT" | jq '.quickWins | length // 0')
+          ./ckb audit --min-score=${{ env.RISK_SCORE_MIN }} --limit=10 --quick-wins --format=json > audit.json 2>/dev/null || echo '{"items":[],"quickWins":[],"summary":{}}' > audit.json
           
-          echo "critical_count=$CRITICAL" >> $GITHUB_OUTPUT
-          echo "high_count=$HIGH" >> $GITHUB_OUTPUT
-          echo "medium_count=$MEDIUM" >> $GITHUB_OUTPUT
-          echo "quick_wins_count=$QUICK_WINS" >> $GITHUB_OUTPUT
-          
-          if [ "$CRITICAL" -gt 0 ]; then
-            echo "::error::Found $CRITICAL critical risk files"
-          fi
+          echo "critical=$(jq '.summary.critical // 0' audit.json)" >> $GITHUB_OUTPUT
+          echo "high=$(jq '.summary.high // 0' audit.json)" >> $GITHUB_OUTPUT
 
-      # ─────────────────────────────────────────────────────────────────────────
-      # DEAD CODE DETECTION
-      # ─────────────────────────────────────────────────────────────────────────
-      - name: Check Dead Code
+      - name: Dead Code
         id: deadcode
-        continue-on-error: true
         run: |
-          RESULT=$(./ckb telemetry dead-code --threshold=0.9 --limit=10 --format=json 2>/dev/null || echo '{"candidates": [], "coverage": 0}')
-          echo "$RESULT" > deadcode.json
+          ./ckb telemetry dead-code --threshold=0.9 --limit=5 --format=json > deadcode.json 2>/dev/null || echo '{"candidates":[]}' > deadcode.json
+          echo "count=$(jq '.candidates | length' deadcode.json)" >> $GITHUB_OUTPUT
 
-          COUNT=$(echo "$RESULT" | jq '.candidates | length // 0')
-          COVERAGE=$(echo "$RESULT" | jq '.coverage // 0')
-          echo "candidate_count=$COUNT" >> $GITHUB_OUTPUT
-          echo "telemetry_coverage=$COVERAGE" >> $GITHUB_OUTPUT
-
-      # ─────────────────────────────────────────────────────────────────────────
-      # DOCUMENTATION COVERAGE & STALENESS
-      # ─────────────────────────────────────────────────────────────────────────
-      - name: Check Documentation
+      - name: Docs
         id: docs
-        continue-on-error: true
         run: |
-          # Index docs first
           ./ckb docs index 2>/dev/null || true
-
-          # Check coverage
-          COVERAGE_RESULT=$(./ckb docs coverage --format=json 2>/dev/null || echo '{"coverage": 0}')
-          COVERAGE=$(echo "$COVERAGE_RESULT" | jq '.coverage // 0')
-          echo "$COVERAGE_RESULT" > doc-coverage.json
-          echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
+          ./ckb docs coverage --format=json > docs-coverage.json 2>/dev/null || echo '{"coverage":0}' > docs-coverage.json
+          ./ckb docs stale --all --format=json > docs-stale.json 2>/dev/null || echo '{"totalStale":0}' > docs-stale.json
           
-          if [ "$(echo "$COVERAGE < ${{ env.DOC_COVERAGE_THRESHOLD }}" | bc -l)" = "1" ] 2>/dev/null; then
-            echo "::warning::Documentation coverage ($COVERAGE%) below threshold (${{ env.DOC_COVERAGE_THRESHOLD }}%)"
-          fi
+          echo "coverage=$(jq '.coverage // 0' docs-coverage.json)" >> $GITHUB_OUTPUT
+          echo "stale=$(jq '.totalStale // 0' docs-stale.json)" >> $GITHUB_OUTPUT
 
-          # Check staleness
-          STALE_RESULT=$(./ckb docs stale --all --format=json 2>/dev/null || echo '{"totalStale": 0, "reports": []}')
-          echo "$STALE_RESULT" > doc-staleness.json
-
-          STALE=$(echo "$STALE_RESULT" | jq '.totalStale // 0')
-          echo "stale_count=$STALE" >> $GITHUB_OUTPUT
-
-      # ─────────────────────────────────────────────────────────────────────────
-      # LANGUAGE QUALITY CHECK
-      # ─────────────────────────────────────────────────────────────────────────
-      - name: Check Language Quality
-        id: languages
-        continue-on-error: true
+      - name: Drift
         run: |
-          RESULT=$(./ckb meta languages --format=json 2>/dev/null || echo '{"languages": [], "overallQuality": 1}')
-          echo "$RESULT" > language-quality.json
-          
-          LOW_QUALITY=$(echo "$RESULT" | jq '[.languages[]? | select(.quality < 0.7)] | length')
-          OVERALL=$(echo "$RESULT" | jq '.overallQuality // 1')
-          
-          echo "low_quality_count=$LOW_QUALITY" >> $GITHUB_OUTPUT
-          echo "overall_quality=$OVERALL" >> $GITHUB_OUTPUT
-          
-          if [ "$LOW_QUALITY" -gt 0 ]; then
-            echo "::warning::$LOW_QUALITY languages have quality issues"
-          fi
+          ./ckb ownership drift --threshold=0.3 --limit=5 --format=json > drift.json 2>/dev/null || echo '[]' > drift.json
 
-      # ─────────────────────────────────────────────────────────────────────────
-      # PR COMMENT
-      # ─────────────────────────────────────────────────────────────────────────
-      - name: Comment on PR
-        if: always()
+      # ───────────────────────────────────────────────────────────────────────
+      # Report
+      # ───────────────────────────────────────────────────────────────────────
+      - name: Comment
         uses: actions/github-script@v7
         env:
           CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
-          INCREMENTAL: ${{ steps.init.outputs.incremental }}
-          SYMBOLS_INDEXED: ${{ steps.init.outputs.symbols_indexed }}
+          INDEX_MODE: ${{ steps.index.outputs.mode }}
         with:
           script: |
             const fs = require('fs');
-
+            const read = (f, d) => { try { return JSON.parse(fs.readFileSync(f)); } catch { return d; } };
+            
+            // Load data
+            const pr = read('analysis.json', {});
+            const complexity = read('complexity.json', []);
+            const coupling = read('coupling.json', { missingCoupled: [] });
+            const contracts = read('contracts.json', { files: [] });
+            const audit = read('audit.json', { items: [], quickWins: [], summary: {} });
+            const deadcode = read('deadcode.json', { candidates: [] });
+            const docsCov = read('docs-coverage.json', { coverage: 0 });
+            const docsStale = read('docs-stale.json', { totalStale: 0 });
+            const drift = read('drift.json', []);
+            
+            const s = pr.summary || {};
+            const risk = pr.riskAssessment || {};
+            const reviewers = pr.suggestedReviewers || [];
+            const modules = pr.modulesAffected || [];
+            const hotspots = (pr.changedFiles || []).filter(f => f.isHotspot);
+            
+            // Helpers
+            const bar = (v, m, w = 8) => '`' + '█'.repeat(Math.min(Math.round(v/m*w), w)) + '░'.repeat(Math.max(0, w - Math.round(v/m*w))) + '`';
+            const pct = v => Math.round(v * 100);
+            
+            // Risk styling
+            const riskStyle = {
+              high: { icon: '🔴', color: 'e74c3c', label: 'HIGH' },
+              medium: { icon: '🟡', color: 'f39c12', label: 'MEDIUM' },
+              low: { icon: '🟢', color: '27ae60', label: 'LOW' }
+            }[risk.level] || { icon: '⚪', color: '95a5a6', label: 'UNKNOWN' };
+            
+            // Build comment
+            let md = [];
+            
             // ═══════════════════════════════════════════════════════════════
-            // LOAD ALL ANALYSIS DATA
+            // HEADER
             // ═══════════════════════════════════════════════════════════════
-            const readJson = (path, fallback) => {
-              try { return JSON.parse(fs.readFileSync(path, 'utf8')); } 
-              catch { return fallback; }
-            };
-
-            const prData = readJson('pr-analysis.json', { summary: {}, riskAssessment: {} });
-            const complexityWarnings = readJson('complexity-warnings.json', []);
-            const couplingResult = readJson('coupling-result.json', { missingCoupled: [] });
-            const contractAnalysis = readJson('contract-analysis.json', { changed: false });
-            const deadCode = readJson('deadcode.json', { candidates: [] });
-            const ownershipDrift = readJson('ownership-drift.json', []);
-            const riskAudit = readJson('risk-audit.json', { items: [], quickWins: [], summary: {} });
-            const docCoverage = readJson('doc-coverage.json', { coverage: 0 });
-            const docStaleness = readJson('doc-staleness.json', { totalStale: 0, reports: [] });
-            const langQuality = readJson('language-quality.json', { languages: [], overallQuality: 1 });
-
+            md.push('## CKB Analysis');
+            md.push('');
+            md.push(`![Risk](https://img.shields.io/badge/${riskStyle.label}-${pct(risk.score || 0)}%25-${riskStyle.color}?style=for-the-badge) ` +
+                    `![Files](https://img.shields.io/badge/Files-${s.totalFiles || 0}-3498db?style=flat-square) ` +
+                    `![Lines](https://img.shields.io/badge/%2B${s.totalAdditions || 0}%20%2F%20−${s.totalDeletions || 0}-3498db?style=flat-square) ` +
+                    `![Modules](https://img.shields.io/badge/Modules-${s.totalModules || 0}-3498db?style=flat-square)`);
+            md.push('');
+            
             // ═══════════════════════════════════════════════════════════════
-            // HELPER FUNCTIONS
+            // QUICK STATS
             // ═══════════════════════════════════════════════════════════════
-            async function upsertComment(content) {
-              const { data: comments } = await github.rest.issues.listComments({
+            const stats = [];
+            if (hotspots.length) stats.push(`🔥 ${hotspots.length} hotspot${hotspots.length > 1 ? 's' : ''}`);
+            if (audit.summary?.critical || audit.summary?.high) stats.push(`⚠️ ${(audit.summary.critical || 0) + (audit.summary.high || 0)} risk items`);
+            const complexViolations = complexity.filter(c => c.cyclomatic > ${{ env.COMPLEXITY_CYCLOMATIC }} || c.cognitive > ${{ env.COMPLEXITY_COGNITIVE }});
+            if (complexViolations.length) stats.push(`📊 ${complexViolations.length} complex`);
+            if (coupling.missingCoupled?.length) stats.push(`🔗 ${coupling.missingCoupled.length} coupled`);
+            if (contracts.files?.length) stats.push(`📜 ${contracts.files.length} contract${contracts.files.length > 1 ? 's' : ''}`);
+            if (docsStale.totalStale) stats.push(`📚 ${docsStale.totalStale} stale`);
+            if (deadcode.candidates?.length) stats.push(`💀 ${deadcode.candidates.length} dead`);
+            
+            if (stats.length) {
+              md.push(`> ${stats.join(' · ')}`);
+              md.push('');
+            }
+            
+            // ═══════════════════════════════════════════════════════════════
+            // RISK FACTORS
+            // ═══════════════════════════════════════════════════════════════
+            if (risk.factors?.length) {
+              md.push('**Risk factors:** ' + risk.factors.slice(0, 3).join(' • '));
+              md.push('');
+            }
+            
+            // ═══════════════════════════════════════════════════════════════
+            // REVIEWERS
+            // ═══════════════════════════════════════════════════════════════
+            if (reviewers.length) {
+              const list = reviewers.slice(0, 3).map(r => `**${r.owner.replace(/^@?/, '@')}** (${pct(r.coverage)}%)`).join(', ');
+              md.push(`👥 Suggested: ${list}`);
+              md.push('');
+            }
+            
+            // ═══════════════════════════════════════════════════════════════
+            // METRICS TABLE
+            // ═══════════════════════════════════════════════════════════════
+            md.push('| Metric | Value | |');
+            md.push('|:-------|------:|:-:|');
+            md.push(`| Doc Coverage | ${docsCov.coverage || 0}% | ${(docsCov.coverage || 0) >= ${{ env.DOC_COVERAGE_MIN }} ? '✅' : '⚠️'} |`);
+            md.push(`| Complexity Issues | ${complexViolations.length} | ${complexViolations.length === 0 ? '✅' : '⚠️'} |`);
+            md.push(`| Coupling Gaps | ${coupling.missingCoupled?.length || 0} | ${!coupling.missingCoupled?.length ? '✅' : '⚠️'} |`);
+            md.push(`| Index | ${process.env.INDEX_MODE} | ${process.env.CACHE_HIT === 'true' ? '💾' : '🆕'} |`);
+            md.push('');
+            
+            // ═══════════════════════════════════════════════════════════════
+            // DETAILS SECTIONS
+            // ═══════════════════════════════════════════════════════════════
+            
+            // Risk Audit
+            const critical = (audit.items || []).filter(i => i.riskLevel === 'critical');
+            const high = (audit.items || []).filter(i => i.riskLevel === 'high');
+            if (critical.length || high.length) {
+              md.push('<details>');
+              md.push(`<summary>⚠️ Risk Audit — ${critical.length} critical, ${high.length} high</summary>`);
+              md.push('');
+              md.push('| | File | Score | Factor |');
+              md.push('|:-|:-----|------:|:-------|');
+              [...critical, ...high].slice(0, 6).forEach(i => {
+                const icon = i.riskLevel === 'critical' ? '🔴' : '🟠';
+                md.push(`| ${icon} | \`${i.file}\` | ${i.riskScore} | ${i.factors?.[0]?.factor || '—'} |`);
+              });
+              md.push('');
+              md.push('</details>');
+              md.push('');
+            }
+            
+            // Hotspots
+            if (hotspots.length) {
+              md.push('<details>');
+              md.push(`<summary>🔥 Hotspots — ${hotspots.length} volatile</summary>`);
+              md.push('');
+              md.push('| File | Churn |');
+              md.push('|:-----|------:|');
+              hotspots.slice(0, 5).forEach(f => {
+                md.push(`| \`${f.path}\` | ${bar(f.hotspotScore || 0, 1)} ${(f.hotspotScore || 0).toFixed(2)} |`);
+              });
+              md.push('');
+              md.push('</details>');
+              md.push('');
+            }
+            
+            // Modules
+            const riskyMods = modules.filter(m => m.riskLevel === 'high' || m.riskLevel === 'medium');
+            if (riskyMods.length) {
+              md.push('<details>');
+              md.push(`<summary>📦 Modules — ${riskyMods.length} at risk</summary>`);
+              md.push('');
+              md.push('| | Module | Files |');
+              md.push('|:-|:-------|------:|');
+              riskyMods.slice(0, 5).forEach(m => {
+                const icon = m.riskLevel === 'high' ? '🔴' : '🟡';
+                md.push(`| ${icon} | \`${m.moduleId}\` | ${m.filesChanged} |`);
+              });
+              md.push('');
+              md.push('</details>');
+              md.push('');
+            }
+            
+            // Contracts
+            if (contracts.files?.length) {
+              md.push('<details>');
+              md.push(`<summary>📜 Contracts — ${contracts.files.length} changed</summary>`);
+              md.push('');
+              contracts.files.forEach(f => md.push(`- \`${f}\``));
+              md.push('');
+              md.push('</details>');
+              md.push('');
+            }
+            
+            // Quick Wins
+            if (audit.quickWins?.length) {
+              md.push('<details>');
+              md.push(`<summary>💡 Quick Wins — ${audit.quickWins.length} suggestions</summary>`);
+              md.push('');
+              audit.quickWins.slice(0, 5).forEach(w => {
+                const e = { low: '🟢', medium: '🟡', high: '🔴' }[w.effort] || '⚪';
+                md.push(`- ${e} **${w.action}** → \`${w.target}\``);
+              });
+              md.push('');
+              md.push('</details>');
+              md.push('');
+            }
+            
+            // Complexity
+            if (complexViolations.length) {
+              md.push('<details>');
+              md.push(`<summary>📊 Complexity — ${complexViolations.length} violations</summary>`);
+              md.push('');
+              md.push('| File | Cyclomatic | Cognitive |');
+              md.push('|:-----|----------:|-----------:|');
+              complexViolations.slice(0, 5).forEach(c => {
+                const cyWarn = c.cyclomatic > ${{ env.COMPLEXITY_CYCLOMATIC }} ? '⚠️ ' : '';
+                const cgWarn = c.cognitive > ${{ env.COMPLEXITY_COGNITIVE }} ? '⚠️ ' : '';
+                md.push(`| \`${c.file}\` | ${cyWarn}${c.cyclomatic} | ${cgWarn}${c.cognitive} |`);
+              });
+              md.push('');
+              md.push('</details>');
+              md.push('');
+            }
+            
+            // Coupling
+            if (coupling.missingCoupled?.length) {
+              md.push('<details>');
+              md.push(`<summary>🔗 Coupling — ${coupling.missingCoupled.length} missing</summary>`);
+              md.push('');
+              md.push('| Missing | Usually with | Score |');
+              md.push('|:--------|:-------------|------:|');
+              coupling.missingCoupled.slice(0, 5).forEach(c => {
+                md.push(`| \`${c.file}\` | \`${c.coupledTo}\` | ${pct(c.correlation || c.couplingScore || 0)}% |`);
+              });
+              md.push('');
+              md.push('</details>');
+              md.push('');
+            }
+            
+            // Ownership Drift
+            if (drift.length) {
+              md.push('<details>');
+              md.push(`<summary>👤 Ownership Drift — ${drift.length} files</summary>`);
+              md.push('');
+              md.push('| File | Declared | Actual |');
+              md.push('|:-----|:---------|:-------|');
+              drift.slice(0, 5).forEach(d => {
+                md.push(`| \`${d.path}\` | ${d.declaredOwner || '—'} | ${d.actualOwner || '—'} |`);
+              });
+              md.push('');
+              md.push('</details>');
+              md.push('');
+            }
+            
+            // Dead Code
+            if (deadcode.candidates?.length) {
+              md.push('<details>');
+              md.push(`<summary>💀 Dead Code — ${deadcode.candidates.length} candidates</summary>`);
+              md.push('');
+              md.push('| Symbol | Confidence |');
+              md.push('|:-------|:-----------|');
+              deadcode.candidates.slice(0, 5).forEach(c => {
+                md.push(`| \`${c.name}\` | ${bar(c.confidence || 0, 1, 6)} ${pct(c.confidence || 0)}% |`);
+              });
+              md.push('');
+              md.push('</details>');
+              md.push('');
+            }
+            
+            // Stale Docs
+            if (docsStale.totalStale) {
+              md.push('<details>');
+              md.push(`<summary>📚 Stale Docs — ${docsStale.totalStale} references</summary>`);
+              md.push('');
+              (docsStale.reports || []).slice(0, 3).forEach(r => {
+                (r.stale || []).slice(0, 2).forEach(s => {
+                  md.push(`- \`${r.docPath}:${s.line}\` — ${s.rawText}`);
+                });
+              });
+              md.push('');
+              md.push('</details>');
+              md.push('');
+            }
+            
+            // ═══════════════════════════════════════════════════════════════
+            // FOOTER
+            // ═══════════════════════════════════════════════════════════════
+            md.push('---');
+            md.push('<sub>Generated by <a href="https://github.com/SimplyLiz/CodeMCP">CKB</a></sub>');
+            
+            // Post/update comment
+            const body = '<!-- ckb -->\n' + md.join('\n');
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            const existing = comments.find(c => c.body?.includes('<!-- ckb -->'));
+            
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
+                body
               });
-              const existing = comments.find(c => c.user.type === 'Bot' && c.body.includes('<!-- ckb-analysis -->'));
-              
-              const body = '<!-- ckb-analysis -->\n' + content;
-              
-              if (existing) {
-                await github.rest.issues.updateComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  comment_id: existing.id,
-                  body
-                });
-              } else {
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: context.issue.number,
-                  body
-                });
-              }
             }
 
-            const progressBar = (value, max, width = 10) => {
-              const filled = Math.round((value / max) * width);
-              return '`' + '█'.repeat(Math.min(filled, width)) + '░'.repeat(Math.max(0, width - filled)) + '`';
-            };
-
-            const fmt = n => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
-
-            // ═══════════════════════════════════════════════════════════════
-            // HANDLE ERRORS
-            // ═══════════════════════════════════════════════════════════════
-            if (prData.error) {
-              await upsertComment('## CKB Analysis\n\n⚠️ **Analysis failed:** ' + prData.error);
-              return;
-            }
-
-            // ═══════════════════════════════════════════════════════════════
-            // EXTRACT DATA
-            // ═══════════════════════════════════════════════════════════════
-            const s = prData.summary || {};
-            const risk = prData.riskAssessment || {};
-            const modules = prData.modulesAffected || [];
-            const reviewers = prData.suggestedReviewers || [];
-            const files = prData.changedFiles || [];
-            const couplingWarnings = couplingResult.missingCoupled || [];
-
-            const riskConfig = {
-              high: { badge: 'e74c3c', icon: '🔴' },
-              medium: { badge: 'f39c12', icon: '🟡' },
-              low: { badge: '27ae60', icon: '🟢' },
-              unknown: { badge: '95a5a6', icon: '⚪' }
-            };
-            const rc = riskConfig[risk.level] || riskConfig.unknown;
-
-            const auditItems = riskAudit.items || [];
-            const criticalCount = auditItems.filter(i => i.riskLevel === 'critical').length;
-            const highCount = auditItems.filter(i => i.riskLevel === 'high').length;
-            const quickWins = riskAudit.quickWins || [];
-            const hotspots = files.filter(f => f.isHotspot);
-            const riskyModules = modules.filter(m => m.riskLevel === 'high' || m.riskLevel === 'medium');
-
-            // ═══════════════════════════════════════════════════════════════
-            // BUILD COMMENT
-            // ═══════════════════════════════════════════════════════════════
-            const sections = [];
-
-            // ───────────────────────────────────────────────────────────────
-            // HEADER
-            // ───────────────────────────────────────────────────────────────
-            sections.push('## CKB Analysis');
-            sections.push('');
-            
-            // Status badges
-            const badges = [
-              `![Risk](https://img.shields.io/badge/Risk-${(risk.level || 'unknown').toUpperCase()}-${rc.badge}?style=flat-square)`,
-              `![Score](https://img.shields.io/badge/Score-${Math.round((risk.score || 0) * 100)}%25-${rc.badge}?style=flat-square)`,
-              `![Files](https://img.shields.io/badge/Files-${s.totalFiles || 0}-blue?style=flat-square)`,
-              `![Changes](https://img.shields.io/badge/Δ-${fmt(s.totalAdditions || 0)}%2F${fmt(s.totalDeletions || 0)}-blue?style=flat-square)`,
-              `![Modules](https://img.shields.io/badge/Modules-${s.totalModules || 0}-blue?style=flat-square)`
-            ];
-            sections.push(badges.join(' '));
-            sections.push('');
-
-            // ───────────────────────────────────────────────────────────────
-            // QUICK FINDINGS
-            // ───────────────────────────────────────────────────────────────
-            const findings = [];
-            if (hotspots.length > 0) findings.push(`🔥 ${hotspots.length} hotspot${hotspots.length > 1 ? 's' : ''}`);
-            if (criticalCount + highCount > 0) findings.push(`⚠️ ${criticalCount + highCount} risk items`);
-            if (complexityWarnings.length > 0) findings.push(`📊 ${complexityWarnings.length} complex`);
-            if (couplingWarnings.length > 0) findings.push(`🔗 ${couplingWarnings.length} coupled`);
-            if (contractAnalysis.changed) findings.push(`📜 ${contractAnalysis.files?.length || 0} contract${(contractAnalysis.files?.length || 0) > 1 ? 's' : ''}`);
-            if ((docStaleness.totalStale || 0) > 0) findings.push(`📚 ${docStaleness.totalStale} stale docs`);
-            if ((deadCode.candidates?.length || 0) > 0) findings.push(`💀 ${deadCode.candidates.length} dead code`);
-
-            if (findings.length > 0) {
-              sections.push(`**Findings:** ${findings.join(' · ')}`);
-              sections.push('');
-            }
-
-            // ───────────────────────────────────────────────────────────────
-            // RISK FACTORS
-            // ───────────────────────────────────────────────────────────────
-            const factors = risk.factors || [];
-            if (factors.length > 0) {
-              sections.push('> ' + factors.map(f => `• ${f}`).join('<br>\n> '));
-              sections.push('');
-            }
-
-            // ───────────────────────────────────────────────────────────────
-            // SUGGESTED REVIEWERS
-            // ───────────────────────────────────────────────────────────────
-            if (reviewers.length > 0) {
-              const reviewerStr = reviewers.slice(0, 3).map(r => {
-                const name = r.owner.startsWith('@') ? r.owner : `@${r.owner}`;
-                return `${name} (${Math.round((r.coverage || 0) * 100)}%)`;
-              }).join(', ');
-              sections.push(`**Suggested reviewers:** ${reviewerStr}`);
-              sections.push('');
-            }
-
-            // ───────────────────────────────────────────────────────────────
-            // METRICS SUMMARY TABLE
-            // ───────────────────────────────────────────────────────────────
-            sections.push('<details open>');
-            sections.push('<summary>📊 <b>Metrics Overview</b></summary>');
-            sections.push('');
-            sections.push('| Metric | Value | Status |');
-            sections.push('|:-------|------:|:------:|');
-            
-            // Doc coverage
-            const docCov = docCoverage.coverage || 0;
-            const docStatus = docCov >= ${{ env.DOC_COVERAGE_THRESHOLD }} ? '✅' : '⚠️';
-            sections.push(`| Documentation | ${docCov}% | ${docStatus} |`);
-            
-            // Complexity
-            const complexStatus = complexityWarnings.length === 0 ? '✅' : '⚠️';
-            sections.push(`| Complexity Violations | ${complexityWarnings.length} | ${complexStatus} |`);
-            
-            // Coupling
-            const couplingStatus = couplingWarnings.length === 0 ? '✅' : '⚠️';
-            sections.push(`| Missing Coupled Files | ${couplingWarnings.length} | ${couplingStatus} |`);
-            
-            // Cache info
-            const cacheHit = process.env.CACHE_HIT === 'true';
-            const incremental = process.env.INCREMENTAL === 'true';
-            sections.push(`| Index Mode | ${incremental ? '⚡ Incremental' : '🔄 Full'} | ${cacheHit ? '💾 cached' : '🆕 fresh'} |`);
-            
-            sections.push('');
-            sections.push('</details>');
-            sections.push('');
-
-            // ───────────────────────────────────────────────────────────────
-            // RISK AUDIT
-            // ───────────────────────────────────────────────────────────────
-            const criticalItems = auditItems.filter(i => i.riskLevel === 'critical');
-            const highItems = auditItems.filter(i => i.riskLevel === 'high');
-            if (criticalItems.length > 0 || highItems.length > 0) {
-              sections.push('<details>');
-              sections.push(`<summary>⚠️ <b>Risk Audit</b> — ${criticalItems.length} critical, ${highItems.length} high</summary>`);
-              sections.push('');
-              sections.push('| | File | Score | Top Factor |');
-              sections.push('|:--|:-----|------:|:-----------|');
-              [...criticalItems, ...highItems].slice(0, 8).forEach(item => {
-                const topFactor = (item.factors || [])[0];
-                const icon = item.riskLevel === 'critical' ? '🔴' : '🟠';
-                sections.push(`| ${icon} | \`${item.file}\` | ${item.riskScore} | ${topFactor?.factor || ''} |`);
-              });
-              sections.push('');
-              sections.push('</details>');
-              sections.push('');
-            }
-
-            // ───────────────────────────────────────────────────────────────
-            // HOTSPOTS
-            // ───────────────────────────────────────────────────────────────
-            if (hotspots.length > 0) {
-              sections.push('<details>');
-              sections.push(`<summary>🔥 <b>Hotspots</b> — ${hotspots.length} volatile file${hotspots.length > 1 ? 's' : ''}</summary>`);
-              sections.push('');
-              sections.push('| File | Churn Score |');
-              sections.push('|:-----|------------:|');
-              hotspots.slice(0, 5).forEach(f => {
-                const score = f.hotspotScore || 0;
-                const bar = progressBar(Math.min(score, 1), 1, 8);
-                sections.push(`| \`${f.path}\` | ${bar} ${score.toFixed(2)} |`);
-              });
-              sections.push('');
-              sections.push('</details>');
-              sections.push('');
-            }
-
-            // ───────────────────────────────────────────────────────────────
-            // MODULES AT RISK
-            // ───────────────────────────────────────────────────────────────
-            if (riskyModules.length > 0) {
-              sections.push('<details>');
-              sections.push(`<summary>📦 <b>Modules at Risk</b> — ${riskyModules.length} module${riskyModules.length > 1 ? 's' : ''}</summary>`);
-              sections.push('');
-              sections.push('| | Module | Files | Complexity |');
-              sections.push('|:--|:-------|------:|-----------:|');
-              riskyModules.slice(0, 5).forEach(m => {
-                const icon = m.riskLevel === 'high' ? '🔴' : '🟡';
-                sections.push(`| ${icon} | \`${m.moduleId}\` | ${m.filesChanged} | ${m.complexity || '—'} |`);
-              });
-              sections.push('');
-              sections.push('</details>');
-              sections.push('');
-            }
-
-            // ───────────────────────────────────────────────────────────────
-            // CONTRACT CHANGES
-            // ───────────────────────────────────────────────────────────────
-            if (contractAnalysis.changed) {
-              sections.push('<details>');
-              const breakingIcon = contractAnalysis.breakingChanges ? '🔴' : '🟢';
-              sections.push(`<summary>📜 <b>Contract Changes</b> ${breakingIcon}</summary>`);
-              sections.push('');
-              sections.push('**Changed files:**');
-              (contractAnalysis.files || []).forEach(f => sections.push(`- \`${f}\``));
-              if ((contractAnalysis.consumers || []).length > 0) {
-                sections.push('');
-                sections.push('**Affected consumers:**');
-                contractAnalysis.consumers.forEach(c => {
-                  const conf = c.confidence === 'high' ? '🔴' : '🟡';
-                  sections.push(`- ${conf} ${c.repo}`);
-                });
-              }
-              if (contractAnalysis.breakingChanges) {
-                sections.push('');
-                sections.push('⚠️ **Breaking changes detected!**');
-              }
-              sections.push('');
-              sections.push('</details>');
-              sections.push('');
-            }
-
-            // ───────────────────────────────────────────────────────────────
-            // QUICK WINS
-            // ───────────────────────────────────────────────────────────────
-            if (quickWins.length > 0) {
-              sections.push('<details>');
-              sections.push(`<summary>💡 <b>Quick Wins</b> — ${quickWins.length} improvement${quickWins.length > 1 ? 's' : ''}</summary>`);
-              sections.push('');
-              quickWins.slice(0, 5).forEach(w => {
-                const effortIcon = w.effort === 'low' ? '🟢' : w.effort === 'medium' ? '🟡' : '🔴';
-                sections.push(`- ${effortIcon} **${w.action}** on \`${w.target}\` *(${w.effort} effort, ${w.impact} impact)*`);
-              });
-              sections.push('');
-              sections.push('</details>');
-              sections.push('');
-            }
-
-            // ───────────────────────────────────────────────────────────────
-            // COMPLEXITY WARNINGS
-            // ───────────────────────────────────────────────────────────────
-            if (complexityWarnings.length > 0) {
-              sections.push('<details>');
-              sections.push(`<summary>📊 <b>Complexity</b> — ${complexityWarnings.length} warning${complexityWarnings.length > 1 ? 's' : ''}</summary>`);
-              sections.push('');
-              sections.push('| File | Type | Value | Threshold |');
-              sections.push('|:-----|:-----|------:|----------:|');
-              complexityWarnings.forEach(w => {
-                const ratio = w.value / w.threshold;
-                const icon = ratio > 1.5 ? '🔴' : '🟡';
-                sections.push(`| \`${w.file}\` | ${w.type} | ${icon} ${w.value} | ${w.threshold} |`);
-              });
-              sections.push('');
-              sections.push('</details>');
-              sections.push('');
-            }
-
-            // ───────────────────────────────────────────────────────────────
-            // COUPLING WARNINGS
-            // ───────────────────────────────────────────────────────────────
-            if (couplingWarnings.length > 0) {
-              sections.push('<details>');
-              sections.push(`<summary>🔗 <b>Coupling</b> — ${couplingWarnings.length} file${couplingWarnings.length > 1 ? 's' : ''} usually change together</summary>`);
-              sections.push('');
-              sections.push('| Missing File | Usually Changes With | Correlation |');
-              sections.push('|:-------------|:---------------------|------------:|');
-              couplingWarnings.slice(0, 5).forEach(w => {
-                const pct = Math.round((w.correlation || w.couplingScore || 0) * 100);
-                sections.push(`| \`${w.file}\` | \`${w.coupledTo}\` | ${pct}% |`);
-              });
-              sections.push('');
-              sections.push('</details>');
-              sections.push('');
-            }
-
-            // ───────────────────────────────────────────────────────────────
-            // OWNERSHIP DRIFT
-            // ───────────────────────────────────────────────────────────────
-            if (Array.isArray(ownershipDrift) && ownershipDrift.length > 0) {
-              sections.push('<details>');
-              sections.push(`<summary>👤 <b>Ownership Drift</b> — ${ownershipDrift.length} file${ownershipDrift.length > 1 ? 's' : ''}</summary>`);
-              sections.push('');
-              sections.push('| File | Declared | Actual |');
-              sections.push('|:-----|:---------|:-------|');
-              ownershipDrift.slice(0, 5).forEach(d => {
-                sections.push(`| \`${d.path}\` | ${d.declaredOwner || '—'} | ${d.actualOwner || '—'} |`);
-              });
-              sections.push('');
-              sections.push('</details>');
-              sections.push('');
-            }
-
-            // ───────────────────────────────────────────────────────────────
-            // DEAD CODE
-            // ───────────────────────────────────────────────────────────────
-            const deadCandidates = deadCode.candidates || [];
-            if (deadCandidates.length > 0) {
-              sections.push('<details>');
-              sections.push(`<summary>💀 <b>Dead Code</b> — ${deadCandidates.length} candidate${deadCandidates.length > 1 ? 's' : ''}</summary>`);
-              sections.push('');
-              sections.push('| Symbol | Last Seen | Confidence |');
-              sections.push('|:-------|:----------|:-----------|');
-              deadCandidates.slice(0, 5).forEach(c => {
-                const pct = Math.round((c.confidence || 0) * 100);
-                const bar = progressBar(c.confidence || 0, 1, 6);
-                sections.push(`| \`${c.name}\` | ${c.lastSeen || 'never'} | ${bar} ${pct}% |`);
-              });
-              sections.push('');
-              sections.push('</details>');
-              sections.push('');
-            }
-
-            // ───────────────────────────────────────────────────────────────
-            // STALE DOCUMENTATION
-            // ───────────────────────────────────────────────────────────────
-            const staleCount = docStaleness.totalStale || 0;
-            if (staleCount > 0) {
-              const reports = docStaleness.reports || [];
-              sections.push('<details>');
-              sections.push(`<summary>📚 <b>Stale Docs</b> — ${staleCount} broken reference${staleCount > 1 ? 's' : ''}</summary>`);
-              sections.push('');
-              reports.slice(0, 4).forEach(r => {
-                (r.stale || []).slice(0, 2).forEach(ref => {
-                  sections.push(`- \`${r.docPath}:${ref.line}\` — ${ref.rawText}`);
-                });
-              });
-              sections.push('');
-              sections.push('</details>');
-              sections.push('');
-            }
-
-            // ───────────────────────────────────────────────────────────────
-            // FOOTER
-            // ───────────────────────────────────────────────────────────────
-            sections.push('---');
-            const tierBadge = `![Tier](https://img.shields.io/badge/Tier-${{ env.CKB_TIER }}-purple?style=flat-square)`;
-            sections.push(`<sub>${tierBadge} · Generated by [CKB](https://github.com/SimplyLiz/CodeMCP) · [Docs](https://github.com/SimplyLiz/CodeMCP#readme)</sub>`);
-
-            await upsertComment(sections.join('\n'));
-
-      # ─────────────────────────────────────────────────────────────────────────
-      # AUTO-REQUEST REVIEWERS
-      # ─────────────────────────────────────────────────────────────────────────
-      - name: Auto-Request Reviewers
-        if: always() && steps.analyze.outputs.risk_level != 'unknown'
+      # ───────────────────────────────────────────────────────────────────────
+      # Auto-Assign Reviewers
+      # ───────────────────────────────────────────────────────────────────────
+      - name: Reviewers
+        if: always()
         continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
-
             try {
-              const data = JSON.parse(fs.readFileSync('pr-analysis.json', 'utf8'));
-              const reviewers = (data.suggestedReviewers || [])
-                .map(r => r.owner)
-                .filter(r => !r.startsWith('@'))  // Filter out teams
-                .filter(r => r !== context.actor)  // Don't request PR author
+              const { suggestedReviewers = [] } = JSON.parse(fs.readFileSync('analysis.json'));
+              const reviewers = suggestedReviewers
+                .map(r => r.owner.replace(/^@/, ''))
+                .filter(r => !r.includes('/') && r !== context.actor)
                 .slice(0, 2);
-
-              if (reviewers.length > 0) {
-                console.log('Requesting reviewers:', reviewers);
+              
+              if (reviewers.length) {
                 await github.rest.pulls.requestReviewers({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   pull_number: context.issue.number,
-                  reviewers: reviewers
+                  reviewers
                 });
               }
-            } catch (e) {
-              console.log('Could not request reviewers:', e.message);
-            }
+            } catch {}
 
-      # ─────────────────────────────────────────────────────────────────────────
-      # ENFORCEMENT GATES (Optional - uncomment to enable)
-      # ─────────────────────────────────────────────────────────────────────────
-      # - name: Enforce Risk Gate
-      #   if: steps.analyze.outputs.risk_level == 'high'
-      #   run: |
-      #     echo "::error::PR flagged as HIGH RISK. Manual review required."
-      #     exit 1
-
-      # - name: Enforce Complexity Gate
-      #   if: steps.complexity.outputs.violation_count > 0
-      #   run: |
-      #     echo "::error::Complexity violations detected. Refactor before merging."
-      #     exit 1
-
-      # - name: Enforce Contract Gate
-      #   if: steps.contracts.outputs.breaking_changes == 'true'
-      #   run: |
-      #     echo "::error::Breaking contract changes detected. Coordinate with consumers."
-      #     exit 1
-
-      # ─────────────────────────────────────────────────────────────────────────
-      # SAVE CACHE & ARTIFACTS
-      # ─────────────────────────────────────────────────────────────────────────
-      - name: Save CKB Cache
+      # ───────────────────────────────────────────────────────────────────────
+      # Artifacts
+      # ───────────────────────────────────────────────────────────────────────
+      - name: Save Cache
         if: always()
         uses: actions/cache/save@v4
         with:
           path: .ckb/
-          key: ckb-${{ runner.os }}-${{ github.base_ref }}-${{ github.sha }}
+          key: ckb-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.base_ref }}
 
-      - name: Upload Analysis Artifacts
+      - name: Upload
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ckb-analysis
-          path: |
-            pr-analysis.json
-            pr-analysis-err.txt
-            complexity-warnings.json
-            coupling-result.json
-            contract-analysis.json
-            deadcode.json
-            ownership-drift.json
-            risk-audit.json
-            doc-coverage.json
-            doc-staleness.json
-            language-quality.json
-          retention-days: 14
+          path: '*.json'
+          retention-days: 7
 
-  # ═══════════════════════════════════════════════════════════════════════════
-  # SCHEDULED ARCHITECTURE REFRESH
-  # ═══════════════════════════════════════════════════════════════════════════
+  # ╔═════════════════════════════════════════════════════════════════════════╗
+  # ║ SCHEDULED REFRESH                                                        ║
+  # ╚═════════════════════════════════════════════════════════════════════════╝
   refresh:
-    name: Architecture Refresh
+    name: Refresh
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     steps:
@@ -878,68 +528,45 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
           cache: true
 
-      - name: Build CKB
+      - name: Build
         run: go build -ldflags="-s -w" -o ckb ./cmd/ckb
 
-      - name: Restore Cache
+      - name: Cache
         uses: actions/cache@v4
         with:
           path: .ckb/
-          key: ckb-${{ runner.os }}-main-refresh
-          restore-keys: |
-            ckb-${{ runner.os }}-main-
-            ckb-${{ runner.os }}-
+          key: ckb-${{ runner.os }}-refresh-${{ github.run_id }}
+          restore-keys: ckb-${{ runner.os }}-
 
-      - name: Full Refresh
+      - name: Refresh
         run: |
           ./ckb init
           ./ckb index --force
-          ./ckb refresh-architecture --scope=all
-
-      - name: Generate Reports
-        run: |
+          
           mkdir -p reports
-          
-          ./ckb hotspots --limit=50 --format=json > reports/hotspots.json || true
-          ./ckb ownership drift --threshold=0.3 --format=json > reports/ownership-drift.json || true
-          ./ckb audit --min-score=40 --limit=50 --quick-wins --format=json > reports/risk-audit.json || true
-          ./ckb docs coverage --format=json > reports/doc-coverage.json || true
-          ./ckb meta languages --format=json > reports/language-quality.json || true
-          
-          # Generate summary
-          echo "## CKB Architecture Refresh" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Date:** $(date -u +"%Y-%m-%d %H:%M UTC")" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          HOTSPOTS=$(jq 'length' reports/hotspots.json 2>/dev/null || echo 0)
-          CRITICAL=$(jq '.summary.critical // 0' reports/risk-audit.json 2>/dev/null || echo 0)
-          HIGH=$(jq '.summary.high // 0' reports/risk-audit.json 2>/dev/null || echo 0)
-          DOC_COV=$(jq '.coverage // 0' reports/doc-coverage.json 2>/dev/null || echo 0)
-          
-          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Hotspots | $HOTSPOTS |" >> $GITHUB_STEP_SUMMARY
-          echo "| Critical Risk Files | $CRITICAL |" >> $GITHUB_STEP_SUMMARY
-          echo "| High Risk Files | $HIGH |" >> $GITHUB_STEP_SUMMARY
-          echo "| Doc Coverage | $DOC_COV% |" >> $GITHUB_STEP_SUMMARY
+          ./ckb hotspots --limit=50 --format=json > reports/hotspots.json 2>/dev/null || true
+          ./ckb audit --min-score=40 --limit=50 --format=json > reports/audit.json 2>/dev/null || true
+          ./ckb ownership drift --format=json > reports/drift.json 2>/dev/null || true
 
-      - name: Save Cache
-        uses: actions/cache/save@v4
-        if: always()
-        with:
-          path: .ckb/
-          key: ckb-${{ runner.os }}-main-refresh
+      - name: Summary
+        run: |
+          echo "## 📊 CKB Refresh" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|------:|" >> $GITHUB_STEP_SUMMARY
+          echo "| Hotspots | $(jq 'length' reports/hotspots.json 2>/dev/null || echo 0) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Critical | $(jq '.summary.critical // 0' reports/audit.json 2>/dev/null || echo 0) |" >> $GITHUB_STEP_SUMMARY
+          echo "| High Risk | $(jq '.summary.high // 0' reports/audit.json 2>/dev/null || echo 0) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Drift | $(jq 'if type == "array" then length else 0 end' reports/drift.json 2>/dev/null || echo 0) |" >> $GITHUB_STEP_SUMMARY
 
-      - name: Upload Reports
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: ckb-architecture-reports
+          name: ckb-refresh
           path: reports/
           retention-days: 30
