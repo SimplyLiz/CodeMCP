@@ -142,6 +142,7 @@ var Presets = map[string][]string{
 		"listWebhooks",
 		"testWebhook",
 		"webhookDeliveries",
+		"getWideResultMetrics",
 	},
 
 	// Full: all tools (wildcard)

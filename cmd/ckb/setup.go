@@ -265,7 +265,7 @@ var presets = []presetInfo{
 	{id: "review", name: "Review", description: "Code review focused: PR summary, hotspots, ownership (19 tools)"},
 	{id: "refactor", name: "Refactor", description: "Refactoring focused: impact analysis, coupling, complexity (19 tools)"},
 	{id: "docs", name: "Docs", description: "Documentation focused: doc coverage, staleness checks (20 tools)"},
-	{id: "ops", name: "Ops", description: "Operations: jobs, webhooks, scheduling (24 tools)"},
+	{id: "ops", name: "Ops", description: "Operations: jobs, webhooks, scheduling, metrics (25 tools)"},
 	{id: "federation", name: "Federation", description: "Multi-repo analysis and cross-repo search (28 tools)"},
 	{id: "full", name: "Full", description: "All available tools (76 tools)"},
 }
