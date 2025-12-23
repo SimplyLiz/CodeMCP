@@ -2,7 +2,7 @@
 
 All notable changes to CKB will be documented in this file.
 
-## [7.5.0]
+## [7.4.0]
 
 ### Performance
 
@@ -31,8 +31,6 @@ Major performance improvements to the SCIP backend through pre-computed indexes:
 **Tests Added:**
 - `internal/backends/scip/performance_test.go` — 8 unit tests + 7 benchmarks
 - `internal/backends/limiter_test.go` — 5 unit tests + 1 benchmark
-
-## [7.4.0]
 
 ### Added
 
