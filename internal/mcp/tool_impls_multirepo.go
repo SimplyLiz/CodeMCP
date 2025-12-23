@@ -230,7 +230,7 @@ func (s *MCPServer) evictLRULocked() {
 		entry.activeOps.Wait()
 		// Close the engine
 		if entry.engine != nil {
-			entry.engine.Close()
+			_ = entry.engine.Close()
 		}
 		delete(s.engines, victim)
 	}
@@ -254,7 +254,7 @@ func (s *MCPServer) createEngineForRepo(repoPath string) (*query.Engine, error) 
 	// Create engine
 	engine, err := query.NewEngine(repoPath, db, s.logger, cfg)
 	if err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("failed to create engine: %w", err)
 	}
 
@@ -275,7 +275,7 @@ func (s *MCPServer) CloseAllEngines() {
 	for _, entry := range entries {
 		entry.activeOps.Wait()
 		if entry.engine != nil {
-			entry.engine.Close()
+			_ = entry.engine.Close()
 		}
 	}
 }

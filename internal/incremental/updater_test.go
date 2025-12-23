@@ -575,7 +575,7 @@ func TestApplyDeltaWithInvalidation(t *testing.T) {
 	// Verify rescan queue has a.go
 	var count int
 	row := db.QueryRow(`SELECT COUNT(*) FROM rescan_queue WHERE file_path = 'a.go'`)
-	row.Scan(&count)
+	_ = row.Scan(&count)
 	if count != 1 {
 		t.Errorf("Expected a.go in rescan queue, count=%d", count)
 	}
@@ -741,7 +741,7 @@ func TestApplyDelta_DeleteClearsFileDeps(t *testing.T) {
 	// Verify dep exists
 	var count int
 	row := db.QueryRow(`SELECT COUNT(*) FROM file_deps WHERE dependent_file = 'consumer.go'`)
-	row.Scan(&count)
+	_ = row.Scan(&count)
 	if count != 1 {
 		t.Fatalf("Expected 1 dep before delete, got %d", count)
 	}
@@ -761,7 +761,7 @@ func TestApplyDelta_DeleteClearsFileDeps(t *testing.T) {
 
 	// Verify dep was removed
 	row = db.QueryRow(`SELECT COUNT(*) FROM file_deps WHERE dependent_file = 'consumer.go'`)
-	row.Scan(&count)
+	_ = row.Scan(&count)
 	if count != 0 {
 		t.Errorf("Expected 0 deps after delete, got %d", count)
 	}
@@ -797,7 +797,7 @@ func TestApplyDelta_CallEdges(t *testing.T) {
 	// Verify call edges were inserted
 	var count int
 	row := db.QueryRow(`SELECT COUNT(*) FROM callgraph WHERE caller_file = 'caller.go'`)
-	row.Scan(&count)
+	_ = row.Scan(&count)
 	if count != 2 {
 		t.Errorf("Expected 2 call edges, got %d", count)
 	}
@@ -830,7 +830,7 @@ func TestApplyDelta_CallEdgesWithNullCaller(t *testing.T) {
 	// Verify call edge with NULL caller_id was inserted
 	var count int
 	row := db.QueryRow(`SELECT COUNT(*) FROM callgraph WHERE caller_file = 'init.go' AND caller_id IS NULL`)
-	row.Scan(&count)
+	_ = row.Scan(&count)
 	if count != 1 {
 		t.Errorf("Expected 1 call edge with NULL caller_id, got %d", count)
 	}

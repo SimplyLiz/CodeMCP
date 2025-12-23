@@ -70,8 +70,8 @@ func (s *MCPServer) toolFederationAddRemote(params map[string]interface{}) (inte
 		Enabled:  true,
 	}
 
-	if err := fed.AddRemoteServer(server); err != nil {
-		return nil, fmt.Errorf("failed to add remote server: %w", err)
+	if addErr := fed.AddRemoteServer(server); addErr != nil {
+		return nil, fmt.Errorf("failed to add remote server: %w", addErr)
 	}
 
 	result := map[string]interface{}{
@@ -120,8 +120,8 @@ func (s *MCPServer) toolFederationRemoveRemote(params map[string]interface{}) (i
 	}
 	defer func() { _ = fed.Close() }()
 
-	if err := fed.RemoveRemoteServer(serverName); err != nil {
-		return nil, fmt.Errorf("failed to remove remote server: %w", err)
+	if removeErr := fed.RemoveRemoteServer(serverName); removeErr != nil {
+		return nil, fmt.Errorf("failed to remove remote server: %w", removeErr)
 	}
 
 	result := map[string]interface{}{
@@ -218,8 +218,8 @@ func (s *MCPServer) toolFederationSyncRemote(params map[string]interface{}) (int
 
 	// Create hybrid engine
 	engine := federation.NewHybridEngine(fed, logger)
-	if err := engine.InitRemoteClients(); err != nil {
-		return nil, fmt.Errorf("failed to initialize remote clients: %w", err)
+	if initErr := engine.InitRemoteClients(); initErr != nil {
+		return nil, fmt.Errorf("failed to initialize remote clients: %w", initErr)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -229,8 +229,8 @@ func (s *MCPServer) toolFederationSyncRemote(params map[string]interface{}) (int
 
 	if serverName != "" {
 		// Sync specific server
-		if err := engine.SyncRemote(ctx, serverName); err != nil {
-			return nil, fmt.Errorf("failed to sync server %q: %w", serverName, err)
+		if syncErr := engine.SyncRemote(ctx, serverName); syncErr != nil {
+			return nil, fmt.Errorf("failed to sync server %q: %w", serverName, syncErr)
 		}
 
 		repos, _ := fed.Index().GetRemoteRepos(serverName)
@@ -293,16 +293,16 @@ func (s *MCPServer) toolFederationStatusRemote(params map[string]interface{}) (i
 
 	// Create hybrid engine
 	engine := federation.NewHybridEngine(fed, logger)
-	if err := engine.InitRemoteClients(); err != nil {
-		return nil, fmt.Errorf("failed to initialize remote clients: %w", err)
+	if initErr := engine.InitRemoteClients(); initErr != nil {
+		return nil, fmt.Errorf("failed to initialize remote clients: %w", initErr)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	status, err := engine.GetRemoteStatus(ctx, serverName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get status: %w", err)
+	status, statusErr := engine.GetRemoteStatus(ctx, serverName)
+	if statusErr != nil {
+		return nil, fmt.Errorf("failed to get status: %w", statusErr)
 	}
 
 	result := map[string]interface{}{
@@ -365,8 +365,8 @@ func (s *MCPServer) toolFederationSearchSymbolsHybrid(params map[string]interfac
 
 	// Create hybrid engine
 	engine := federation.NewHybridEngine(fed, logger)
-	if err := engine.InitRemoteClients(); err != nil {
-		return nil, fmt.Errorf("failed to initialize remote clients: %w", err)
+	if initErr := engine.InitRemoteClients(); initErr != nil {
+		return nil, fmt.Errorf("failed to initialize remote clients: %w", initErr)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -427,16 +427,16 @@ func (s *MCPServer) toolFederationListAllRepos(params map[string]interface{}) (i
 
 	// Create hybrid engine
 	engine := federation.NewHybridEngine(fed, logger)
-	if err := engine.InitRemoteClients(); err != nil {
-		return nil, fmt.Errorf("failed to initialize remote clients: %w", err)
+	if initErr := engine.InitRemoteClients(); initErr != nil {
+		return nil, fmt.Errorf("failed to initialize remote clients: %w", initErr)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	result, err := engine.ListAllRepos(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("list failed: %w", err)
+	result, listErr := engine.ListAllRepos(ctx)
+	if listErr != nil {
+		return nil, fmt.Errorf("list failed: %w", listErr)
 	}
 
 	jsonBytes, err := json.MarshalIndent(result, "", "  ")

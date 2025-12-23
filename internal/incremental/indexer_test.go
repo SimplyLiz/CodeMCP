@@ -338,3 +338,143 @@ func containsHelper(s, substr string) bool {
 	}
 	return false
 }
+
+func TestFormatStats_PendingRescans(t *testing.T) {
+	stats := &DeltaStats{
+		FilesChanged: 2,
+		Duration:     200 * time.Millisecond,
+		IndexState:   "partial",
+	}
+	state := IndexState{
+		Commit:         "def789",
+		FilesSinceFull: 5,
+		PendingRescans: 3,
+	}
+
+	result := FormatStats(stats, state)
+
+	if !contains(result, "3 files queued for rescan") {
+		t.Error("expected pending rescans count in output")
+	}
+}
+
+func TestFormatStats_FullAccuracy(t *testing.T) {
+	stats := &DeltaStats{
+		FilesChanged: 1,
+		Duration:     100 * time.Millisecond,
+		IndexState:   "partial",
+	}
+	state := IndexState{
+		State:          "full",
+		Commit:         "abc123",
+		PendingRescans: 0, // No pending rescans
+	}
+
+	result := FormatStats(stats, state)
+
+	// When state is full and no pending rescans, accuracy should be "accurate"
+	if !contains(result, "accurate") {
+		t.Error("expected 'accurate' in output for full state with no pending rescans")
+	}
+}
+
+func TestFormatAccuracyMarker(t *testing.T) {
+	tests := []struct {
+		accuracy string
+		expected string
+	}{
+		{"accurate", "OK"},
+		{"may be stale", "!!"},
+		{"unknown", "!!"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.accuracy, func(t *testing.T) {
+			result := formatAccuracyMarker(tt.accuracy)
+			if result != tt.expected {
+				t.Errorf("formatAccuracyMarker(%q) = %q, want %q", tt.accuracy, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestIndexerConfig(t *testing.T) {
+	indexer, tmpDir, cleanup := setupTestIndexer(t)
+	defer cleanup()
+
+	// Test that config is properly set
+	if indexer.config == nil {
+		t.Fatal("expected non-nil config")
+	}
+
+	// Test repoRoot is set correctly
+	if indexer.repoRoot != tmpDir {
+		t.Errorf("expected repoRoot %q, got %q", tmpDir, indexer.repoRoot)
+	}
+}
+
+func TestIndexerGetters(t *testing.T) {
+	indexer, _, cleanup := setupTestIndexer(t)
+	defer cleanup()
+
+	// Test GetStore
+	store := indexer.GetStore()
+	if store == nil {
+		t.Error("GetStore() returned nil")
+	}
+
+	// Test GetDetector
+	detector := indexer.GetDetector()
+	if detector == nil {
+		t.Error("GetDetector() returned nil")
+	}
+}
+
+// TestIndexState_DirtyModifiers tests the dirty state modifiers in GetIndexState
+func TestIndexState_DirtyModifiers(t *testing.T) {
+	indexer, _, cleanup := setupTestIndexer(t)
+	defer cleanup()
+
+	// Set partial state
+	if err := indexer.store.SetIndexStatePartial(3); err != nil {
+		t.Fatalf("SetIndexStatePartial failed: %v", err)
+	}
+
+	state := indexer.GetIndexState()
+
+	// In a non-git repo, IsDirty should be false
+	if state.IsDirty {
+		t.Error("expected IsDirty=false in non-git repo")
+	}
+
+	// State should be "partial" (not "partial_dirty" since not dirty)
+	if state.State != "partial" {
+		t.Errorf("expected state 'partial', got %q", state.State)
+	}
+}
+
+func TestNeedsFullReindex_NoCommit_NonGitRepo(t *testing.T) {
+	indexer, _, cleanup := setupTestIndexer(t)
+	defer cleanup()
+
+	// Set up an index without commit (but not a git repo)
+	if err := indexer.store.SaveFileState(&IndexedFile{Path: "main.go", Hash: "abc"}); err != nil {
+		t.Fatalf("SaveFileState failed: %v", err)
+	}
+	if err := indexer.store.SetIndexStateFull(); err != nil {
+		t.Fatalf("SetIndexStateFull failed: %v", err)
+	}
+	if err := indexer.store.SetMetaInt(MetaKeySchemaVersion, int64(CurrentSchemaVersion)); err != nil {
+		t.Fatalf("SetMetaInt failed: %v", err)
+	}
+	// Don't set commit - simulate non-git repo
+
+	// In a non-git repo, missing commit should NOT trigger full reindex
+	// because the isGitRepo() check should prevent the "no tracked commit" error
+	needs, reason := indexer.NeedsFullReindex()
+
+	// The detector.isGitRepo() should return false, so "no tracked commit" check is skipped
+	if needs {
+		t.Errorf("expected NeedsFullReindex=false in non-git repo, got true with reason: %q", reason)
+	}
+}

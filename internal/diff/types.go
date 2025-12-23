@@ -38,10 +38,10 @@ type Delta struct {
 
 // EntityDeltas contains changes for each entity type
 type EntityDeltas struct {
-	Symbols   SymbolDeltas   `json:"symbols"`
-	Refs      RefDeltas      `json:"refs"`
+	Symbols   SymbolDeltas    `json:"symbols"`
+	Refs      RefDeltas       `json:"refs"`
 	CallGraph CallGraphDeltas `json:"callgraph"`
-	Files     FileDeltas     `json:"files"`
+	Files     FileDeltas      `json:"files"`
 }
 
 // SymbolDeltas contains symbol-level changes
@@ -53,16 +53,16 @@ type SymbolDeltas struct {
 
 // SymbolRecord represents a symbol for delta transfer
 type SymbolRecord struct {
-	ID            string `json:"id"`                       // Stable symbol ID (scip-go gomod...)
-	Name          string `json:"name"`                     // Simple name
-	Kind          string `json:"kind"`                     // function, class, variable, etc.
-	FileID        string `json:"file_id"`                  // File path or ID
-	Line          int    `json:"line"`                     // 1-indexed line number
-	Column        int    `json:"column,omitempty"`         // 1-indexed column
-	Language      string `json:"language,omitempty"`       // go, typescript, python, etc.
-	Signature     string `json:"signature,omitempty"`      // Function signature
-	Documentation string `json:"documentation,omitempty"`  // Doc comment
-	Hash          string `json:"hash,omitempty"`           // Canonical hash for validation
+	ID            string `json:"id"`                      // Stable symbol ID (scip-go gomod...)
+	Name          string `json:"name"`                    // Simple name
+	Kind          string `json:"kind"`                    // function, class, variable, etc.
+	FileID        string `json:"file_id"`                 // File path or ID
+	Line          int    `json:"line"`                    // 1-indexed line number
+	Column        int    `json:"column,omitempty"`        // 1-indexed column
+	Language      string `json:"language,omitempty"`      // go, typescript, python, etc.
+	Signature     string `json:"signature,omitempty"`     // Function signature
+	Documentation string `json:"documentation,omitempty"` // Doc comment
+	Hash          string `json:"hash,omitempty"`          // Canonical hash for validation
 }
 
 // RefDeltas contains reference-level changes
@@ -73,13 +73,13 @@ type RefDeltas struct {
 
 // RefRecord represents a reference for delta transfer
 type RefRecord struct {
-	FromFileID string `json:"from_file_id"`        // Source file
-	Line       int    `json:"line"`                // 1-indexed
-	Column     int    `json:"column"`              // 1-indexed
-	ToSymbolID string `json:"to_symbol_id"`        // Target symbol
-	Kind       string `json:"kind,omitempty"`      // reference, definition, implementation
+	FromFileID string `json:"from_file_id"`   // Source file
+	Line       int    `json:"line"`           // 1-indexed
+	Column     int    `json:"column"`         // 1-indexed
+	ToSymbolID string `json:"to_symbol_id"`   // Target symbol
+	Kind       string `json:"kind,omitempty"` // reference, definition, implementation
 	Language   string `json:"language,omitempty"`
-	Hash       string `json:"hash,omitempty"`      // Canonical hash for validation
+	Hash       string `json:"hash,omitempty"` // Canonical hash for validation
 }
 
 // CompositeKey returns the composite key for a reference
@@ -98,10 +98,10 @@ type CallEdge struct {
 	CallerFileID string `json:"caller_file_id"`
 	CallLine     int    `json:"call_line"`
 	CallColumn   int    `json:"call_column"`
-	CallerID     string `json:"caller_id"`          // Caller symbol ID
-	CalleeID     string `json:"callee_id"`          // Callee symbol ID
+	CallerID     string `json:"caller_id"` // Caller symbol ID
+	CalleeID     string `json:"callee_id"` // Callee symbol ID
 	Language     string `json:"language,omitempty"`
-	Hash         string `json:"hash,omitempty"`     // Canonical hash for validation
+	Hash         string `json:"hash,omitempty"` // Canonical hash for validation
 }
 
 // CompositeKey returns the composite key for a call edge

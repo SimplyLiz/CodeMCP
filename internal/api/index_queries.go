@@ -72,7 +72,7 @@ func (h *IndexRepoHandle) QuerySymbols(cursor *CursorData, limit int, filters Sy
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("query symbols: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	symbols := make([]IndexSymbol, 0, limit)
 	var lastRowID string
@@ -210,7 +210,7 @@ func (h *IndexRepoHandle) BatchGetSymbols(ids []string) ([]IndexSymbol, []string
 	if err != nil {
 		return nil, nil, fmt.Errorf("batch get symbols: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	found := make(map[string]bool)
 	symbols := make([]IndexSymbol, 0, len(ids))
@@ -280,7 +280,7 @@ func (h *IndexRepoHandle) QueryFiles(cursor *CursorData, limit int) ([]IndexFile
 	if err != nil {
 		return nil, nil, fmt.Errorf("query files: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	files := make([]IndexFile, 0, limit)
 	var lastPath string
@@ -368,7 +368,7 @@ func (h *IndexRepoHandle) QueryCallgraph(cursor *CursorData, limit int, filters 
 	if err != nil {
 		return nil, nil, fmt.Errorf("query callgraph: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	edges := make([]IndexCallEdge, 0, limit)
 	var lastRowID string
@@ -462,7 +462,7 @@ func (h *IndexRepoHandle) QueryRefs(cursor *CursorData, limit int, filters RefFi
 	if err != nil {
 		return nil, nil, fmt.Errorf("query refs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	refs := make([]IndexRef, 0, limit)
 	var lastRowID string
@@ -546,7 +546,7 @@ func (h *IndexRepoHandle) SearchSymbols(query string, limit int, filters SymbolF
 	if err != nil {
 		return nil, false, fmt.Errorf("search symbols: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	symbols := make([]IndexSymbol, 0, limit)
 	count := 0
@@ -605,7 +605,7 @@ func (h *IndexRepoHandle) SearchFiles(query string, limit int) ([]IndexFile, boo
 	if err != nil {
 		return nil, false, fmt.Errorf("search files: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	files := make([]IndexFile, 0, limit)
 	count := 0

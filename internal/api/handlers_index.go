@@ -140,8 +140,8 @@ func (s *Server) HandleIndexListFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if cursor != nil {
-		if err := cursor.ValidateEntity("file"); err != nil {
-			writeIndexError(w, http.StatusBadRequest, "cursor_entity_mismatch", err.Error())
+		if validateErr := cursor.ValidateEntity("file"); validateErr != nil {
+			writeIndexError(w, http.StatusBadRequest, "cursor_entity_mismatch", validateErr.Error())
 			return
 		}
 	}
@@ -208,8 +208,8 @@ func (s *Server) HandleIndexListSymbols(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if cursor != nil {
-		if err := cursor.ValidateEntity("symbol"); err != nil {
-			writeIndexError(w, http.StatusBadRequest, "cursor_entity_mismatch", err.Error())
+		if validateErr := cursor.ValidateEntity("symbol"); validateErr != nil {
+			writeIndexError(w, http.StatusBadRequest, "cursor_entity_mismatch", validateErr.Error())
 			return
 		}
 	}
@@ -336,8 +336,8 @@ func (s *Server) HandleIndexBatchGetSymbols(w http.ResponseWriter, r *http.Reque
 
 	// Parse request body
 	var req IndexBatchGetRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeIndexError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON: "+err.Error())
+	if decodeErr := json.NewDecoder(r.Body).Decode(&req); decodeErr != nil {
+		writeIndexError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON: "+decodeErr.Error())
 		return
 	}
 
@@ -409,8 +409,8 @@ func (s *Server) HandleIndexListRefs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if cursor != nil {
-		if err := cursor.ValidateEntity("ref"); err != nil {
-			writeIndexError(w, http.StatusBadRequest, "cursor_entity_mismatch", err.Error())
+		if validateErr := cursor.ValidateEntity("ref"); validateErr != nil {
+			writeIndexError(w, http.StatusBadRequest, "cursor_entity_mismatch", validateErr.Error())
 			return
 		}
 	}
@@ -483,8 +483,8 @@ func (s *Server) HandleIndexListCallgraph(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if cursor != nil {
-		if err := cursor.ValidateEntity("callgraph"); err != nil {
-			writeIndexError(w, http.StatusBadRequest, "cursor_entity_mismatch", err.Error())
+		if validateErr := cursor.ValidateEntity("callgraph"); validateErr != nil {
+			writeIndexError(w, http.StatusBadRequest, "cursor_entity_mismatch", validateErr.Error())
 			return
 		}
 	}

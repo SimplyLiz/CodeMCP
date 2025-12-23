@@ -119,14 +119,14 @@ func TestAPIKeyCanAccessRepo(t *testing.T) {
 		repoID   string
 		expected bool
 	}{
-		{nil, "any/repo", true},                         // No patterns = all access
-		{[]string{}, "any/repo", true},                  // Empty patterns = all access
-		{[]string{"*"}, "any/repo", true},               // Wildcard
-		{[]string{"myorg/*"}, "myorg/repo", true},       // Org prefix
-		{[]string{"myorg/*"}, "other/repo", false},      // Wrong org
-		{[]string{"exact/match"}, "exact/match", true},  // Exact match
-		{[]string{"exact/match"}, "other/repo", false},  // No match
-		{[]string{"a/*", "b/*"}, "b/repo", true},        // Multiple patterns
+		{nil, "any/repo", true},                        // No patterns = all access
+		{[]string{}, "any/repo", true},                 // Empty patterns = all access
+		{[]string{"*"}, "any/repo", true},              // Wildcard
+		{[]string{"myorg/*"}, "myorg/repo", true},      // Org prefix
+		{[]string{"myorg/*"}, "other/repo", false},     // Wrong org
+		{[]string{"exact/match"}, "exact/match", true}, // Exact match
+		{[]string{"exact/match"}, "other/repo", false}, // No match
+		{[]string{"a/*", "b/*"}, "b/repo", true},       // Multiple patterns
 	}
 
 	for _, tt := range tests {
@@ -183,7 +183,7 @@ func TestAPIKeyIsActive(t *testing.T) {
 // TestKeyStore tests the key store CRUD operations
 func TestKeyStore(t *testing.T) {
 	db := testDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	store := NewKeyStore(db, testLogger())
 	if err := store.InitSchema(); err != nil {
@@ -349,7 +349,7 @@ func TestRateLimiterDisabled(t *testing.T) {
 // TestManagerAuthenticate tests the auth manager authentication
 func TestManagerAuthenticate(t *testing.T) {
 	db := testDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	config := ManagerConfig{
 		Enabled:     true,
@@ -447,7 +447,7 @@ func TestManagerAuthDisabled(t *testing.T) {
 // TestManagerCreateKey tests key creation
 func TestManagerCreateKey(t *testing.T) {
 	db := testDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	config := ManagerConfig{
 		Enabled: true,
@@ -547,7 +547,7 @@ func intPtr(i int) *int {
 // TestManagerRevokeKey tests revoking an API key
 func TestManagerRevokeKey(t *testing.T) {
 	db := testDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	config := ManagerConfig{
 		Enabled: true,
@@ -616,7 +616,7 @@ func TestManagerRevokeKeyNoStore(t *testing.T) {
 // TestManagerListKeys tests listing API keys
 func TestManagerListKeys(t *testing.T) {
 	db := testDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	config := ManagerConfig{
 		Enabled: true,
@@ -705,7 +705,7 @@ func TestManagerListKeys(t *testing.T) {
 // TestManagerGetKey tests getting a single API key
 func TestManagerGetKey(t *testing.T) {
 	db := testDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	config := ManagerConfig{
 		Enabled: true,
@@ -803,7 +803,7 @@ func TestManagerGetKeyNoStore(t *testing.T) {
 // TestManagerRotateKey tests rotating an API key
 func TestManagerRotateKey(t *testing.T) {
 	db := testDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	config := ManagerConfig{
 		Enabled: true,

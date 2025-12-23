@@ -79,11 +79,11 @@ func (h *HybridEngine) RefreshRemoteClients() {
 
 // HybridSearchOptions contains options for hybrid symbol searches.
 type HybridSearchOptions struct {
-	Query       string
-	Limit       int
-	Language    string
-	Kind        string
-	IncludeLocal bool // Include local federation repos
+	Query        string
+	Limit        int
+	Language     string
+	Kind         string
+	IncludeLocal bool     // Include local federation repos
 	Servers      []string // Specific servers to query (empty = all enabled)
 	Timeout      time.Duration
 }

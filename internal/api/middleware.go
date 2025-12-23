@@ -394,7 +394,9 @@ func writeAuthError(w http.ResponseWriter, result *auth.AuthResult) {
 	}
 
 	if result.RetryAfter > 0 {
-		response["error"].(map[string]interface{})["retry_after"] = result.RetryAfter
+		if errMap, ok := response["error"].(map[string]interface{}); ok {
+			errMap["retry_after"] = result.RetryAfter
+		}
 	}
 
 	_ = json.NewEncoder(w).Encode(response)

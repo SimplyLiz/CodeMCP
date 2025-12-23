@@ -261,15 +261,15 @@ func promptRepoPath() (string, error) {
 			}
 
 			// Validate path exists
-			if _, err := os.Stat(path); os.IsNotExist(err) {
+			if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
 				fmt.Printf("Path does not exist: %s\n", path)
 				continue
 			}
 
 			// Convert to absolute path
-			absPath, err := filepath.Abs(path)
-			if err != nil {
-				return path, nil
+			absPath, absErr := filepath.Abs(path)
+			if absErr != nil {
+				return path, nil //nolint:nilerr // fallback to original path if abs fails
 			}
 			return absPath, nil
 		default:

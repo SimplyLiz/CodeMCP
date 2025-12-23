@@ -43,7 +43,7 @@ func TestCompactor_DryRun(t *testing.T) {
 		// Make the first file old
 		if i == 0 {
 			oldTime := time.Now().AddDate(0, 0, -60) // 60 days old
-			os.Chtimes(path, oldTime, oldTime)
+			_ = os.Chtimes(path, oldTime, oldTime)
 		}
 	}
 
@@ -94,11 +94,11 @@ func TestCompactor_ActualDeletion(t *testing.T) {
 		name string
 		age  time.Duration
 	}{
-		{"snapshot_recent1.db", 0},                    // Very recent
-		{"snapshot_recent2.db", 24 * time.Hour},       // 1 day old
-		{"snapshot_old1.db", 35 * 24 * time.Hour},     // 35 days old
-		{"snapshot_old2.db", 60 * 24 * time.Hour},     // 60 days old
-		{"snapshot_ancient.db", 90 * 24 * time.Hour},  // 90 days old
+		{"snapshot_recent1.db", 0},                   // Very recent
+		{"snapshot_recent2.db", 24 * time.Hour},      // 1 day old
+		{"snapshot_old1.db", 35 * 24 * time.Hour},    // 35 days old
+		{"snapshot_old2.db", 60 * 24 * time.Hour},    // 60 days old
+		{"snapshot_ancient.db", 90 * 24 * time.Hour}, // 90 days old
 	}
 
 	for _, snap := range testSnapshots {
@@ -107,7 +107,7 @@ func TestCompactor_ActualDeletion(t *testing.T) {
 			t.Fatalf("Failed to create test snapshot: %v", err)
 		}
 		modTime := now.Add(-snap.age)
-		os.Chtimes(path, modTime, modTime)
+		_ = os.Chtimes(path, modTime, modTime)
 	}
 
 	logger := logging.NewLogger(logging.Config{
@@ -173,15 +173,15 @@ func TestCompactor_NoSnapshots(t *testing.T) {
 
 func TestCompactionResult(t *testing.T) {
 	result := &CompactionResult{
-		StartedAt:           time.Now(),
-		CompletedAt:         time.Now().Add(100 * time.Millisecond),
-		DurationMs:          100,
-		SnapshotsDeleted:    2,
+		StartedAt:            time.Now(),
+		CompletedAt:          time.Now().Add(100 * time.Millisecond),
+		DurationMs:           100,
+		SnapshotsDeleted:     2,
 		JournalEntriesPurged: 50,
-		BytesReclaimed:      1024 * 1024,
-		FTSVacuumed:         true,
-		DryRun:              false,
-		DeletedSnapshots:    []string{"snapshot_1.db", "snapshot_2.db"},
+		BytesReclaimed:       1024 * 1024,
+		FTSVacuumed:          true,
+		DryRun:               false,
+		DeletedSnapshots:     []string{"snapshot_1.db", "snapshot_2.db"},
 	}
 
 	if result.DurationMs != 100 {

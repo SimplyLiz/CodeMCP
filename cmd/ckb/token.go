@@ -18,14 +18,14 @@ import (
 )
 
 var (
-	tokenDataDir      string
-	tokenName         string
-	tokenScopes       []string
-	tokenRepos        []string
-	tokenExpires      string
-	tokenRateLimit    int
-	tokenFormat       string
-	tokenShowRevoked  bool
+	tokenDataDir     string
+	tokenName        string
+	tokenScopes      []string
+	tokenRepos       []string
+	tokenExpires     string
+	tokenRateLimit   int
+	tokenFormat      string
+	tokenShowRevoked bool
 )
 
 var tokenCmd = &cobra.Command{
@@ -169,11 +169,11 @@ func runTokenCreate(cmd *cobra.Command, args []string) {
 
 	if tokenFormat == "json" {
 		resp := map[string]interface{}{
-			"key_id":      key.ID,
-			"name":        key.Name,
-			"scopes":      key.Scopes,
-			"token":       rawToken,
-			"created_at":  key.CreatedAt.Format(time.RFC3339),
+			"key_id":     key.ID,
+			"name":       key.Name,
+			"scopes":     key.Scopes,
+			"token":      rawToken,
+			"created_at": key.CreatedAt.Format(time.RFC3339),
 		}
 		if len(key.RepoPatterns) > 0 {
 			resp["repo_patterns"] = key.RepoPatterns

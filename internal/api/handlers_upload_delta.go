@@ -59,10 +59,7 @@ func (s *Server) HandleIndexDeltaUpload(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Extract repo ID from path (remove /upload/delta suffix)
-	path := r.URL.Path
-	if strings.HasSuffix(path, "/upload/delta") {
-		path = strings.TrimSuffix(path, "/upload/delta")
-	}
+	path := strings.TrimSuffix(r.URL.Path, "/upload/delta")
 	repoID := extractRepoIDFromPath(path, "/index/repos/", "")
 	if repoID == "" {
 		writeIndexError(w, http.StatusBadRequest, "missing_repo_id", "Repo ID is required")
@@ -93,7 +90,7 @@ func (s *Server) HandleIndexDeltaUpload(w http.ResponseWriter, r *http.Request) 
 		// Return 409 Conflict with current commit info
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusConflict)
-		json.NewEncoder(w).Encode(DeltaErrorResponse{
+		_ = json.NewEncoder(w).Encode(DeltaErrorResponse{
 			Error:         fmt.Sprintf("Base commit mismatch: index is at %s, expected %s", currentCommit, deltaMeta.BaseCommit),
 			Code:          "base_commit_mismatch",
 			CurrentCommit: currentCommit,
@@ -118,7 +115,7 @@ func (s *Server) HandleIndexDeltaUpload(w http.ResponseWriter, r *http.Request) 
 		writeIndexError(w, http.StatusBadRequest, "upload_failed", err.Error())
 		return
 	}
-	defer s.indexManager.Storage().CleanupUpload(streamResult.Path)
+	defer func() { _ = s.indexManager.Storage().CleanupUpload(streamResult.Path) }()
 
 	logFields := map[string]interface{}{
 		"repo_id":       repoID,
@@ -189,7 +186,7 @@ func (s *Server) HandleIndexDeltaUpload(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // parseDeltaMeta extracts delta metadata from headers or body

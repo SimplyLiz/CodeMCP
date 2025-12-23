@@ -10,7 +10,7 @@ import (
 )
 
 // CurrentSchemaVersion should match storage.currentSchemaVersion
-const CurrentSchemaVersion = 8
+const CurrentSchemaVersion = 9
 
 // IncrementalIndexer orchestrates incremental index updates
 type IncrementalIndexer struct {

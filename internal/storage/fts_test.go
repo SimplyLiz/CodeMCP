@@ -26,7 +26,7 @@ func setupTestFTSDB(t *testing.T) (*sql.DB, func()) {
 	_, _ = db.Exec("PRAGMA foreign_keys=ON")
 
 	cleanup := func() {
-		db.Close()
+		_ = db.Close()
 		os.RemoveAll(tmpDir)
 	}
 

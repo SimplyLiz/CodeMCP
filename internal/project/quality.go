@@ -60,7 +60,7 @@ type LanguageQuality struct {
 	RefCount         int          `json:"refCount"`
 	CallEdgeCount    int          `json:"callEdgeCount"`
 	FileCount        int          `json:"fileCount"`
-	RefAccuracy      float64      `json:"refAccuracy"`      // Estimated 0-1
+	RefAccuracy      float64      `json:"refAccuracy"` // Estimated 0-1
 	CallGraphQuality QualityLevel `json:"callGraphQuality"`
 	KnownIssues      []string     `json:"knownIssues,omitempty"`
 	Recommendations  []string     `json:"recommendations,omitempty"`
@@ -264,7 +264,7 @@ func (qa *QualityAssessor) loadMetrics(ctx context.Context, quality *LanguageQua
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	langStr := string(quality.Language)
 

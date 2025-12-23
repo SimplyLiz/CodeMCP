@@ -31,16 +31,16 @@ type ReadyResponse struct {
 
 // DetailedHealthResponse represents an enhanced health check response
 type DetailedHealthResponse struct {
-	Status        string              `json:"status"`
-	Timestamp     time.Time           `json:"timestamp"`
-	Version       string              `json:"version"`
-	Uptime        string              `json:"uptime,omitempty"`
-	Repos         *RepoHealthInfo     `json:"repos,omitempty"`
-	Storage       *StorageHealthInfo  `json:"storage,omitempty"`
-	Journal       *JournalHealthInfo  `json:"journal,omitempty"`
-	Memory        *MemoryHealthInfo   `json:"memory,omitempty"`
-	Backends      []BackendHealthInfo `json:"backends,omitempty"`
-	Warnings      []string            `json:"warnings,omitempty"`
+	Status    string              `json:"status"`
+	Timestamp time.Time           `json:"timestamp"`
+	Version   string              `json:"version"`
+	Uptime    string              `json:"uptime,omitempty"`
+	Repos     *RepoHealthInfo     `json:"repos,omitempty"`
+	Storage   *StorageHealthInfo  `json:"storage,omitempty"`
+	Journal   *JournalHealthInfo  `json:"journal,omitempty"`
+	Memory    *MemoryHealthInfo   `json:"memory,omitempty"`
+	Backends  []BackendHealthInfo `json:"backends,omitempty"`
+	Warnings  []string            `json:"warnings,omitempty"`
 }
 
 // RepoHealthInfo contains repository health information
@@ -54,39 +54,39 @@ type RepoHealthInfo struct {
 
 // StorageHealthInfo contains storage health information
 type StorageHealthInfo struct {
-	DatabasePath    string `json:"databasePath"`
+	DatabasePath      string `json:"databasePath"`
 	DatabaseSizeBytes int64  `json:"databaseSizeBytes"`
-	WalSizeBytes    int64  `json:"walSizeBytes"`
-	SnapshotCount   int    `json:"snapshotCount"`
-	FTSEnabled      bool   `json:"ftsEnabled"`
-	FTSSymbolCount  int    `json:"ftsSymbolCount,omitempty"`
+	WalSizeBytes      int64  `json:"walSizeBytes"`
+	SnapshotCount     int    `json:"snapshotCount"`
+	FTSEnabled        bool   `json:"ftsEnabled"`
+	FTSSymbolCount    int    `json:"ftsSymbolCount,omitempty"`
 }
 
 // JournalHealthInfo contains journal health information
 type JournalHealthInfo struct {
-	Enabled          bool   `json:"enabled"`
-	EntryCount       int    `json:"entryCount"`
-	OldestEntry      string `json:"oldestEntry,omitempty"`
-	PendingCompaction bool  `json:"pendingCompaction"`
+	Enabled           bool   `json:"enabled"`
+	EntryCount        int    `json:"entryCount"`
+	OldestEntry       string `json:"oldestEntry,omitempty"`
+	PendingCompaction bool   `json:"pendingCompaction"`
 }
 
 // MemoryHealthInfo contains memory usage information
 type MemoryHealthInfo struct {
-	AllocMB       float64 `json:"allocMb"`
-	TotalAllocMB  float64 `json:"totalAllocMb"`
-	SysMB         float64 `json:"sysMb"`
-	NumGC         uint32  `json:"numGc"`
-	NumGoroutine  int     `json:"numGoroutine"`
+	AllocMB      float64 `json:"allocMb"`
+	TotalAllocMB float64 `json:"totalAllocMb"`
+	SysMB        float64 `json:"sysMb"`
+	NumGC        uint32  `json:"numGc"`
+	NumGoroutine int     `json:"numGoroutine"`
 }
 
 // BackendHealthInfo contains backend health information
 type BackendHealthInfo struct {
-	ID          string `json:"id"`
-	Type        string `json:"type"`
-	Available   bool   `json:"available"`
-	Healthy     bool   `json:"healthy"`
-	LatencyMs   int64  `json:"latencyMs,omitempty"`
-	LastError   string `json:"lastError,omitempty"`
+	ID        string `json:"id"`
+	Type      string `json:"type"`
+	Available bool   `json:"available"`
+	Healthy   bool   `json:"healthy"`
+	LatencyMs int64  `json:"latencyMs,omitempty"`
+	LastError string `json:"lastError,omitempty"`
 }
 
 // handleHealth responds to health check requests (simple liveness check)
@@ -264,7 +264,7 @@ func (s *Server) getStorageHealthInfo(ctx context.Context) *StorageHealthInfo {
 	// Get FTS symbol count
 	db, err := sql.Open("sqlite", dbPath)
 	if err == nil {
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 
 		var count int
 		err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM symbols_fts_content").Scan(&count)
@@ -294,7 +294,7 @@ func (s *Server) getJournalHealthInfo(ctx context.Context) *JournalHealthInfo {
 	if err != nil {
 		return info
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Check if change_journal table exists
 	var tableName string

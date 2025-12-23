@@ -657,7 +657,7 @@ func tryIncrementalIndex(repoRoot, ckbDir string) bool {
 		fmt.Fprintf(os.Stderr, "Warning: Could not open database for incremental: %v\n", err)
 		return false
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Get SCIP index path from config (default: .scip/index.scip)
 	indexPath := ".scip/index.scip"
@@ -723,7 +723,7 @@ func populateIncrementalTracking(repoRoot string) {
 		fmt.Fprintf(os.Stderr, "Warning: Could not open database for incremental tracking: %v\n", err)
 		return
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Get SCIP index path from config (default: .scip/index.scip)
 	indexPath := ".scip/index.scip"

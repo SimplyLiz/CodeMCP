@@ -577,7 +577,7 @@ func createTestServer(t *testing.T, db *sql.DB) *Server {
 
 func TestHandleIndexListReposIntegration(t *testing.T) {
 	db := setupTestIndexDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	server := createTestServer(t, db)
 
@@ -617,7 +617,7 @@ func TestHandleIndexListReposIntegration(t *testing.T) {
 
 func TestHandleIndexGetMetaIntegration(t *testing.T) {
 	db := setupTestIndexDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	server := createTestServer(t, db)
 
@@ -642,7 +642,7 @@ func TestHandleIndexGetMetaIntegration(t *testing.T) {
 
 func TestHandleIndexGetMetaNotFound(t *testing.T) {
 	db := setupTestIndexDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	server := createTestServer(t, db)
 
@@ -658,7 +658,7 @@ func TestHandleIndexGetMetaNotFound(t *testing.T) {
 
 func TestHandleIndexListFilesIntegration(t *testing.T) {
 	db := setupTestIndexDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	server := createTestServer(t, db)
 
@@ -697,7 +697,7 @@ func TestHandleIndexListFilesIntegration(t *testing.T) {
 
 func TestHandleIndexListSymbolsIntegration(t *testing.T) {
 	db := setupTestIndexDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	server := createTestServer(t, db)
 
@@ -737,7 +737,7 @@ func TestHandleIndexListSymbolsIntegration(t *testing.T) {
 
 func TestHandleIndexListSymbolsWithFilter(t *testing.T) {
 	db := setupTestIndexDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	server := createTestServer(t, db)
 
@@ -774,7 +774,7 @@ func TestHandleIndexListSymbolsWithFilter(t *testing.T) {
 
 func TestHandleIndexGetSymbolIntegration(t *testing.T) {
 	db := setupTestIndexDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	server := createTestServer(t, db)
 
@@ -813,7 +813,7 @@ func TestHandleIndexGetSymbolIntegration(t *testing.T) {
 
 func TestHandleIndexGetSymbolNotFound(t *testing.T) {
 	db := setupTestIndexDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	server := createTestServer(t, db)
 
@@ -829,7 +829,7 @@ func TestHandleIndexGetSymbolNotFound(t *testing.T) {
 
 func TestHandleIndexBatchGetSymbolsIntegration(t *testing.T) {
 	db := setupTestIndexDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	server := createTestServer(t, db)
 
@@ -871,7 +871,7 @@ func TestHandleIndexBatchGetSymbolsIntegration(t *testing.T) {
 
 func TestHandleIndexListCallgraphIntegration(t *testing.T) {
 	db := setupTestIndexDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	server := createTestServer(t, db)
 
@@ -910,7 +910,7 @@ func TestHandleIndexListCallgraphIntegration(t *testing.T) {
 
 func TestHandleIndexListCallgraphWithCallerFilter(t *testing.T) {
 	db := setupTestIndexDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	server := createTestServer(t, db)
 
@@ -946,7 +946,7 @@ func TestHandleIndexListCallgraphWithCallerFilter(t *testing.T) {
 
 func TestHandleIndexSearchSymbolsIntegration(t *testing.T) {
 	db := setupTestIndexDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	server := createTestServer(t, db)
 
@@ -985,7 +985,7 @@ func TestHandleIndexSearchSymbolsIntegration(t *testing.T) {
 
 func TestHandleIndexSearchSymbolsMissingQuery(t *testing.T) {
 	db := setupTestIndexDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	server := createTestServer(t, db)
 
@@ -1001,7 +1001,7 @@ func TestHandleIndexSearchSymbolsMissingQuery(t *testing.T) {
 
 func TestHandleIndexSearchFilesIntegration(t *testing.T) {
 	db := setupTestIndexDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	server := createTestServer(t, db)
 
@@ -1040,7 +1040,7 @@ func TestHandleIndexSearchFilesIntegration(t *testing.T) {
 
 func TestHandleIndexListRefsPagination(t *testing.T) {
 	db := setupTestIndexDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	server := createTestServer(t, db)
 
@@ -1059,8 +1059,8 @@ func TestHandleIndexListRefsPagination(t *testing.T) {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
 
-	data := resp.Data.(map[string]interface{})
-	edges := data["edges"].([]interface{})
+	data, _ := resp.Data.(map[string]interface{})
+	edges, _ := data["edges"].([]interface{})
 
 	if len(edges) != 2 {
 		t.Errorf("Expected 2 edges, got %d", len(edges))
@@ -1087,8 +1087,8 @@ func TestHandleIndexListRefsPagination(t *testing.T) {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
 
-	data2 := resp2.Data.(map[string]interface{})
-	edges2 := data2["edges"].([]interface{})
+	data2, _ := resp2.Data.(map[string]interface{})
+	edges2, _ := data2["edges"].([]interface{})
 
 	if len(edges2) != 1 {
 		t.Errorf("Expected 1 remaining edge, got %d", len(edges2))
@@ -1172,10 +1172,10 @@ func TestHandleIndexCreateRepoIntegration(t *testing.T) {
 		t.Fatalf("Expected data to be map, got %T", resp.Data)
 	}
 
-	if id := data["id"].(string); id != "test/new-repo" {
+	if id, _ := data["id"].(string); id != "test/new-repo" {
 		t.Errorf("Expected id 'test/new-repo', got %q", id)
 	}
-	if status := data["status"].(string); status != "created" {
+	if status, _ := data["status"].(string); status != "created" {
 		t.Errorf("Expected status 'created', got %q", status)
 	}
 
@@ -1338,7 +1338,7 @@ func TestHandleIndexDeleteRepoIntegration(t *testing.T) {
 		t.Fatalf("Expected data to be map, got %T", resp.Data)
 	}
 
-	if status := data["status"].(string); status != "deleted" {
+	if status, _ := data["status"].(string); status != "deleted" {
 		t.Errorf("Expected status 'deleted', got %q", status)
 	}
 

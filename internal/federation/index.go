@@ -610,15 +610,15 @@ func (idx *Index) GetRemoteCacheEntry(serverName, repoID, cacheKey string) ([]by
 		return nil, false, err
 	}
 
-	// Check if expired
-	expires, err := time.Parse(time.RFC3339, expiresAt)
-	if err != nil || time.Now().After(expires) {
-		// Expired, delete and return not found
+	// Check if expired (parse error or past expiration = cache miss, not error)
+	expires, parseErr := time.Parse(time.RFC3339, expiresAt)
+	if parseErr != nil || time.Now().After(expires) {
+		// Expired or invalid, delete and return not found
 		_, _ = idx.db.Exec(`
 			DELETE FROM remote_cache
 			WHERE server_name = ? AND repo_id = ? AND cache_key = ?
 		`, serverName, repoID, cacheKey)
-		return nil, false, nil
+		return nil, false, nil //nolint:nilerr // intentional: cache miss is not an error
 	}
 
 	return []byte(data), true, nil

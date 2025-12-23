@@ -95,7 +95,7 @@ func NewIndexRepoManager(config *IndexServerConfig, logger *logging.Logger) (*In
 		handle, err := m.openRepo(repoConfig)
 		if err != nil {
 			// Close any already-opened repos before returning
-			m.Close()
+			_ = m.Close()
 			return nil, fmt.Errorf("failed to open repo %s: %w", repoConfig.ID, err)
 		}
 		m.repos[repoConfig.ID] = handle
@@ -342,7 +342,7 @@ func (h *IndexRepoHandle) refreshMeta() error {
 	// Get languages from symbol_mappings
 	rows, err := h.db.Query(`SELECT DISTINCT language FROM symbol_mappings WHERE state = 'active' AND language IS NOT NULL AND language != ''`)
 	if err == nil {
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var lang string
 			if err := rows.Scan(&lang); err == nil {
