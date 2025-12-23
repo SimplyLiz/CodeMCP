@@ -1,0 +1,42 @@
+name: 'CKB PR Analysis'
+description: 'Analyze pull requests with CKB code intelligence and post formatted comments'
+author: 'TasteHub'
+
+branding:
+  icon: 'search'
+  color: 'blue'
+
+inputs:
+  github-token:
+    description: 'GitHub token for posting comments'
+    required: true
+  base-branch:
+    description: 'Base branch to compare against'
+    default: 'main'
+  risk-threshold:
+    description: 'Minimum risk score to post comment (0-1). Set to 0 to always comment.'
+    default: '0'
+  include-reviewers:
+    description: 'Include suggested reviewers in comment'
+    default: 'true'
+  include-adrs:
+    description: 'Include related ADRs in comment'
+    default: 'true'
+  fail-on-high-risk:
+    description: 'Fail the action if risk score exceeds 0.8'
+    default: 'false'
+  ckb-version:
+    description: 'CKB version to use (default: latest)'
+    default: 'latest'
+
+outputs:
+  risk-score:
+    description: 'The calculated risk score (0-1)'
+  risk-level:
+    description: 'The risk level (low, medium, high)'
+  comment-url:
+    description: 'URL of the posted comment'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
