@@ -467,3 +467,189 @@ func TestStoreClearAllFileData(t *testing.T) {
 		t.Errorf("expected 0 files after clear, got %d", count)
 	}
 }
+
+func TestStoreGetFilesForSymbol(t *testing.T) {
+	store, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	now := time.Now()
+
+	// Create multiple files with shared and unique symbols
+	file1 := &IndexedFile{Path: "main.go", Hash: "hash1", IndexedAt: now}
+	file2 := &IndexedFile{Path: "utils.go", Hash: "hash2", IndexedAt: now}
+	file3 := &IndexedFile{Path: "handler.go", Hash: "hash3", IndexedAt: now}
+
+	for _, f := range []*IndexedFile{file1, file2, file3} {
+		if err := store.SaveFileState(f); err != nil {
+			t.Fatalf("SaveFileState failed: %v", err)
+		}
+	}
+
+	// Save symbols - pkg.SharedFunc is in multiple files
+	if err := store.SaveFileSymbols("main.go", []string{"pkg.SharedFunc", "pkg.MainOnly"}); err != nil {
+		t.Fatalf("SaveFileSymbols for main.go failed: %v", err)
+	}
+	if err := store.SaveFileSymbols("utils.go", []string{"pkg.SharedFunc", "pkg.UtilsOnly"}); err != nil {
+		t.Fatalf("SaveFileSymbols for utils.go failed: %v", err)
+	}
+	if err := store.SaveFileSymbols("handler.go", []string{"pkg.HandlerOnly"}); err != nil {
+		t.Fatalf("SaveFileSymbols for handler.go failed: %v", err)
+	}
+
+	// Test: Get files for shared symbol
+	files, err := store.GetFilesForSymbol("pkg.SharedFunc")
+	if err != nil {
+		t.Fatalf("GetFilesForSymbol failed: %v", err)
+	}
+	if len(files) != 2 {
+		t.Errorf("expected 2 files for SharedFunc, got %d", len(files))
+	}
+
+	// Verify both files are returned
+	hasMain, hasUtils := false, false
+	for _, f := range files {
+		if f == "main.go" {
+			hasMain = true
+		}
+		if f == "utils.go" {
+			hasUtils = true
+		}
+	}
+	if !hasMain || !hasUtils {
+		t.Errorf("expected main.go and utils.go, got %v", files)
+	}
+
+	// Test: Get files for unique symbol
+	files, err = store.GetFilesForSymbol("pkg.HandlerOnly")
+	if err != nil {
+		t.Fatalf("GetFilesForSymbol for HandlerOnly failed: %v", err)
+	}
+	if len(files) != 1 || files[0] != "handler.go" {
+		t.Errorf("expected [handler.go], got %v", files)
+	}
+
+	// Test: Get files for non-existent symbol
+	files, err = store.GetFilesForSymbol("pkg.NonExistent")
+	if err != nil {
+		t.Fatalf("GetFilesForSymbol for NonExistent failed: %v", err)
+	}
+	if len(files) != 0 {
+		t.Errorf("expected empty slice for non-existent symbol, got %v", files)
+	}
+}
+
+func TestStoreDeleteFileDataTx(t *testing.T) {
+	store, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	now := time.Now()
+
+	// Create a file with symbols
+	file := &IndexedFile{
+		Path:        "delete_test.go",
+		Hash:        "hash123",
+		IndexedAt:   now,
+		SymbolCount: 3,
+	}
+	if err := store.SaveFileState(file); err != nil {
+		t.Fatalf("SaveFileState failed: %v", err)
+	}
+	if err := store.SaveFileSymbols("delete_test.go", []string{"sym1", "sym2", "sym3"}); err != nil {
+		t.Fatalf("SaveFileSymbols failed: %v", err)
+	}
+
+	// Verify data exists
+	state, err := store.GetFileState("delete_test.go")
+	if err != nil || state == nil {
+		t.Fatalf("expected file state to exist")
+	}
+	symbols, err := store.GetSymbolsForFile("delete_test.go")
+	if err != nil || len(symbols) != 3 {
+		t.Fatalf("expected 3 symbols, got %d", len(symbols))
+	}
+
+	// Use the public DeleteFileState which should clean up everything
+	if err := store.DeleteFileState("delete_test.go"); err != nil {
+		t.Fatalf("DeleteFileState failed: %v", err)
+	}
+
+	// Verify file state is gone
+	state, err = store.GetFileState("delete_test.go")
+	if err != nil {
+		t.Fatalf("GetFileState after delete failed: %v", err)
+	}
+	if state != nil {
+		t.Error("expected file state to be nil after deletion")
+	}
+}
+
+func TestStoreInsertFileDataTx(t *testing.T) {
+	store, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	now := time.Now()
+
+	// Test inserting via transaction (through SaveFileState + SaveFileSymbols which use transactions internally)
+	file := &IndexedFile{
+		Path:             "insert_test.go",
+		Hash:             "hash456",
+		Mtime:            now.Unix(),
+		IndexedAt:        now,
+		SCIPDocumentHash: "sciphash",
+		SymbolCount:      2,
+	}
+
+	if err := store.SaveFileState(file); err != nil {
+		t.Fatalf("SaveFileState failed: %v", err)
+	}
+
+	symbols := []string{"pkg.FuncA", "pkg.FuncB"}
+	if err := store.SaveFileSymbols("insert_test.go", symbols); err != nil {
+		t.Fatalf("SaveFileSymbols failed: %v", err)
+	}
+
+	// Verify the data was inserted correctly
+	state, err := store.GetFileState("insert_test.go")
+	if err != nil {
+		t.Fatalf("GetFileState failed: %v", err)
+	}
+	if state == nil {
+		t.Fatal("expected file state to exist")
+	}
+	if state.Hash != "hash456" {
+		t.Errorf("expected hash 'hash456', got %q", state.Hash)
+	}
+	if state.SCIPDocumentHash != "sciphash" {
+		t.Errorf("expected SCIPDocumentHash 'sciphash', got %q", state.SCIPDocumentHash)
+	}
+	if state.SymbolCount != 2 {
+		t.Errorf("expected SymbolCount 2, got %d", state.SymbolCount)
+	}
+
+	// Verify symbols
+	retrievedSymbols, err := store.GetSymbolsForFile("insert_test.go")
+	if err != nil {
+		t.Fatalf("GetSymbolsForFile failed: %v", err)
+	}
+	if len(retrievedSymbols) != 2 {
+		t.Errorf("expected 2 symbols, got %d", len(retrievedSymbols))
+	}
+
+	// Test update (INSERT OR REPLACE behavior)
+	file.Hash = "updated_hash"
+	file.SymbolCount = 5
+	if err := store.SaveFileState(file); err != nil {
+		t.Fatalf("SaveFileState (update) failed: %v", err)
+	}
+
+	state, err = store.GetFileState("insert_test.go")
+	if err != nil {
+		t.Fatalf("GetFileState after update failed: %v", err)
+	}
+	if state.Hash != "updated_hash" {
+		t.Errorf("expected updated hash, got %q", state.Hash)
+	}
+	if state.SymbolCount != 5 {
+		t.Errorf("expected updated SymbolCount 5, got %d", state.SymbolCount)
+	}
+}
