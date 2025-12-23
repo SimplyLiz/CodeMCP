@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"ckb/internal/backends"
+	"ckb/internal/backends/git"
 	"ckb/internal/compression"
 	"ckb/internal/errors"
 	"ckb/internal/output"
@@ -504,11 +505,14 @@ func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (
 		return results[i].Score > results[j].Score
 	})
 
-	// Apply PPR re-ranking if SCIP graph is available
+	// Apply PPR re-ranking with fusion scores if SCIP graph is available
 	if e.scipAdapter != nil && e.scipAdapter.IsAvailable() && len(results) > 3 {
 		// Build graph and re-rank (lazy graph building)
 		if symbolGraph, err := BuildGraphFromSCIP(ctx, e.scipAdapter, e.logger); err == nil && symbolGraph.NumNodes() > 0 {
-			if reranked, err := RerankWithPPR(ctx, symbolGraph, results, opts.Limit); err == nil {
+			// Compute fusion scores from hotspots and recency
+			fusionScores := e.computeFusionScores(results)
+
+			if reranked, err := RerankWithFusion(ctx, symbolGraph, results, opts.Limit, fusionScores); err == nil {
 				results = reranked
 			}
 		}
@@ -640,6 +644,93 @@ func rankSearchResults(results []SearchResultItem, query string) {
 			"scope":     scope,
 		})
 	}
+}
+
+// computeFusionScores computes hotspot and recency scores for fusion ranking.
+// Uses cached hotspots data to avoid expensive git operations on every search.
+func (e *Engine) computeFusionScores(results []SearchResultItem) *FusionScores {
+	if e.gitAdapter == nil || len(results) == 0 {
+		return nil
+	}
+
+	// Collect unique file paths
+	fileSet := make(map[string]bool)
+	for _, r := range results {
+		if r.Location != nil && r.Location.FileId != "" {
+			fileSet[r.Location.FileId] = true
+		}
+	}
+
+	if len(fileSet) == 0 {
+		return nil
+	}
+
+	scores := &FusionScores{
+		Hotspots: make(map[string]float64),
+		Recency:  make(map[string]float64),
+	}
+
+	// Use cached hotspots if available, otherwise fetch once
+	hotspots := e.getCachedHotspots()
+
+	if len(hotspots) > 0 {
+		// Find max score for normalization
+		maxScore := 0.0
+		for _, h := range hotspots {
+			if h.HotspotScore > maxScore {
+				maxScore = h.HotspotScore
+			}
+		}
+
+		// Build normalized score map
+		for _, h := range hotspots {
+			if fileSet[h.FilePath] && maxScore > 0 {
+				scores.Hotspots[h.FilePath] = h.HotspotScore / maxScore
+			}
+			// Also populate recency from hotspots data
+			if fileSet[h.FilePath] && h.LastModified != "" {
+				scores.Recency[h.FilePath] = computeRecencyScore(h.LastModified) / 10.0
+			}
+		}
+	}
+
+	return scores
+}
+
+// cachedHotspots stores hotspot data to avoid repeated git operations.
+var cachedHotspots struct {
+	data      []git.ChurnMetrics
+	fetchedAt time.Time
+	fetching  bool
+}
+
+// getCachedHotspots returns cached hotspots, refreshing in background if stale.
+// Returns nil if cache is cold to avoid blocking searches - hotspots are best-effort.
+func (e *Engine) getCachedHotspots() []git.ChurnMetrics {
+	// Return cached if fresh (within 5 minutes)
+	if len(cachedHotspots.data) > 0 && time.Since(cachedHotspots.fetchedAt) < 5*time.Minute {
+		return cachedHotspots.data
+	}
+
+	// If already fetching, return stale data (or nil)
+	if cachedHotspots.fetching {
+		return cachedHotspots.data
+	}
+
+	// Start background fetch
+	cachedHotspots.fetching = true
+	go func() {
+		defer func() { cachedHotspots.fetching = false }()
+		hotspots, err := e.gitAdapter.GetHotspots(100, "")
+		if err != nil {
+			return
+		}
+		cachedHotspots.data = hotspots
+		cachedHotspots.fetchedAt = time.Now()
+	}()
+
+	// Return stale data if available, otherwise nil (first search won't have hotspots)
+	return cachedHotspots.data
 }
 
 // FindReferencesOptions contains options for findReferences.

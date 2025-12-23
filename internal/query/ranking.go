@@ -229,8 +229,19 @@ func BuildGraphFromSCIP(ctx context.Context, adapter *scip.SCIPAdapter, logger *
 	return graph.BuildFromSCIP(ctx, idx, weights)
 }
 
-// RerankWithPPR re-ranks results using PPR only (simpler API).
+// FusionScores contains pre-computed scores for fusion ranking.
+type FusionScores struct {
+	Hotspots map[string]float64 // file path -> hotspot score (0-1 normalized)
+	Recency  map[string]float64 // file path -> recency score (0-1, 1 = most recent)
+}
+
+// RerankWithPPR re-ranks results using PPR and full fusion scoring.
 func RerankWithPPR(ctx context.Context, g *graph.Graph, results []SearchResultItem, topK int) ([]SearchResultItem, error) {
+	return RerankWithFusion(ctx, g, results, topK, nil)
+}
+
+// RerankWithFusion re-ranks results using PPR and all fusion signals.
+func RerankWithFusion(ctx context.Context, g *graph.Graph, results []SearchResultItem, topK int, scores *FusionScores) ([]SearchResultItem, error) {
 	if g == nil || g.NumNodes() == 0 || len(results) == 0 {
 		return results, nil
 	}
@@ -259,7 +270,15 @@ func RerankWithPPR(ctx context.Context, g *graph.Graph, results []SearchResultIt
 		pprScores[r.NodeID] = r.Score
 	}
 
-	// Combine scores: original position + PPR
+	// Fusion weights from plan
+	const (
+		weightFTS     = 0.40
+		weightPPR     = 0.30
+		weightHotspot = 0.15
+		weightRecency = 0.15
+	)
+
+	// Combine scores using fusion
 	type scoredResult struct {
 		result SearchResultItem
 		score  float64
@@ -267,14 +286,33 @@ func RerankWithPPR(ctx context.Context, g *graph.Graph, results []SearchResultIt
 
 	scored := make([]scoredResult, len(results))
 	for i, r := range results {
-		// Original rank bonus (higher rank = higher bonus)
-		positionScore := 1.0 / (float64(i) + 1.0)
+		// FTS score (normalized from position)
+		ftsScore := 1.0 / (float64(i) + 1.0)
 
 		// PPR score
 		pprScore := pprScores[r.StableId]
 
-		// Combined score (weighted)
-		combined := 0.6*positionScore + 0.4*pprScore
+		// Hotspot score (from pre-computed scores)
+		hotspotScore := 0.0
+		if scores != nil && scores.Hotspots != nil {
+			if hs, ok := scores.Hotspots[r.Location.FileId]; ok {
+				hotspotScore = hs
+			}
+		}
+
+		// Recency score (from pre-computed scores)
+		recencyScore := 0.0
+		if scores != nil && scores.Recency != nil {
+			if rs, ok := scores.Recency[r.Location.FileId]; ok {
+				recencyScore = rs
+			}
+		}
+
+		// Fusion formula
+		combined := weightFTS*ftsScore +
+			weightPPR*pprScore +
+			weightHotspot*hotspotScore +
+			weightRecency*recencyScore
 
 		scored[i] = scoredResult{result: r, score: combined}
 	}
