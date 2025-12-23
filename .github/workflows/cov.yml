@@ -85,7 +85,7 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-      - name: Quality gate
+      - name: Coverage quality gate
         if: steps.test.outputs.tests_passed == 'false' || steps.test.outputs.below_threshold == 'true'
         run: |
           if [ "${{ steps.test.outputs.tests_passed }}" == "false" ]; then
