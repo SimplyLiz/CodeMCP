@@ -27,21 +27,18 @@ jobs:
       - name: Run NFR Tests
         id: nfr
         run: |
-          # Run NFR tests with JSON output for parsing
+          # Run NFR tests
           set +e
-          go test -v -json -run TestNFRScenarios ./internal/mcp/... 2>&1 | tee nfr-output.json
+          go test -v -run TestNFRScenarios ./internal/mcp/... 2>&1 | tee nfr-output.txt
           TEST_EXIT=${PIPESTATUS[0]}
           set -e
 
-          # Also run plain output for human reading
-          go test -v -run TestNFRScenarios ./internal/mcp/... 2>&1 | tee nfr-output.txt || true
-
-          # Parse timing from test output
+          # Parse results (remove ^ anchor to count subtests too)
           echo "## 📊 NFR Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          PASS=$(grep -c "^--- PASS" nfr-output.txt || echo "0")
-          FAIL=$(grep -c "^--- FAIL" nfr-output.txt || echo "0")
+          PASS=$(grep -c -- "--- PASS" nfr-output.txt || echo "0")
+          FAIL=$(grep -c -- "--- FAIL" nfr-output.txt || echo "0")
           TOTAL=$((PASS + FAIL))
 
           echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
@@ -186,5 +183,4 @@ jobs:
           name: nfr-results
           path: |
             nfr-output.txt
-            nfr-output.json
             nfr-table.md
