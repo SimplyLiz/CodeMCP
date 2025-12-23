@@ -135,11 +135,17 @@ jobs:
               if warns:
                   indicators.append(f"⚠️ {len(warns)} regressed")
               if goods:
-                  indicators.append(f"📈 {len(goods)} improved")
+                  indicators.append(f"⬆️ {len(goods)} improved")
               indicators.append(f"✅ {len(oks)} passed")
 
-              status = "❌" if fails else "⚠️" if warns else "✅"
-              print(f"## NFR Tests {status} {' · '.join(indicators)}\n")
+              print(f"## NFR Tests {' · '.join(indicators)}\n")
+
+              # Show regressions status
+              if regressions:
+                  reg_val = f"{len(fails)} failed, {len(warns)} regressed" if fails else f"{len(warns)} regressed"
+                  print(f"**Regressions:** {reg_val}\n")
+              else:
+                  print("**Regressions:** none ✓\n")
 
               # Diff block preview (top 3 each)
               preview_bad = sorted([r for r in rows if r["diff_pct"] >= 5], key=lambda r: -r["diff_pct"])[:3]
@@ -213,7 +219,7 @@ jobs:
             });
 
             const botComment = comments.find(c =>
-              c.user.type === 'Bot' && c.body.includes('NFR Budget')
+              c.user.type === 'Bot' && c.body.includes('NFR Tests')
             );
 
             if (botComment) {
