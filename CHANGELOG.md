@@ -60,6 +60,17 @@ See Wiki for full documentation.
 
 ### Added
 
+#### npm Package Improvements
+Better npmjs.com presence and npx reliability:
+
+- **README on npmjs.com** - Package now displays full README on npm registry
+- **LICENSE included** - MIT license file bundled with npm package
+- **Issue tracker link** - "Report a bug" link on npm page
+- **npx sandbox fix** - Node shim auto-detects repo root, fixing #1 support issue
+
+**How the npx fix works:**
+The Node.js shim walks up from `process.cwd()` looking for `.ckb/` or `.git/` and sets `CKB_REPO` automatically. This means `npx @tastehub/ckb` now works from subdirectories and MCP clients that don't guarantee working directory.
+
 #### Incremental Indexing v4 (Production-Grade)
 Fast, reliable incremental indexing for large codebases:
 
