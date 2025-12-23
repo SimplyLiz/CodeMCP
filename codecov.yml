@@ -11,4 +11,6 @@ coverage:
 comment:
   layout: "header, diff, files"
   behavior: default
-  require_changes: true
+  require_changes: false
+  require_base: false
+  require_head: true
