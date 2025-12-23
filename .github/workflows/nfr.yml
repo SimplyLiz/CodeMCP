@@ -38,8 +38,8 @@ jobs:
           set -e
 
           # Parse results - count all PASS/FAIL lines including subtests
-          PASS=$(grep -c "--- PASS" nfr-output.txt) || PASS=0
-          FAIL=$(grep -c "--- FAIL" nfr-output.txt) || FAIL=0
+          PASS=$(grep -c -- "--- PASS" nfr-output.txt) || PASS=0
+          FAIL=$(grep -c -- "--- FAIL" nfr-output.txt) || FAIL=0
           TOTAL=$((PASS + FAIL))
 
           # Job summary
