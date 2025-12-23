@@ -189,6 +189,22 @@ jobs:
         run: |
           ./ckb ownership drift --threshold=0.3 --limit=5 --format=json > drift.json 2>/dev/null || echo '[]' > drift.json
 
+      - name: Languages
+        run: |
+          ./ckb meta languages --format=json > languages.json 2>/dev/null || echo '{"languages":[],"overallQuality":1}' > languages.json
+
+      - name: Eval
+        run: |
+          if [ -d ".ckb/fixtures" ]; then
+            ./ckb eval --fixtures=.ckb/fixtures --format=json > eval.json 2>/dev/null || echo '{"passed":0,"total":0,"results":[]}' > eval.json
+          else
+            echo '{"passed":0,"total":0,"results":[],"skipped":true}' > eval.json
+          fi
+
+      - name: Blast Radius
+        run: |
+          ./ckb blast-radius --format=json > blast.json 2>/dev/null || echo '{"affectedSymbols":[],"affectedTests":[]}' > blast.json
+
       # ───────────────────────────────────────────────────────────────────────
       # Report
       # ───────────────────────────────────────────────────────────────────────
@@ -213,6 +229,9 @@ jobs:
             const docsCov = read('docs-coverage.json', { coverage: 0 });
             const docsStale = read('docs-stale.json', { totalStale: 0 });
             const drift = read('drift.json', []);
+            const languages = read('languages.json', { languages: [], overallQuality: 1 });
+            const evalResults = read('eval.json', { passed: 0, total: 0, results: [], skipped: true });
+            const blast = read('blast.json', { affectedSymbols: [], affectedTests: [] });
             
             const s = pr.summary || {};
             const risk = pr.riskAssessment || {};
@@ -220,6 +239,9 @@ jobs:
             const modules = pr.modulesAffected || [];
             const hotspots = (pr.changedFiles || []).filter(f => f.isHotspot);
             const breakingChanges = contracts.breaking || [];
+            const blastSymbols = blast.affectedSymbols || [];
+            const blastTests = blast.affectedTests || [];
+            const lowQualityLangs = (languages.languages || []).filter(l => (l.quality || 1) < 0.7);
             
             // Computed
             const complexViolations = complexity.filter(c => 
@@ -294,9 +316,11 @@ jobs:
             if (complexViolations.length) issues.push(`📊 **${complexViolations.length}** complex`);
             if (coupling.missingCoupled?.length) issues.push(`🔗 **${coupling.missingCoupled.length}** coupled`);
             if (breakingChanges.length) issues.push(`💥 **${breakingChanges.length}** breaking`);
+            if (blastSymbols.length + blastTests.length) issues.push(`💣 **${blastSymbols.length + blastTests.length}** blast`);
             if (contracts.files?.length) issues.push(`📜 **${contracts.files.length}** contracts`);
             if (docsStale.totalStale) issues.push(`📚 **${docsStale.totalStale}** stale`);
             if (deadcode.candidates?.length) issues.push(`💀 **${deadcode.candidates.length}** dead`);
+            if (lowQualityLangs.length) issues.push(`🌐 **${lowQualityLangs.length}** lang`);
             
             if (issues.length > 0) {
               c.push(`> ⚠️ ${issues.join(' · ')}`);
@@ -491,6 +515,67 @@ jobs:
                 });
               });
               c.push('');
+              c.push('</details>');
+              c.push('');
+            }
+            
+            // Blast Radius
+            if (blastSymbols.length > 0 || blastTests.length > 0) {
+              c.push('<details>');
+              c.push(`<summary>💣 Blast radius · ${blastSymbols.length} symbols · ${blastTests.length} tests</summary>`);
+              c.push('');
+              if (blastSymbols.length > 0) {
+                c.push('**Affected symbols:**');
+                blastSymbols.slice(0, 5).forEach(sym => c.push(`- \`${sym.name || sym}\``));
+                c.push('');
+              }
+              if (blastTests.length > 0) {
+                c.push('**Tests that may need updates:**');
+                blastTests.slice(0, 5).forEach(t => c.push(`- \`${t.name || t}\``));
+                c.push('');
+              }
+              c.push('</details>');
+              c.push('');
+            }
+            
+            // Language Quality
+            if (lowQualityLangs.length > 0) {
+              c.push('<details>');
+              c.push(`<summary>🌐 Language quality · ${lowQualityLangs.length} issues</summary>`);
+              c.push('');
+              c.push('| Language | Quality | Issues |');
+              c.push('|:---------|--------:|:-------|');
+              lowQualityLangs.slice(0, 5).forEach(l => {
+                const quality = Math.round((l.quality || 0) * 100);
+                const issues = (l.issues || []).join(', ') || '—';
+                c.push(`| ${l.name} | ${quality}% | ${issues} |`);
+              });
+              c.push('');
+              c.push('</details>');
+              c.push('');
+            }
+            
+            // Eval Suite
+            if (!evalResults.skipped && evalResults.total > 0) {
+              const evalPassed = evalResults.passed || 0;
+              const evalTotal = evalResults.total || 0;
+              const evalPct = Math.round((evalPassed / evalTotal) * 100);
+              const evalIcon = evalPct >= 90 ? '✅' : '⚠️';
+              c.push('<details>');
+              c.push(`<summary>🧪 Eval suite · ${evalIcon} ${evalPassed}/${evalTotal} passed (${evalPct}%)</summary>`);
+              c.push('');
+              c.push('| Passed | Total | Rate |');
+              c.push('|:------:|:-----:|:----:|');
+              c.push(`| ${evalPassed} | ${evalTotal} | ${evalPct}% |`);
+              c.push('');
+              const failed = (evalResults.results || []).filter(r => !r.passed);
+              if (failed.length > 0) {
+                c.push('**Failed tests:**');
+                failed.slice(0, 3).forEach(r => {
+                  c.push(`- \`${r.id || r.name}\`: ${r.reason || 'failed'}`);
+                });
+                c.push('');
+              }
               c.push('</details>');
               c.push('');
             }
