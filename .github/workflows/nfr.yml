@@ -69,7 +69,7 @@ jobs:
           cat > parse_nfr.py << 'EOF'
           import re
 
-          results = []
+          rows = []
 
           with open("nfr-output.txt", "r") as f:
               content = f.read()
@@ -94,13 +94,36 @@ jobs:
                   status = "⚪"
                   trend = f"~{diff_pct:+.1f}%"
 
-              results.append(f"| {tool} | {tier} | {actual:,} | {baseline:,} | {trend} | {timing} | {status} |")
+              rows.append({
+                  "tool": tool, "tier": tier, "actual": actual,
+                  "diff_pct": diff_pct, "trend": trend, "timing": timing, "status": status
+              })
 
-          if results:
-              print("| Tool | Tier | Actual | Baseline | Change | Timing | Status |")
-              print("|------|------|-------:|----------:|-------:|-------:|:------:|")
-              for r in results:
-                  print(r)
+          if rows:
+              # Sort: regressions first (highest diff), then improvements
+              rows.sort(key=lambda r: -r["diff_pct"])
+
+              # Count stats
+              failures = sum(1 for r in rows if r["status"] == "🔴")
+              warnings = sum(1 for r in rows if r["status"] == "🟡")
+              worst = max(rows, key=lambda r: r["diff_pct"])
+
+              # Summary
+              if failures > 0:
+                  print(f"**{failures} regression(s) exceed 10% threshold**\n")
+              elif warnings > 0:
+                  print(f"**{warnings} warning(s)** — no failures\n")
+              else:
+                  print("All scenarios within budget ✓\n")
+
+              # Table sorted by regression severity
+              print("| Tool | Tier | Actual (B) | Δ | Time | Status |")
+              print("|------|------|-----------:|--:|-----:|:------:|")
+              for r in rows:
+                  print(f"| {r['tool']} | {r['tier']} | {r['actual']:,} | {r['trend']} | {r['timing']} | {r['status']} |")
+
+              # Legend
+              print("\n`🟢 ≤-5%` `⚪ ±5%` `🟡 ≥+5%` `🔴 ≥+10%`")
           else:
               print("No token metrics found in output")
           EOF
