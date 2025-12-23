@@ -195,11 +195,11 @@ func isFunctionSymbol(symbol string) bool {
 
 // SymbolGraphStats returns statistics about the graph.
 type SymbolGraphStats struct {
-	TotalNodes   int `json:"totalNodes"`
-	TotalEdges   int `json:"totalEdges"`
-	CallEdges    int `json:"callEdges"`
-	RefEdges     int `json:"refEdges"`
-	ModuleEdges  int `json:"moduleEdges"`
+	TotalNodes   int     `json:"totalNodes"`
+	TotalEdges   int     `json:"totalEdges"`
+	CallEdges    int     `json:"callEdges"`
+	RefEdges     int     `json:"refEdges"`
+	ModuleEdges  int     `json:"moduleEdges"`
 	AvgOutDegree float64 `json:"avgOutDegree"`
 }
 

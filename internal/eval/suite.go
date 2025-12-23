@@ -63,8 +63,8 @@ type SuiteResult struct {
 	TotalTests  int     `json:"totalTests"`
 	PassedTests int     `json:"passedTests"`
 	FailedTests int     `json:"failedTests"`
-	RecallAtK   float64 `json:"recallAtK"`   // % of tests where expected was in top-K
-	MRR         float64 `json:"mrr"`         // Mean Reciprocal Rank
+	RecallAtK   float64 `json:"recallAtK"` // % of tests where expected was in top-K
+	MRR         float64 `json:"mrr"`       // Mean Reciprocal Rank
 	AvgLatency  float64 `json:"avgLatencyMs"`
 
 	// Breakdown by type
@@ -358,11 +358,7 @@ func matchSymbol(sym query.SearchResultItem, pattern string) bool {
 	// Case-insensitive StableId contains match
 	// This handles Go naming (e.g., "orchestrator" field vs "Orchestrator" type)
 	stableIdLower := strings.ToLower(sym.StableId)
-	if strings.Contains(stableIdLower, patternLower) {
-		return true
-	}
-
-	return false
+	return strings.Contains(stableIdLower, patternLower)
 }
 
 // FormatReport generates a human-readable report.
