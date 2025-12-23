@@ -9,17 +9,54 @@ import (
 
 	"ckb/internal/config"
 	"ckb/internal/logging"
+	"ckb/internal/mcp/testdata"
 	"ckb/internal/query"
 	"ckb/internal/storage"
 	"ckb/internal/version"
 )
 
-// Wide-result token budgets for CI regression detection.
-// These are per-response limits to catch token bloat.
-// Note: summarizePr is excluded - it requires git branch context that may not exist in tests.
+// NFR Token Baselines (bytes) - CI gates.
+// These define maximum response sizes per tool per tier.
+// 10% tolerance applied in tests. Latency tracked in benchmarks only.
+//
+// Baselines are derived from synthetic fixtures (deterministic).
+// Update these when fixture generators change.
+var nfrTokenBaselines = map[string]map[string]int{
+	"searchSymbols": {
+		"small":  3600,   // 20 symbols
+		"medium": 18000,  // 100 symbols
+		"large":  91000,  // 500 symbols
+	},
+	"findReferences": {
+		"small":  4500,   // 50 refs
+		"medium": 45000,  // 500 refs
+		"large":  450000, // 5000 refs
+	},
+	"getCallGraph": {
+		"shallow": 900,   // depth=2, branching=3
+		"deep":    16000, // depth=4, branching=5
+	},
+	"getHotspots": {
+		"small": 900,   // 10 hotspots
+		"large": 17000, // 200 hotspots
+	},
+	"analyzeImpact": {
+		"small": 2000,  // 10 impact nodes
+		"large": 18000, // 100 impact nodes
+	},
+	"getArchitecture": {
+		"small": 1500,  // 5 modules
+		"large": 8000,  // 30 modules
+	},
+	"traceUsage": {
+		"small": 800,  // 5 paths
+		"large": 7800, // 50 paths
+	},
+}
+
+// Wide-result token budgets for integration tests (legacy).
+// These are per-response limits used when testing with real SCIP index.
 const (
-	// Wide-result tool output budgets (bytes)
-	// These should decrease with frontierMode implementation
 	maxCallGraphBytes      = 15000 // ~3750 tokens
 	maxFindReferencesBytes = 12000 // ~3000 tokens
 	maxAnalyzeImpactBytes  = 16000 // ~4000 tokens
@@ -40,6 +77,84 @@ func measureToolResponse(toolName string, response interface{}) testResponseMetr
 		ToolName:        toolName,
 		JSONBytes:       len(data),
 		EstimatedTokens: len(data) / 4,
+	}
+}
+
+// TestNFRScenarios validates token budgets using synthetic fixtures.
+// These tests are deterministic and always run (no SCIP index required).
+func TestNFRScenarios(t *testing.T) {
+	const tolerance = 1.10 // 10% tolerance
+
+	scenarios := []struct {
+		name     string
+		tool     string
+		tier     string
+		fixtures *testdata.FixtureSet
+		genJSON  func(*testdata.FixtureSet) string
+	}{
+		// searchSymbols scenarios
+		{"searchSymbols_small", "searchSymbols", "small", testdata.SmallFixtures(), (*testdata.FixtureSet).ToSearchSymbolsJSON},
+		{"searchSymbols_medium", "searchSymbols", "medium", testdata.MediumFixtures(), (*testdata.FixtureSet).ToSearchSymbolsJSON},
+		{"searchSymbols_large", "searchSymbols", "large", testdata.LargeFixtures(), (*testdata.FixtureSet).ToSearchSymbolsJSON},
+
+		// findReferences scenarios
+		{"findReferences_small", "findReferences", "small", testdata.SmallFixtures(), (*testdata.FixtureSet).ToFindReferencesJSON},
+		{"findReferences_medium", "findReferences", "medium", testdata.MediumFixtures(), (*testdata.FixtureSet).ToFindReferencesJSON},
+		{"findReferences_large", "findReferences", "large", testdata.LargeFixtures(), (*testdata.FixtureSet).ToFindReferencesJSON},
+
+		// getCallGraph scenarios
+		{"getCallGraph_shallow", "getCallGraph", "shallow", testdata.SmallFixtures(), (*testdata.FixtureSet).ToGetCallGraphJSON},
+		{"getCallGraph_deep", "getCallGraph", "deep", testdata.LargeFixtures(), (*testdata.FixtureSet).ToGetCallGraphJSON},
+
+		// getHotspots scenarios
+		{"getHotspots_small", "getHotspots", "small", testdata.SmallFixtures(), (*testdata.FixtureSet).ToGetHotspotsJSON},
+		{"getHotspots_large", "getHotspots", "large", testdata.LargeFixtures(), (*testdata.FixtureSet).ToGetHotspotsJSON},
+
+		// analyzeImpact scenarios
+		{"analyzeImpact_small", "analyzeImpact", "small", testdata.SmallFixtures(), (*testdata.FixtureSet).ToAnalyzeImpactJSON},
+		{"analyzeImpact_large", "analyzeImpact", "large", testdata.LargeFixtures(), (*testdata.FixtureSet).ToAnalyzeImpactJSON},
+
+		// getArchitecture scenarios
+		{"getArchitecture_small", "getArchitecture", "small", testdata.SmallFixtures(), (*testdata.FixtureSet).ToGetArchitectureJSON},
+		{"getArchitecture_large", "getArchitecture", "large", testdata.LargeFixtures(), (*testdata.FixtureSet).ToGetArchitectureJSON},
+
+		// traceUsage scenarios
+		{"traceUsage_small", "traceUsage", "small", testdata.SmallFixtures(), (*testdata.FixtureSet).ToTraceUsageJSON},
+		{"traceUsage_large", "traceUsage", "large", testdata.LargeFixtures(), (*testdata.FixtureSet).ToTraceUsageJSON},
+	}
+
+	for _, sc := range scenarios {
+		t.Run(sc.name, func(t *testing.T) {
+			// Generate fixture JSON
+			responseJSON := sc.genJSON(sc.fixtures)
+			actualBytes := len(responseJSON)
+
+			// Get baseline
+			baselines, ok := nfrTokenBaselines[sc.tool]
+			if !ok {
+				t.Fatalf("No baselines defined for tool: %s", sc.tool)
+			}
+			baseline, ok := baselines[sc.tier]
+			if !ok {
+				t.Fatalf("No baseline defined for tier: %s/%s", sc.tool, sc.tier)
+			}
+
+			// Check against baseline with tolerance
+			maxAllowed := int(float64(baseline) * tolerance)
+			t.Logf("%s: %d bytes (baseline: %d, max: %d)", sc.name, actualBytes, baseline, maxAllowed)
+
+			if actualBytes > maxAllowed {
+				t.Errorf("REGRESSION: %s exceeds baseline by >10%%: %d bytes (max: %d)",
+					sc.name, actualBytes, maxAllowed)
+			}
+
+			// Also check if we're significantly under (potential baseline update)
+			minExpected := int(float64(baseline) * 0.5)
+			if actualBytes < minExpected {
+				t.Logf("NOTE: %s is significantly under baseline (%d < %d*0.5=%d), consider updating baseline",
+					sc.name, actualBytes, baseline, minExpected)
+			}
+		})
 	}
 }
 
@@ -114,9 +229,10 @@ func newTestMCPServerWithIndex(t testing.TB) *MCPServer {
 	return NewMCPServer(version.Version, engine, logger)
 }
 
-// TestWideResultTokenBudgets validates that wide-result tools stay within token budgets.
-// These tests require a SCIP index and are skipped if not available.
-func TestWideResultTokenBudgets(t *testing.T) {
+// TestWideResultTokenBudgetsIntegration validates wide-result tools with real SCIP index.
+// These are integration tests - skipped if no SCIP index available.
+// For deterministic CI tests, see TestNFRScenarios.
+func TestWideResultTokenBudgetsIntegration(t *testing.T) {
 	server := newTestMCPServerWithIndex(t)
 	if server == nil {
 		t.Skip("Skipping: no SCIP index available (run 'ckb index' first)")
