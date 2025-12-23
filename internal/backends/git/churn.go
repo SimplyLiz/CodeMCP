@@ -103,6 +103,7 @@ func (g *GitAdapter) GetFileChurn(filePath string, since string) (*ChurnMetrics,
 // GetHotspots returns the top files with highest churn
 // limit: maximum number of files to return
 // since: optional date/commit to start analysis from
+// Optimized: uses single git log command instead of O(n) commands per file
 func (g *GitAdapter) GetHotspots(limit int, since string) ([]ChurnMetrics, error) {
 	if limit <= 0 {
 		limit = 10 // Default to top 10
@@ -113,31 +114,110 @@ func (g *GitAdapter) GetHotspots(limit int, since string) ([]ChurnMetrics, error
 		"since": since,
 	})
 
-	// Get list of all files that changed since the given time
-	files, err := g.getChangedFiles(since)
+	// Use single git log command to get all data at once
+	// Format: commit hash, author, timestamp, then numstat for files
+	args := []string{"log", "--format=%H|%an|%aI", "--numstat"}
+	if since != "" {
+		args = append(args, fmt.Sprintf("--since=%s", since))
+	}
+	args = append(args, "HEAD")
+
+	lines, err := g.executeGitCommandLines(args...)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(files) == 0 {
+	if len(lines) == 0 {
 		return []ChurnMetrics{}, nil
 	}
 
-	// Calculate churn metrics for each file
-	metrics := make([]ChurnMetrics, 0, len(files))
-	for _, file := range files {
-		churn, err := g.GetFileChurn(file, since)
-		if err != nil {
-			g.logger.Warn("Failed to get churn for file", map[string]interface{}{
-				"file":  file,
-				"error": err.Error(),
-			})
+	// Parse git log output and aggregate per-file metrics
+	type fileStats struct {
+		changeCount  int
+		authors      map[string]bool
+		lastModified string
+		totalAdded   int
+		totalDeleted int
+	}
+	fileMetrics := make(map[string]*fileStats)
+
+	var currentCommitTime string
+	var currentAuthor string
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
 			continue
 		}
 
-		if churn.ChangeCount > 0 {
-			metrics = append(metrics, *churn)
+		// Check if this is a commit line (format: hash|author|timestamp)
+		if strings.Contains(line, "|") {
+			parts := strings.Split(line, "|")
+			if len(parts) >= 3 {
+				currentAuthor = parts[1]
+				currentCommitTime = parts[2]
+				continue
+			}
 		}
+
+		// This is a numstat line: "added<tab>deleted<tab>filename"
+		parts := strings.Fields(line)
+		if len(parts) < 3 {
+			continue
+		}
+
+		// Skip binary files (marked with "-")
+		added, err1 := strconv.Atoi(parts[0])
+		deleted, err2 := strconv.Atoi(parts[1])
+		if err1 != nil || err2 != nil {
+			continue
+		}
+
+		filePath := strings.Join(parts[2:], " ") // Handle filenames with spaces
+
+		// Initialize or update file stats
+		stats, exists := fileMetrics[filePath]
+		if !exists {
+			stats = &fileStats{
+				authors:      make(map[string]bool),
+				lastModified: currentCommitTime,
+			}
+			fileMetrics[filePath] = stats
+		}
+
+		stats.changeCount++
+		stats.authors[currentAuthor] = true
+		stats.totalAdded += added
+		stats.totalDeleted += deleted
+		// First commit seen is the most recent (git log is newest first)
+		if stats.lastModified == "" {
+			stats.lastModified = currentCommitTime
+		}
+	}
+
+	// Convert to ChurnMetrics slice
+	metrics := make([]ChurnMetrics, 0, len(fileMetrics))
+	for filePath, stats := range fileMetrics {
+		if stats.changeCount == 0 {
+			continue
+		}
+
+		avgChanges := float64(stats.totalAdded+stats.totalDeleted) / float64(stats.changeCount)
+		authorCount := len(stats.authors)
+
+		// Calculate hotspot score
+		hotspotScore := math.Sqrt(float64(stats.changeCount)) *
+			math.Log(float64(authorCount)+1) *
+			math.Log(avgChanges+1)
+
+		metrics = append(metrics, ChurnMetrics{
+			FilePath:       filePath,
+			ChangeCount:    stats.changeCount,
+			AuthorCount:    authorCount,
+			LastModified:   stats.lastModified,
+			AverageChanges: avgChanges,
+			HotspotScore:   hotspotScore,
+		})
 	}
 
 	// Sort by hotspot score (descending)
