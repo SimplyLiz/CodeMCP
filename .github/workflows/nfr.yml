@@ -78,52 +78,74 @@ jobs:
           pattern = r'(\w+)_(\w+): (\d+) bytes \(baseline: (\d+), max: (\d+)\) \[([^\]]+)\]'
           for match in re.finditer(pattern, content):
               tool, tier, actual, baseline, max_allowed, timing = match.groups()
-              actual, baseline = int(actual), int(baseline)
+              actual, baseline, max_allowed = int(actual), int(baseline), int(max_allowed)
               diff_pct = ((actual - baseline) / baseline) * 100
+              budget_pct = (actual / max_allowed) * 100 if max_allowed > 0 else 0
 
-              if diff_pct <= -5:
-                  status = "🟢"
-                  trend = f"↓{abs(diff_pct):.1f}%"
-              elif diff_pct >= 10:
-                  status = "🔴"
-                  trend = f"↑{diff_pct:.1f}%"
+              if diff_pct >= 10:
+                  status = "FAIL"
+                  trend = f"▲ +{diff_pct:.1f}%"
               elif diff_pct >= 5:
-                  status = "🟡"
-                  trend = f"↑{diff_pct:.1f}%"
+                  status = "WARN"
+                  trend = f"▲ +{diff_pct:.1f}%"
+              elif diff_pct <= -5:
+                  status = "OK"
+                  trend = f"▼ {diff_pct:.1f}%"
               else:
-                  status = "⚪"
-                  trend = f"~{diff_pct:+.1f}%"
+                  status = "OK"
+                  trend = f"{diff_pct:+.1f}%"
 
               rows.append({
                   "tool": tool, "tier": tier, "actual": actual,
-                  "diff_pct": diff_pct, "trend": trend, "timing": timing, "status": status
+                  "baseline": baseline, "max": max_allowed,
+                  "diff_pct": diff_pct, "budget_pct": budget_pct,
+                  "trend": trend, "timing": timing, "status": status
               })
 
           if rows:
-              # Sort: regressions first (highest diff), then improvements
+              # Sort by regression severity
               rows.sort(key=lambda r: -r["diff_pct"])
 
-              # Count stats
-              failures = sum(1 for r in rows if r["status"] == "🔴")
-              warnings = sum(1 for r in rows if r["status"] == "🟡")
-              worst = max(rows, key=lambda r: r["diff_pct"])
+              # Stats
+              fails = [r for r in rows if r["status"] == "FAIL"]
+              warns = [r for r in rows if r["status"] == "WARN"]
+              total = len(rows)
+              passed = total - len(fails)
+              worst = rows[0]
 
-              # Summary
-              if failures > 0:
-                  print(f"**{failures} regression(s) exceed 10% threshold**\n")
-              elif warnings > 0:
-                  print(f"**{warnings} warning(s)** — no failures\n")
+              # Headline
+              if fails:
+                  print(f"## NFR Budget ❌ {len(fails)} failed\n")
               else:
-                  print("All scenarios within budget ✓\n")
+                  print(f"## NFR Budget ✅ {passed} passed\n")
 
-              # Table sorted by regression severity
-              print("| Tool | Tier | Actual (B) | Δ | Time | Status |")
-              print("|------|------|-----------:|--:|-----:|:------:|")
+              # Worst regression line
+              print(f"**Worst:** `{worst['tool']}/{worst['tier']}` {worst['trend']} ({worst['actual']:,}B) • **Budget:** {worst['budget_pct']:.0f}% of max  ")
+              print("**Thresholds:** WARN ≥ +5% • FAIL ≥ +10%\n")
+
+              # Summary counts
+              print("| Failures | Warnings | Scenarios |")
+              print("|---:|---:|---:|")
+              print(f"| {len(fails)} | {len(warns)} | {total} |\n")
+
+              # Needs attention (only FAIL/WARN rows)
+              attention = fails + warns
+              if attention:
+                  print("### Needs attention")
+                  print("| Scenario | Actual (B) | Δ vs base | Budget | Time |")
+                  print("|---|---:|---:|---:|---:|")
+                  for r in attention[:5]:
+                      label = f"**{r['status']}**" if r["status"] == "FAIL" else r["status"]
+                      print(f"| {r['tool']} / {r['tier']} | {r['actual']:,} | {r['trend']} {label} | {r['budget_pct']:.0f}% | {r['timing']} |")
+                  print()
+
+              # Full breakdown in details
+              print("<details><summary>All scenarios</summary>\n")
+              print("| Scenario | Actual (B) | Baseline (B) | Max (B) | Δ | Budget | Time |")
+              print("|---|---:|---:|---:|---:|---:|---:|")
               for r in rows:
-                  print(f"| {r['tool']} | {r['tier']} | {r['actual']:,} | {r['trend']} | {r['timing']} | {r['status']} |")
-
-              # Legend
-              print("\n`🟢 ≤-5%` `⚪ ±5%` `🟡 ≥+5%` `🔴 ≥+10%`")
+                  print(f"| {r['tool']} / {r['tier']} | {r['actual']:,} | {r['baseline']:,} | {r['max']:,} | {r['trend']} | {r['budget_pct']:.0f}% | {r['timing']} |")
+              print("\n</details>")
           else:
               print("No token metrics found in output")
           EOF
@@ -141,20 +163,10 @@ jobs:
           script: |
             const fs = require('fs');
 
-            const pass = '${{ steps.nfr.outputs.pass }}';
-            const fail = '${{ steps.nfr.outputs.fail }}';
-            const exitCode = '${{ steps.nfr.outputs.exit_code }}';
-
-            let metricsTable = 'No detailed metrics available';
+            let body = 'No NFR metrics available';
             try {
-              metricsTable = fs.readFileSync('nfr-table.md', 'utf8');
+              body = fs.readFileSync('nfr-table.md', 'utf8');
             } catch (e) {}
-
-            const passed = exitCode === '0';
-            const status = passed ? pass + ' passed' : fail + ' failed, ' + pass + ' passed';
-            const emoji = passed ? '✅' : '❌';
-
-            const body = '## NFR Test Results ' + emoji + ' ' + status + '\n\n' + metricsTable;
 
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
@@ -163,7 +175,7 @@ jobs:
             });
 
             const botComment = comments.find(c =>
-              c.user.type === 'Bot' && c.body.includes('NFR Test Results')
+              c.user.type === 'Bot' && c.body.includes('NFR Budget')
             );
 
             if (botComment) {
