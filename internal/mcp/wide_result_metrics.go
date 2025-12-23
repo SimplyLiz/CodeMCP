@@ -3,6 +3,8 @@ package mcp
 import (
 	"sync"
 	"time"
+
+	"ckb/internal/storage"
 )
 
 // WideResultMetrics captures data about wide-result tool responses
@@ -27,6 +29,7 @@ func (m WideResultMetrics) TruncationRate() float64 {
 type WideResultAggregator struct {
 	mu      sync.Mutex
 	metrics map[string]*ToolMetricsSummary
+	db      *storage.DB // optional SQLite persistence
 }
 
 // ToolMetricsSummary holds aggregated stats for a single tool
@@ -70,11 +73,20 @@ var globalWideResultAggregator = &WideResultAggregator{
 	metrics: make(map[string]*ToolMetricsSummary),
 }
 
+// SetMetricsDB sets the database for persistent storage
+// Call this during MCP server initialization
+func SetMetricsDB(db *storage.DB) {
+	globalWideResultAggregator.mu.Lock()
+	defer globalWideResultAggregator.mu.Unlock()
+	globalWideResultAggregator.db = db
+}
+
 // RecordWideResult records metrics for a wide-result tool invocation
 func RecordWideResult(m WideResultMetrics) {
 	globalWideResultAggregator.mu.Lock()
 	defer globalWideResultAggregator.mu.Unlock()
 
+	// In-memory aggregation
 	summary, ok := globalWideResultAggregator.metrics[m.ToolName]
 	if !ok {
 		summary = &ToolMetricsSummary{ToolName: m.ToolName}
@@ -87,6 +99,20 @@ func RecordWideResult(m WideResultMetrics) {
 	summary.TotalTruncated += int64(m.TruncatedCount)
 	summary.TotalTokens += int64(m.EstimatedTokens)
 	summary.TotalMs += m.ExecutionMs
+
+	// SQLite persistence (non-blocking, errors are logged but not returned)
+	if globalWideResultAggregator.db != nil {
+		go func() {
+			_ = globalWideResultAggregator.db.RecordWideResult(
+				m.ToolName,
+				m.TotalResults,
+				m.ReturnedResults,
+				m.TruncatedCount,
+				m.EstimatedTokens,
+				m.ExecutionMs,
+			)
+		}()
+	}
 }
 
 // GetWideResultSummary returns a copy of all aggregated metrics

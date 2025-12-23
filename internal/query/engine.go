@@ -436,6 +436,11 @@ func (e *Engine) wrapError(err error, code errors.ErrorCode) *errors.CkbError {
 	return errors.NewCkbError(code, err.Error(), nil, nil, nil)
 }
 
+// DB returns the underlying database connection.
+func (e *Engine) DB() *storage.DB {
+	return e.db
+}
+
 // Close shuts down the query engine.
 func (e *Engine) Close() error {
 	var lastErr error

@@ -15,7 +15,8 @@ import (
 // v7: Incremental Callgraph (callgraph table for call edge storage)
 // v8: Transitive Invalidation (file_deps, rescan_queue for dependency tracking)
 // v9: FTS5 Symbol Search (symbols_fts_content, symbols_fts)
-const currentSchemaVersion = 9
+// v10: Wide-Result Metrics (wide_result_metrics for MCP tool telemetry)
+const currentSchemaVersion = 10
 
 // initializeSchema creates all tables for a new database
 func (db *DB) initializeSchema() error {
@@ -94,6 +95,11 @@ func (db *DB) initializeSchema() error {
 
 		// Create v9 FTS5 Symbol Search tables
 		if err := createSymbolFTSTables(tx); err != nil {
+			return err
+		}
+
+		// Create v10 Wide-Result Metrics table
+		if err := createWideResultMetricsTable(tx); err != nil {
 			return err
 		}
 
@@ -176,6 +182,12 @@ func (db *DB) runMigrations() error {
 	if version < 9 {
 		if err := db.migrateToV9(); err != nil {
 			return fmt.Errorf("failed to migrate to v9: %w", err)
+		}
+	}
+
+	if version < 10 {
+		if err := db.migrateToV10(); err != nil {
+			return fmt.Errorf("failed to migrate to v10: %w", err)
 		}
 	}
 
@@ -1378,6 +1390,64 @@ func createSymbolFTSTables(tx *sql.Tx) error {
 	for _, trigger := range triggers {
 		if _, err := tx.Exec(trigger); err != nil {
 			return fmt.Errorf("failed to create symbols_fts trigger: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// ============================================================================
+// v10 Schema: Wide-Result Metrics
+// ============================================================================
+
+// migrateToV10 migrates the database from v9 to v10 (Wide-Result Metrics)
+func (db *DB) migrateToV10() error {
+	return db.WithTx(func(tx *sql.Tx) error {
+		db.logger.Info("Migrating database to v10 (Wide-Result Metrics)", nil)
+
+		// Create wide_result_metrics table
+		if err := createWideResultMetricsTable(tx); err != nil {
+			return err
+		}
+
+		// Update schema version
+		if err := setSchemaVersion(tx, 10); err != nil {
+			return err
+		}
+
+		db.logger.Info("Database migrated to v10", nil)
+		return nil
+	})
+}
+
+// createWideResultMetricsTable creates the table for MCP tool telemetry
+// Records per-invocation metrics for wide-result tools to track truncation rates
+func createWideResultMetricsTable(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+		CREATE TABLE IF NOT EXISTS wide_result_metrics (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			tool_name TEXT NOT NULL,
+			total_results INTEGER NOT NULL,
+			returned_results INTEGER NOT NULL,
+			truncated_count INTEGER NOT NULL,
+			estimated_tokens INTEGER NOT NULL DEFAULT 0,
+			execution_ms INTEGER NOT NULL DEFAULT 0,
+			recorded_at TEXT NOT NULL
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create wide_result_metrics table: %w", err)
+	}
+
+	// Create indexes for efficient queries
+	indexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_wide_result_tool ON wide_result_metrics(tool_name)",
+		"CREATE INDEX IF NOT EXISTS idx_wide_result_recorded ON wide_result_metrics(recorded_at)",
+	}
+
+	for _, idx := range indexes {
+		if _, err := tx.Exec(idx); err != nil {
+			return fmt.Errorf("failed to create wide_result_metrics index: %w", err)
 		}
 	}
 
