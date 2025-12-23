@@ -50,8 +50,24 @@ jobs:
             echo "below_threshold=false" >> $GITHUB_OUTPUT
           fi
 
-          # Job summary
-          echo "## 📊 Test Coverage: ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY
+          # Check test result
+          if [ "$TEST_EXIT" -eq 0 ]; then
+            echo "tests_passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "tests_passed=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Job summary - headline first
+          TEST_ICON=$( [ "$TEST_EXIT" -eq 0 ] && echo "✅" || echo "❌" )
+          GATE_ICON=$( (( $(echo "$COVERAGE >= $THRESHOLD" | bc -l) )) && echo "✅" || echo "❌" )
+
+          echo "### ${TEST_ICON} Tests | ${COVERAGE}% Coverage | ${GATE_ICON} Gate (≥${THRESHOLD}%)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Tests | ${TEST_ICON} $( [ "$TEST_EXIT" -eq 0 ] && echo "Passed" || echo "Failed" ) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Coverage | **${COVERAGE}%** |" >> $GITHUB_STEP_SUMMARY
+          echo "| Gate | ${GATE_ICON} ≥${THRESHOLD}% |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "<details>" >> $GITHUB_STEP_SUMMARY
           echo "<summary>Coverage by package</summary>" >> $GITHUB_STEP_SUMMARY
@@ -69,10 +85,15 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-      - name: Coverage quality gate
-        if: steps.test.outputs.below_threshold == 'true'
+      - name: Quality gate
+        if: steps.test.outputs.tests_passed == 'false' || steps.test.outputs.below_threshold == 'true'
         run: |
-          echo "::error::Coverage ${{ steps.test.outputs.coverage }}% is below threshold ${{ steps.test.outputs.threshold }}%"
+          if [ "${{ steps.test.outputs.tests_passed }}" == "false" ]; then
+            echo "::error::Tests failed"
+          fi
+          if [ "${{ steps.test.outputs.below_threshold }}" == "true" ]; then
+            echo "::error::Coverage ${{ steps.test.outputs.coverage }}% is below threshold ${{ steps.test.outputs.threshold }}%"
+          fi
           exit 1
 
       - name: Upload coverage
