@@ -1,0 +1,55 @@
+name: Build Matrix
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }}/${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            arch: arm64
+          - os: darwin
+            arch: amd64
+          - os: darwin
+            arch: arm64
+          - os: windows
+            arch: amd64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          ext=""
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            ext=".exe"
+          fi
+          go build -ldflags="-s -w" -o ckb-${{ matrix.os }}-${{ matrix.arch }}${ext} ./cmd/ckb
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ckb-${{ matrix.os }}-${{ matrix.arch }}
+          path: ckb-${{ matrix.os }}-${{ matrix.arch }}*
+          retention-days: 30
