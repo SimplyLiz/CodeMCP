@@ -190,7 +190,7 @@ Now Claude can answer questions like:
 - **CI Enforcement** — `--fail-under` flag for documentation coverage thresholds
 
 ### Standardized Response Envelope (v7.4)
-- **Unified Metadata** — All 74 MCP tool responses now include structured metadata
+- **Unified Metadata** — All 76 MCP tool responses now include structured metadata
 - **Confidence Tiers** — High/Medium/Low/Speculative tiers based on data freshness and source
 - **Provenance Tracking** — Know which backends (SCIP, Git, LSP) contributed to results
 - **Truncation Awareness** — Metadata shows when results are truncated and total counts
@@ -603,6 +603,41 @@ Use `cmd /c` wrapper in any config above:
   }
 }
 ```
+
+</details>
+
+<details>
+<summary><strong>Presets (Token Optimization)</strong></summary>
+
+CKB exposes 76 tools, but most sessions only need a subset. Use presets to reduce token overhead by up to 83%:
+
+```bash
+# Default: core preset (14 essential tools)
+ckb mcp
+
+# Workflow-specific presets
+ckb mcp --preset=core        # 14 tools - search, explain, impact (default)
+ckb mcp --preset=review      # 19 tools - core + diff, ownership
+ckb mcp --preset=refactor    # 19 tools - core + coupling, dead code
+ckb mcp --preset=federation  # 28 tools - core + cross-repo
+ckb mcp --preset=docs        # 20 tools - core + doc-symbol linking
+ckb mcp --preset=ops         # 25 tools - core + jobs, webhooks, metrics
+ckb mcp --preset=full        # 76 tools - all tools (legacy)
+```
+
+In MCP config:
+```json
+{
+  "mcpServers": {
+    "ckb": {
+      "command": "npx",
+      "args": ["@tastehub/ckb", "mcp", "--preset=review"]
+    }
+  }
+}
+```
+
+The AI can dynamically expand the toolset mid-session using the `expandToolset` tool.
 
 </details>
 

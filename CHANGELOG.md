@@ -4,6 +4,79 @@ All notable changes to CKB will be documented in this file.
 
 ## [7.4.0]
 
+### Added
+
+#### Tool Presets & Pagination
+Token-optimized tool discovery reducing context overhead by up to 83%:
+
+**Presets:**
+| Preset | Tools | Tokens | Use Case |
+|--------|------:|-------:|----------|
+| `core` (default) | 14 | ~1,531 | Essential navigation and analysis |
+| `review` | 19 | ~2,294 | Code review: PR summary, ownership |
+| `refactor` | 19 | ~2,216 | Refactoring: coupling, dead code |
+| `docs` | 20 | ~2,093 | Documentation: coverage, staleness |
+| `ops` | 25 | ~2,366 | Operations: jobs, webhooks, metrics |
+| `federation` | 28 | ~3,122 | Multi-repo: cross-repo search |
+| `full` | 76 | ~9,043 | All tools (legacy behavior) |
+
+**Features:**
+- **MCP-compliant pagination** — `tools/list` cursor-based pagination per spec
+- **Core-first ordering** — Page 1 always contains functional toolset for non-paginating clients
+- **Cursor invalidation** — Cursor rejected when preset or toolset changes
+- **`expandToolset` meta-tool** — Dynamic preset expansion with rate limiting (once per session)
+- **`tools.listChanged` capability** — Enables dynamic tool list updates
+
+**CLI:**
+```bash
+ckb mcp                      # Default: core preset (14 tools)
+ckb mcp --preset=review      # Code review workflow
+ckb mcp --preset=full        # All 76 tools (legacy)
+```
+
+**Setup Wizard:**
+- `ckb setup` now prompts for preset selection
+- `--preset` flag for non-interactive configuration
+
+**Files Added:**
+- `internal/mcp/presets.go` — Preset definitions and core-first ordering
+- `internal/mcp/cursor.go` — MCP-compliant cursor pagination
+
+**Files Changed:**
+- `internal/mcp/server.go` — Preset management and toolset hash
+- `internal/mcp/handler.go` — Paginated `handleListTools`
+- `internal/mcp/tools.go` — `expandToolset` tool definition
+- `internal/mcp/tool_impls.go` — `expandToolset` handler with rate limiting
+- `internal/mcp/capabilities.go` — `tools.listChanged: true`
+- `cmd/ckb/mcp.go` — `--preset` flag
+- `cmd/ckb/setup.go` — Preset selection in wizard
+
+#### Wide-Result Metrics Tracking
+Infrastructure for monitoring tool output sizes and truncation rates:
+
+- **`getWideResultMetrics` tool** — Expose wide-result statistics
+- **SQLite persistence** — Historical tracking for optimization work
+- **Per-tool aggregation** — Invocations, bytes, tokens, truncations
+- **Response byte tracking** — Actual JSON payload size for each tool response
+- **`ckb metrics` CLI** — View aggregated metrics with `--days`, `--tool`, `--format` flags
+- **`ckb metrics export`** — Export versioned metrics to JSON for cross-version comparison
+
+Tracked tools: searchSymbols, findReferences, analyzeImpact, getCallGraph, getHotspots, summarizePr
+
+**Telemetry Findings:**
+| Tool | Truncation Rate | Needs Frontier? |
+|------|-----------------|-----------------|
+| searchSymbols | 45% | Yes |
+| getHotspots | 50% | Yes |
+| findReferences | 18% | No |
+| getCallGraph | 0% | No |
+| analyzeImpact | 0% | No |
+
+**Files Added:**
+- `internal/mcp/wide_result_metrics.go` — In-memory aggregation with DB persistence
+- `internal/storage/metrics_store.go` — SQLite metrics storage
+- `cmd/ckb/metrics.go` — CLI metrics command
+
 ### Performance
 
 #### SCIP Backend Optimizations
@@ -51,7 +124,7 @@ With 100+ files = 400+ process spawns.
 ### Added
 
 #### Standardized Response Envelope
-All 74 MCP tool responses now include structured metadata in a consistent envelope format:
+All 76 MCP tool responses now include structured metadata in a consistent envelope format:
 
 **Envelope Schema:**
 ```json

@@ -1,0 +1,83 @@
+{
+  "ckbVersion": "7.4.0",
+  "exportedAt": "2025-12-23T13:32:40Z",
+  "period": "last 30 days",
+  "since": "2025-11-23",
+  "tools": [
+    {
+      "name": "searchSymbols",
+      "queryCount": 7,
+      "totalResults": 1019,
+      "totalReturned": 554,
+      "totalTruncated": 465,
+      "truncationRate": 0.4563297350343474,
+      "totalTokens": 26712,
+      "avgTokens": 3816,
+      "totalBytes": 106854,
+      "avgBytes": 15264.857142857143,
+      "totalMs": 875,
+      "avgLatencyMs": 125,
+      "needsFrontier": true
+    },
+    {
+      "name": "getHotspots",
+      "queryCount": 3,
+      "totalResults": 200,
+      "totalReturned": 100,
+      "totalTruncated": 100,
+      "truncationRate": 0.5,
+      "totalTokens": 0,
+      "avgTokens": 0,
+      "totalBytes": 0,
+      "avgBytes": 0,
+      "totalMs": 1488,
+      "avgLatencyMs": 496,
+      "needsFrontier": true
+    },
+    {
+      "name": "analyzeImpact",
+      "queryCount": 2,
+      "totalResults": 40,
+      "totalReturned": 40,
+      "totalTruncated": 0,
+      "truncationRate": 0,
+      "totalTokens": 0,
+      "avgTokens": 0,
+      "totalBytes": 0,
+      "avgBytes": 0,
+      "totalMs": 2,
+      "avgLatencyMs": 1,
+      "needsFrontier": false
+    },
+    {
+      "name": "findReferences",
+      "queryCount": 2,
+      "totalResults": 244,
+      "totalReturned": 200,
+      "totalTruncated": 44,
+      "truncationRate": 0.18032786885245902,
+      "totalTokens": 0,
+      "avgTokens": 0,
+      "totalBytes": 0,
+      "avgBytes": 0,
+      "totalMs": 0,
+      "avgLatencyMs": 0,
+      "needsFrontier": false
+    },
+    {
+      "name": "getCallGraph",
+      "queryCount": 2,
+      "totalResults": 94,
+      "totalReturned": 94,
+      "totalTruncated": 0,
+      "truncationRate": 0,
+      "totalTokens": 0,
+      "avgTokens": 0,
+      "totalBytes": 0,
+      "avgBytes": 0,
+      "totalMs": 18,
+      "avgLatencyMs": 9,
+      "needsFrontier": false
+    }
+  ]
+}

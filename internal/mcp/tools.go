@@ -24,11 +24,39 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 			},
 		},
 		{
+			Name:        "getWideResultMetrics",
+			Description: "Get aggregated metrics for wide-result tools (findReferences, getCallGraph, etc). Shows truncation rates to inform Frontier mode decisions. Internal/debug tool.",
+			InputSchema: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+		},
+		{
 			Name:        "doctor",
 			Description: "Diagnose CKB configuration issues and get suggested fixes",
 			InputSchema: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
+			},
+		},
+		// Meta-tool for dynamic preset expansion
+		{
+			Name:        "expandToolset",
+			Description: "Add more tools for a specific workflow. ONLY call when user explicitly requests additional capabilities. Available presets: review, refactor, federation, docs, ops, full",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"preset": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"review", "refactor", "federation", "docs", "ops", "full"},
+						"description": "The preset to expand to",
+					},
+					"reason": map[string]interface{}{
+						"type":        "string",
+						"description": "Why you need this preset (required to prevent accidental expansion)",
+					},
+				},
+				"required": []string{"preset", "reason"},
 			},
 		},
 		{
@@ -1710,7 +1738,9 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 // RegisterTools registers all tool handlers
 func (s *MCPServer) RegisterTools() {
 	s.tools["getStatus"] = s.toolGetStatus
+	s.tools["getWideResultMetrics"] = s.toolGetWideResultMetrics
 	s.tools["doctor"] = s.toolDoctor
+	s.tools["expandToolset"] = s.toolExpandToolset
 	s.tools["getSymbol"] = s.toolGetSymbol
 	s.tools["searchSymbols"] = s.toolSearchSymbols
 	s.tools["findReferences"] = s.toolFindReferences

@@ -47,9 +47,10 @@ not directly by users.`,
 }
 
 var (
-	mcpStdio bool
-	mcpWatch bool
-	mcpRepo  string
+	mcpStdio  bool
+	mcpWatch  bool
+	mcpRepo   string
+	mcpPreset string
 )
 
 const watchPollInterval = 30 * time.Second
@@ -59,6 +60,8 @@ func init() {
 	mcpCmd.Flags().BoolVar(&mcpStdio, "stdio", true, "Use stdio for communication (default)")
 	mcpCmd.Flags().BoolVar(&mcpWatch, "watch", false, "Watch for changes and auto-reindex")
 	mcpCmd.Flags().StringVar(&mcpRepo, "repo", "", "Repository path or registry name (auto-detected)")
+	mcpCmd.Flags().StringVar(&mcpPreset, "preset", mcp.DefaultPreset,
+		"Tool preset: core, review, refactor, federation, docs, ops, full")
 }
 
 func runMCP(cmd *cobra.Command, args []string) error {
@@ -70,7 +73,12 @@ func runMCP(cmd *cobra.Command, args []string) error {
 		Output: os.Stderr,
 	})
 
-	fmt.Fprintf(os.Stderr, "CKB MCP Server v%s\n", version.Version)
+	// Validate preset
+	if !mcp.IsValidPreset(mcpPreset) {
+		return fmt.Errorf("invalid preset: %s (valid: %v)", mcpPreset, mcp.ValidPresets())
+	}
+
+	fmt.Fprintf(os.Stderr, "CKB MCP Server v%s | preset=%s\n", version.Version, mcpPreset)
 
 	// Determine mode and repo
 	var server *mcp.MCPServer
@@ -151,6 +159,15 @@ func runMCP(cmd *cobra.Command, args []string) error {
 		engine := mustGetEngine(repoRoot, logger)
 		server = mcp.NewMCPServer(version.Version, engine, logger)
 	}
+
+	// Apply preset configuration
+	if err := server.SetPreset(mcpPreset); err != nil {
+		return fmt.Errorf("failed to set preset: %w", err)
+	}
+
+	// Log preset statistics
+	preset, exposedCount, totalCount := server.GetPresetStats()
+	fmt.Fprintf(os.Stderr, "Tools: %d/%d (preset: %s)\n", exposedCount, totalCount, preset)
 
 	// Start watch mode if enabled
 	if mcpWatch {
