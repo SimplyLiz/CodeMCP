@@ -136,7 +136,7 @@ func (ls *LoadShedder) Release(endpoint string) {
 
 // Stats returns current load shedding statistics
 func (ls *LoadShedder) Stats() LoadSheddingStats {
-	lastShed := ls.lastShedTime.Load().(time.Time)
+	lastShed, _ := ls.lastShedTime.Load().(time.Time)
 	return LoadSheddingStats{
 		InFlight:      atomic.LoadInt64(&ls.inFlight),
 		QueueLength:   atomic.LoadInt64(&ls.queueLength),

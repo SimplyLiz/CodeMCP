@@ -38,7 +38,7 @@ func (g *Generator) GenerateFromDBs(basePath, newPath string, opts GenerateOptio
 		if err != nil {
 			return nil, fmt.Errorf("failed to open base database: %w", err)
 		}
-		defer baseDB.Close()
+		defer func() { _ = baseDB.Close() }()
 	}
 
 	// Open new database
@@ -46,7 +46,7 @@ func (g *Generator) GenerateFromDBs(basePath, newPath string, opts GenerateOptio
 	if err != nil {
 		return nil, fmt.Errorf("failed to open new database: %w", err)
 	}
-	defer newDB.Close()
+	defer func() { _ = newDB.Close() }()
 
 	// Load symbols from both databases
 	baseSymbols, err := g.loadSymbols(baseDB)
@@ -160,7 +160,7 @@ func (g *Generator) loadSymbols(db *sql.DB) (map[string]SymbolRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var s SymbolRecord
@@ -203,7 +203,7 @@ func (g *Generator) loadRefs(db *sql.DB) (map[string]RefRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var r RefRecord
@@ -246,7 +246,7 @@ func (g *Generator) loadCallGraph(db *sql.DB) (map[string]CallEdge, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var c CallEdge
@@ -288,7 +288,7 @@ func (g *Generator) loadFiles(db *sql.DB) (map[string]FileRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var f FileRecord

@@ -293,7 +293,7 @@ func TestScopedAuthMiddleware(t *testing.T) {
 			t.Error("Auth result should be in context")
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 
 	// Wrap with middleware

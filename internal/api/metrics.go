@@ -72,7 +72,7 @@ type Histogram struct {
 }
 
 type histogramValue struct {
-	mu sync.Mutex //nolint:unused
+	mu      sync.Mutex //nolint:unused
 	sum     float64
 	count   uint64
 	buckets []uint64
@@ -256,14 +256,14 @@ func (m *MetricsCollector) WritePrometheus(w http.ResponseWriter) {
 	m.memoryAlloc.Set(float64(memStats.Alloc))
 
 	// Write process info
-	fmt.Fprintf(w, "# HELP ckb_info CKB build information\n")
-	fmt.Fprintf(w, "# TYPE ckb_info gauge\n")
-	fmt.Fprintf(w, "ckb_info{version=\"%s\"} 1\n\n", "7.3.0") // Should use version.Version
+	_, _ = fmt.Fprintf(w, "# HELP ckb_info CKB build information\n")
+	_, _ = fmt.Fprintf(w, "# TYPE ckb_info gauge\n")
+	_, _ = fmt.Fprintf(w, "ckb_info{version=\"%s\"} 1\n\n", "7.3.0") // Should use version.Version
 
 	// Write uptime
-	fmt.Fprintf(w, "# HELP ckb_uptime_seconds Time since CKB started\n")
-	fmt.Fprintf(w, "# TYPE ckb_uptime_seconds counter\n")
-	fmt.Fprintf(w, "ckb_uptime_seconds %.3f\n\n", time.Since(m.startTime).Seconds())
+	_, _ = fmt.Fprintf(w, "# HELP ckb_uptime_seconds Time since CKB started\n")
+	_, _ = fmt.Fprintf(w, "# TYPE ckb_uptime_seconds counter\n")
+	_, _ = fmt.Fprintf(w, "ckb_uptime_seconds %.3f\n\n", time.Since(m.startTime).Seconds())
 
 	// Write counters
 	m.writeCounter(w, m.ingestionTotal)
@@ -288,12 +288,14 @@ func (m *MetricsCollector) WritePrometheus(w http.ResponseWriter) {
 }
 
 func (m *MetricsCollector) writeCounter(w http.ResponseWriter, c *Counter) {
-	fmt.Fprintf(w, "# HELP %s %s\n", c.name, c.help)
-	fmt.Fprintf(w, "# TYPE %s counter\n", c.name)
+	_, _ = fmt.Fprintf(w, "# HELP %s %s\n", c.name, c.help)
+	_, _ = fmt.Fprintf(w, "# TYPE %s counter\n", c.name)
 
 	var keys []string
 	c.values.Range(func(key, value interface{}) bool {
-		keys = append(keys, key.(string))
+		if k, ok := key.(string); ok {
+			keys = append(keys, k)
+		}
 		return true
 	})
 	sort.Strings(keys)
@@ -301,19 +303,21 @@ func (m *MetricsCollector) writeCounter(w http.ResponseWriter, c *Counter) {
 	for _, key := range keys {
 		val, _ := c.values.Load(key)
 		if ptr, ok := val.(*uint64); ok {
-			fmt.Fprintf(w, "%s%s %d\n", c.name, key, atomic.LoadUint64(ptr))
+			_, _ = fmt.Fprintf(w, "%s%s %d\n", c.name, key, atomic.LoadUint64(ptr))
 		}
 	}
-	fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w)
 }
 
 func (m *MetricsCollector) writeHistogram(w http.ResponseWriter, h *Histogram) {
-	fmt.Fprintf(w, "# HELP %s %s\n", h.name, h.help)
-	fmt.Fprintf(w, "# TYPE %s histogram\n", h.name)
+	_, _ = fmt.Fprintf(w, "# HELP %s %s\n", h.name, h.help)
+	_, _ = fmt.Fprintf(w, "# TYPE %s histogram\n", h.name)
 
 	var keys []string
 	h.values.Range(func(key, value interface{}) bool {
-		keys = append(keys, key.(string))
+		if k, ok := key.(string); ok {
+			keys = append(keys, k)
+		}
 		return true
 	})
 	sort.Strings(keys)
@@ -332,7 +336,7 @@ func (m *MetricsCollector) writeHistogram(w http.ResponseWriter, h *Histogram) {
 				} else {
 					bucketLabel = fmt.Sprintf("{le=\"%.3f\"}", bucket)
 				}
-				fmt.Fprintf(w, "%s_bucket%s %d\n", h.name, bucketLabel, cumulative)
+				_, _ = fmt.Fprintf(w, "%s_bucket%s %d\n", h.name, bucketLabel, cumulative)
 			}
 			// +Inf bucket
 			cumulative += hv.buckets[len(h.buckets)]
@@ -342,24 +346,26 @@ func (m *MetricsCollector) writeHistogram(w http.ResponseWriter, h *Histogram) {
 			} else {
 				infLabel = "{le=\"+Inf\"}"
 			}
-			fmt.Fprintf(w, "%s_bucket%s %d\n", h.name, infLabel, cumulative)
+			_, _ = fmt.Fprintf(w, "%s_bucket%s %d\n", h.name, infLabel, cumulative)
 
 			// Sum and count
-			fmt.Fprintf(w, "%s_sum%s %.6f\n", h.name, key, hv.sum)
-			fmt.Fprintf(w, "%s_count%s %d\n", h.name, key, hv.count)
+			_, _ = fmt.Fprintf(w, "%s_sum%s %.6f\n", h.name, key, hv.sum)
+			_, _ = fmt.Fprintf(w, "%s_count%s %d\n", h.name, key, hv.count)
 			hv.mu.Unlock()
 		}
 	}
-	fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w)
 }
 
 func (m *MetricsCollector) writeGauge(w http.ResponseWriter, g *Gauge) {
-	fmt.Fprintf(w, "# HELP %s %s\n", g.name, g.help)
-	fmt.Fprintf(w, "# TYPE %s gauge\n", g.name)
+	_, _ = fmt.Fprintf(w, "# HELP %s %s\n", g.name, g.help)
+	_, _ = fmt.Fprintf(w, "# TYPE %s gauge\n", g.name)
 
 	var keys []string
 	g.values.Range(func(key, value interface{}) bool {
-		keys = append(keys, key.(string))
+		if k, ok := key.(string); ok {
+			keys = append(keys, k)
+		}
 		return true
 	})
 	sort.Strings(keys)
@@ -367,10 +373,10 @@ func (m *MetricsCollector) writeGauge(w http.ResponseWriter, g *Gauge) {
 	for _, key := range keys {
 		val, _ := g.values.Load(key)
 		if ptr, ok := val.(*float64); ok {
-			fmt.Fprintf(w, "%s%s %.6f\n", g.name, key, *ptr)
+			_, _ = fmt.Fprintf(w, "%s%s %.6f\n", g.name, key, *ptr)
 		}
 	}
-	fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w)
 }
 
 // Counter methods
@@ -381,7 +387,9 @@ func (c *Counter) Inc(labelValues ...string) {
 func (c *Counter) Add(delta uint64, labelValues ...string) {
 	key := c.labelsToKey(labelValues)
 	val, _ := c.values.LoadOrStore(key, new(uint64))
-	atomic.AddUint64(val.(*uint64), delta)
+	if ptr, ok := val.(*uint64); ok {
+		atomic.AddUint64(ptr, delta)
+	}
 }
 
 func (c *Counter) labelsToKey(values []string) string {
@@ -406,7 +414,10 @@ func (h *Histogram) Observe(value float64, labelValues ...string) {
 		buckets: make([]uint64, len(h.buckets)+1), // +1 for +Inf
 	})
 
-	hv := val.(*histogramValue)
+	hv, ok := val.(*histogramValue)
+	if !ok {
+		return
+	}
 	if !loaded {
 		hv.buckets = make([]uint64, len(h.buckets)+1)
 	}
