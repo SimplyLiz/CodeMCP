@@ -2,10 +2,10 @@ package mcp
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
+	"ckb/internal/envelope"
 	"ckb/internal/federation"
 	"ckb/internal/logging"
 )
@@ -13,7 +13,7 @@ import (
 // v7.3 Remote Federation tool implementations (Phase 5)
 
 // toolFederationAddRemote adds a remote server to a federation
-func (s *MCPServer) toolFederationAddRemote(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolFederationAddRemote(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
 		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
@@ -74,25 +74,21 @@ func (s *MCPServer) toolFederationAddRemote(params map[string]interface{}) (inte
 		return nil, fmt.Errorf("failed to add remote server: %w", addErr)
 	}
 
-	result := map[string]interface{}{
-		"name":     serverName,
-		"url":      serverURL,
-		"cacheTtl": cacheTTL.String(),
-		"timeout":  timeout.String(),
-		"enabled":  true,
-		"message":  fmt.Sprintf("Added remote server %q to federation %q", serverName, fedName),
-	}
-
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(map[string]interface{}{
+			"name":     serverName,
+			"url":      serverURL,
+			"cacheTtl": cacheTTL.String(),
+			"timeout":  timeout.String(),
+			"enabled":  true,
+			"message":  fmt.Sprintf("Added remote server %q to federation %q", serverName, fedName),
+		}).
+		CrossRepo().
+		Build(), nil
 }
 
 // toolFederationRemoveRemote removes a remote server from a federation
-func (s *MCPServer) toolFederationRemoveRemote(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolFederationRemoveRemote(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
 		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
@@ -124,21 +120,17 @@ func (s *MCPServer) toolFederationRemoveRemote(params map[string]interface{}) (i
 		return nil, fmt.Errorf("failed to remove remote server: %w", removeErr)
 	}
 
-	result := map[string]interface{}{
-		"name":    serverName,
-		"message": fmt.Sprintf("Removed remote server %q from federation %q", serverName, fedName),
-	}
-
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(map[string]interface{}{
+			"name":    serverName,
+			"message": fmt.Sprintf("Removed remote server %q from federation %q", serverName, fedName),
+		}).
+		CrossRepo().
+		Build(), nil
 }
 
 // toolFederationListRemote lists remote servers in a federation
-func (s *MCPServer) toolFederationListRemote(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolFederationListRemote(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
 		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
@@ -164,34 +156,30 @@ func (s *MCPServer) toolFederationListRemote(params map[string]interface{}) (int
 
 	// Convert to serializable format
 	serversOut := make([]map[string]interface{}, len(servers))
-	for i, s := range servers {
+	for i, srv := range servers {
 		serversOut[i] = map[string]interface{}{
-			"name":         s.Name,
-			"url":          s.URL,
-			"cacheTtl":     s.GetCacheTTL().String(),
-			"timeout":      s.GetTimeout().String(),
-			"enabled":      s.Enabled,
-			"addedAt":      s.AddedAt,
-			"lastSyncedAt": s.LastSyncedAt,
-			"lastError":    s.LastError,
+			"name":         srv.Name,
+			"url":          srv.URL,
+			"cacheTtl":     srv.GetCacheTTL().String(),
+			"timeout":      srv.GetTimeout().String(),
+			"enabled":      srv.Enabled,
+			"addedAt":      srv.AddedAt,
+			"lastSyncedAt": srv.LastSyncedAt,
+			"lastError":    srv.LastError,
 		}
 	}
 
-	result := map[string]interface{}{
-		"servers": serversOut,
-		"count":   len(servers),
-	}
-
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(map[string]interface{}{
+			"servers": serversOut,
+			"count":   len(servers),
+		}).
+		CrossRepo().
+		Build(), nil
 }
 
 // toolFederationSyncRemote syncs metadata from remote servers
-func (s *MCPServer) toolFederationSyncRemote(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolFederationSyncRemote(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
 		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
@@ -254,16 +242,14 @@ func (s *MCPServer) toolFederationSyncRemote(params map[string]interface{}) (int
 		}
 	}
 
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(result).
+		CrossRepo().
+		Build(), nil
 }
 
 // toolFederationStatusRemote gets status of a remote server
-func (s *MCPServer) toolFederationStatusRemote(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolFederationStatusRemote(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
 		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
@@ -305,28 +291,24 @@ func (s *MCPServer) toolFederationStatusRemote(params map[string]interface{}) (i
 		return nil, fmt.Errorf("failed to get status: %w", statusErr)
 	}
 
-	result := map[string]interface{}{
-		"name":            status.Name,
-		"url":             status.URL,
-		"enabled":         status.Enabled,
-		"online":          status.Online,
-		"latency":         status.Latency.String(),
-		"pingError":       status.PingError,
-		"lastSyncedAt":    status.LastSyncedAt,
-		"lastError":       status.LastError,
-		"cachedRepoCount": status.CachedRepoCount,
-	}
-
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(map[string]interface{}{
+			"name":            status.Name,
+			"url":             status.URL,
+			"enabled":         status.Enabled,
+			"online":          status.Online,
+			"latency":         status.Latency.String(),
+			"pingError":       status.PingError,
+			"lastSyncedAt":    status.LastSyncedAt,
+			"lastError":       status.LastError,
+			"cachedRepoCount": status.CachedRepoCount,
+		}).
+		CrossRepo().
+		Build(), nil
 }
 
 // toolFederationSearchSymbolsHybrid searches symbols across local and remote
-func (s *MCPServer) toolFederationSearchSymbolsHybrid(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolFederationSearchSymbolsHybrid(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
 		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
@@ -394,16 +376,14 @@ func (s *MCPServer) toolFederationSearchSymbolsHybrid(params map[string]interfac
 		return nil, fmt.Errorf("search failed: %w", err)
 	}
 
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(result).
+		CrossRepo().
+		Build(), nil
 }
 
 // toolFederationListAllRepos lists repos from local and remote sources
-func (s *MCPServer) toolFederationListAllRepos(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolFederationListAllRepos(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
 		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
@@ -439,10 +419,8 @@ func (s *MCPServer) toolFederationListAllRepos(params map[string]interface{}) (i
 		return nil, fmt.Errorf("list failed: %w", listErr)
 	}
 
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(result).
+		CrossRepo().
+		Build(), nil
 }

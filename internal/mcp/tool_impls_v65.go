@@ -6,6 +6,7 @@ import (
 
 	"ckb/internal/audit"
 	"ckb/internal/coupling"
+	"ckb/internal/envelope"
 	"ckb/internal/explain"
 	"ckb/internal/export"
 )
@@ -13,7 +14,7 @@ import (
 // v6.5 Developer Intelligence tool implementations
 
 // toolExplainOrigin explains why code exists with full context
-func (s *MCPServer) toolExplainOrigin(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolExplainOrigin(params map[string]interface{}) (*envelope.Response, error) {
 	symbol, ok := params["symbol"].(string)
 	if !ok || symbol == "" {
 		return nil, fmt.Errorf("symbol is required")
@@ -50,11 +51,13 @@ func (s *MCPServer) toolExplainOrigin(params map[string]interface{}) (interface{
 		return nil, fmt.Errorf("failed to explain symbol: %w", err)
 	}
 
-	return result, nil
+	return NewToolResponse().
+		Data(result).
+		Build(), nil
 }
 
 // toolAnalyzeCoupling finds files/symbols that historically change together
-func (s *MCPServer) toolAnalyzeCoupling(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolAnalyzeCoupling(params map[string]interface{}) (*envelope.Response, error) {
 	target, ok := params["target"].(string)
 	if !ok || target == "" {
 		return nil, fmt.Errorf("target is required")
@@ -91,11 +94,13 @@ func (s *MCPServer) toolAnalyzeCoupling(params map[string]interface{}) (interfac
 		return nil, fmt.Errorf("failed to analyze coupling: %w", err)
 	}
 
-	return result, nil
+	return NewToolResponse().
+		Data(result).
+		Build(), nil
 }
 
 // toolExportForLLM exports codebase structure in LLM-friendly format
-func (s *MCPServer) toolExportForLLM(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolExportForLLM(params map[string]interface{}) (*envelope.Response, error) {
 	includeUsage := true
 	if v, ok := params["includeUsage"].(bool); ok {
 		includeUsage = v
@@ -162,16 +167,18 @@ func (s *MCPServer) toolExportForLLM(params map[string]interface{}) (interface{}
 		IncludeContracts:  includeContracts,
 	})
 
-	return map[string]interface{}{
-		"text":      formatted,
-		"metadata":  result.Metadata,
-		"moduleMap": organized.ModuleMap,
-		"bridges":   organized.Bridges,
-	}, nil
+	return NewToolResponse().
+		Data(map[string]interface{}{
+			"text":      formatted,
+			"metadata":  result.Metadata,
+			"moduleMap": organized.ModuleMap,
+			"bridges":   organized.Bridges,
+		}).
+		Build(), nil
 }
 
 // toolAuditRisk finds risky code based on multiple signals
-func (s *MCPServer) toolAuditRisk(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolAuditRisk(params map[string]interface{}) (*envelope.Response, error) {
 	minScore := 40.0
 	if v, ok := params["minScore"].(float64); ok {
 		minScore = v
@@ -210,11 +217,15 @@ func (s *MCPServer) toolAuditRisk(params map[string]interface{}) (interface{}, e
 
 	// If quickWins mode, return only quick wins
 	if quickWins {
-		return map[string]interface{}{
-			"quickWins": result.QuickWins,
-			"summary":   result.Summary,
-		}, nil
+		return NewToolResponse().
+			Data(map[string]interface{}{
+				"quickWins": result.QuickWins,
+				"summary":   result.Summary,
+			}).
+			Build(), nil
 	}
 
-	return result, nil
+	return NewToolResponse().
+		Data(result).
+		Build(), nil
 }

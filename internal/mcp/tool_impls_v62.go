@@ -1,9 +1,9 @@
 package mcp
 
 import (
-	"encoding/json"
 	"fmt"
 
+	"ckb/internal/envelope"
 	"ckb/internal/federation"
 	"ckb/internal/logging"
 )
@@ -11,7 +11,7 @@ import (
 // v6.2 Federation tool implementations
 
 // toolListFederations lists all federations
-func (s *MCPServer) toolListFederations(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolListFederations(params map[string]interface{}) (*envelope.Response, error) {
 	s.logger.Debug("Executing listFederations", map[string]interface{}{
 		"params": params,
 	})
@@ -21,21 +21,17 @@ func (s *MCPServer) toolListFederations(params map[string]interface{}) (interfac
 		return nil, fmt.Errorf("failed to list federations: %w", err)
 	}
 
-	result := map[string]interface{}{
-		"federations": names,
-		"count":       len(names),
-	}
-
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(map[string]interface{}{
+			"federations": names,
+			"count":       len(names),
+		}).
+		CrossRepo().
+		Build(), nil
 }
 
 // toolFederationStatus gets federation status
-func (s *MCPServer) toolFederationStatus(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolFederationStatus(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
 		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
@@ -102,16 +98,14 @@ func (s *MCPServer) toolFederationStatus(params map[string]interface{}) (interfa
 		result["indexedRepos"] = indexedRepos
 	}
 
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(result).
+		CrossRepo().
+		Build(), nil
 }
 
 // toolFederationRepos lists repos in a federation
-func (s *MCPServer) toolFederationRepos(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolFederationRepos(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
 		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
@@ -150,16 +144,14 @@ func (s *MCPServer) toolFederationRepos(params map[string]interface{}) (interfac
 		}
 	}
 
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(result).
+		CrossRepo().
+		Build(), nil
 }
 
 // toolFederationSearchModules searches modules across federation
-func (s *MCPServer) toolFederationSearchModules(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolFederationSearchModules(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
 		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
@@ -217,16 +209,14 @@ func (s *MCPServer) toolFederationSearchModules(params map[string]interface{}) (
 		return nil, fmt.Errorf("search failed: %w", err)
 	}
 
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(result).
+		CrossRepo().
+		Build(), nil
 }
 
 // toolFederationSearchOwnership searches ownership across federation
-func (s *MCPServer) toolFederationSearchOwnership(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolFederationSearchOwnership(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
 		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
@@ -275,16 +265,14 @@ func (s *MCPServer) toolFederationSearchOwnership(params map[string]interface{})
 		return nil, fmt.Errorf("search failed: %w", err)
 	}
 
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(result).
+		CrossRepo().
+		Build(), nil
 }
 
 // toolFederationGetHotspots gets hotspots across federation
-func (s *MCPServer) toolFederationGetHotspots(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolFederationGetHotspots(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
 		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
@@ -336,16 +324,14 @@ func (s *MCPServer) toolFederationGetHotspots(params map[string]interface{}) (in
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
 
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(result).
+		CrossRepo().
+		Build(), nil
 }
 
 // toolFederationSearchDecisions searches decisions across federation
-func (s *MCPServer) toolFederationSearchDecisions(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolFederationSearchDecisions(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
 		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
@@ -406,16 +392,14 @@ func (s *MCPServer) toolFederationSearchDecisions(params map[string]interface{})
 		return nil, fmt.Errorf("search failed: %w", err)
 	}
 
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(result).
+		CrossRepo().
+		Build(), nil
 }
 
 // toolFederationSync syncs federation index
-func (s *MCPServer) toolFederationSync(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolFederationSync(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
 		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
@@ -476,20 +460,16 @@ func (s *MCPServer) toolFederationSync(params map[string]interface{}) (interface
 		}
 	}
 
-	result := map[string]interface{}{
-		"results": results,
-		"summary": map[string]int{
-			"success": success,
-			"failed":  failed,
-			"skipped": skipped,
-			"total":   len(results),
-		},
-	}
-
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(map[string]interface{}{
+			"results": results,
+			"summary": map[string]int{
+				"success": success,
+				"failed":  failed,
+				"skipped": skipped,
+				"total":   len(results),
+			},
+		}).
+		CrossRepo().
+		Build(), nil
 }
