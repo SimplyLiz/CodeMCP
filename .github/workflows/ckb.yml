@@ -515,6 +515,7 @@ jobs:
 
       - name: Build & Refresh
         run: |
+          go install github.com/sourcegraph/scip-go@latest
           go build -ldflags="-s -w" -o ckb ./cmd/ckb
           ./ckb init
           ./ckb index --force
