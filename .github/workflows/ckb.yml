@@ -46,11 +46,26 @@ jobs:
             echo "::warning::Index generation failed, continuing with git-only analysis"
           fi
 
+      - name: Start CKB Server
+        run: |
+          ./ckb serve --port 8080 &
+          echo "CKB_PID=$!" >> $GITHUB_ENV
+          # Wait for server to be ready
+          for i in {1..30}; do
+            if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+              echo "CKB server ready"
+              break
+            fi
+            sleep 1
+          done
+
       - name: Analyze PR
         id: analyze
         run: |
           # Get PR analysis
-          if ! ./ckb pr-summary --base=origin/${{ github.base_ref }} > pr-analysis.json 2>pr-analysis-err.txt; then
+          if ! curl -sf -X POST http://localhost:8080/pr/summary \
+            -H "Content-Type: application/json" \
+            -d '{"baseBranch": "${{ github.base_ref }}"}' > pr-analysis.json 2>pr-analysis-err.txt; then
             echo "::warning::PR analysis failed"
             cat pr-analysis-err.txt
             echo '{"error": "analysis failed"}' > pr-analysis.json
@@ -59,10 +74,6 @@ jobs:
           # Extract outputs
           RISK=$(jq -r '.riskAssessment.level // "unknown"' pr-analysis.json) || RISK="unknown"
           echo "risk_level=$RISK" >> $GITHUB_OUTPUT
-
-          # Extract reviewers for auto-request
-          jq -r '.suggestedReviewers // [] | .[0:3] | .[] | .owner' pr-analysis.json 2>/dev/null | \
-            grep -v '^@' | tr '\n' ',' | sed 's/,$//' > reviewers.txt || true
 
       - name: Check Complexity
         id: complexity
@@ -73,7 +84,7 @@ jobs:
 
           for FILE in $(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(go|ts|js|py)$' | head -20); do
             if [ -f "$FILE" ]; then
-              RESULT=$(./ckb complexity "$FILE" 2>/dev/null || echo '{}')
+              RESULT=$(curl -sf "http://localhost:8080/complexity?path=$FILE" 2>/dev/null || echo '{}')
               CYCLO=$(echo "$RESULT" | jq '.cyclomatic // 0')
               COGNITIVE=$(echo "$RESULT" | jq '.cognitive // 0')
 
@@ -98,12 +109,106 @@ jobs:
           CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | tr '\n' ',' | sed 's/,$//')
 
           if [ -n "$CHANGED" ]; then
-            ./ckb coupling --files="$CHANGED" --min-correlation=0.7 2>/dev/null > coupling-result.json || echo '{}' > coupling-result.json
+            curl -sf -X POST "http://localhost:8080/coupling/check" \
+              -H "Content-Type: application/json" \
+              -d "{\"files\": \"$CHANGED\"}" > coupling-result.json 2>/dev/null || echo '{}' > coupling-result.json
             jq '.missingCoupled // []' coupling-result.json > coupling-warnings.json
           fi
 
           COUNT=$(jq 'length' coupling-warnings.json 2>/dev/null || echo 0)
           echo "warning_count=$COUNT" >> $GITHUB_OUTPUT
+
+      - name: Check Contract Impact
+        id: contracts
+        continue-on-error: true
+        run: |
+          echo '[]' > contract-warnings.json
+          WARNINGS='[]'
+
+          # Find changed contract files (proto, openapi)
+          CONTRACTS=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(proto|yaml|json)$' | grep -E '(proto/|openapi/|api/)' || true)
+
+          if [ -n "$CONTRACTS" ]; then
+            for CONTRACT in $CONTRACTS; do
+              RESULT=$(curl -sf "http://localhost:8080/contracts/impact?path=$CONTRACT" 2>/dev/null || echo '{}')
+              RISK=$(echo "$RESULT" | jq -r '.riskLevel // "unknown"')
+              CONSUMERS=$(echo "$RESULT" | jq '.consumers | length // 0')
+
+              if [ "$RISK" = "high" ] || [ "$CONSUMERS" -gt 0 ]; then
+                WARNINGS=$(echo "$WARNINGS" | jq --arg f "$CONTRACT" --arg r "$RISK" --argjson c "$CONSUMERS" \
+                  '. + [{"file": $f, "risk": $r, "consumers": $c}]')
+              fi
+            done
+          fi
+
+          echo "$WARNINGS" > contract-warnings.json
+          COUNT=$(echo "$WARNINGS" | jq 'length')
+          echo "warning_count=$COUNT" >> $GITHUB_OUTPUT
+
+      - name: Check Dead Code
+        id: deadcode
+        continue-on-error: true
+        run: |
+          echo '{"candidates": []}' > deadcode.json
+
+          RESULT=$(curl -sf "http://localhost:8080/telemetry/dead-code?threshold=0.9&limit=10" 2>/dev/null || echo '{"candidates": []}')
+          echo "$RESULT" > deadcode.json
+
+          COUNT=$(echo "$RESULT" | jq '.candidates | length // 0')
+          echo "candidate_count=$COUNT" >> $GITHUB_OUTPUT
+
+      - name: Check Ownership Drift
+        id: drift
+        continue-on-error: true
+        run: |
+          echo '[]' > ownership-drift.json
+
+          RESULT=$(curl -sf "http://localhost:8080/ownership/drift?threshold=0.3&limit=10" 2>/dev/null || echo '[]')
+          echo "$RESULT" > ownership-drift.json
+
+          COUNT=$(echo "$RESULT" | jq 'length // 0')
+          echo "drift_count=$COUNT" >> $GITHUB_OUTPUT
+
+      - name: Run Risk Audit
+        id: audit
+        continue-on-error: true
+        run: |
+          echo '{"items": [], "quickWins": []}' > risk-audit.json
+
+          RESULT=$(curl -sf "http://localhost:8080/audit?minScore=60&limit=10&quickWins=true" 2>/dev/null || echo '{"items": [], "quickWins": []}')
+          echo "$RESULT" > risk-audit.json
+
+          CRITICAL=$(echo "$RESULT" | jq '.summary.critical // 0')
+          HIGH=$(echo "$RESULT" | jq '.summary.high // 0')
+          echo "critical_count=$CRITICAL" >> $GITHUB_OUTPUT
+          echo "high_count=$HIGH" >> $GITHUB_OUTPUT
+
+      - name: Check Language Quality
+        id: languages
+        continue-on-error: true
+        run: |
+          echo '{"languages": []}' > language-quality.json
+
+          RESULT=$(curl -sf "http://localhost:8080/meta/languages" 2>/dev/null || echo '{"languages": []}')
+          echo "$RESULT" > language-quality.json
+
+          LOW_QUALITY=$(echo "$RESULT" | jq '[.languages[] | select(.quality < 0.7)] | length // 0')
+          echo "low_quality_count=$LOW_QUALITY" >> $GITHUB_OUTPUT
+
+      - name: Check Doc Staleness
+        id: docs
+        continue-on-error: true
+        run: |
+          echo '{"totalStale": 0, "reports": []}' > doc-staleness.json
+
+          # Index docs first
+          curl -sf -X POST "http://localhost:8080/docs/index" 2>/dev/null || true
+
+          RESULT=$(curl -sf "http://localhost:8080/docs/stale?all=true" 2>/dev/null || echo '{"totalStale": 0, "reports": []}')
+          echo "$RESULT" > doc-staleness.json
+
+          STALE=$(echo "$RESULT" | jq '.totalStale // 0')
+          echo "stale_count=$STALE" >> $GITHUB_OUTPUT
 
       - name: Comment on PR
         if: always()
@@ -116,10 +221,22 @@ jobs:
             let prData = {};
             let complexityWarnings = [];
             let couplingWarnings = [];
+            let contractWarnings = [];
+            let deadCode = { candidates: [] };
+            let ownershipDrift = [];
+            let riskAudit = { items: [], quickWins: [], summary: {} };
+            let languageQuality = { languages: [] };
+            let docStaleness = { totalStale: 0, reports: [] };
 
             try { prData = JSON.parse(fs.readFileSync('pr-analysis.json', 'utf8')); } catch {}
             try { complexityWarnings = JSON.parse(fs.readFileSync('complexity-warnings.json', 'utf8')); } catch {}
             try { couplingWarnings = JSON.parse(fs.readFileSync('coupling-warnings.json', 'utf8')); } catch {}
+            try { contractWarnings = JSON.parse(fs.readFileSync('contract-warnings.json', 'utf8')); } catch {}
+            try { deadCode = JSON.parse(fs.readFileSync('deadcode.json', 'utf8')); } catch {}
+            try { ownershipDrift = JSON.parse(fs.readFileSync('ownership-drift.json', 'utf8')); } catch {}
+            try { riskAudit = JSON.parse(fs.readFileSync('risk-audit.json', 'utf8')); } catch {}
+            try { languageQuality = JSON.parse(fs.readFileSync('language-quality.json', 'utf8')); } catch {}
+            try { docStaleness = JSON.parse(fs.readFileSync('doc-staleness.json', 'utf8')); } catch {}
 
             if (prData.error) {
               const body = '## CKB Analysis ⚠️\n\nAnalysis failed: ' + prData.error;
@@ -179,6 +296,57 @@ jobs:
               sections.push('### ⚠️ Risk Factors');
               sections.push('');
               factors.forEach(f => sections.push('- ' + f));
+              sections.push('');
+            }
+
+            // Risk audit summary (critical/high items)
+            const auditItems = riskAudit.items || [];
+            const criticalItems = auditItems.filter(i => i.riskLevel === 'critical');
+            const highItems = auditItems.filter(i => i.riskLevel === 'high');
+            if (criticalItems.length > 0 || highItems.length > 0) {
+              sections.push('<details>');
+              sections.push('<summary><strong>🎯 Risk Audit (' + criticalItems.length + ' critical, ' + highItems.length + ' high)</strong></summary>');
+              sections.push('');
+              sections.push('| File | Score | Top Factor |');
+              sections.push('|:-----|------:|:-----------|');
+              [...criticalItems, ...highItems].slice(0, 8).forEach(item => {
+                const topFactor = (item.factors || [])[0];
+                const factorStr = topFactor ? topFactor.factor + ' (' + topFactor.value + ')' : '';
+                const emoji = item.riskLevel === 'critical' ? '🔴' : '🟠';
+                sections.push('| ' + emoji + ' `' + item.file + '` | ' + item.riskScore + ' | ' + factorStr + ' |');
+              });
+              sections.push('');
+              sections.push('</details>');
+              sections.push('');
+            }
+
+            // Quick wins
+            const quickWins = riskAudit.quickWins || [];
+            if (quickWins.length > 0) {
+              sections.push('<details>');
+              sections.push('<summary><strong>💡 Quick Wins (' + quickWins.length + ')</strong></summary>');
+              sections.push('');
+              quickWins.slice(0, 5).forEach(w => {
+                sections.push('- **' + w.action + '**: `' + w.target + '` (effort: ' + w.effort + ', impact: ' + w.impact + ')');
+              });
+              sections.push('');
+              sections.push('</details>');
+              sections.push('');
+            }
+
+            // Contract warnings
+            if (contractWarnings.length > 0) {
+              sections.push('<details>');
+              sections.push('<summary><strong>📜 Contract Changes (' + contractWarnings.length + ')</strong></summary>');
+              sections.push('');
+              sections.push('| Contract | Risk | Consumers |');
+              sections.push('|:---------|:-----|----------:|');
+              contractWarnings.forEach(w => {
+                const emoji = w.risk === 'high' ? '🔴' : w.risk === 'medium' ? '🟡' : '🟢';
+                sections.push('| ' + emoji + ' `' + w.file + '` | ' + w.risk + ' | ' + w.consumers + ' |');
+              });
+              sections.push('');
+              sections.push('</details>');
               sections.push('');
             }
 
@@ -249,6 +417,81 @@ jobs:
               sections.push('');
             }
 
+            // Ownership drift
+            if (Array.isArray(ownershipDrift) && ownershipDrift.length > 0) {
+              sections.push('<details>');
+              sections.push('<summary><strong>👤 Ownership Drift (' + ownershipDrift.length + ')</strong></summary>');
+              sections.push('');
+              sections.push('Files where CODEOWNERS differs from actual contributors:');
+              sections.push('');
+              sections.push('| File | Declared | Actual | Drift |');
+              sections.push('|:-----|:---------|:-------|------:|');
+              ownershipDrift.slice(0, 5).forEach(d => {
+                const pct = Math.round((d.driftScore || 0) * 100);
+                sections.push('| `' + d.path + '` | ' + (d.declaredOwner || 'none') + ' | ' + (d.actualOwner || 'none') + ' | ' + pct + '% |');
+              });
+              sections.push('');
+              sections.push('</details>');
+              sections.push('');
+            }
+
+            // Dead code candidates
+            const deadCandidates = deadCode.candidates || [];
+            if (deadCandidates.length > 0) {
+              sections.push('<details>');
+              sections.push('<summary><strong>💀 Dead Code Candidates (' + deadCandidates.length + ')</strong></summary>');
+              sections.push('');
+              sections.push('Symbols with no observed usage (from telemetry):');
+              sections.push('');
+              sections.push('| Symbol | Last Seen | Confidence |');
+              sections.push('|:-------|:----------|----------:|');
+              deadCandidates.slice(0, 5).forEach(c => {
+                const pct = Math.round((c.confidence || 0) * 100);
+                sections.push('| `' + c.name + '` | ' + (c.lastSeen || 'never') + ' | ' + pct + '% |');
+              });
+              sections.push('');
+              sections.push('</details>');
+              sections.push('');
+            }
+
+            // Language quality issues
+            const lowQualityLangs = (languageQuality.languages || []).filter(l => l.quality < 0.7);
+            if (lowQualityLangs.length > 0) {
+              sections.push('<details>');
+              sections.push('<summary><strong>🌐 Language Quality Issues (' + lowQualityLangs.length + ')</strong></summary>');
+              sections.push('');
+              sections.push('| Language | Quality | Issues |');
+              sections.push('|:---------|--------:|:-------|');
+              lowQualityLangs.forEach(l => {
+                const pct = Math.round((l.quality || 0) * 100);
+                const issues = (l.issues || []).join(', ') || 'none';
+                sections.push('| ' + l.name + ' | ' + pct + '% | ' + issues + ' |');
+              });
+              sections.push('');
+              sections.push('</details>');
+              sections.push('');
+            }
+
+            // Stale documentation
+            const staleCount = docStaleness.totalStale || 0;
+            if (staleCount > 0) {
+              sections.push('<details>');
+              sections.push('<summary><strong>📚 Stale Documentation (' + staleCount + ')</strong></summary>');
+              sections.push('');
+              sections.push('Documentation with broken symbol references:');
+              sections.push('');
+              const reports = docStaleness.reports || [];
+              reports.slice(0, 5).forEach(r => {
+                const staleRefs = (r.stale || []).slice(0, 3);
+                staleRefs.forEach(ref => {
+                  sections.push('- `' + r.docPath + ':' + ref.line + '`: ' + ref.rawText + ' (' + ref.reason + ')');
+                });
+              });
+              sections.push('');
+              sections.push('</details>');
+              sections.push('');
+            }
+
             const body = sections.join('\n');
 
             // Post or update comment
@@ -309,6 +552,13 @@ jobs:
               console.log('Could not request reviewers:', e.message);
             }
 
+      - name: Stop CKB Server
+        if: always()
+        run: |
+          if [ -n "$CKB_PID" ]; then
+            kill $CKB_PID 2>/dev/null || true
+          fi
+
       - name: Save CKB Cache
         if: always()
         uses: actions/cache/save@v4
@@ -326,4 +576,10 @@ jobs:
             pr-analysis-err.txt
             complexity-warnings.json
             coupling-warnings.json
+            contract-warnings.json
+            deadcode.json
+            ownership-drift.json
+            risk-audit.json
+            language-quality.json
+            doc-staleness.json
           retention-days: 7
