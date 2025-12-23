@@ -139,12 +139,45 @@ func (s *MCPServer) handleReadResourceRequest(msg *MCPMessage) *MCPMessage {
 	return NewResultMessage(msg.Id, result)
 }
 
-// handleListTools returns the list of available tools
+// handleListTools returns the list of available tools with pagination support.
+// MCP spec: cursor-based pagination for tools/list.
+// Page 1 always contains the complete core toolset + expandToolset meta-tool.
 func (s *MCPServer) handleListTools(params map[string]interface{}) (interface{}, error) {
-	tools := s.GetToolDefinitions()
-	return map[string]interface{}{
-		"tools": tools,
-	}, nil
+	// Extract cursor from params (optional)
+	var cursor string
+	if c, ok := params["cursor"].(string); ok {
+		cursor = c
+	}
+
+	// Get current state
+	preset := s.GetActivePreset()
+	toolsetHash := s.GetToolsetHash()
+
+	// Decode and validate cursor
+	offset, err := DecodeToolsCursor(cursor, preset, toolsetHash)
+	if err != nil {
+		// Return MCP error code -32602 (Invalid params) for invalid cursor
+		return nil, fmt.Errorf("invalid cursor: %s", err.Error())
+	}
+
+	// Get filtered and ordered tools
+	filteredTools := s.GetFilteredTools()
+
+	// Paginate
+	pageTools, nextCursor, err := PaginateTools(filteredTools, offset, DefaultPageSize, preset, toolsetHash)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build response
+	result := map[string]interface{}{
+		"tools": pageTools,
+	}
+	if nextCursor != "" {
+		result["nextCursor"] = nextCursor
+	}
+
+	return result, nil
 }
 
 // handleCallTool executes a tool

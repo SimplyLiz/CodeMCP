@@ -41,6 +41,9 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 		status = "healthy"
 	}
 
+	// Get preset info
+	preset, exposedCount, totalCount := s.GetPresetStats()
+
 	data := map[string]interface{}{
 		"status":   status,
 		"healthy":  statusResp.Healthy,
@@ -55,6 +58,12 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 			"dirty":       statusResp.RepoState.Dirty,
 			"repoStateId": statusResp.RepoState.RepoStateId,
 			"headCommit":  statusResp.RepoState.HeadCommit,
+		},
+		"preset": map[string]interface{}{
+			"active":   preset,
+			"exposed":  exposedCount,
+			"total":    totalCount,
+			"expanded": s.IsExpanded(),
 		},
 	}
 
@@ -96,6 +105,75 @@ func (s *MCPServer) toolDoctor(params map[string]interface{}) (*envelope.Respons
 	}
 
 	return OperationalResponse(data), nil
+}
+
+// toolExpandToolset implements the expandToolset meta-tool for dynamic preset expansion
+func (s *MCPServer) toolExpandToolset(params map[string]interface{}) (*envelope.Response, error) {
+	s.logger.Debug("Executing expandToolset", map[string]interface{}{
+		"params": params,
+	})
+
+	// Extract and validate preset
+	preset, ok := params["preset"].(string)
+	if !ok || preset == "" {
+		return nil, fmt.Errorf("missing required parameter: preset")
+	}
+
+	// Extract and validate reason
+	reason, ok := params["reason"].(string)
+	if !ok || len(reason) < 10 {
+		return nil, fmt.Errorf("missing or insufficient reason (minimum 10 characters)")
+	}
+
+	// Validate preset
+	if !IsValidPreset(preset) {
+		return nil, fmt.Errorf("invalid preset: %s (valid: %v)", preset, ValidPresets())
+	}
+
+	// Rate limit: only allow one expansion per session
+	if s.IsExpanded() {
+		data := map[string]interface{}{
+			"success": false,
+			"message": "Toolset already expanded this session. Restart with --preset=<preset> for a different preset.",
+		}
+		return envelope.New().Data(data).Build(), nil
+	}
+
+	// Get current state for comparison
+	oldPreset := s.GetActivePreset()
+	oldCount := len(s.GetFilteredTools())
+
+	// Update preset
+	if err := s.SetPreset(preset); err != nil {
+		return nil, fmt.Errorf("failed to set preset: %w", err)
+	}
+
+	// Mark as expanded
+	s.MarkExpanded()
+
+	// Get new state
+	newCount := len(s.GetFilteredTools())
+
+	// Send notification to client (if they support it)
+	// Note: Not all clients handle this notification
+	if err := s.SendNotification("notifications/tools/list_changed", nil); err != nil {
+		s.logger.Debug("Failed to send tools/list_changed notification (client may not support it)", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
+
+	data := map[string]interface{}{
+		"success":    true,
+		"oldPreset":  oldPreset,
+		"newPreset":  preset,
+		"oldCount":   oldCount,
+		"newCount":   newCount,
+		"reason":     reason,
+		"message":    fmt.Sprintf("Expanded toolset from %s (%d tools) to %s (%d tools).", oldPreset, oldCount, preset, newCount),
+		"fallback":   fmt.Sprintf("If new tools don't appear automatically, restart with: ckb mcp --preset=%s", preset),
+	}
+
+	return envelope.New().Data(data).Build(), nil
 }
 
 // toolGetSymbol implements the getSymbol tool
