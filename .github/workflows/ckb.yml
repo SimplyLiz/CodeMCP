@@ -327,6 +327,9 @@ jobs:
             // Helpers
             const pct = v => Math.round((v || 0) * 100);
             const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+            const sha = context.payload.pull_request?.head?.sha || context.sha;
+            const fileLink = (path, line) => `https://github.com/${context.repo.owner}/${context.repo.repo}/blob/${sha}/${path}${line ? '#L' + line : ''}`;
+            const linkedFile = (path, line) => `[\`${path}${line ? ':' + line : ''}\`](${fileLink(path, line)})`;
 
             // Risk styling
             const riskStyle = {
@@ -348,7 +351,7 @@ jobs:
 
             // Badges (cap risk score at 100%)
             const riskPct = Math.min(pct(risk.score), 100);
-            c.push(`![Risk](https://img.shields.io/badge/${riskStyle.label}-${riskPct}%25-${riskStyle.color}?style=for-the-badge) ` +
+            c.push(`[![Risk](https://img.shields.io/badge/${riskStyle.label}-${riskPct}%25-${riskStyle.color}?style=for-the-badge)](${runUrl}) ` +
                    `![Files](https://img.shields.io/badge/Files-${s.totalFiles || 0}-3498db?style=flat-square) ` +
                    `![Lines](https://img.shields.io/badge/%2B${s.totalAdditions || 0}%20%2F%20−${s.totalDeletions || 0}-3498db?style=flat-square) ` +
                    `![Modules](https://img.shields.io/badge/Modules-${s.totalModules || 0}-3498db?style=flat-square)`);
@@ -392,7 +395,7 @@ jobs:
             c.push(`| Complexity | ${complexViolations.length} violations | ${complexViolations.length === 0 ? '✅' : '⚠️'} |`);
             c.push(`| Coupling | ${coupling.missingCoupled?.length || 0} gaps | ${!coupling.missingCoupled?.length ? '✅' : '⚠️'} |`);
             c.push(`| Blast Radius | ${blastSymbols.length} symbols, ${blastTests.length} tests | ${blastSymbols.length + blastTests.length === 0 ? '✅' : '⚠️'} |`);
-            c.push(`| Index | ${process.env.INDEX_MODE || 'unknown'} (${process.env.INDEX_TIME || '?'}) | ${process.env.CACHE_HIT === 'true' ? '💾' : '🆕'} |`);
+            c.push(`| Index | [${process.env.INDEX_MODE || 'unknown'} (${process.env.INDEX_TIME || '?'})](${runUrl}) | ${process.env.CACHE_HIT === 'true' ? '💾' : '🆕'} |`);
             c.push('');
 
             // ═══════════════════════════════════════════════════════════════════
@@ -452,7 +455,7 @@ jobs:
               [...criticalItems, ...highItems].slice(0, 8).forEach(item => {
                 const icon = item.riskLevel === 'critical' ? '🔴' : '🟠';
                 const factor = (item.factors || [])[0]?.factor || '—';
-                c.push(`| ${icon} | \`${item.file}\` | ${item.riskScore} | ${factor} |`);
+                c.push(`| ${icon} | ${linkedFile(item.file)} | ${item.riskScore} | ${factor} |`);
               });
               c.push('');
               c.push('</details>');
@@ -467,7 +470,7 @@ jobs:
               c.push('| File | Churn Score |');
               c.push('|:-----|------------:|');
               hotspots.slice(0, 8).forEach(f => {
-                c.push(`| \`${f.path}\` | ${(f.hotspotScore || 0).toFixed(2)} |`);
+                c.push(`| ${linkedFile(f.path)} | ${(f.hotspotScore || 0).toFixed(2)} |`);
               });
               c.push('');
               c.push('</details>');
@@ -495,7 +498,7 @@ jobs:
               c.push('<details>');
               c.push(`<summary>📜 Contracts · ${contracts.files.length} changed</summary>`);
               c.push('');
-              contracts.files.slice(0, 10).forEach(f => c.push(`- \`${f}\``));
+              contracts.files.slice(0, 10).forEach(f => c.push(`- ${linkedFile(f)}`));
               c.push('');
               c.push('</details>');
               c.push('');
@@ -511,7 +514,7 @@ jobs:
               complexViolations.slice(0, 8).forEach(v => {
                 const cyWarn = v.cyclomatic > TH_CY ? '⚠️ ' : '';
                 const cgWarn = v.cognitive > TH_CG ? '⚠️ ' : '';
-                c.push(`| \`${v.file}\` | ${cyWarn}${v.cyclomatic} | ${cgWarn}${v.cognitive} |`);
+                c.push(`| ${linkedFile(v.file)} | ${cyWarn}${v.cyclomatic} | ${cgWarn}${v.cognitive} |`);
               });
               c.push('');
               c.push('</details>');
@@ -526,7 +529,7 @@ jobs:
               c.push('| Missing File | Usually Changed With | Correlation |');
               c.push('|:-------------|:---------------------|------------:|');
               coupling.missingCoupled.slice(0, 8).forEach(w => {
-                c.push(`| \`${w.file}\` | \`${w.coupledTo}\` | ${pct(w.correlation || w.couplingScore || 0)}% |`);
+                c.push(`| ${linkedFile(w.file)} | ${linkedFile(w.coupledTo)} | ${pct(w.correlation || w.couplingScore || 0)}% |`);
               });
               c.push('');
               c.push('</details>');
@@ -540,7 +543,7 @@ jobs:
               c.push('');
               audit.quickWins.slice(0, 8).forEach(w => {
                 const e = { low: '🟢', medium: '🟡', high: '🔴' }[w.effort] || '⚪';
-                c.push(`- ${e} **${w.action}** → \`${w.target}\``);
+                c.push(`- ${e} **${w.action}** → ${linkedFile(w.target)}`);
               });
               c.push('');
               c.push('</details>');
@@ -555,7 +558,7 @@ jobs:
               c.push('| File | CODEOWNERS | Actual Top Contributor |');
               c.push('|:-----|:-----------|:-----------------------|');
               drift.slice(0, 8).forEach(d => {
-                c.push(`| \`${d.path}\` | ${d.declaredOwner || '—'} | ${d.actualOwner || '—'} |`);
+                c.push(`| ${linkedFile(d.path)} | ${d.declaredOwner || '—'} | ${d.actualOwner || '—'} |`);
               });
               c.push('');
               c.push('</details>');
@@ -584,7 +587,7 @@ jobs:
               c.push('');
               (docsStale.reports || []).slice(0, 5).forEach(r => {
                 (r.stale || []).slice(0, 3).forEach(s => {
-                  c.push(`- \`${r.docPath}:${s.line}\` → \`${s.rawText}\``);
+                  c.push(`- ${linkedFile(r.docPath, s.line)} → \`${s.rawText}\``);
                 });
               });
               c.push('');
