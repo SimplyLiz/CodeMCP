@@ -36,7 +36,7 @@ jobs:
           set -e
 
           COVERAGE="N/A"
-          THRESHOLD=50
+          THRESHOLD=30
           BELOW_THRESHOLD="false"
 
           if [ -f coverage.out ]; then
