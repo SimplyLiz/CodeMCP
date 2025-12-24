@@ -71,7 +71,7 @@ jobs:
         run: go build -ldflags="-s -w" -o ckb ./cmd/ckb
 
       - name: Install SCIP indexer
-        run: go install github.com/sourcegraph/scip-go@latest
+        run: go install github.com/sourcegraph/scip-go/cmd/scip-go@latest
 
       # ───────────────────────────────────────────────────────────────────────
       # Cache & Index
@@ -92,19 +92,20 @@ jobs:
           # Check for language-specific indexer
           if ! ./ckb index 2>&1 | tee /tmp/index.log; then
             if grep -q "Indexer not found" /tmp/index.log; then
-              echo "::error::SCIP indexer not installed. Run: go install github.com/sourcegraph/scip-go@latest"
+              echo "::error::SCIP indexer not installed. See install commands below."
               echo ""
-              echo "╔════════════════════════════════════════════════════════════════╗"
-              echo "║  INDEXER NOT FOUND                                             ║"
-              echo "╠════════════════════════════════════════════════════════════════╣"
-              echo "║  CKB requires a SCIP indexer for your language.                ║"
-              echo "║                                                                ║"
-              echo "║  For Go:         go install github.com/sourcegraph/scip-go@latest"
-              echo "║  For TypeScript: npm i -g @sourcegraph/scip-typescript        ║"
-              echo "║  For Python:     pip install scip-python                       ║"
-              echo "║                                                                ║"
-              echo "║  Add the install step before 'ckb index' in your workflow.    ║"
-              echo "╚════════════════════════════════════════════════════════════════╝"
+              echo "╔═══════════════════════════════════════════════════════════════════════════════╗"
+              echo "║  INDEXER NOT FOUND                                                            ║"
+              echo "╠═══════════════════════════════════════════════════════════════════════════════╣"
+              echo "║  CKB requires a SCIP indexer for your language.                               ║"
+              echo "║                                                                               ║"
+              echo "║  Go:         go install github.com/sourcegraph/scip-go/cmd/scip-go@latest     ║"
+              echo "║  TypeScript: npm i -g @sourcegraph/scip-typescript                            ║"
+              echo "║  Python:     pip install scip-python                                          ║"
+              echo "║  Rust:       cargo install scip                                               ║"
+              echo "║                                                                               ║"
+              echo "║  Add the install step before 'ckb index' in your workflow.                    ║"
+              echo "╚═══════════════════════════════════════════════════════════════════════════════╝"
               exit 1
             fi
             echo "::error::Indexing failed. Check logs above."
@@ -557,7 +558,7 @@ jobs:
         run: go build -ldflags="-s -w" -o ckb ./cmd/ckb
 
       - name: Install SCIP indexer
-        run: go install github.com/sourcegraph/scip-go@latest
+        run: go install github.com/sourcegraph/scip-go/cmd/scip-go@latest
 
       - name: Cache
         uses: actions/cache@v4
@@ -573,19 +574,20 @@ jobs:
           # Check for language-specific indexer
           if ! ./ckb index --force 2>&1 | tee /tmp/index.log; then
             if grep -q "Indexer not found" /tmp/index.log; then
-              echo "::error::SCIP indexer not installed. Run: go install github.com/sourcegraph/scip-go@latest"
+              echo "::error::SCIP indexer not installed. See install commands below."
               echo ""
-              echo "╔════════════════════════════════════════════════════════════════╗"
-              echo "║  INDEXER NOT FOUND                                             ║"
-              echo "╠════════════════════════════════════════════════════════════════╣"
-              echo "║  CKB requires a SCIP indexer for your language.                ║"
-              echo "║                                                                ║"
-              echo "║  For Go:         go install github.com/sourcegraph/scip-go@latest"
-              echo "║  For TypeScript: npm i -g @sourcegraph/scip-typescript        ║"
-              echo "║  For Python:     pip install scip-python                       ║"
-              echo "║                                                                ║"
-              echo "║  Add the install step before 'ckb index' in your workflow.    ║"
-              echo "╚════════════════════════════════════════════════════════════════╝"
+              echo "╔═══════════════════════════════════════════════════════════════════════════════╗"
+              echo "║  INDEXER NOT FOUND                                                            ║"
+              echo "╠═══════════════════════════════════════════════════════════════════════════════╣"
+              echo "║  CKB requires a SCIP indexer for your language.                               ║"
+              echo "║                                                                               ║"
+              echo "║  Go:         go install github.com/sourcegraph/scip-go/cmd/scip-go@latest     ║"
+              echo "║  TypeScript: npm i -g @sourcegraph/scip-typescript                            ║"
+              echo "║  Python:     pip install scip-python                                          ║"
+              echo "║  Rust:       cargo install scip                                               ║"
+              echo "║                                                                               ║"
+              echo "║  Add the install step before 'ckb index' in your workflow.                    ║"
+              echo "╚═══════════════════════════════════════════════════════════════════════════════╝"
               exit 1
             fi
             echo "::error::Indexing failed. Check logs above."
