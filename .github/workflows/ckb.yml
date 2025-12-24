@@ -70,6 +70,9 @@ jobs:
       - name: Build
         run: go build -ldflags="-s -w" -o ckb ./cmd/ckb
 
+      - name: Install SCIP indexer
+        run: go install github.com/sourcegraph/scip-go@latest
+
       # ───────────────────────────────────────────────────────────────────────
       # Cache & Index
       # ───────────────────────────────────────────────────────────────────────
@@ -85,12 +88,29 @@ jobs:
         id: index
         run: |
           ./ckb init
-          
-          if ./ckb index 2>/dev/null; then
-            echo "mode=incremental" >> $GITHUB_OUTPUT
-          else
-            echo "mode=fallback" >> $GITHUB_OUTPUT
+
+          # Check for language-specific indexer
+          if ! ./ckb index 2>&1 | tee /tmp/index.log; then
+            if grep -q "Indexer not found" /tmp/index.log; then
+              echo "::error::SCIP indexer not installed. Run: go install github.com/sourcegraph/scip-go@latest"
+              echo ""
+              echo "╔════════════════════════════════════════════════════════════════╗"
+              echo "║  INDEXER NOT FOUND                                             ║"
+              echo "╠════════════════════════════════════════════════════════════════╣"
+              echo "║  CKB requires a SCIP indexer for your language.                ║"
+              echo "║                                                                ║"
+              echo "║  For Go:         go install github.com/sourcegraph/scip-go@latest"
+              echo "║  For TypeScript: npm i -g @sourcegraph/scip-typescript        ║"
+              echo "║  For Python:     pip install scip-python                       ║"
+              echo "║                                                                ║"
+              echo "║  Add the install step before 'ckb index' in your workflow.    ║"
+              echo "╚════════════════════════════════════════════════════════════════╝"
+              exit 1
+            fi
+            echo "::error::Indexing failed. Check logs above."
+            exit 1
           fi
+          echo "mode=indexed" >> $GITHUB_OUTPUT
 
       # ───────────────────────────────────────────────────────────────────────
       # Core Analysis
@@ -536,6 +556,9 @@ jobs:
       - name: Build
         run: go build -ldflags="-s -w" -o ckb ./cmd/ckb
 
+      - name: Install SCIP indexer
+        run: go install github.com/sourcegraph/scip-go@latest
+
       - name: Cache
         uses: actions/cache@v4
         with:
@@ -546,8 +569,29 @@ jobs:
       - name: Refresh
         run: |
           ./ckb init
-          ./ckb index --force
-          
+
+          # Check for language-specific indexer
+          if ! ./ckb index --force 2>&1 | tee /tmp/index.log; then
+            if grep -q "Indexer not found" /tmp/index.log; then
+              echo "::error::SCIP indexer not installed. Run: go install github.com/sourcegraph/scip-go@latest"
+              echo ""
+              echo "╔════════════════════════════════════════════════════════════════╗"
+              echo "║  INDEXER NOT FOUND                                             ║"
+              echo "╠════════════════════════════════════════════════════════════════╣"
+              echo "║  CKB requires a SCIP indexer for your language.                ║"
+              echo "║                                                                ║"
+              echo "║  For Go:         go install github.com/sourcegraph/scip-go@latest"
+              echo "║  For TypeScript: npm i -g @sourcegraph/scip-typescript        ║"
+              echo "║  For Python:     pip install scip-python                       ║"
+              echo "║                                                                ║"
+              echo "║  Add the install step before 'ckb index' in your workflow.    ║"
+              echo "╚════════════════════════════════════════════════════════════════╝"
+              exit 1
+            fi
+            echo "::error::Indexing failed. Check logs above."
+            exit 1
+          fi
+
           mkdir -p reports
           ./ckb hotspots --limit=50 --format=json > reports/hotspots.json 2>/dev/null || true
           ./ckb audit --min-score=40 --limit=50 --format=json > reports/audit.json 2>/dev/null || true
