@@ -9,6 +9,7 @@ module.exports = async ({ github, context, core }) => {
   // Thresholds from environment
   const COMPLEXITY_CYCLOMATIC = parseInt(process.env.COMPLEXITY_CYCLOMATIC || '15');
   const COMPLEXITY_COGNITIVE = parseInt(process.env.COMPLEXITY_COGNITIVE || '20');
+  const DOC_COVERAGE_MIN = parseInt(process.env.DOC_COVERAGE_MIN || '70');
 
   // Load data
   const pr = read('analysis.json', {});
@@ -45,7 +46,7 @@ module.exports = async ({ github, context, core }) => {
 
   // Helpers
   const pct = v => Math.round((v || 0) * 100);
-  const safetyPct = Math.max(0, Math.round((1 - (risk.score || 0)) * 100));
+  const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${process.env.GITHUB_RUN_ID}`;
 
   // Risk styling
   const riskStyle = {
@@ -53,21 +54,6 @@ module.exports = async ({ github, context, core }) => {
     medium: { icon: '🟡', color: 'f39c12', label: 'MEDIUM' },
     low: { icon: '🟢', color: '27ae60', label: 'LOW' }
   }[risk.level] || { icon: '⚪', color: '95a5a6', label: 'UNKNOWN' };
-
-  // Colorful progress bar
-  function makeProgressBar(safetyPercent, width = 15) {
-    const p = Math.max(0, Math.min(100, safetyPercent));
-    const safe = Math.round((p / 100) * width);
-    const risky = width - safe;
-
-    let bar = '🟩'.repeat(safe);
-    if (risky > 0) {
-      if (p >= 70) bar += '🟨'.repeat(risky);
-      else if (p >= 40) bar += '🟧'.repeat(Math.ceil(risky / 2)) + '🟨'.repeat(Math.floor(risky / 2));
-      else bar += '🟥'.repeat(Math.ceil(risky / 2)) + '🟧'.repeat(Math.floor(risky / 2));
-    }
-    return bar;
-  }
 
   // Build comment
   let c = [];
@@ -86,38 +72,22 @@ module.exports = async ({ github, context, core }) => {
   c.push('');
 
   // ═══════════════════════════════════════════════════════════════
-  // COLORFUL SAFETY BAR
+  // QUICK STATS
   // ═══════════════════════════════════════════════════════════════
-  const progressBar = makeProgressBar(safetyPct, 15);
-  const safetyLabel = safetyPct >= 70 ? `**${safetyPct}%** safe ✓` :
-                     safetyPct >= 40 ? `**${safetyPct}%** safe` :
-                     `**${safetyPct}%** safe ⚠️`;
+  const stats = [];
+  if (hotspots.length) stats.push(`🔥 ${hotspots.length} hotspot${hotspots.length > 1 ? 's' : ''}`);
+  if (criticalItems.length + highItems.length) stats.push(`⚠️ ${criticalItems.length + highItems.length} risk items`);
+  if (complexViolations.length) stats.push(`📊 ${complexViolations.length} complex`);
+  if (coupling.missingCoupled?.length) stats.push(`🔗 ${coupling.missingCoupled.length} coupled`);
+  if (breakingChanges.length) stats.push(`💥 ${breakingChanges.length} breaking`);
+  if (blastSymbols.length + blastTests.length) stats.push(`💣 ${blastSymbols.length + blastTests.length} blast`);
+  if (contracts.files?.length) stats.push(`📜 ${contracts.files.length} contract${contracts.files.length > 1 ? 's' : ''}`);
+  if (docsStale.totalStale) stats.push(`📚 ${docsStale.totalStale} stale`);
+  if (deadcode.candidates?.length) stats.push(`💀 ${deadcode.candidates.length} dead`);
+  if (lowQualityLangs.length) stats.push(`🌐 ${lowQualityLangs.length} lang`);
 
-  c.push(`| Health | ${progressBar} | ${safetyLabel} |`);
-  c.push('|:-------|:-----|:-----|');
-  c.push('');
-
-  // ═══════════════════════════════════════════════════════════════
-  // ISSUES SUMMARY
-  // ═══════════════════════════════════════════════════════════════
-  const issues = [];
-  if (criticalItems.length) issues.push(`🔴 **${criticalItems.length}** critical`);
-  if (highItems.length) issues.push(`🟠 **${highItems.length}** high`);
-  if (hotspots.length) issues.push(`🔥 **${hotspots.length}** hotspots`);
-  if (complexViolations.length) issues.push(`📊 **${complexViolations.length}** complex`);
-  if (coupling.missingCoupled?.length) issues.push(`🔗 **${coupling.missingCoupled.length}** coupled`);
-  if (breakingChanges.length) issues.push(`💥 **${breakingChanges.length}** breaking`);
-  if (blastSymbols.length + blastTests.length) issues.push(`💣 **${blastSymbols.length + blastTests.length}** blast`);
-  if (contracts.files?.length) issues.push(`📜 **${contracts.files.length}** contracts`);
-  if (docsStale.totalStale) issues.push(`📚 **${docsStale.totalStale}** stale`);
-  if (deadcode.candidates?.length) issues.push(`💀 **${deadcode.candidates.length}** dead`);
-  if (lowQualityLangs.length) issues.push(`🌐 **${lowQualityLangs.length}** lang`);
-
-  if (issues.length > 0) {
-    c.push(`> ⚠️ ${issues.join(' · ')}`);
-    c.push('');
-  } else {
-    c.push('> ✅ **All checks passed** — No issues detected');
+  if (stats.length) {
+    c.push(`> ${stats.join(' · ')}`);
     c.push('');
   }
 
@@ -133,13 +103,21 @@ module.exports = async ({ github, context, core }) => {
   // REVIEWERS
   // ═══════════════════════════════════════════════════════════════
   if (reviewers.length) {
-    const list = reviewers.slice(0, 3).map(r => {
-      const name = r.owner.startsWith('@') ? r.owner : `@${r.owner}`;
-      return `**${name}** (${pct(r.coverage)}%)`;
-    }).join(', ');
-    c.push(`👥 **Suggested:** ${list}`);
+    const list = reviewers.slice(0, 3).map(r => `**${r.owner.replace(/^@?/, '@')}** (${pct(r.coverage)}%)`).join(', ');
+    c.push(`👥 Suggested: ${list}`);
     c.push('');
   }
+
+  // ═══════════════════════════════════════════════════════════════
+  // METRICS TABLE
+  // ═══════════════════════════════════════════════════════════════
+  c.push('| Metric | Value | |');
+  c.push('|:-------|------:|:-:|');
+  c.push(`| Doc Coverage | ${docsCov.coverage || 0}% | ${(docsCov.coverage || 0) >= DOC_COVERAGE_MIN ? '✅' : '⚠️'} |`);
+  c.push(`| Complexity Issues | ${complexViolations.length} | ${complexViolations.length === 0 ? '✅' : '⚠️'} |`);
+  c.push(`| Coupling Gaps | ${coupling.missingCoupled?.length || 0} | ${!coupling.missingCoupled?.length ? '✅' : '⚠️'} |`);
+  c.push(`| Index | ${process.env.INDEX_MODE || 'unknown'} | ${process.env.CACHE_HIT === 'true' ? '💾' : '🆕'} |`);
+  c.push('');
 
   // ═══════════════════════════════════════════════════════════════
   // COLLAPSIBLE SECTIONS
@@ -361,11 +339,23 @@ module.exports = async ({ github, context, core }) => {
     c.push('');
     const failed = (evalResults.results || []).filter(r => !r.passed);
     if (failed.length > 0) {
+      const shown = failed.slice(0, 20);
       c.push('**Failed tests:**');
-      failed.slice(0, 3).forEach(r => {
-        c.push(`- \`${r.id || r.name}\`: ${r.reason || 'failed'}`);
+      shown.forEach(r => {
+        c.push(`- \`${r.id || r.name}\`${r.reason ? `: ${r.reason}` : ''}`);
       });
+      if (failed.length > shown.length) {
+        c.push(`- … and **${failed.length - shown.length}** more → [Run Summary](${runUrl})`);
+      }
       c.push('');
+
+      // Full list in Step Summary
+      let summary = `## 🧪 Failed Tests (${failed.length})\n\n`;
+      summary += '| Test | Reason |\n|:-----|:-------|\n';
+      failed.forEach(r => {
+        summary += `| \`${r.id || r.name}\` | ${r.reason || '—'} |\n`;
+      });
+      await core.summary.addRaw(summary).write();
     }
     c.push('</details>');
     c.push('');
@@ -375,18 +365,24 @@ module.exports = async ({ github, context, core }) => {
   // FOOTER
   // ═══════════════════════════════════════════════════════════════
   c.push('---');
-  const cacheIcon = process.env.CACHE_HIT === 'true' ? '💾' : '🔄';
-  const modeIcon = process.env.INDEX_MODE === 'incremental' ? '⚡' : '🔨';
-  c.push(`<sub>${cacheIcon} ${modeIcon} ${process.env.INDEX_TIME || '?'}s · <a href="https://github.com/SimplyLiz/CodeMCP">CKB</a></sub>`);
+  c.push(`<sub>Generated by <a href="https://github.com/SimplyLiz/CodeMCP">CKB</a> · <a href="${runUrl}">Run details</a></sub>`);
 
-  // Post/update comment
-  const body = c.join('\n');
+  // Post/update comment with hard-cap
+  let body = c.join('\n');
+  const MAX_COMMENT_SIZE = 65000;
+  if (body.length > MAX_COMMENT_SIZE) {
+    body = body.slice(0, MAX_COMMENT_SIZE - 200) + `\n\n---\n<sub>✂️ Truncated. <a href="${runUrl}">Full report in Run Summary</a></sub>`;
+  }
+
   const { data: comments } = await github.rest.issues.listComments({
     owner: context.repo.owner,
     repo: context.repo.repo,
     issue_number: context.issue.number
   });
-  const existing = comments.find(comment => comment.body?.includes('<!-- ckb -->'));
+  // Only match Bot comments to avoid overwriting quoted comments
+  const existing = comments.find(comment =>
+    comment.user?.type === 'Bot' && comment.body?.includes('<!-- ckb -->')
+  );
 
   if (existing) {
     await github.rest.issues.updateComment({
