@@ -2,7 +2,11 @@ package audit
 
 import (
 	"math"
+	"os"
+	"path/filepath"
 	"testing"
+
+	"ckb/internal/logging"
 )
 
 func TestGetRiskLevel(t *testing.T) {
@@ -212,4 +216,336 @@ func TestAuditOptionsStructure(t *testing.T) {
 	if opts.QuickWins != true {
 		t.Error("AuditOptions.QuickWins should be true")
 	}
+}
+
+func TestNewAnalyzer(t *testing.T) {
+	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	analyzer := NewAnalyzer("/path/to/repo", logger)
+
+	if analyzer == nil {
+		t.Fatal("NewAnalyzer returned nil")
+	}
+	if analyzer.repoRoot != "/path/to/repo" {
+		t.Errorf("repoRoot = %q, want %q", analyzer.repoRoot, "/path/to/repo")
+	}
+}
+
+func TestGetComplexity(t *testing.T) {
+	tmpDir := t.TempDir()
+	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	analyzer := NewAnalyzer(tmpDir, logger)
+
+	// Create a file with known complexity
+	testFile := filepath.Join(tmpDir, "test.go")
+	content := `package main
+
+func main() {
+	if true {
+		for i := 0; i < 10; i++ {
+			if i > 5 && i < 8 {
+				switch i {
+				case 6:
+					println("six")
+				case 7:
+					println("seven")
+				}
+			}
+		}
+	}
+}
+`
+	if err := os.WriteFile(testFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	complexity := analyzer.getComplexity(testFile)
+	// Should detect: 2 if, 1 for, 1 switch, 2 case, 1 &&
+	// Base complexity 1 + 2 + 1 + 1 + 2 + 1 = 8
+	if complexity < 5 {
+		t.Errorf("getComplexity() = %d, want >= 5", complexity)
+	}
+}
+
+func TestGetComplexityNonexistent(t *testing.T) {
+	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	analyzer := NewAnalyzer("/tmp", logger)
+
+	complexity := analyzer.getComplexity("/nonexistent/file.go")
+	if complexity != 0 {
+		t.Errorf("getComplexity() for nonexistent file = %d, want 0", complexity)
+	}
+}
+
+func TestHasTestFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	analyzer := NewAnalyzer(tmpDir, logger)
+
+	// Create a source file and its test file
+	srcFile := filepath.Join(tmpDir, "main.go")
+	testFile := filepath.Join(tmpDir, "main_test.go")
+
+	if err := os.WriteFile(srcFile, []byte("package main"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(testFile, []byte("package main"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if !analyzer.hasTestFile("main.go") {
+		t.Error("hasTestFile() should return true for main.go")
+	}
+
+	// Check for file without test
+	if analyzer.hasTestFile("notest.go") {
+		t.Error("hasTestFile() should return false for notest.go")
+	}
+}
+
+func TestDetectSecurityKeywords(t *testing.T) {
+	tmpDir := t.TempDir()
+	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	analyzer := NewAnalyzer(tmpDir, logger)
+
+	// Create a file with security keywords
+	securityFile := filepath.Join(tmpDir, "auth.go")
+	content := `package auth
+
+func Login(password string) {
+	token := generateToken(password)
+	secret := getSecret()
+}
+`
+	if err := os.WriteFile(securityFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	keywords := analyzer.detectSecurityKeywords(securityFile)
+
+	// Should detect: password, token, secret
+	if len(keywords) < 3 {
+		t.Errorf("detectSecurityKeywords() found %d keywords, want >= 3", len(keywords))
+	}
+
+	// Check specific keywords
+	hasPassword := false
+	for _, kw := range keywords {
+		if kw == "password" {
+			hasPassword = true
+			break
+		}
+	}
+	if !hasPassword {
+		t.Error("detectSecurityKeywords() should detect 'password'")
+	}
+}
+
+func TestDetectSecurityKeywordsNonexistent(t *testing.T) {
+	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	analyzer := NewAnalyzer("/tmp", logger)
+
+	keywords := analyzer.detectSecurityKeywords("/nonexistent/file.go")
+	if keywords != nil {
+		t.Errorf("detectSecurityKeywords() for nonexistent file = %v, want nil", keywords)
+	}
+}
+
+func TestGenerateRecommendation(t *testing.T) {
+	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	analyzer := NewAnalyzer("/tmp", logger)
+
+	tests := []struct {
+		name    string
+		factors []RiskFactor
+		want    string
+	}{
+		{
+			name:    "no contributing factors",
+			factors: []RiskFactor{{Factor: FactorComplexity, Contribution: 0}},
+			want:    "",
+		},
+		{
+			name:    "complexity top factor",
+			factors: []RiskFactor{{Factor: FactorComplexity, Contribution: 20}},
+			want:    "refactoring",
+		},
+		{
+			name:    "test coverage top factor",
+			factors: []RiskFactor{{Factor: FactorTestCoverage, Contribution: 15}},
+			want:    "test coverage",
+		},
+		{
+			name:    "bus factor top",
+			factors: []RiskFactor{{Factor: FactorBusFactor, Contribution: 15}},
+			want:    "bus factor",
+		},
+		{
+			name:    "staleness top",
+			factors: []RiskFactor{{Factor: FactorStaleness, Contribution: 10}},
+			want:    "dead code",
+		},
+		{
+			name:    "security top",
+			factors: []RiskFactor{{Factor: FactorSecuritySensitive, Contribution: 15}},
+			want:    "Security",
+		},
+		{
+			name:    "coupling top",
+			factors: []RiskFactor{{Factor: FactorCoChangeCoupling, Contribution: 5}},
+			want:    "decoupling",
+		},
+		{
+			name:    "churn top",
+			factors: []RiskFactor{{Factor: FactorChurn, Contribution: 5}},
+			want:    "churn",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := analyzer.generateRecommendation(tt.factors)
+			if tt.want != "" && !containsIgnoreCase(rec, tt.want) {
+				t.Errorf("generateRecommendation() = %q, want to contain %q", rec, tt.want)
+			}
+			if tt.want == "" && rec != "" {
+				t.Errorf("generateRecommendation() = %q, want empty", rec)
+			}
+		})
+	}
+}
+
+func TestComputeSummary(t *testing.T) {
+	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	analyzer := NewAnalyzer("/tmp", logger)
+
+	items := []RiskItem{
+		{RiskLevel: RiskLevelCritical, Factors: []RiskFactor{{Factor: FactorComplexity, Contribution: 20}}},
+		{RiskLevel: RiskLevelCritical, Factors: []RiskFactor{{Factor: FactorComplexity, Contribution: 18}}},
+		{RiskLevel: RiskLevelHigh, Factors: []RiskFactor{{Factor: FactorTestCoverage, Contribution: 15}}},
+		{RiskLevel: RiskLevelMedium, Factors: []RiskFactor{{Factor: FactorBusFactor, Contribution: 10}}},
+		{RiskLevel: RiskLevelLow, Factors: []RiskFactor{{Factor: FactorChurn, Contribution: 3}}},
+	}
+
+	summary := analyzer.computeSummary(items)
+
+	if summary.Critical != 2 {
+		t.Errorf("Critical = %d, want 2", summary.Critical)
+	}
+	if summary.High != 1 {
+		t.Errorf("High = %d, want 1", summary.High)
+	}
+	if summary.Medium != 1 {
+		t.Errorf("Medium = %d, want 1", summary.Medium)
+	}
+	if summary.Low != 1 {
+		t.Errorf("Low = %d, want 1", summary.Low)
+	}
+
+	// Should have complexity as top factor (appears twice)
+	if len(summary.TopRiskFactors) == 0 {
+		t.Error("TopRiskFactors should not be empty")
+	}
+}
+
+func TestFindQuickWins(t *testing.T) {
+	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	analyzer := NewAnalyzer("/tmp", logger)
+
+	items := []RiskItem{
+		{
+			File: "risky.go",
+			Factors: []RiskFactor{
+				{Factor: FactorTestCoverage, Contribution: 15},
+				{Factor: FactorComplexity, Contribution: 15},
+			},
+		},
+		{
+			File: "owned_by_one.go",
+			Factors: []RiskFactor{
+				{Factor: FactorBusFactor, Contribution: 15},
+			},
+		},
+	}
+
+	wins := analyzer.findQuickWins(items)
+
+	if len(wins) < 1 {
+		t.Error("findQuickWins should find at least 1 quick win")
+	}
+
+	// Should include "Add tests" for the file with no tests and high complexity
+	hasAddTests := false
+	for _, win := range wins {
+		if win.Action == "Add tests" && win.Target == "risky.go" {
+			hasAddTests = true
+			break
+		}
+	}
+	if !hasAddTests {
+		t.Error("findQuickWins should include 'Add tests' for risky.go")
+	}
+}
+
+func TestFindSourceFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	analyzer := NewAnalyzer(tmpDir, logger)
+
+	// Create some source files
+	os.MkdirAll(filepath.Join(tmpDir, "src"), 0755)
+	os.WriteFile(filepath.Join(tmpDir, "src", "main.go"), []byte("package main"), 0644)
+	os.WriteFile(filepath.Join(tmpDir, "src", "utils.ts"), []byte("export {}"), 0644)
+	os.WriteFile(filepath.Join(tmpDir, "README.md"), []byte("# README"), 0644)
+
+	// Create node_modules which should be skipped
+	os.MkdirAll(filepath.Join(tmpDir, "node_modules"), 0755)
+	os.WriteFile(filepath.Join(tmpDir, "node_modules", "pkg.js"), []byte(""), 0644)
+
+	files, err := analyzer.findSourceFiles(tmpDir)
+	if err != nil {
+		t.Fatalf("findSourceFiles() error = %v", err)
+	}
+
+	// Should find main.go and utils.ts, but not README.md or node_modules files
+	if len(files) != 2 {
+		t.Errorf("findSourceFiles() found %d files, want 2", len(files))
+	}
+
+	// Verify README.md is not included
+	for _, f := range files {
+		if filepath.Base(f) == "README.md" {
+			t.Error("findSourceFiles() should not include README.md")
+		}
+		if containsIgnoreCase(f, "node_modules") {
+			t.Error("findSourceFiles() should not include node_modules files")
+		}
+	}
+}
+
+// Helper function for case-insensitive contains
+func containsIgnoreCase(s, substr string) bool {
+	sLower := toLower(s)
+	substrLower := toLower(substr)
+	return len(sLower) >= len(substrLower) && containsStr(sLower, substrLower)
+}
+
+func toLower(s string) string {
+	b := make([]byte, len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		b[i] = c
+	}
+	return string(b)
+}
+
+func containsStr(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
