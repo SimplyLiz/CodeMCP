@@ -1,6 +1,7 @@
 # CKB — Code Knowledge Backend
 
 [![npm version](https://img.shields.io/npm/v/@tastehub/ckb.svg)](https://www.npmjs.com/package/@tastehub/ckb)
+[![codecov](https://codecov.io/gh/SimplyLiz/CodeMCP/graph/badge.svg)](https://codecov.io/gh/SimplyLiz/CodeMCP)
 [![Documentation](https://img.shields.io/badge/docs-wiki-blue.svg)](https://github.com/SimplyLiz/CodeMCP/wiki)
 
 **The missing link between your codebase and AI assistants.**

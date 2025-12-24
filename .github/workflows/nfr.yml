@@ -4,6 +4,14 @@ on:
   pull_request:
     branches: [develop, main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   nfr:
     name: NFR Scenarios
@@ -14,7 +22,8 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version-file: 'go.mod'
+          cache: true
 
       - name: Download dependencies
         run: go mod download
@@ -22,54 +31,226 @@ jobs:
       - name: Run NFR Tests
         id: nfr
         run: |
-          echo "## 📊 NFR Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Run NFR tests and capture output
+          # Run NFR tests
           set +e
           go test -v -run TestNFRScenarios ./internal/mcp/... 2>&1 | tee nfr-output.txt
-          TEST_EXIT=$?
+          TEST_EXIT=${PIPESTATUS[0]}
           set -e
 
-          # Parse results for summary
-          PASS=$(grep -c "^--- PASS" nfr-output.txt || echo "0")
-          FAIL=$(grep -c "^--- FAIL" nfr-output.txt || echo "0")
+          # Parse results - count all PASS/FAIL lines including subtests
+          PASS=$(grep -c -- "--- PASS" nfr-output.txt) || PASS=0
+          FAIL=$(grep -c -- "--- FAIL" nfr-output.txt) || FAIL=0
           TOTAL=$((PASS + FAIL))
 
+          # Job summary
+          echo "## 📊 NFR Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| ✅ Passed | $PASS |" >> $GITHUB_STEP_SUMMARY
           echo "| ❌ Failed | $FAIL |" >> $GITHUB_STEP_SUMMARY
           echo "| 📊 Total | $TOTAL |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Show baseline info
-          echo "### Token Baselines (10% tolerance)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Tool | Tier | Baseline |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|------|----------|" >> $GITHUB_STEP_SUMMARY
-          echo "| searchSymbols | small/medium/large | 3.6K / 18K / 91K |" >> $GITHUB_STEP_SUMMARY
-          echo "| findReferences | small/medium/large | 4.5K / 45K / 450K |" >> $GITHUB_STEP_SUMMARY
-          echo "| getCallGraph | shallow/deep | 900 / 16K |" >> $GITHUB_STEP_SUMMARY
-          echo "| getHotspots | small/large | 900 / 17K |" >> $GITHUB_STEP_SUMMARY
-          echo "| analyzeImpact | small/large | 2K / 18K |" >> $GITHUB_STEP_SUMMARY
-          echo "| getArchitecture | small/large | 1.5K / 8K |" >> $GITHUB_STEP_SUMMARY
-          echo "| traceUsage | small/large | 800 / 7.8K |" >> $GITHUB_STEP_SUMMARY
-
-          # Show any failures in detail
-          if [ "$FAIL" -gt 0 ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### ❌ Failed Scenarios" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            grep -A2 "REGRESSION:" nfr-output.txt >> $GITHUB_STEP_SUMMARY || true
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          fi
+          # Set outputs for PR comment
+          echo "pass=$PASS" >> $GITHUB_OUTPUT
+          echo "fail=$FAIL" >> $GITHUB_OUTPUT
+          echo "total=$TOTAL" >> $GITHUB_OUTPUT
+          echo "exit_code=$TEST_EXIT" >> $GITHUB_OUTPUT
 
           exit $TEST_EXIT
+
+      - name: Parse NFR metrics
+        id: metrics
+        if: always()
+        run: |
+          # Extract actual token counts and timings from test output
+          # Format: tool_tier_actual_baseline_status
+
+          cat > parse_nfr.py << 'EOF'
+          import re
+
+          def fmt_time(t):
+              """Normalize timing: µs if <1ms, else ms"""
+              t = t.strip()
+              if "ms" in t and "µs" not in t:
+                  return t  # already ms
+              if "µs" in t:
+                  val = float(t.replace("µs", ""))
+                  if val >= 1000:
+                      return f"{val/1000:.2f}ms"
+                  return f"{val:.0f}µs"
+              return t
+
+          rows = []
+
+          with open("nfr-output.txt", "r") as f:
+              content = f.read()
+
+          # Parse: "searchSymbols_small: 3500 bytes (baseline: 3600, max: 3960) [1.234ms]"
+          pattern = r'(\w+)_(\w+): (\d+) bytes \(baseline: (\d+), max: (\d+)\) \[([^\]]+)\]'
+          for match in re.finditer(pattern, content):
+              tool, tier, actual, baseline, max_allowed, timing = match.groups()
+              actual, baseline, max_allowed = int(actual), int(baseline), int(max_allowed)
+              diff_pct = ((actual - baseline) / baseline) * 100
+              budget_pct = (actual / max_allowed) * 100 if max_allowed > 0 else 0
+
+              if diff_pct >= 10:
+                  verdict = "FAIL"
+              elif diff_pct >= 5:
+                  verdict = "WARN"
+              elif diff_pct <= -5:
+                  verdict = "GOOD"
+              else:
+                  verdict = "OK"
+
+              rows.append({
+                  "tool": tool, "tier": tier, "actual": actual,
+                  "baseline": baseline, "max": max_allowed,
+                  "diff_pct": diff_pct, "budget_pct": budget_pct,
+                  "timing": fmt_time(timing), "verdict": verdict
+              })
+
+          if rows:
+              # Categorize
+              fails = [r for r in rows if r["verdict"] == "FAIL"]
+              warns = [r for r in rows if r["verdict"] == "WARN"]
+              goods = [r for r in rows if r["verdict"] == "GOOD"]
+              regressions = fails + warns
+              savings = goods
+
+              # Find highlights
+              increases = [r for r in rows if r["diff_pct"] > 0]
+              worst_reg = max(increases, key=lambda r: r["diff_pct"]) if increases else None
+              best_impr = min(rows, key=lambda r: r["diff_pct"])
+              hotspots = sorted([r for r in rows if r["budget_pct"] >= 90], key=lambda r: -r["budget_pct"])[:3]
+              hotspot_count = sum(1 for r in rows if r["budget_pct"] >= 90)
+
+              total = len(rows)
+              oks = [r for r in rows if r["verdict"] == "OK"]
+
+              # Headline with horizontal indicators
+              indicators = []
+              if fails:
+                  indicators.append(f"❌ {len(fails)} failed")
+              if warns:
+                  indicators.append(f"⚠️ {len(warns)} regressed")
+              if goods:
+                  indicators.append(f"⬆️ {len(goods)} improved")
+              indicators.append(f"✅ {len(oks)} passed")
+
+              print(f"## NFR Tests {' · '.join(indicators)}\n")
+
+              # Show regressions status
+              if regressions:
+                  reg_val = f"{len(fails)} failed, {len(warns)} regressed" if fails else f"{len(warns)} regressed"
+                  print(f"**Regressions:** {reg_val}\n")
+              else:
+                  print(f"**Regressions:** {len(regressions)} ✅\n")
+
+              print("**Thresholds:** WARN ≥ +5% • FAIL ≥ +10% • Hotspot ≥ 90% budget\n")
+
+              # Diff block preview (top 3 each category)
+              preview_bad = sorted([r for r in rows if r["diff_pct"] >= 5], key=lambda r: -r["diff_pct"])[:3]
+              # Hotspots: ≥90% budget but not already a regression
+              preview_hot = sorted([r for r in rows if r["budget_pct"] >= 90 and r["diff_pct"] < 5], key=lambda r: -r["budget_pct"])[:3]
+              preview_good = sorted([r for r in rows if r["diff_pct"] <= -5], key=lambda r: r["diff_pct"])[:3]
+
+              if preview_bad or preview_hot or preview_good:
+                  # Calculate max width for alignment
+                  all_preview = preview_bad + preview_hot + preview_good
+                  max_name = max(len(f"{r['tool']}/{r['tier']}") for r in all_preview)
+                  print("```diff")
+                  for r in preview_bad:
+                      name = f"{r['tool']}/{r['tier']}"
+                      print(f"- {r['verdict']:4} {name:<{max_name}}  {r['diff_pct']:+6.1f}%  {r['actual']:>9,}B  budget {r['budget_pct']:>2.0f}%  {r['timing']}")
+                  for r in preview_hot:
+                      name = f"{r['tool']}/{r['tier']}"
+                      print(f"! HOT  {name:<{max_name}}  {r['diff_pct']:+6.1f}%  {r['actual']:>9,}B  budget {r['budget_pct']:>2.0f}%  {r['timing']}")
+                  for r in preview_good:
+                      name = f"{r['tool']}/{r['tier']}"
+                      print(f"+ SAVE {name:<{max_name}}  {r['diff_pct']:+6.1f}%  {r['actual']:>9,}B  budget {r['budget_pct']:>2.0f}%  {r['timing']}")
+                  print("```\n")
+
+              # Hotspots table (if any)
+              if hotspots:
+                  print("### Hotspots (closest to limit)\n")
+                  print("| Scenario | Budget | Margin |")
+                  print("|---|---:|---:|")
+                  for h in hotspots:
+                      margin = 100 - h["budget_pct"]
+                      print(f"| {h['tool']} / {h['tier']} | {h['budget_pct']:.0f}% | {margin:.0f}% |")
+                  print()
+
+              # Full breakdown in details
+              print("<details><summary>All scenarios</summary>\n")
+              print("| | Scenario | Change | Actual (B) | Baseline | Max | Budget | Margin | Time |")
+              print("|:---:|---|---:|---:|---:|---:|---:|---:|---:|")
+              for r in sorted(rows, key=lambda x: -x["diff_pct"]):
+                  margin = 100 - r["budget_pct"]
+                  if r["verdict"] == "FAIL":
+                      icon = "🔴"
+                  elif r["verdict"] == "WARN":
+                      icon = "🟡"
+                  elif r["verdict"] == "GOOD":
+                      icon = "🟢"
+                  else:
+                      icon = "⚪"
+                  print(f"| {icon} | {r['tool']} / {r['tier']} | {r['diff_pct']:+.1f}% | {r['actual']:,} | {r['baseline']:,} | {r['max']:,} | {r['budget_pct']:.0f}% | {margin:.0f}% | {r['timing']} |")
+              print("\n</details>")
+          else:
+              print("No token metrics found in output")
+          EOF
+
+          if ! python3 parse_nfr.py > nfr-table.md 2>&1; then
+            echo "::warning::Failed to parse NFR metrics"
+            echo "No metrics parsed" > nfr-table.md
+          fi
+          cat nfr-table.md
+
+      - name: Comment on PR
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            let body = 'No NFR metrics available';
+            try {
+              body = fs.readFileSync('nfr-table.md', 'utf8');
+            } catch (e) {}
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes('NFR Tests')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
 
       - name: Upload NFR results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: nfr-results
-          path: nfr-output.txt
+          path: |
+            nfr-output.txt
+            nfr-table.md
+          retention-days: 7

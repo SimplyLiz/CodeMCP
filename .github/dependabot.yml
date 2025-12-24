@@ -1,0 +1,37 @@
+version: 2
+updates:
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "ci(deps)"
+
+  # Go modules
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      go-deps:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "fix(deps)"
+    ignore:
+      # Ignore patch updates for indirect deps to reduce noise
+      - dependency-name: "*"
+        update-types: ["version-update:semver-patch"]
+
+  # npm (for the npm distribution wrapper)
+  - package-ecosystem: "npm"
+    directory: "/npm"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "fix(deps)"

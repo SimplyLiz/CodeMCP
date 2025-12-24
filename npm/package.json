@@ -11,13 +11,13 @@
     "lsp",
     "analysis"
   ],
-  "homepage": "https://github.com/simplyliz/ckb",
+  "homepage": "https://github.com/SimplyLiz/CodeMCP",
   "bugs": {
-    "url": "https://github.com/simplyliz/ckb/issues"
+    "url": "https://github.com/SimplyLiz/CodeMCP/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/simplyliz/ckb.git"
+    "url": "git+https://github.com/SimplyLiz/CodeMCP.git"
   },
   "license": "MIT",
   "scripts": {

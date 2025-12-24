@@ -1,0 +1,21 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 50%
+        threshold: 0%
+    patch:
+      default:
+        target: 80%
+        threshold: 0%
+
+comment:
+  layout: "diff, files"
+  behavior: default
+  require_changes: "coverage_drop OR uncovered_patch"
+  require_base: true
+  require_head: true
+  hide_project_coverage: false
+
+github_checks:
+  annotations: true

@@ -1,0 +1,108 @@
+name: Coverage
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [develop, main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    name: Test Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Run tests with coverage
+        id: test
+        run: |
+          set +e
+          go test -v -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./... 2>&1 | tee test-output.txt
+          TEST_EXIT=${PIPESTATUS[0]}
+          set -e
+
+          COVERAGE="N/A"
+          THRESHOLD=50
+          BELOW_THRESHOLD="false"
+
+          if [ -f coverage.out ]; then
+            go tool cover -func=coverage.out -o coverage.txt
+            COVERAGE=$(grep "^total:" coverage.txt | awk '{print $3}' | sed 's/%//')
+
+            if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
+              BELOW_THRESHOLD="true"
+            fi
+          else
+            echo "coverage.out missing (tests likely failed); skipping coverage report."
+            : > coverage.txt
+          fi
+
+          echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
+          echo "threshold=$THRESHOLD" >> $GITHUB_OUTPUT
+          echo "exit_code=$TEST_EXIT" >> $GITHUB_OUTPUT
+          echo "below_threshold=$BELOW_THRESHOLD" >> $GITHUB_OUTPUT
+          echo "tests_passed=$( [ "$TEST_EXIT" -eq 0 ] && echo true || echo false )" >> $GITHUB_OUTPUT
+
+          # Job summary
+          TEST_ICON=$( [ "$TEST_EXIT" -eq 0 ] && echo "✅" || echo "❌" )
+          GATE_ICON=$( [ "$BELOW_THRESHOLD" = "false" ] && echo "✅" || echo "❌" )
+
+          echo "### ${TEST_ICON} Tests | ${COVERAGE}% Coverage | ${GATE_ICON} Gate (≥${THRESHOLD}%)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Tests | ${TEST_ICON} $( [ "$TEST_EXIT" -eq 0 ] && echo "Passed" || echo "Failed" ) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Coverage | **${COVERAGE}%** |" >> $GITHUB_STEP_SUMMARY
+          echo "| Gate | ${GATE_ICON} ≥${THRESHOLD}% |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "<details>" >> $GITHUB_STEP_SUMMARY
+          echo "<summary>Coverage by package</summary>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          head -50 coverage.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "</details>" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.out
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Coverage quality gate
+        if: steps.test.outputs.tests_passed == 'false' || steps.test.outputs.below_threshold == 'true'
+        run: |
+          if [ "${{ steps.test.outputs.tests_passed }}" == "false" ]; then
+            echo "::error::Tests failed"
+          fi
+          COVERAGE="${{ steps.test.outputs.coverage }}"
+          if [ "${{ steps.test.outputs.below_threshold }}" == "true" ] && [ "$COVERAGE" != "N/A" ]; then
+            echo "::error::Coverage ${COVERAGE}% is below threshold ${{ steps.test.outputs.threshold }}%"
+          fi
+          exit 1
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            coverage.out
+            coverage.txt
+            test-output.txt
+          retention-days: 7
