@@ -212,270 +212,292 @@ jobs:
         env:
           CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
           INDEX_MODE: ${{ steps.index.outputs.mode }}
+          COMPLEXITY_CYCLOMATIC: ${{ env.COMPLEXITY_CYCLOMATIC }}
+          COMPLEXITY_COGNITIVE: ${{ env.COMPLEXITY_COGNITIVE }}
+          DOC_COVERAGE_MIN: ${{ env.DOC_COVERAGE_MIN }}
         with:
           script: |
             const fs = require('fs');
             const read = (f, d) => { try { return JSON.parse(fs.readFileSync(f)); } catch { return d; } };
-            
+
+            // Thresholds from environment
+            const COMPLEXITY_CYCLOMATIC = parseInt(process.env.COMPLEXITY_CYCLOMATIC || '15');
+            const COMPLEXITY_COGNITIVE = parseInt(process.env.COMPLEXITY_COGNITIVE || '20');
+            const DOC_COVERAGE_MIN = parseInt(process.env.DOC_COVERAGE_MIN || '70');
+
             // Load data
             const pr = read('analysis.json', {});
             const complexity = read('complexity.json', []);
             const coupling = read('coupling.json', { missingCoupled: [] });
-            const contracts = read('contracts.json', { files: [] });
+            const contracts = read('contracts.json', { files: [], breaking: [] });
             const audit = read('audit.json', { items: [], quickWins: [], summary: {} });
             const deadcode = read('deadcode.json', { candidates: [] });
             const docsCov = read('docs-coverage.json', { coverage: 0 });
             const docsStale = read('docs-stale.json', { totalStale: 0 });
             const drift = read('drift.json', []);
-            
+
             const s = pr.summary || {};
             const risk = pr.riskAssessment || {};
             const reviewers = pr.suggestedReviewers || [];
             const modules = pr.modulesAffected || [];
             const hotspots = (pr.changedFiles || []).filter(f => f.isHotspot);
-            
+            const breakingChanges = contracts.breaking || [];
+
+            // Computed
+            const complexViolations = complexity.filter(c =>
+              c.cyclomatic > COMPLEXITY_CYCLOMATIC || c.cognitive > COMPLEXITY_COGNITIVE
+            );
+            const criticalItems = (audit.items || []).filter(i => i.riskLevel === 'critical');
+            const highItems = (audit.items || []).filter(i => i.riskLevel === 'high');
+            const riskyModules = modules.filter(m => m.riskLevel === 'high' || m.riskLevel === 'medium');
+
             // Helpers
-            const bar = (v, m, w = 8) => '`' + '█'.repeat(Math.min(Math.round(v/m*w), w)) + '░'.repeat(Math.max(0, w - Math.round(v/m*w))) + '`';
-            const pct = v => Math.round(v * 100);
-            
+            const pct = v => Math.round((v || 0) * 100);
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+
             // Risk styling
             const riskStyle = {
               high: { icon: '🔴', color: 'e74c3c', label: 'HIGH' },
               medium: { icon: '🟡', color: 'f39c12', label: 'MEDIUM' },
               low: { icon: '🟢', color: '27ae60', label: 'LOW' }
             }[risk.level] || { icon: '⚪', color: '95a5a6', label: 'UNKNOWN' };
-            
+
             // Build comment
-            let md = [];
-            
-            // ═══════════════════════════════════════════════════════════════
-            // HEADER
-            // ═══════════════════════════════════════════════════════════════
-            md.push('## CKB Analysis');
-            md.push('');
-            md.push(`![Risk](https://img.shields.io/badge/${riskStyle.label}-${pct(risk.score || 0)}%25-${riskStyle.color}?style=for-the-badge) ` +
-                    `![Files](https://img.shields.io/badge/Files-${s.totalFiles || 0}-3498db?style=flat-square) ` +
-                    `![Lines](https://img.shields.io/badge/%2B${s.totalAdditions || 0}%20%2F%20−${s.totalDeletions || 0}-3498db?style=flat-square) ` +
-                    `![Modules](https://img.shields.io/badge/Modules-${s.totalModules || 0}-3498db?style=flat-square)`);
-            md.push('');
-            
-            // ═══════════════════════════════════════════════════════════════
-            // QUICK STATS
-            // ═══════════════════════════════════════════════════════════════
+            let c = [];
+            c.push('<!-- ckb -->');
+            c.push('');
+            c.push('## CKB Analysis');
+            c.push('');
+            c.push(`![Risk](https://img.shields.io/badge/${riskStyle.label}-${pct(risk.score)}%25-${riskStyle.color}?style=for-the-badge) ` +
+                   `![Files](https://img.shields.io/badge/Files-${s.totalFiles || 0}-3498db?style=flat-square) ` +
+                   `![Lines](https://img.shields.io/badge/%2B${s.totalAdditions || 0}%20%2F%20−${s.totalDeletions || 0}-3498db?style=flat-square) ` +
+                   `![Modules](https://img.shields.io/badge/Modules-${s.totalModules || 0}-3498db?style=flat-square)`);
+            c.push('');
+
+            // Quick stats
             const stats = [];
             if (hotspots.length) stats.push(`🔥 ${hotspots.length} hotspot${hotspots.length > 1 ? 's' : ''}`);
-            if (audit.summary?.critical || audit.summary?.high) stats.push(`⚠️ ${(audit.summary.critical || 0) + (audit.summary.high || 0)} risk items`);
-            const complexViolations = complexity.filter(c => c.cyclomatic > ${{ env.COMPLEXITY_CYCLOMATIC }} || c.cognitive > ${{ env.COMPLEXITY_COGNITIVE }});
+            if (criticalItems.length + highItems.length) stats.push(`⚠️ ${criticalItems.length + highItems.length} risk items`);
             if (complexViolations.length) stats.push(`📊 ${complexViolations.length} complex`);
             if (coupling.missingCoupled?.length) stats.push(`🔗 ${coupling.missingCoupled.length} coupled`);
+            if (breakingChanges.length) stats.push(`💥 ${breakingChanges.length} breaking`);
             if (contracts.files?.length) stats.push(`📜 ${contracts.files.length} contract${contracts.files.length > 1 ? 's' : ''}`);
             if (docsStale.totalStale) stats.push(`📚 ${docsStale.totalStale} stale`);
             if (deadcode.candidates?.length) stats.push(`💀 ${deadcode.candidates.length} dead`);
-            
+
             if (stats.length) {
-              md.push(`> ${stats.join(' · ')}`);
-              md.push('');
+              c.push(`> ${stats.join(' · ')}`);
+              c.push('');
             }
-            
-            // ═══════════════════════════════════════════════════════════════
-            // RISK FACTORS
-            // ═══════════════════════════════════════════════════════════════
+
+            // Risk factors
             if (risk.factors?.length) {
-              md.push('**Risk factors:** ' + risk.factors.slice(0, 3).join(' • '));
-              md.push('');
+              c.push('**Risk factors:** ' + risk.factors.slice(0, 3).join(' • '));
+              c.push('');
             }
-            
-            // ═══════════════════════════════════════════════════════════════
-            // REVIEWERS
-            // ═══════════════════════════════════════════════════════════════
+
+            // Reviewers
             if (reviewers.length) {
               const list = reviewers.slice(0, 3).map(r => `**${r.owner.replace(/^@?/, '@')}** (${pct(r.coverage)}%)`).join(', ');
-              md.push(`👥 Suggested: ${list}`);
-              md.push('');
+              c.push(`👥 Suggested: ${list}`);
+              c.push('');
             }
-            
-            // ═══════════════════════════════════════════════════════════════
-            // METRICS TABLE
-            // ═══════════════════════════════════════════════════════════════
-            md.push('| Metric | Value | |');
-            md.push('|:-------|------:|:-:|');
-            md.push(`| Doc Coverage | ${docsCov.coverage || 0}% | ${(docsCov.coverage || 0) >= ${{ env.DOC_COVERAGE_MIN }} ? '✅' : '⚠️'} |`);
-            md.push(`| Complexity Issues | ${complexViolations.length} | ${complexViolations.length === 0 ? '✅' : '⚠️'} |`);
-            md.push(`| Coupling Gaps | ${coupling.missingCoupled?.length || 0} | ${!coupling.missingCoupled?.length ? '✅' : '⚠️'} |`);
-            md.push(`| Index | ${process.env.INDEX_MODE} | ${process.env.CACHE_HIT === 'true' ? '💾' : '🆕'} |`);
-            md.push('');
-            
-            // ═══════════════════════════════════════════════════════════════
-            // DETAILS SECTIONS
-            // ═══════════════════════════════════════════════════════════════
-            
+
+            // Metrics table
+            c.push('| Metric | Value | |');
+            c.push('|:-------|------:|:-:|');
+            c.push(`| Doc Coverage | ${docsCov.coverage || 0}% | ${(docsCov.coverage || 0) >= DOC_COVERAGE_MIN ? '✅' : '⚠️'} |`);
+            c.push(`| Complexity Issues | ${complexViolations.length} | ${complexViolations.length === 0 ? '✅' : '⚠️'} |`);
+            c.push(`| Coupling Gaps | ${coupling.missingCoupled?.length || 0} | ${!coupling.missingCoupled?.length ? '✅' : '⚠️'} |`);
+            c.push(`| Index | ${process.env.INDEX_MODE || 'unknown'} | ${process.env.CACHE_HIT === 'true' ? '💾' : '🆕'} |`);
+            c.push('');
+
+            // Breaking Changes (open by default)
+            if (breakingChanges.length > 0) {
+              c.push('<details open>');
+              c.push(`<summary>💥 Breaking changes · ${breakingChanges.length} detected</summary>`);
+              c.push('');
+              c.push('| Symbol | Change |');
+              c.push('|:-------|:-------|');
+              breakingChanges.slice(0, 5).forEach(b => {
+                c.push(`| \`${b.symbol || b.name || '?'}\` | ${b.change || b.description || '?'} |`);
+              });
+              c.push('');
+              c.push('</details>');
+              c.push('');
+            }
+
             // Risk Audit
-            const critical = (audit.items || []).filter(i => i.riskLevel === 'critical');
-            const high = (audit.items || []).filter(i => i.riskLevel === 'high');
-            if (critical.length || high.length) {
-              md.push('<details>');
-              md.push(`<summary>⚠️ Risk Audit — ${critical.length} critical, ${high.length} high</summary>`);
-              md.push('');
-              md.push('| | File | Score | Factor |');
-              md.push('|:-|:-----|------:|:-------|');
-              [...critical, ...high].slice(0, 6).forEach(i => {
-                const icon = i.riskLevel === 'critical' ? '🔴' : '🟠';
-                md.push(`| ${icon} | \`${i.file}\` | ${i.riskScore} | ${i.factors?.[0]?.factor || '—'} |`);
+            if (criticalItems.length + highItems.length > 0) {
+              c.push('<details>');
+              c.push(`<summary>⚠️ Risk audit · ${criticalItems.length} critical · ${highItems.length} high</summary>`);
+              c.push('');
+              c.push('| | File | Score | Factor |');
+              c.push('|:-:|:-----|------:|:-------|');
+              [...criticalItems, ...highItems].slice(0, 6).forEach(item => {
+                const icon = item.riskLevel === 'critical' ? '🔴' : '🟠';
+                const factor = (item.factors || [])[0]?.factor || '—';
+                c.push(`| ${icon} | \`${item.file}\` | ${item.riskScore} | ${factor} |`);
               });
-              md.push('');
-              md.push('</details>');
-              md.push('');
+              c.push('');
+              c.push('</details>');
+              c.push('');
             }
-            
+
             // Hotspots
-            if (hotspots.length) {
-              md.push('<details>');
-              md.push(`<summary>🔥 Hotspots — ${hotspots.length} volatile</summary>`);
-              md.push('');
-              md.push('| File | Churn |');
-              md.push('|:-----|------:|');
+            if (hotspots.length > 0) {
+              c.push('<details>');
+              c.push(`<summary>🔥 Hotspots · ${hotspots.length} volatile files</summary>`);
+              c.push('');
+              c.push('| File | Churn |');
+              c.push('|:-----|------:|');
               hotspots.slice(0, 5).forEach(f => {
-                md.push(`| \`${f.path}\` | ${bar(f.hotspotScore || 0, 1)} ${(f.hotspotScore || 0).toFixed(2)} |`);
+                c.push(`| \`${f.path}\` | ${(f.hotspotScore || 0).toFixed(2)} |`);
               });
-              md.push('');
-              md.push('</details>');
-              md.push('');
+              c.push('');
+              c.push('</details>');
+              c.push('');
             }
-            
+
             // Modules
-            const riskyMods = modules.filter(m => m.riskLevel === 'high' || m.riskLevel === 'medium');
-            if (riskyMods.length) {
-              md.push('<details>');
-              md.push(`<summary>📦 Modules — ${riskyMods.length} at risk</summary>`);
-              md.push('');
-              md.push('| | Module | Files |');
-              md.push('|:-|:-------|------:|');
-              riskyMods.slice(0, 5).forEach(m => {
+            if (riskyModules.length > 0) {
+              c.push('<details>');
+              c.push(`<summary>📦 Modules · ${riskyModules.length} at risk</summary>`);
+              c.push('');
+              c.push('| | Module | Files |');
+              c.push('|:-:|:-------|------:|');
+              riskyModules.slice(0, 5).forEach(m => {
                 const icon = m.riskLevel === 'high' ? '🔴' : '🟡';
-                md.push(`| ${icon} | \`${m.moduleId}\` | ${m.filesChanged} |`);
+                c.push(`| ${icon} | \`${m.moduleId}\` | ${m.filesChanged} |`);
               });
-              md.push('');
-              md.push('</details>');
-              md.push('');
+              c.push('');
+              c.push('</details>');
+              c.push('');
             }
-            
+
             // Contracts
-            if (contracts.files?.length) {
-              md.push('<details>');
-              md.push(`<summary>📜 Contracts — ${contracts.files.length} changed</summary>`);
-              md.push('');
-              contracts.files.forEach(f => md.push(`- \`${f}\``));
-              md.push('');
-              md.push('</details>');
-              md.push('');
+            if (contracts.files?.length > 0) {
+              c.push('<details>');
+              c.push(`<summary>📜 Contracts · ${contracts.files.length} changed</summary>`);
+              c.push('');
+              contracts.files.slice(0, 6).forEach(f => c.push(`- \`${f}\``));
+              c.push('');
+              c.push('</details>');
+              c.push('');
             }
-            
+
+            // Complexity
+            if (complexViolations.length > 0) {
+              c.push('<details>');
+              c.push(`<summary>📊 Complexity · ${complexViolations.length} violations</summary>`);
+              c.push('');
+              c.push('| File | Cyclomatic | Cognitive |');
+              c.push('|:-----|----------:|----------:|');
+              complexViolations.slice(0, 5).forEach(v => {
+                const cyWarn = v.cyclomatic > COMPLEXITY_CYCLOMATIC ? '⚠️ ' : '';
+                const cgWarn = v.cognitive > COMPLEXITY_COGNITIVE ? '⚠️ ' : '';
+                c.push(`| \`${v.file}\` | ${cyWarn}${v.cyclomatic} | ${cgWarn}${v.cognitive} |`);
+              });
+              c.push('');
+              c.push('</details>');
+              c.push('');
+            }
+
+            // Coupling
+            if (coupling.missingCoupled?.length > 0) {
+              c.push('<details>');
+              c.push(`<summary>🔗 Coupling · ${coupling.missingCoupled.length} missing</summary>`);
+              c.push('');
+              c.push('| Missing | Usually with | Score |');
+              c.push('|:--------|:-------------|------:|');
+              coupling.missingCoupled.slice(0, 5).forEach(w => {
+                c.push(`| \`${w.file}\` | \`${w.coupledTo}\` | ${pct(w.correlation || w.couplingScore || 0)}% |`);
+              });
+              c.push('');
+              c.push('</details>');
+              c.push('');
+            }
+
             // Quick Wins
-            if (audit.quickWins?.length) {
-              md.push('<details>');
-              md.push(`<summary>💡 Quick Wins — ${audit.quickWins.length} suggestions</summary>`);
-              md.push('');
+            if (audit.quickWins?.length > 0) {
+              c.push('<details>');
+              c.push(`<summary>💡 Quick wins · ${audit.quickWins.length} suggestions</summary>`);
+              c.push('');
               audit.quickWins.slice(0, 5).forEach(w => {
                 const e = { low: '🟢', medium: '🟡', high: '🔴' }[w.effort] || '⚪';
-                md.push(`- ${e} **${w.action}** → \`${w.target}\``);
+                c.push(`- ${e} **${w.action}** → \`${w.target}\``);
               });
-              md.push('');
-              md.push('</details>');
-              md.push('');
+              c.push('');
+              c.push('</details>');
+              c.push('');
             }
-            
-            // Complexity
-            if (complexViolations.length) {
-              md.push('<details>');
-              md.push(`<summary>📊 Complexity — ${complexViolations.length} violations</summary>`);
-              md.push('');
-              md.push('| File | Cyclomatic | Cognitive |');
-              md.push('|:-----|----------:|-----------:|');
-              complexViolations.slice(0, 5).forEach(c => {
-                const cyWarn = c.cyclomatic > ${{ env.COMPLEXITY_CYCLOMATIC }} ? '⚠️ ' : '';
-                const cgWarn = c.cognitive > ${{ env.COMPLEXITY_COGNITIVE }} ? '⚠️ ' : '';
-                md.push(`| \`${c.file}\` | ${cyWarn}${c.cyclomatic} | ${cgWarn}${c.cognitive} |`);
-              });
-              md.push('');
-              md.push('</details>');
-              md.push('');
-            }
-            
-            // Coupling
-            if (coupling.missingCoupled?.length) {
-              md.push('<details>');
-              md.push(`<summary>🔗 Coupling — ${coupling.missingCoupled.length} missing</summary>`);
-              md.push('');
-              md.push('| Missing | Usually with | Score |');
-              md.push('|:--------|:-------------|------:|');
-              coupling.missingCoupled.slice(0, 5).forEach(c => {
-                md.push(`| \`${c.file}\` | \`${c.coupledTo}\` | ${pct(c.correlation || c.couplingScore || 0)}% |`);
-              });
-              md.push('');
-              md.push('</details>');
-              md.push('');
-            }
-            
+
             // Ownership Drift
-            if (drift.length) {
-              md.push('<details>');
-              md.push(`<summary>👤 Ownership Drift — ${drift.length} files</summary>`);
-              md.push('');
-              md.push('| File | Declared | Actual |');
-              md.push('|:-----|:---------|:-------|');
+            if (Array.isArray(drift) && drift.length > 0) {
+              c.push('<details>');
+              c.push(`<summary>👤 Ownership drift · ${drift.length} files</summary>`);
+              c.push('');
+              c.push('| File | Declared | Actual |');
+              c.push('|:-----|:---------|:-------|');
               drift.slice(0, 5).forEach(d => {
-                md.push(`| \`${d.path}\` | ${d.declaredOwner || '—'} | ${d.actualOwner || '—'} |`);
+                c.push(`| \`${d.path}\` | ${d.declaredOwner || '—'} | ${d.actualOwner || '—'} |`);
               });
-              md.push('');
-              md.push('</details>');
-              md.push('');
+              c.push('');
+              c.push('</details>');
+              c.push('');
             }
-            
+
             // Dead Code
-            if (deadcode.candidates?.length) {
-              md.push('<details>');
-              md.push(`<summary>💀 Dead Code — ${deadcode.candidates.length} candidates</summary>`);
-              md.push('');
-              md.push('| Symbol | Confidence |');
-              md.push('|:-------|:-----------|');
-              deadcode.candidates.slice(0, 5).forEach(c => {
-                md.push(`| \`${c.name}\` | ${bar(c.confidence || 0, 1, 6)} ${pct(c.confidence || 0)}% |`);
+            if (deadcode.candidates?.length > 0) {
+              c.push('<details>');
+              c.push(`<summary>💀 Dead code · ${deadcode.candidates.length} candidates</summary>`);
+              c.push('');
+              c.push('| Symbol | Confidence |');
+              c.push('|:-------|:-----------|');
+              deadcode.candidates.slice(0, 5).forEach(d => {
+                c.push(`| \`${d.name}\` | ${pct(d.confidence || 0)}% |`);
               });
-              md.push('');
-              md.push('</details>');
-              md.push('');
+              c.push('');
+              c.push('</details>');
+              c.push('');
             }
-            
+
             // Stale Docs
-            if (docsStale.totalStale) {
-              md.push('<details>');
-              md.push(`<summary>📚 Stale Docs — ${docsStale.totalStale} references</summary>`);
-              md.push('');
+            if (docsStale.totalStale > 0) {
+              c.push('<details>');
+              c.push(`<summary>📚 Stale docs · ${docsStale.totalStale} references</summary>`);
+              c.push('');
               (docsStale.reports || []).slice(0, 3).forEach(r => {
                 (r.stale || []).slice(0, 2).forEach(s => {
-                  md.push(`- \`${r.docPath}:${s.line}\` — ${s.rawText}`);
+                  c.push(`- \`${r.docPath}:${s.line}\` — ${s.rawText}`);
                 });
               });
-              md.push('');
-              md.push('</details>');
-              md.push('');
+              c.push('');
+              c.push('</details>');
+              c.push('');
             }
-            
-            // ═══════════════════════════════════════════════════════════════
-            // FOOTER
-            // ═══════════════════════════════════════════════════════════════
-            md.push('---');
-            md.push('<sub>Generated by <a href="https://github.com/SimplyLiz/CodeMCP">CKB</a></sub>');
-            
-            // Post/update comment
-            const body = '<!-- ckb -->\n' + md.join('\n');
+
+            // Footer
+            c.push('---');
+            c.push(`<sub>Generated by <a href="https://github.com/SimplyLiz/CodeMCP">CKB</a> · <a href="${runUrl}">Run details</a></sub>`);
+
+            // Post/update comment with hard-cap
+            let body = c.join('\n');
+            const MAX_COMMENT_SIZE = 65000;
+            if (body.length > MAX_COMMENT_SIZE) {
+              body = body.slice(0, MAX_COMMENT_SIZE - 200) + `\n\n---\n<sub>✂️ Truncated. <a href="${runUrl}">Full report</a></sub>`;
+            }
+
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number
             });
-            const existing = comments.find(c => c.body?.includes('<!-- ckb -->'));
-            
+            // Only match Bot comments to avoid overwriting quoted comments
+            const existing = comments.find(comment =>
+              comment.user?.type === 'Bot' && comment.body?.includes('<!-- ckb -->')
+            );
+
             if (existing) {
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,
@@ -483,13 +505,15 @@ jobs:
                 comment_id: existing.id,
                 body
               });
+              console.log(`Updated comment ${existing.id}`);
             } else {
-              await github.rest.issues.createComment({
+              const { data: newComment } = await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
                 body
               });
+              console.log(`Created comment ${newComment.id}`);
             }
 
       # ───────────────────────────────────────────────────────────────────────
