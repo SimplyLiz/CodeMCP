@@ -467,10 +467,10 @@ func TestMonthsSince(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
-		name     string
-		time     time.Time
-		wantMin  int
-		wantMax  int
+		name    string
+		time    time.Time
+		wantMin int
+		wantMax int
 	}{
 		{"now", now, 0, 0},
 		{"1 month ago", now.AddDate(0, -1, 0), 1, 1},

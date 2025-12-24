@@ -100,17 +100,17 @@ func TestCkbError_WithDetails(t *testing.T) {
 
 func TestGetSuggestedFixes(t *testing.T) {
 	tests := []struct {
-		code     ErrorCode
-		wantNil  bool
-		wantLen  int
+		code    ErrorCode
+		wantNil bool
+		wantLen int
 	}{
 		{IndexMissing, false, 1},
 		{IndexStale, false, 1},
 		{WorkspaceNotReady, false, 1},
 		{RateLimited, false, 1},
 		{BackendUnavailable, false, 1},
-		{SymbolNotFound, true, 0},       // No predefined fixes
-		{AliasCycle, true, 0},           // No predefined fixes
+		{SymbolNotFound, true, 0}, // No predefined fixes
+		{AliasCycle, true, 0},     // No predefined fixes
 	}
 
 	for _, tt := range tests {

@@ -29,10 +29,10 @@ func TestNewLogger(t *testing.T) {
 
 func TestLogLevelFiltering(t *testing.T) {
 	tests := []struct {
-		name       string
-		configLvl  LogLevel
-		logLvl     LogLevel
-		shouldLog  bool
+		name      string
+		configLvl LogLevel
+		logLvl    LogLevel
+		shouldLog bool
 	}{
 		{"debug logs debug", DebugLevel, DebugLevel, true},
 		{"debug logs info", DebugLevel, InfoLevel, true},

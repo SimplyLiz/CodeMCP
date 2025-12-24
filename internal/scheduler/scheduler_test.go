@@ -85,20 +85,20 @@ func TestParseExpressionCron(t *testing.T) {
 		expr    string
 		wantErr bool
 	}{
-		{"* * * * *", false},          // Every minute
-		{"0 * * * *", false},          // Every hour
-		{"0 0 * * *", false},          // Every day at midnight
-		{"0 0 1 * *", false},          // First of every month
-		{"0 0 * * 0", false},          // Every Sunday
-		{"*/5 * * * *", false},        // Every 5 minutes
-		{"0 9-17 * * 1-5", false},     // 9am-5pm weekdays
-		{"0 0 1,15 * *", false},       // 1st and 15th of month
-		{"invalid cron", true},        // Invalid
-		{"60 * * * *", true},          // Invalid minute
-		{"* 24 * * *", true},          // Invalid hour
-		{"* * 32 * *", true},          // Invalid day
-		{"* * * 13 *", true},          // Invalid month
-		{"* * * * 7", true},           // Invalid day of week
+		{"* * * * *", false},      // Every minute
+		{"0 * * * *", false},      // Every hour
+		{"0 0 * * *", false},      // Every day at midnight
+		{"0 0 1 * *", false},      // First of every month
+		{"0 0 * * 0", false},      // Every Sunday
+		{"*/5 * * * *", false},    // Every 5 minutes
+		{"0 9-17 * * 1-5", false}, // 9am-5pm weekdays
+		{"0 0 1,15 * *", false},   // 1st and 15th of month
+		{"invalid cron", true},    // Invalid
+		{"60 * * * *", true},      // Invalid minute
+		{"* 24 * * *", true},      // Invalid hour
+		{"* * 32 * *", true},      // Invalid day
+		{"* * * 13 *", true},      // Invalid month
+		{"* * * * 7", true},       // Invalid day of week
 	}
 
 	for _, tt := range tests {

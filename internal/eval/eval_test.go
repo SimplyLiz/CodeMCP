@@ -1,6 +1,7 @@
 package eval
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -386,7 +387,7 @@ func TestEvaluateExpansion(t *testing.T) {
 	}
 
 	// Should pass if 80%+ are found
-	passed, found := suite.evaluateExpansion(nil, symbols, []string{"A", "B", "C"}, 10)
+	passed, found := suite.evaluateExpansion(context.Background(), symbols, []string{"A", "B", "C"}, 10)
 	if !passed {
 		t.Error("Should pass when all expected are found")
 	}
@@ -403,7 +404,7 @@ func TestEvaluateExpansionPartial(t *testing.T) {
 	}
 
 	// 2/5 = 40%, below 80% threshold
-	passed, found := suite.evaluateExpansion(nil, symbols, []string{"A", "B", "C", "D", "E"}, 10)
+	passed, found := suite.evaluateExpansion(context.Background(), symbols, []string{"A", "B", "C", "D", "E"}, 10)
 	if passed {
 		t.Error("Should not pass when less than 80% found")
 	}

@@ -492,14 +492,26 @@ func TestFindSourceFiles(t *testing.T) {
 	analyzer := NewAnalyzer(tmpDir, logger)
 
 	// Create some source files
-	os.MkdirAll(filepath.Join(tmpDir, "src"), 0755)
-	os.WriteFile(filepath.Join(tmpDir, "src", "main.go"), []byte("package main"), 0644)
-	os.WriteFile(filepath.Join(tmpDir, "src", "utils.ts"), []byte("export {}"), 0644)
-	os.WriteFile(filepath.Join(tmpDir, "README.md"), []byte("# README"), 0644)
+	if err := os.MkdirAll(filepath.Join(tmpDir, "src"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "src", "main.go"), []byte("package main"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "src", "utils.ts"), []byte("export {}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "README.md"), []byte("# README"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create node_modules which should be skipped
-	os.MkdirAll(filepath.Join(tmpDir, "node_modules"), 0755)
-	os.WriteFile(filepath.Join(tmpDir, "node_modules", "pkg.js"), []byte(""), 0644)
+	if err := os.MkdirAll(filepath.Join(tmpDir, "node_modules"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "node_modules", "pkg.js"), []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	files, err := analyzer.findSourceFiles(tmpDir)
 	if err != nil {

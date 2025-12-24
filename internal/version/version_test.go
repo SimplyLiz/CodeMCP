@@ -40,10 +40,10 @@ func TestInfo(t *testing.T) {
 			wantContain: "abc1234",
 		},
 		{
-			name:        "exactly 7 char commit",
-			version:     "2.0.0",
-			commit:      "1234567",
-			wantExact:   "2.0.0",
+			name:      "exactly 7 char commit",
+			version:   "2.0.0",
+			commit:    "1234567",
+			wantExact: "2.0.0",
 		},
 		{
 			name:        "8 char commit",
