@@ -768,3 +768,289 @@ func TestDetectLanguage(t *testing.T) {
 		})
 	}
 }
+
+func TestTailTimestamp(t *testing.T) {
+	tests := []struct {
+		name     string
+		commits  []git.CommitInfo
+		expected string
+	}{
+		{
+			name:     "empty list",
+			commits:  []git.CommitInfo{},
+			expected: "",
+		},
+		{
+			name: "single commit",
+			commits: []git.CommitInfo{
+				{Timestamp: "2024-01-15T10:00:00Z"},
+			},
+			expected: "2024-01-15T10:00:00Z",
+		},
+		{
+			name: "multiple commits returns last",
+			commits: []git.CommitInfo{
+				{Timestamp: "2024-01-15T10:00:00Z"},
+				{Timestamp: "2024-01-14T10:00:00Z"},
+				{Timestamp: "2024-01-13T10:00:00Z"},
+			},
+			expected: "2024-01-13T10:00:00Z",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tailTimestamp(tt.commits)
+			if result != tt.expected {
+				t.Errorf("tailTimestamp() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestComputeExplainFileConfidence(t *testing.T) {
+	tests := []struct {
+		name     string
+		basis    []ConfidenceBasisItem
+		expected float64
+	}{
+		{
+			name:     "no backends",
+			basis:    []ConfidenceBasisItem{},
+			expected: 0.69,
+		},
+		{
+			name: "scip missing",
+			basis: []ConfidenceBasisItem{
+				{Backend: "scip", Status: "missing"},
+			},
+			expected: 0.69,
+		},
+		{
+			name: "scip available",
+			basis: []ConfidenceBasisItem{
+				{Backend: "scip", Status: "available"},
+			},
+			expected: 0.89,
+		},
+		{
+			name: "scip and git available",
+			basis: []ConfidenceBasisItem{
+				{Backend: "scip", Status: "available"},
+				{Backend: "git", Status: "available"},
+			},
+			expected: 0.89,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := computeExplainFileConfidence(tt.basis)
+			if result != tt.expected {
+				t.Errorf("computeExplainFileConfidence() = %f, want %f", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestBuildFileOneLiner(t *testing.T) {
+	tests := []struct {
+		name        string
+		path        string
+		role        string
+		symbolCount int
+		keySymbols  []string
+		contains    string
+	}{
+		{
+			name:        "test file",
+			path:        "internal/query/engine_test.go",
+			role:        "test",
+			symbolCount: 5,
+			keySymbols:  []string{"TestEngine"},
+			contains:    "test file",
+		},
+		{
+			name:        "config file",
+			path:        "config.json",
+			role:        "config",
+			symbolCount: 0,
+			keySymbols:  nil,
+			contains:    "configuration file",
+		},
+		{
+			name:        "entrypoint",
+			path:        "cmd/ckb/main.go",
+			role:        "entrypoint",
+			symbolCount: 3,
+			keySymbols:  []string{"main"},
+			contains:    "entry point",
+		},
+		{
+			name:        "core with symbols",
+			path:        "internal/query/engine.go",
+			role:        "core",
+			symbolCount: 10,
+			keySymbols:  []string{"Engine", "Query"},
+			contains:    "Engine",
+		},
+		{
+			name:        "core without symbols",
+			path:        "internal/query/empty.go",
+			role:        "core",
+			symbolCount: 3,
+			keySymbols:  nil,
+			contains:    "core implementation",
+		},
+		{
+			name:        "unknown with symbols",
+			path:        "random/file.go",
+			role:        "unknown",
+			symbolCount: 5,
+			keySymbols:  []string{"Foo"},
+			contains:    "Foo",
+		},
+		{
+			name:        "unknown without symbols",
+			path:        "random/file.go",
+			role:        "unknown",
+			symbolCount: 3,
+			keySymbols:  nil,
+			contains:    "3 symbols",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := buildFileOneLiner(tt.path, tt.role, tt.symbolCount, tt.keySymbols)
+			if result == "" {
+				t.Error("buildFileOneLiner returned empty string")
+			}
+			if tt.contains != "" && !containsSubstring(result, tt.contains) {
+				t.Errorf("buildFileOneLiner() = %q, expected to contain %q", result, tt.contains)
+			}
+		})
+	}
+}
+
+func TestIsExportedSymbol(t *testing.T) {
+	tests := []struct {
+		name       string
+		symbolName string
+		visibility string
+		language   string
+		expected   bool
+	}{
+		// Explicit visibility
+		{"explicit public", "foo", "public", "go", true},
+		{"explicit private", "Foo", "private", "go", false},
+		{"explicit protected", "Foo", "protected", "go", false},
+
+		// Go conventions
+		{"go exported", "Engine", "", "go", true},
+		{"go unexported", "engine", "", "go", false},
+		{"go exported method", "GetUser", "", "go", true},
+
+		// Python conventions
+		{"python public", "engine", "", "python", true},
+		{"python private", "_engine", "", "python", false},
+		{"python dunder", "__init__", "", "python", false},
+
+		// JS/TS conventions
+		{"js public", "engine", "", "javascript", true},
+		{"js private", "_engine", "", "javascript", false},
+		{"ts public", "Engine", "", "typescript", true},
+		{"ts private", "_Engine", "", "typescript", false},
+
+		// Unknown language
+		{"unknown lang", "foo", "", "rust", false},
+		{"empty name", "", "", "go", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isExportedSymbol(tt.symbolName, tt.visibility, tt.language)
+			if result != tt.expected {
+				t.Errorf("isExportedSymbol(%q, %q, %q) = %v, want %v",
+					tt.symbolName, tt.visibility, tt.language, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestComputePathScore(t *testing.T) {
+	tests := []struct {
+		name       string
+		pathType   string
+		pathLength int
+		confidence float64
+		minScore   float64
+	}{
+		{"cli short high conf", "cli", 1, 1.0, 90},
+		{"api short high conf", "api", 1, 1.0, 70},
+		{"job short", "job", 1, 1.0, 50},
+		{"event short", "event", 1, 1.0, 40},
+		{"test short", "test", 1, 1.0, 30},
+		{"unknown short", "unknown", 1, 1.0, 10},
+		{"cli long path", "cli", 5, 1.0, 60},
+		{"cli low confidence", "cli", 1, 0.5, 45},
+		{"very long path floors at zero", "cli", 30, 1.0, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := computePathScore(tt.pathType, tt.pathLength, tt.confidence)
+			if result < tt.minScore {
+				t.Errorf("computePathScore(%q, %d, %f) = %f, want >= %f",
+					tt.pathType, tt.pathLength, tt.confidence, result, tt.minScore)
+			}
+		})
+	}
+}
+
+func TestIsTestFilePath(t *testing.T) {
+	tests := []struct {
+		path     string
+		expected bool
+	}{
+		{"internal/query/engine_test.go", true},
+		{"src/Button.test.tsx", true},
+		{"src/test/fixtures/data.go", true},
+		{"src/tests/unit/api.go", true},
+		{"internal/query/engine.go", false},
+		{"src/Button.tsx", false},
+		{"main.go", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			result := isTestFilePath(tt.path)
+			if result != tt.expected {
+				t.Errorf("isTestFilePath(%q) = %v, want %v", tt.path, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestGenerateConceptDescription(t *testing.T) {
+	tests := []struct {
+		name        string
+		category    string
+		occurrences int
+		fileCount   int
+		contains    string
+	}{
+		{"Cache", "technical", 10, 5, "Technical concept"},
+		{"Factory", "pattern", 3, 2, "Design pattern"},
+		{"User", "domain", 50, 15, "Domain concept"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := generateConceptDescription(tt.name, tt.category, tt.occurrences, tt.fileCount)
+			if !containsSubstring(result, tt.contains) {
+				t.Errorf("generateConceptDescription() = %q, expected to contain %q", result, tt.contains)
+			}
+		})
+	}
+}
