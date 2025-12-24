@@ -33,7 +33,7 @@ func TestParseLocationFromMap(t *testing.T) {
 			"uri": "file:///path/to/file.go",
 			"range": map[string]interface{}{
 				"start": map[string]interface{}{
-					"line":      float64(9),  // 0-indexed
+					"line":      float64(9), // 0-indexed
 					"character": float64(4),
 				},
 				"end": map[string]interface{}{

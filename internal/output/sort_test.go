@@ -170,7 +170,11 @@ func TestGetFieldValue(t *testing.T) {
 		if err != nil {
 			t.Fatalf("getFieldValue() error = %v", err)
 		}
-		if val.(string) != "test" {
+		strVal, ok := val.(string)
+		if !ok {
+			t.Fatalf("expected string, got %T", val)
+		}
+		if strVal != "test" {
 			t.Errorf("getFieldValue() = %v, want 'test'", val)
 		}
 	})
@@ -181,7 +185,11 @@ func TestGetFieldValue(t *testing.T) {
 		if err != nil {
 			t.Fatalf("getFieldValue() error = %v", err)
 		}
-		if val.(int) != 42 {
+		intVal, ok := val.(int)
+		if !ok {
+			t.Fatalf("expected int, got %T", val)
+		}
+		if intVal != 42 {
 			t.Errorf("getFieldValue() = %v, want 42", val)
 		}
 	})
@@ -192,7 +200,11 @@ func TestGetFieldValue(t *testing.T) {
 		if err != nil {
 			t.Fatalf("getFieldValue() error = %v", err)
 		}
-		if val.(string) != "pointer-test" {
+		strVal, ok := val.(string)
+		if !ok {
+			t.Fatalf("expected string, got %T", val)
+		}
+		if strVal != "pointer-test" {
 			t.Errorf("getFieldValue() = %v, want 'pointer-test'", val)
 		}
 	})

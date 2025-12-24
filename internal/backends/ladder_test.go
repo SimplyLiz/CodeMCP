@@ -15,10 +15,10 @@ type ladderMockBackend struct {
 	priority     int
 }
 
-func (m *ladderMockBackend) ID() BackendID       { return m.id }
-func (m *ladderMockBackend) IsAvailable() bool   { return m.available }
+func (m *ladderMockBackend) ID() BackendID          { return m.id }
+func (m *ladderMockBackend) IsAvailable() bool      { return m.available }
 func (m *ladderMockBackend) Capabilities() []string { return m.capabilities }
-func (m *ladderMockBackend) Priority() int       { return m.priority }
+func (m *ladderMockBackend) Priority() int          { return m.priority }
 
 func newLadderMockBackend(id BackendID, available bool, caps []string) *ladderMockBackend {
 	return &ladderMockBackend{

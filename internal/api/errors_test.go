@@ -12,8 +12,8 @@ import (
 
 func TestMapCkbErrorToStatus(t *testing.T) {
 	tests := []struct {
-		code   errors.ErrorCode
-		want   int
+		code errors.ErrorCode
+		want int
 	}{
 		{errors.BackendUnavailable, http.StatusServiceUnavailable},
 		{errors.IndexMissing, http.StatusNotFound},
