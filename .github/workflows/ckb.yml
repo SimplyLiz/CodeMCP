@@ -72,11 +72,11 @@ jobs:
       # ───────────────────────────────────────────────────────────────────────
       # Setup
       # ───────────────────────────────────────────────────────────────────────
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -92,7 +92,7 @@ jobs:
       # ───────────────────────────────────────────────────────────────────────
       - name: Cache
         id: cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .ckb/
           key: ckb-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.base_ref }}
@@ -304,7 +304,7 @@ jobs:
       # ───────────────────────────────────────────────────────────────────────
       - name: Comment
         if: always()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
           INDEX_MODE: ${{ steps.index.outputs.mode }}
@@ -727,7 +727,7 @@ jobs:
       - name: Reviewers
         if: always()
         continue-on-error: true
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const fs = require('fs');
@@ -753,14 +753,14 @@ jobs:
       # ───────────────────────────────────────────────────────────────────────
       - name: Save Cache
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: .ckb/
           key: ckb-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.base_ref }}
 
       - name: Upload
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ckb-analysis
           path: '*.json'
@@ -774,11 +774,11 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -790,7 +790,7 @@ jobs:
         run: go install github.com/sourcegraph/scip-go/cmd/scip-go@latest
 
       - name: Cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .ckb/
           key: ckb-${{ runner.os }}-refresh-${{ github.run_id }}
@@ -833,7 +833,7 @@ jobs:
           echo "| Dead Code | $(jq '.candidates | if type == "array" then length else 0 end' reports/deadcode.json) |" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ckb-refresh
           path: reports/
