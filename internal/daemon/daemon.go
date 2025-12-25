@@ -17,6 +17,7 @@ import (
 	"ckb/internal/index"
 	"ckb/internal/logging"
 	"ckb/internal/paths"
+	"ckb/internal/repos"
 	"ckb/internal/scheduler"
 	"ckb/internal/version"
 	"ckb/internal/watcher"
@@ -168,6 +169,39 @@ func (d *Daemon) detectTriggerFromEvents(events []watcher.Event) (index.RefreshT
 	return index.TriggerStale, ""
 }
 
+// registerReposFromRegistry loads the repo registry and registers valid repos with the watcher
+func (d *Daemon) registerReposFromRegistry() {
+	registry, err := repos.LoadRegistry()
+	if err != nil {
+		d.logger.Printf("Failed to load repo registry: %v", err)
+		return
+	}
+
+	if len(registry.Repos) == 0 {
+		d.logger.Println("No repos in registry to watch")
+		return
+	}
+
+	registered := 0
+	for name, entry := range registry.Repos {
+		state := registry.ValidateState(name)
+		if state != repos.RepoStateValid {
+			d.logger.Printf("Skipping repo %s: %s", name, state)
+			continue
+		}
+
+		if err := d.watcher.WatchRepo(entry.Path); err != nil {
+			d.logger.Printf("Failed to watch repo %s (%s): %v", name, entry.Path, err)
+			continue
+		}
+
+		registered++
+		d.logger.Printf("Watching repo: %s (%s)", name, entry.Path)
+	}
+
+	d.logger.Printf("Registered %d repos for file watching", registered)
+}
+
 // Start starts the daemon
 func (d *Daemon) Start() error {
 	d.logger.Printf("Starting CKB daemon v%s", version.Version)
@@ -198,6 +232,9 @@ func (d *Daemon) Start() error {
 	} else {
 		d.logger.Println("File watcher started")
 	}
+
+	// Register repos from registry with watcher
+	d.registerReposFromRegistry()
 
 	// Start webhook manager
 	if err := d.webhookManager.Start(); err != nil {
