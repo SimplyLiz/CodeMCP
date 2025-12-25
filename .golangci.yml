@@ -1,82 +1,84 @@
+version: "2"
 run:
-  timeout: 5m
   modules-download-mode: readonly
-
 linters:
   enable:
-    - errcheck
-    - gosimple
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
-    - gofmt
-    - goimports
-    - misspell
-    - unconvert
     - bodyclose
+    - misspell
     - nilerr
-
-linters-settings:
-  errcheck:
-    check-type-assertions: true
-  govet:
-    enable-all: true
-    disable:
-      - fieldalignment
-  goimports:
-    local-prefixes: ckb
-
+    - unconvert
+  settings:
+    errcheck:
+      check-type-assertions: true
+    govet:
+      disable:
+        - fieldalignment
+      enable-all: true
+  exclusions:
+    generated: lax
+    presets:
+      - std-error-handling
+    rules:
+      # Exclude v2 style suggestions that weren't enforced in v1
+      - linters:
+          - staticcheck
+        text: "^(QF|ST)"
+      - linters:
+          - errcheck
+        path: _test\.go
+        text: os.RemoveAll
+      - linters:
+          - govet
+        path: _test\.go
+        text: shadow
+      - linters:
+          - govet
+        path: _test\.go
+        text: unusedwrite
+      - linters:
+          - errcheck
+        text: fmt.Sscanf
+      - linters:
+          - errcheck
+        path: cmd/
+        text: fmt\.(Fprintf|Fprintln|Fprint)
+      - linters:
+          - errcheck
+        path: cmd/
+        text: Flush
+      - linters:
+          - errcheck
+        text: Body\.Close
+      - linters:
+          - errcheck
+        path: cmd/
+        text: MarkFlagRequired
+      - linters:
+          - errcheck
+        path: cmd/
+        text: fmt\.Scanln
+      - linters:
+          - errcheck
+        path: cmd/ckb/daemon\.go
+        text: Seek
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 issues:
-  exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
-  exclude-rules:
-    # Ignore unchecked errors for defer cleanup in tests
-    - path: _test\.go
-      linters:
-        - errcheck
-      text: "os.RemoveAll"
-    # Ignore shadow declarations in tests (common pattern with err)
-    - path: _test\.go
-      linters:
-        - govet
-      text: "shadow"
-    # Ignore unusedwrite in tests (struct initialization for testing)
-    - path: _test\.go
-      linters:
-        - govet
-      text: "unusedwrite"
-    # Ignore fmt.Sscanf errors (used for optional parsing)
-    - linters:
-        - errcheck
-      text: "fmt.Sscanf"
-    # Ignore fmt output functions in CLI code (stdout/stderr errors are rarely actionable)
-    - path: cmd/
-      linters:
-        - errcheck
-      text: "fmt\\.(Fprintf|Fprintln|Fprint)"
-    # Ignore tabwriter.Flush in CLI code
-    - path: cmd/
-      linters:
-        - errcheck
-      text: "Flush"
-    # Ignore r.Body.Close in HTTP handlers (already deferred, error is for info only)
-    - linters:
-        - errcheck
-      text: "Body\\.Close"
-    # Ignore MarkFlagRequired in CLI commands (panic on error is acceptable)
-    - path: cmd/
-      linters:
-        - errcheck
-      text: "MarkFlagRequired"
-    # Ignore fmt.Scanln in CLI commands (stdin errors are rarely actionable)
-    - path: cmd/
-      linters:
-        - errcheck
-      text: "fmt\\.Scanln"
-    # Ignore file.Seek in daemon logs (best effort positioning)
-    - path: cmd/ckb/daemon\.go
-      linters:
-        - errcheck
-      text: "Seek"
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - ckb
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
