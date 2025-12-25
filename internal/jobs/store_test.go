@@ -147,7 +147,7 @@ func TestStore_UpdateJob_Complete(t *testing.T) {
 	}
 
 	job.MarkStarted()
-	job.MarkCompleted(RefreshResult{Status: "done"})
+	_ = job.MarkCompleted(RefreshResult{Status: "done"})
 	if err := store.UpdateJob(job); err != nil {
 		t.Fatalf("UpdateJob failed: %v", err)
 	}
@@ -232,18 +232,18 @@ func TestStore_ListJobs_FilterByStatus(t *testing.T) {
 
 	// Create jobs with different statuses
 	queued, _ := NewJob(JobTypeExport, nil)
-	store.CreateJob(queued)
+	_ = store.CreateJob(queued)
 
 	running, _ := NewJob(JobTypeExport, nil)
 	running.MarkStarted()
-	store.CreateJob(running)
-	store.UpdateJob(running)
+	_ = store.CreateJob(running)
+	_ = store.UpdateJob(running)
 
 	completed, _ := NewJob(JobTypeExport, nil)
 	completed.MarkStarted()
-	completed.MarkCompleted(nil)
-	store.CreateJob(completed)
-	store.UpdateJob(completed)
+	_ = completed.MarkCompleted(nil)
+	_ = store.CreateJob(completed)
+	_ = store.UpdateJob(completed)
 
 	// Filter by queued
 	resp, err := store.ListJobs(ListJobsOptions{
@@ -274,10 +274,10 @@ func TestStore_ListJobs_FilterByType(t *testing.T) {
 	store := newTestStore(t)
 
 	export, _ := NewJob(JobTypeExport, nil)
-	store.CreateJob(export)
+	_ = store.CreateJob(export)
 
 	refresh, _ := NewJob(JobTypeRefreshArchitecture, nil)
-	store.CreateJob(refresh)
+	_ = store.CreateJob(refresh)
 
 	resp, err := store.ListJobs(ListJobsOptions{
 		Type:  []JobType{JobTypeExport},
@@ -297,7 +297,7 @@ func TestStore_ListJobs_Pagination(t *testing.T) {
 	// Create 10 jobs
 	for i := 0; i < 10; i++ {
 		job, _ := NewJob(JobTypeExport, nil)
-		store.CreateJob(job)
+		_ = store.CreateJob(job)
 	}
 
 	// Get first page
@@ -321,18 +321,18 @@ func TestStore_GetPendingJobs(t *testing.T) {
 
 	// Create queued, running, and completed jobs
 	queued, _ := NewJob(JobTypeExport, nil)
-	store.CreateJob(queued)
+	_ = store.CreateJob(queued)
 
 	running, _ := NewJob(JobTypeExport, nil)
 	running.MarkStarted()
-	store.CreateJob(running)
-	store.UpdateJob(running)
+	_ = store.CreateJob(running)
+	_ = store.UpdateJob(running)
 
 	completed, _ := NewJob(JobTypeExport, nil)
 	completed.MarkStarted()
-	completed.MarkCompleted(nil)
-	store.CreateJob(completed)
-	store.UpdateJob(completed)
+	_ = completed.MarkCompleted(nil)
+	_ = store.CreateJob(completed)
+	_ = store.UpdateJob(completed)
 
 	pending, err := store.GetPendingJobs()
 	if err != nil {
@@ -354,9 +354,9 @@ func TestStore_CleanupOldJobs(t *testing.T) {
 	// Create a completed job (completed_at = now)
 	job, _ := NewJob(JobTypeExport, nil)
 	job.MarkStarted()
-	job.MarkCompleted(nil)
-	store.CreateJob(job)
-	store.UpdateJob(job)
+	_ = job.MarkCompleted(nil)
+	_ = store.CreateJob(job)
+	_ = store.UpdateJob(job)
 
 	// Cleanup with 0 duration won't delete the job since its completed_at
 	// is equal to now (not less than cutoff). This tests the function runs correctly.
@@ -427,14 +427,14 @@ func TestStore_FileChecksums_Update(t *testing.T) {
 	path := "/test/file.go"
 
 	// Save first checksum
-	store.SaveFileChecksum(&FileChecksum{
+	_ = store.SaveFileChecksum(&FileChecksum{
 		Path:        path,
 		Checksum:    "first",
 		LastIndexed: time.Now(),
 	})
 
 	// Update with new checksum
-	store.SaveFileChecksum(&FileChecksum{
+	_ = store.SaveFileChecksum(&FileChecksum{
 		Path:        path,
 		Checksum:    "second",
 		LastIndexed: time.Now(),
@@ -491,7 +491,7 @@ func TestStore_ListJobs_DefaultLimit(t *testing.T) {
 	// Create 100 jobs
 	for i := 0; i < 100; i++ {
 		job, _ := NewJob(JobTypeExport, nil)
-		store.CreateJob(job)
+		_ = store.CreateJob(job)
 	}
 
 	// List with no limit should use default (50)

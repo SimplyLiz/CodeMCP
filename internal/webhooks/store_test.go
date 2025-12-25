@@ -42,7 +42,7 @@ func TestNewManager(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewManager failed: %v", err)
 	}
-	defer mgr.Stop(time.Second)
+	defer func() { _ = mgr.Stop(time.Second) }()
 
 	if mgr.store == nil {
 		t.Error("store should not be nil")
@@ -64,7 +64,7 @@ func TestNewManager_DefaultConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewManager failed: %v", err)
 	}
-	defer mgr.Stop(time.Second)
+	defer func() { _ = mgr.Stop(time.Second) }()
 
 	// Verify defaults are applied
 	if mgr.workerCount != 2 {
@@ -134,7 +134,7 @@ func TestManager_UpdateWebhook(t *testing.T) {
 		Enabled: true,
 		Format:  FormatJSON,
 	}
-	mgr.RegisterWebhook(webhook)
+	_ = mgr.RegisterWebhook(webhook)
 
 	// Update
 	webhook.Name = "Updated"
@@ -164,7 +164,7 @@ func TestManager_DeleteWebhook(t *testing.T) {
 		Enabled: true,
 		Format:  FormatJSON,
 	}
-	mgr.RegisterWebhook(webhook)
+	_ = mgr.RegisterWebhook(webhook)
 
 	if err := mgr.DeleteWebhook("wh-1"); err != nil {
 		t.Fatalf("DeleteWebhook failed: %v", err)
@@ -212,7 +212,7 @@ func TestManager_ListWebhooks(t *testing.T) {
 			Enabled: true,
 			Format:  FormatJSON,
 		}
-		mgr.RegisterWebhook(webhook)
+		_ = mgr.RegisterWebhook(webhook)
 	}
 
 	webhooks, err = mgr.ListWebhooks()
