@@ -29,11 +29,11 @@ type Daemon struct {
 	logger *log.Logger
 
 	// Components
-	scheduler       *scheduler.Scheduler
-	watcher         *watcher.Watcher
-	webhookManager  *webhooks.Manager
-	refreshManager  *RefreshManager
-	structuredLog   *logging.Logger
+	scheduler      *scheduler.Scheduler
+	watcher        *watcher.Watcher
+	webhookManager *webhooks.Manager
+	refreshManager *RefreshManager
+	structuredLog  *logging.Logger
 
 	// Shutdown coordination
 	ctx    context.Context
