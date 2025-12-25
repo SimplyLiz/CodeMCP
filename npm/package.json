@@ -1,22 +1,46 @@
 {
   "name": "@tastehub/ckb",
-  "version": "7.3.0",
-  "description": "Code Knowledge Base - AI-friendly code intelligence for Claude and other LLM assistants",
+  "version": "7.4.0",
+  "description": "Code intelligence for AI assistants (MCP), CLI, and HTTP API - symbol navigation, impact analysis, architecture",
   "keywords": [
-    "code-intelligence",
     "mcp",
+    "modelcontextprotocol",
     "claude",
+    "cursor",
+    "windsurf",
     "llm",
+    "ai-assistant",
+    "code-intelligence",
+    "code-analysis",
+    "code-navigation",
     "scip",
     "lsp",
-    "analysis"
+    "developer-tools",
+    "codebase",
+    "refactoring"
   ],
-  "homepage": "https://github.com/simplyliz/ckb",
+  "type": "commonjs",
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "homepage": "https://github.com/SimplyLiz/CodeMCP",
+  "bugs": {
+    "url": "https://github.com/SimplyLiz/CodeMCP/issues"
+  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/simplyliz/ckb.git"
+    "url": "git+https://github.com/SimplyLiz/CodeMCP.git"
   },
   "license": "MIT",
+  "scripts": {
+    "prepublishOnly": "cp ../README.md ./README.md && cp ../LICENSE ./LICENSE"
+  },
   "author": "SimplyLiz",
   "bin": {
     "ckb": "bin/ckb.js"
@@ -25,11 +49,11 @@
     "bin"
   ],
   "optionalDependencies": {
-    "@tastehub/ckb-darwin-arm64": "7.3.0",
-    "@tastehub/ckb-darwin-x64": "7.3.0",
-    "@tastehub/ckb-linux-x64": "7.3.0",
-    "@tastehub/ckb-linux-arm64": "7.3.0",
-    "@tastehub/ckb-win32-x64": "7.3.0"
+    "@tastehub/ckb-darwin-arm64": "7.4.0",
+    "@tastehub/ckb-darwin-x64": "7.4.0",
+    "@tastehub/ckb-linux-x64": "7.4.0",
+    "@tastehub/ckb-linux-arm64": "7.4.0",
+    "@tastehub/ckb-win32-x64": "7.4.0"
   },
   "engines": {
     "node": ">=16"

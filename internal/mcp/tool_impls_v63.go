@@ -1,9 +1,9 @@
 package mcp
 
 import (
-	"encoding/json"
 	"fmt"
 
+	"ckb/internal/envelope"
 	"ckb/internal/federation"
 	"ckb/internal/logging"
 )
@@ -11,7 +11,7 @@ import (
 // v6.3 Contract-Aware Impact Analysis tool implementations
 
 // toolListContracts lists contracts in a federation
-func (s *MCPServer) toolListContracts(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolListContracts(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
 		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
@@ -53,16 +53,14 @@ func (s *MCPServer) toolListContracts(params map[string]interface{}) (interface{
 		return nil, fmt.Errorf("failed to list contracts: %w", err)
 	}
 
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(result).
+		CrossRepo().
+		Build(), nil
 }
 
 // toolAnalyzeContractImpact analyzes impact of changing a contract
-func (s *MCPServer) toolAnalyzeContractImpact(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolAnalyzeContractImpact(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
 		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
@@ -117,16 +115,14 @@ func (s *MCPServer) toolAnalyzeContractImpact(params map[string]interface{}) (in
 		return nil, fmt.Errorf("failed to analyze impact: %w", err)
 	}
 
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(result).
+		CrossRepo().
+		Build(), nil
 }
 
 // toolGetContractDependencies gets dependencies for a repo
-func (s *MCPServer) toolGetContractDependencies(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolGetContractDependencies(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
 		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
@@ -178,16 +174,14 @@ func (s *MCPServer) toolGetContractDependencies(params map[string]interface{}) (
 		return nil, fmt.Errorf("failed to get dependencies: %w", err)
 	}
 
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(result).
+		CrossRepo().
+		Build(), nil
 }
 
 // toolSuppressContractEdge suppresses a contract edge
-func (s *MCPServer) toolSuppressContractEdge(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolSuppressContractEdge(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
 		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
@@ -222,15 +216,18 @@ func (s *MCPServer) toolSuppressContractEdge(params map[string]interface{}) (int
 		return nil, fmt.Errorf("failed to suppress edge: %w", err)
 	}
 
-	return map[string]interface{}{
-		"success": true,
-		"edgeId":  int64(edgeID),
-		"message": "Edge suppressed successfully",
-	}, nil
+	return NewToolResponse().
+		Data(map[string]interface{}{
+			"success": true,
+			"edgeId":  int64(edgeID),
+			"message": "Edge suppressed successfully",
+		}).
+		CrossRepo().
+		Build(), nil
 }
 
 // toolVerifyContractEdge verifies a contract edge
-func (s *MCPServer) toolVerifyContractEdge(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolVerifyContractEdge(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
 		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
@@ -262,15 +259,18 @@ func (s *MCPServer) toolVerifyContractEdge(params map[string]interface{}) (inter
 		return nil, fmt.Errorf("failed to verify edge: %w", err)
 	}
 
-	return map[string]interface{}{
-		"success": true,
-		"edgeId":  int64(edgeID),
-		"message": "Edge verified successfully",
-	}, nil
+	return NewToolResponse().
+		Data(map[string]interface{}{
+			"success": true,
+			"edgeId":  int64(edgeID),
+			"message": "Edge verified successfully",
+		}).
+		CrossRepo().
+		Build(), nil
 }
 
 // toolGetContractStats gets contract statistics for a federation
-func (s *MCPServer) toolGetContractStats(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolGetContractStats(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
 		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
@@ -297,10 +297,8 @@ func (s *MCPServer) toolGetContractStats(params map[string]interface{}) (interfa
 		return nil, fmt.Errorf("failed to get stats: %w", err)
 	}
 
-	jsonBytes, err := json.MarshalIndent(stats, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(stats).
+		CrossRepo().
+		Build(), nil
 }

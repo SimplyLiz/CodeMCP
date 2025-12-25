@@ -8,55 +8,79 @@ import (
 )
 
 // FindReferences finds all references to a symbol
+// Uses RefIndex for O(1) lookup when available, falls back to O(n*m) scan otherwise
 func (idx *SCIPIndex) FindReferences(symbolId string, options ReferenceOptions) ([]*SCIPReference, error) {
 	references := make([]*SCIPReference, 0)
 
-	// Search through all documents for occurrences of this symbol
+	// Use inverted index for O(1) lookup if available
+	if idx.RefIndex != nil {
+		occRefs, ok := idx.RefIndex[symbolId]
+		if !ok {
+			return references, nil // No references found
+		}
+
+		for _, occRef := range occRefs {
+			ref := idx.processOccurrence(symbolId, occRef.Doc, occRef.Occ, options)
+			if ref != nil {
+				references = append(references, ref)
+				if options.MaxResults > 0 && len(references) >= options.MaxResults {
+					return references, nil
+				}
+			}
+		}
+		return references, nil
+	}
+
+	// Fallback: O(n*m) scan through all documents (for backwards compatibility)
 	for _, doc := range idx.Documents {
 		for _, occ := range doc.Occurrences {
 			if occ.Symbol == symbolId {
-				// Determine reference kind from symbol roles
-				kind := determineReferenceKind(occ)
-
-				// Skip definition if not included
-				if kind == RefDefinition && !options.IncludeDefinition {
-					continue
-				}
-
-				// Parse location
-				location := parseOccurrenceRange(occ, doc.RelativePath)
-				if location == nil {
-					continue
-				}
-
-				// Get context if file path is available
-				context := ""
-				if options.IncludeContext {
-					context = extractContext(doc.RelativePath, location, idx)
-				}
-
-				// Determine the containing symbol
-				fromSymbol := findContainingSymbol(doc, occ)
-
-				ref := &SCIPReference{
-					SymbolId:   symbolId,
-					Location:   location,
-					Kind:       kind,
-					FromSymbol: fromSymbol,
-					Context:    context,
-				}
-
-				references = append(references, ref)
-
-				// Limit results if specified
-				if options.MaxResults > 0 && len(references) >= options.MaxResults {
-					return references, nil
+				ref := idx.processOccurrence(symbolId, doc, occ, options)
+				if ref != nil {
+					references = append(references, ref)
+					if options.MaxResults > 0 && len(references) >= options.MaxResults {
+						return references, nil
+					}
 				}
 			}
 		}
 	}
 
 	return references, nil
+}
+
+// processOccurrence converts an occurrence to a reference, applying filters
+func (idx *SCIPIndex) processOccurrence(symbolId string, doc *Document, occ *Occurrence, options ReferenceOptions) *SCIPReference {
+	// Determine reference kind from symbol roles
+	kind := determineReferenceKind(occ)
+
+	// Skip definition if not included
+	if kind == RefDefinition && !options.IncludeDefinition {
+		return nil
+	}
+
+	// Parse location
+	location := parseOccurrenceRange(occ, doc.RelativePath)
+	if location == nil {
+		return nil
+	}
+
+	// Get context if file path is available
+	context := ""
+	if options.IncludeContext {
+		context = extractContext(doc.RelativePath, location, idx)
+	}
+
+	// Determine the containing symbol (O(1) with ContainerIndex)
+	fromSymbol := findContainingSymbolFast(doc, occ, idx)
+
+	return &SCIPReference{
+		SymbolId:   symbolId,
+		Location:   location,
+		Kind:       kind,
+		FromSymbol: fromSymbol,
+		Context:    context,
+	}
 }
 
 // ReferenceOptions contains options for finding references
@@ -102,7 +126,7 @@ func determineReferenceKind(occ *Occurrence) ReferenceKind {
 	return RefReference
 }
 
-// findContainingSymbol finds the symbol that contains this occurrence
+// findContainingSymbol finds the symbol that contains this occurrence (O(n²) fallback)
 func findContainingSymbol(doc *Document, occ *Occurrence) string {
 	// Use enclosing range to find containing symbol
 	if len(occ.EnclosingRange) > 0 {
@@ -118,6 +142,20 @@ func findContainingSymbol(doc *Document, occ *Occurrence) string {
 				}
 			}
 		}
+	}
+
+	return ""
+}
+
+// findContainingSymbolFast uses the pre-built ContainerIndex for O(1) lookup
+func findContainingSymbolFast(doc *Document, occ *Occurrence, idx *SCIPIndex) string {
+	if idx == nil || idx.ContainerIndex == nil || len(occ.Range) < 2 {
+		return findContainingSymbol(doc, occ) // fallback to O(n²)
+	}
+
+	key := fmt.Sprintf("%s:%d:%d", doc.RelativePath, occ.Range[0], occ.Range[1])
+	if container, ok := idx.ContainerIndex[key]; ok {
+		return container
 	}
 
 	return ""

@@ -45,20 +45,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 	ckbDir := filepath.Join(cwd, ".ckb")
 	if _, statErr := os.Stat(ckbDir); statErr == nil {
 		if !initForce {
-			return errors.NewCkbError(
-				errors.InternalError,
-				fmt.Sprintf(".ckb directory already exists at %s", ckbDir),
-				nil,
-				[]errors.FixAction{
-					{
-						Type:        "run-command",
-						Command:     "ckb init --force",
-						Safe:        false,
-						Description: "Force reinitialization",
-					},
-				},
-				nil,
-			)
+			// Idempotent behavior: already initialized is success (CI-friendly)
+			fmt.Println("CKB already initialized.")
+			fmt.Printf("Configuration at: %s\n", filepath.Join(ckbDir, "config.json"))
+			fmt.Println("\nRun 'ckb init --force' to reinitialize.")
+			return nil
 		}
 		// Remove existing directory
 		if removeErr := os.RemoveAll(ckbDir); removeErr != nil {

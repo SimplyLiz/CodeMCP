@@ -2,19 +2,19 @@ package mcp
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 
 	"ckb/internal/complexity"
+	"ckb/internal/envelope"
 	"ckb/internal/jobs"
 	"ckb/internal/query"
 )
 
 // toolGetStatus implements the getStatus tool
-func (s *MCPServer) toolGetStatus(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Response, error) {
 	s.logger.Debug("Executing getStatus", map[string]interface{}{
 		"params": params,
 	})
@@ -41,7 +41,10 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (interface{}, e
 		status = "healthy"
 	}
 
-	result := map[string]interface{}{
+	// Get preset info
+	preset, exposedCount, totalCount := s.GetPresetStats()
+
+	data := map[string]interface{}{
 		"status":   status,
 		"healthy":  statusResp.Healthy,
 		"backends": backends,
@@ -56,18 +59,19 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (interface{}, e
 			"repoStateId": statusResp.RepoState.RepoStateId,
 			"headCommit":  statusResp.RepoState.HeadCommit,
 		},
+		"preset": map[string]interface{}{
+			"active":   preset,
+			"exposed":  exposedCount,
+			"total":    totalCount,
+			"expanded": s.IsExpanded(),
+		},
 	}
 
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return OperationalResponse(data), nil
 }
 
 // toolDoctor implements the doctor tool
-func (s *MCPServer) toolDoctor(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolDoctor(params map[string]interface{}) (*envelope.Response, error) {
 	s.logger.Debug("Executing doctor", map[string]interface{}{
 		"params": params,
 	})
@@ -95,21 +99,85 @@ func (s *MCPServer) toolDoctor(params map[string]interface{}) (interface{}, erro
 		})
 	}
 
-	result := map[string]interface{}{
+	data := map[string]interface{}{
 		"healthy": doctorResp.Healthy,
 		"checks":  checks,
 	}
 
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
+	return OperationalResponse(data), nil
+}
+
+// toolExpandToolset implements the expandToolset meta-tool for dynamic preset expansion
+func (s *MCPServer) toolExpandToolset(params map[string]interface{}) (*envelope.Response, error) {
+	s.logger.Debug("Executing expandToolset", map[string]interface{}{
+		"params": params,
+	})
+
+	// Extract and validate preset
+	preset, ok := params["preset"].(string)
+	if !ok || preset == "" {
+		return nil, fmt.Errorf("missing required parameter: preset")
 	}
 
-	return string(jsonBytes), nil
+	// Extract and validate reason
+	reason, ok := params["reason"].(string)
+	if !ok || len(reason) < 10 {
+		return nil, fmt.Errorf("missing or insufficient reason (minimum 10 characters)")
+	}
+
+	// Validate preset
+	if !IsValidPreset(preset) {
+		return nil, fmt.Errorf("invalid preset: %s (valid: %v)", preset, ValidPresets())
+	}
+
+	// Rate limit: only allow one expansion per session
+	if s.IsExpanded() {
+		data := map[string]interface{}{
+			"success": false,
+			"message": "Toolset already expanded this session. Restart with --preset=<preset> for a different preset.",
+		}
+		return envelope.New().Data(data).Build(), nil
+	}
+
+	// Get current state for comparison
+	oldPreset := s.GetActivePreset()
+	oldCount := len(s.GetFilteredTools())
+
+	// Update preset
+	if err := s.SetPreset(preset); err != nil {
+		return nil, fmt.Errorf("failed to set preset: %w", err)
+	}
+
+	// Mark as expanded
+	s.MarkExpanded()
+
+	// Get new state
+	newCount := len(s.GetFilteredTools())
+
+	// Send notification to client (if they support it)
+	// Note: Not all clients handle this notification
+	if err := s.SendNotification("notifications/tools/list_changed", nil); err != nil {
+		s.logger.Debug("Failed to send tools/list_changed notification (client may not support it)", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
+
+	data := map[string]interface{}{
+		"success":   true,
+		"oldPreset": oldPreset,
+		"newPreset": preset,
+		"oldCount":  oldCount,
+		"newCount":  newCount,
+		"reason":    reason,
+		"message":   fmt.Sprintf("Expanded toolset from %s (%d tools) to %s (%d tools).", oldPreset, oldCount, preset, newCount),
+		"fallback":  fmt.Sprintf("If new tools don't appear automatically, restart with: ckb mcp --preset=%s", preset),
+	}
+
+	return envelope.New().Data(data).Build(), nil
 }
 
 // toolGetSymbol implements the getSymbol tool
-func (s *MCPServer) toolGetSymbol(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolGetSymbol(params map[string]interface{}) (*envelope.Response, error) {
 	symbolId, ok := params["symbolId"].(string)
 	if !ok {
 		return nil, fmt.Errorf("missing or invalid 'symbolId' parameter")
@@ -136,7 +204,7 @@ func (s *MCPServer) toolGetSymbol(params map[string]interface{}) (interface{}, e
 		return nil, fmt.Errorf("failed to get symbol: %w", err)
 	}
 
-	result := map[string]interface{}{}
+	data := map[string]interface{}{}
 
 	if symbolResp.Symbol != nil {
 		sym := symbolResp.Symbol
@@ -178,27 +246,19 @@ func (s *MCPServer) toolGetSymbol(params map[string]interface{}) (interface{}, e
 			}
 		}
 
-		result["symbol"] = symbolInfo
+		data["symbol"] = symbolInfo
 	}
 
-	if symbolResp.Provenance != nil {
-		result["provenance"] = map[string]interface{}{
-			"repoStateId":     symbolResp.Provenance.RepoStateId,
-			"repoStateDirty":  symbolResp.Provenance.RepoStateDirty,
-			"queryDurationMs": symbolResp.Provenance.QueryDurationMs,
-		}
-	}
-
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(data).
+		WithProvenance(symbolResp.Provenance).
+		Build(), nil
 }
 
 // toolSearchSymbols implements the searchSymbols tool
-func (s *MCPServer) toolSearchSymbols(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolSearchSymbols(params map[string]interface{}) (*envelope.Response, error) {
+	timer := NewWideResultTimer()
+
 	queryStr, ok := params["query"].(string)
 	if !ok {
 		return nil, fmt.Errorf("missing or invalid 'query' parameter")
@@ -280,30 +340,34 @@ func (s *MCPServer) toolSearchSymbols(params map[string]interface{}) (interface{
 		symbols = append(symbols, symbolInfo)
 	}
 
-	result := map[string]interface{}{
+	data := map[string]interface{}{
 		"symbols":    symbols,
 		"totalCount": searchResp.TotalCount,
-		"truncated":  searchResp.Truncated,
 	}
 
-	if searchResp.Provenance != nil {
-		result["provenance"] = map[string]interface{}{
-			"repoStateId":     searchResp.Provenance.RepoStateId,
-			"repoStateDirty":  searchResp.Provenance.RepoStateDirty,
-			"queryDurationMs": searchResp.Provenance.QueryDurationMs,
-		}
-	}
+	// Record wide-result metrics
+	responseBytes := MeasureJSONSize(data)
+	RecordWideResult(WideResultMetrics{
+		ToolName:        "searchSymbols",
+		TotalResults:    searchResp.TotalCount,
+		ReturnedResults: len(symbols),
+		TruncatedCount:  searchResp.TotalCount - len(symbols),
+		ResponseBytes:   responseBytes,
+		EstimatedTokens: EstimateTokens(responseBytes),
+		ExecutionMs:     timer.ElapsedMs(),
+	})
 
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(data).
+		WithProvenance(searchResp.Provenance).
+		WithTruncation(searchResp.Truncated, len(symbols), searchResp.TotalCount, "max-symbols").
+		Build(), nil
 }
 
 // toolFindReferences implements the findReferences tool
-func (s *MCPServer) toolFindReferences(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolFindReferences(params map[string]interface{}) (*envelope.Response, error) {
+	timer := NewWideResultTimer()
+
 	symbolId, ok := params["symbolId"].(string)
 	if !ok {
 		return nil, fmt.Errorf("missing or invalid 'symbolId' parameter")
@@ -365,30 +429,32 @@ func (s *MCPServer) toolFindReferences(params map[string]interface{}) (interface
 		refs = append(refs, ref)
 	}
 
-	result := map[string]interface{}{
+	data := map[string]interface{}{
 		"references": refs,
 		"totalCount": refsResp.TotalCount,
-		"truncated":  refsResp.Truncated,
 	}
 
-	if refsResp.Provenance != nil {
-		result["provenance"] = map[string]interface{}{
-			"repoStateId":     refsResp.Provenance.RepoStateId,
-			"repoStateDirty":  refsResp.Provenance.RepoStateDirty,
-			"queryDurationMs": refsResp.Provenance.QueryDurationMs,
-		}
-	}
+	// Record wide-result metrics
+	responseBytes := MeasureJSONSize(data)
+	RecordWideResult(WideResultMetrics{
+		ToolName:        "findReferences",
+		TotalResults:    refsResp.TotalCount,
+		ReturnedResults: len(refs),
+		TruncatedCount:  refsResp.TotalCount - len(refs),
+		ResponseBytes:   responseBytes,
+		EstimatedTokens: EstimateTokens(responseBytes),
+		ExecutionMs:     timer.ElapsedMs(),
+	})
 
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(data).
+		WithProvenance(refsResp.Provenance).
+		WithTruncation(refsResp.Truncated, len(refs), refsResp.TotalCount, "max-references").
+		Build(), nil
 }
 
 // toolGetArchitecture implements the getArchitecture tool
-func (s *MCPServer) toolGetArchitecture(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolGetArchitecture(params map[string]interface{}) (*envelope.Response, error) {
 	depth := 2
 	if depthVal, ok := params["depth"].(float64); ok {
 		depth = int(depthVal)
@@ -452,48 +518,30 @@ func (s *MCPServer) toolGetArchitecture(params map[string]interface{}) (interfac
 		})
 	}
 
-	result := map[string]interface{}{
+	data := map[string]interface{}{
 		"modules":         modules,
 		"dependencyGraph": depEdges,
-		"truncated":       archResp.Truncated,
 		"confidence":      archResp.Confidence,
 		"confidenceBasis": archResp.ConfidenceBasis,
 	}
 
 	if len(archResp.Limitations) > 0 {
-		result["limitations"] = archResp.Limitations
+		data["limitations"] = archResp.Limitations
 	}
 
-	if archResp.Provenance != nil {
-		result["provenance"] = map[string]interface{}{
-			"repoStateId":     archResp.Provenance.RepoStateId,
-			"repoStateDirty":  archResp.Provenance.RepoStateDirty,
-			"queryDurationMs": archResp.Provenance.QueryDurationMs,
-		}
-	}
+	resp := NewToolResponse().
+		Data(data).
+		WithProvenance(archResp.Provenance).
+		WithTruncation(archResp.Truncated, len(modules), len(modules), "max-modules").
+		WithDrilldowns(archResp.Drilldowns)
 
-	if len(archResp.Drilldowns) > 0 {
-		drilldowns := make([]map[string]interface{}, 0, len(archResp.Drilldowns))
-		for _, d := range archResp.Drilldowns {
-			drilldowns = append(drilldowns, map[string]interface{}{
-				"label":          d.Label,
-				"query":          d.Query,
-				"relevanceScore": d.RelevanceScore,
-			})
-		}
-		result["drilldowns"] = drilldowns
-	}
-
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return resp.Build(), nil
 }
 
 // toolAnalyzeImpact implements the analyzeImpact tool
-func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (*envelope.Response, error) {
+	timer := NewWideResultTimer()
+
 	symbolId, ok := params["symbolId"].(string)
 	if !ok {
 		return nil, fmt.Errorf("missing or invalid 'symbolId' parameter")
@@ -572,7 +620,7 @@ func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (interface{
 		transitiveImpact = append(transitiveImpact, itemInfo)
 	}
 
-	result := map[string]interface{}{
+	data := map[string]interface{}{
 		"directImpact":      directImpact,
 		"transitiveImpact":  transitiveImpact,
 		"blendedConfidence": impactResp.BlendedConfidence,
@@ -587,7 +635,7 @@ func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (interface{
 				"weight": f.Weight,
 			})
 		}
-		result["riskScore"] = map[string]interface{}{
+		data["riskScore"] = map[string]interface{}{
 			"score":       impactResp.RiskScore.Score,
 			"level":       impactResp.RiskScore.Level,
 			"explanation": impactResp.RiskScore.Explanation,
@@ -610,27 +658,30 @@ func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (interface{
 				observedUsage["callerServices"] = impactResp.ObservedUsage.CallerServices
 			}
 		}
-		result["observedUsage"] = observedUsage
+		data["observedUsage"] = observedUsage
 	}
 
-	if impactResp.Provenance != nil {
-		result["provenance"] = map[string]interface{}{
-			"repoStateId":     impactResp.Provenance.RepoStateId,
-			"repoStateDirty":  impactResp.Provenance.RepoStateDirty,
-			"queryDurationMs": impactResp.Provenance.QueryDurationMs,
-		}
-	}
+	// Record wide-result metrics
+	totalImpact := len(impactResp.DirectImpact) + len(impactResp.TransitiveImpact)
+	responseBytes := MeasureJSONSize(data)
+	RecordWideResult(WideResultMetrics{
+		ToolName:        "analyzeImpact",
+		TotalResults:    totalImpact,
+		ReturnedResults: totalImpact,
+		TruncatedCount:  0, // analyzeImpact doesn't truncate currently
+		ResponseBytes:   responseBytes,
+		EstimatedTokens: EstimateTokens(responseBytes),
+		ExecutionMs:     timer.ElapsedMs(),
+	})
 
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(data).
+		WithProvenance(impactResp.Provenance).
+		Build(), nil
 }
 
 // toolExplainSymbol implements the explainSymbol tool
-func (s *MCPServer) toolExplainSymbol(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolExplainSymbol(params map[string]interface{}) (*envelope.Response, error) {
 	symbolId, ok := params["symbolId"].(string)
 	if !ok {
 		return nil, fmt.Errorf("missing or invalid 'symbolId' parameter")
@@ -646,16 +697,14 @@ func (s *MCPServer) toolExplainSymbol(params map[string]interface{}) (interface{
 		return nil, fmt.Errorf("explainSymbol failed: %w", err)
 	}
 
-	jsonBytes, err := json.MarshalIndent(resp, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(resp).
+		WithProvenance(resp.Provenance).
+		Build(), nil
 }
 
 // toolJustifySymbol implements the justifySymbol tool
-func (s *MCPServer) toolJustifySymbol(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolJustifySymbol(params map[string]interface{}) (*envelope.Response, error) {
 	symbolId, ok := params["symbolId"].(string)
 	if !ok {
 		return nil, fmt.Errorf("missing or invalid 'symbolId' parameter")
@@ -671,16 +720,16 @@ func (s *MCPServer) toolJustifySymbol(params map[string]interface{}) (interface{
 		return nil, fmt.Errorf("justifySymbol failed: %w", err)
 	}
 
-	jsonBytes, err := json.MarshalIndent(resp, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(resp).
+		WithProvenance(resp.Provenance).
+		Build(), nil
 }
 
 // toolGetCallGraph implements the getCallGraph tool
-func (s *MCPServer) toolGetCallGraph(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolGetCallGraph(params map[string]interface{}) (*envelope.Response, error) {
+	timer := NewWideResultTimer()
+
 	symbolId, ok := params["symbolId"].(string)
 	if !ok {
 		return nil, fmt.Errorf("missing or invalid 'symbolId' parameter")
@@ -712,16 +761,26 @@ func (s *MCPServer) toolGetCallGraph(params map[string]interface{}) (interface{}
 		return nil, fmt.Errorf("getCallGraph failed: %w", err)
 	}
 
-	jsonBytes, err := json.MarshalIndent(resp, "", "  ")
-	if err != nil {
-		return nil, err
-	}
+	// Record wide-result metrics (nodes = callers + callees + root)
+	responseBytes := MeasureJSONSize(resp)
+	RecordWideResult(WideResultMetrics{
+		ToolName:        "getCallGraph",
+		TotalResults:    len(resp.Nodes),
+		ReturnedResults: len(resp.Nodes),
+		TruncatedCount:  0, // getCallGraph doesn't truncate currently
+		ResponseBytes:   responseBytes,
+		EstimatedTokens: EstimateTokens(responseBytes),
+		ExecutionMs:     timer.ElapsedMs(),
+	})
 
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(resp).
+		WithProvenance(resp.Provenance).
+		Build(), nil
 }
 
 // toolGetModuleOverview implements the getModuleOverview tool
-func (s *MCPServer) toolGetModuleOverview(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolGetModuleOverview(params map[string]interface{}) (*envelope.Response, error) {
 	path, _ := params["path"].(string)
 	name, _ := params["name"].(string)
 
@@ -739,16 +798,14 @@ func (s *MCPServer) toolGetModuleOverview(params map[string]interface{}) (interf
 		return nil, fmt.Errorf("getModuleOverview failed: %w", err)
 	}
 
-	jsonBytes, err := json.MarshalIndent(resp, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(resp).
+		WithProvenance(resp.Provenance).
+		Build(), nil
 }
 
 // toolExplainFile implements the explainFile tool
-func (s *MCPServer) toolExplainFile(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolExplainFile(params map[string]interface{}) (*envelope.Response, error) {
 	filePath, ok := params["filePath"].(string)
 	if !ok {
 		return nil, fmt.Errorf("missing or invalid 'filePath' parameter")
@@ -766,99 +823,15 @@ func (s *MCPServer) toolExplainFile(params map[string]interface{}) (interface{},
 		return nil, fmt.Errorf("explainFile failed: %w", err)
 	}
 
-	// Build symbols list
-	symbols := make([]map[string]interface{}, 0, len(resp.Facts.Symbols))
-	for _, sym := range resp.Facts.Symbols {
-		symInfo := map[string]interface{}{
-			"stableId": sym.StableId,
-			"name":     sym.Name,
-			"kind":     sym.Kind,
-			"line":     sym.Line,
-		}
-		if sym.Visibility != "" {
-			symInfo["visibility"] = sym.Visibility
-		}
-		symbols = append(symbols, symInfo)
-	}
-
-	// Build confidence basis
-	basis := make([]map[string]interface{}, 0, len(resp.Facts.Basis))
-	for _, b := range resp.Facts.Basis {
-		basisInfo := map[string]interface{}{
-			"backend": b.Backend,
-			"status":  b.Status,
-		}
-		if b.Heuristic != "" {
-			basisInfo["heuristic"] = b.Heuristic
-		}
-		basis = append(basis, basisInfo)
-	}
-
-	// Build facts map
-	facts := map[string]interface{}{
-		"path":            resp.Facts.Path,
-		"role":            resp.Facts.Role,
-		"language":        resp.Facts.Language,
-		"lineCount":       resp.Facts.LineCount,
-		"confidence":      resp.Facts.Confidence,
-		"symbols":         symbols,
-		"confidenceBasis": basis,
-	}
-
-	// Add exports and imports if present
-	if len(resp.Facts.Exports) > 0 {
-		facts["exports"] = resp.Facts.Exports
-	}
-	if len(resp.Facts.Imports) > 0 {
-		facts["imports"] = resp.Facts.Imports
-	}
-
-	// Build response map
-	result := map[string]interface{}{
-		"meta": map[string]interface{}{
-			"ckbVersion":    resp.CkbVersion,
-			"schemaVersion": resp.SchemaVersion,
-			"tool":          resp.Tool,
-		},
-		"facts": facts,
-		"summary": map[string]interface{}{
-			"oneLiner":   resp.Summary.OneLiner,
-			"keySymbols": resp.Summary.KeySymbols,
-		},
-	}
-
-	// Add provenance
-	if resp.Provenance != nil {
-		result["provenance"] = map[string]interface{}{
-			"repoStateId":     resp.Provenance.RepoStateId,
-			"repoStateDirty":  resp.Provenance.RepoStateDirty,
-			"queryDurationMs": resp.Provenance.QueryDurationMs,
-		}
-	}
-
-	// Add drilldowns
-	if len(resp.Drilldowns) > 0 {
-		drilldowns := make([]map[string]interface{}, 0, len(resp.Drilldowns))
-		for _, d := range resp.Drilldowns {
-			drilldowns = append(drilldowns, map[string]interface{}{
-				"label":          d.Label,
-				"query":          d.Query,
-				"relevanceScore": d.RelevanceScore,
-			})
-		}
-		result["drilldowns"] = drilldowns
-	}
-
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(resp).
+		WithProvenance(resp.Provenance).
+		WithDrilldowns(resp.Drilldowns).
+		Build(), nil
 }
 
 // toolListEntrypoints implements the listEntrypoints tool
-func (s *MCPServer) toolListEntrypoints(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolListEntrypoints(params map[string]interface{}) (*envelope.Response, error) {
 	moduleFilter, _ := params["moduleFilter"].(string)
 
 	limit := 30
@@ -880,81 +853,15 @@ func (s *MCPServer) toolListEntrypoints(params map[string]interface{}) (interfac
 		return nil, fmt.Errorf("listEntrypoints failed: %w", err)
 	}
 
-	// Build response map
-	entrypoints := make([]map[string]interface{}, 0, len(resp.Entrypoints))
-	for _, ep := range resp.Entrypoints {
-		epInfo := map[string]interface{}{
-			"symbolId":       ep.SymbolId,
-			"name":           ep.Name,
-			"type":           ep.Type,
-			"detectionBasis": ep.DetectionBasis,
-			"fanOut":         ep.FanOut,
-		}
-
-		if ep.Location != nil {
-			epInfo["location"] = map[string]interface{}{
-				"fileId":    ep.Location.FileId,
-				"startLine": ep.Location.StartLine,
-			}
-		}
-
-		if ep.Ranking != nil {
-			epInfo["ranking"] = map[string]interface{}{
-				"score":         ep.Ranking.Score,
-				"signals":       ep.Ranking.Signals,
-				"policyVersion": ep.Ranking.PolicyVersion,
-			}
-		}
-
-		entrypoints = append(entrypoints, epInfo)
-	}
-
-	result := map[string]interface{}{
-		"meta": map[string]interface{}{
-			"ckbVersion":    resp.CkbVersion,
-			"schemaVersion": resp.SchemaVersion,
-			"tool":          resp.Tool,
-		},
-		"entrypoints":     entrypoints,
-		"totalCount":      resp.TotalCount,
-		"confidence":      resp.Confidence,
-		"confidenceBasis": resp.ConfidenceBasis,
-	}
-
-	if len(resp.Warnings) > 0 {
-		result["warnings"] = resp.Warnings
-	}
-
-	if resp.Provenance != nil {
-		result["provenance"] = map[string]interface{}{
-			"repoStateId":     resp.Provenance.RepoStateId,
-			"repoStateDirty":  resp.Provenance.RepoStateDirty,
-			"queryDurationMs": resp.Provenance.QueryDurationMs,
-		}
-	}
-
-	if len(resp.Drilldowns) > 0 {
-		drilldowns := make([]map[string]interface{}, 0, len(resp.Drilldowns))
-		for _, d := range resp.Drilldowns {
-			drilldowns = append(drilldowns, map[string]interface{}{
-				"label":          d.Label,
-				"query":          d.Query,
-				"relevanceScore": d.RelevanceScore,
-			})
-		}
-		result["drilldowns"] = drilldowns
-	}
-
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(resp).
+		WithProvenance(resp.Provenance).
+		WithDrilldowns(resp.Drilldowns).
+		Build(), nil
 }
 
 // toolTraceUsage implements the traceUsage tool
-func (s *MCPServer) toolTraceUsage(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolTraceUsage(params map[string]interface{}) (*envelope.Response, error) {
 	symbolId, ok := params["symbolId"].(string)
 	if !ok {
 		return nil, fmt.Errorf("symbolId is required")
@@ -986,100 +893,15 @@ func (s *MCPServer) toolTraceUsage(params map[string]interface{}) (interface{}, 
 		return nil, fmt.Errorf("traceUsage failed: %w", err)
 	}
 
-	// Build paths response
-	paths := make([]map[string]interface{}, 0, len(resp.Paths))
-	for _, p := range resp.Paths {
-		nodes := make([]map[string]interface{}, 0, len(p.Nodes))
-		for _, n := range p.Nodes {
-			nodeInfo := map[string]interface{}{
-				"symbolId": n.SymbolId,
-				"name":     n.Name,
-				"role":     n.Role,
-			}
-			if n.Kind != "" {
-				nodeInfo["kind"] = n.Kind
-			}
-			if n.Location != nil {
-				nodeInfo["location"] = map[string]interface{}{
-					"fileId":    n.Location.FileId,
-					"startLine": n.Location.StartLine,
-				}
-			}
-			nodes = append(nodes, nodeInfo)
-		}
-
-		pathInfo := map[string]interface{}{
-			"pathType":   p.PathType,
-			"nodes":      nodes,
-			"confidence": p.Confidence,
-		}
-
-		if p.Ranking != nil {
-			pathInfo["ranking"] = map[string]interface{}{
-				"score":         p.Ranking.Score,
-				"signals":       p.Ranking.Signals,
-				"policyVersion": p.Ranking.PolicyVersion,
-			}
-		}
-
-		paths = append(paths, pathInfo)
-	}
-
-	result := map[string]interface{}{
-		"meta": map[string]interface{}{
-			"ckbVersion":    resp.CkbVersion,
-			"schemaVersion": resp.SchemaVersion,
-			"tool":          resp.Tool,
-		},
-		"targetSymbol":    resp.TargetSymbol,
-		"paths":           paths,
-		"totalPathsFound": resp.TotalPathsFound,
-		"confidence":      resp.Confidence,
-		"confidenceBasis": resp.ConfidenceBasis,
-	}
-
-	if len(resp.Limitations) > 0 {
-		result["limitations"] = resp.Limitations
-	}
-
-	if resp.Resolved != nil {
-		result["resolved"] = map[string]interface{}{
-			"symbolId":     resp.Resolved.SymbolId,
-			"resolvedFrom": resp.Resolved.ResolvedFrom,
-			"confidence":   resp.Resolved.Confidence,
-		}
-	}
-
-	if resp.Provenance != nil {
-		result["provenance"] = map[string]interface{}{
-			"repoStateId":     resp.Provenance.RepoStateId,
-			"repoStateDirty":  resp.Provenance.RepoStateDirty,
-			"queryDurationMs": resp.Provenance.QueryDurationMs,
-		}
-	}
-
-	if len(resp.Drilldowns) > 0 {
-		drilldowns := make([]map[string]interface{}, 0, len(resp.Drilldowns))
-		for _, d := range resp.Drilldowns {
-			drilldowns = append(drilldowns, map[string]interface{}{
-				"label":          d.Label,
-				"query":          d.Query,
-				"relevanceScore": d.RelevanceScore,
-			})
-		}
-		result["drilldowns"] = drilldowns
-	}
-
-	jsonBytesTrace, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytesTrace), nil
+	return NewToolResponse().
+		Data(resp).
+		WithProvenance(resp.Provenance).
+		WithDrilldowns(resp.Drilldowns).
+		Build(), nil
 }
 
 // toolSummarizeDiff handles the summarizeDiff tool call
-func (s *MCPServer) toolSummarizeDiff(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolSummarizeDiff(params map[string]interface{}) (*envelope.Response, error) {
 	ctx := context.Background()
 
 	opts := query.SummarizeDiffOptions{}
@@ -1118,145 +940,16 @@ func (s *MCPServer) toolSummarizeDiff(params map[string]interface{}) (interface{
 		return nil, fmt.Errorf("summarizeDiff failed: %w", err)
 	}
 
-	// Build changed files response
-	changedFiles := make([]map[string]interface{}, 0, len(resp.ChangedFiles))
-	for _, f := range resp.ChangedFiles {
-		fileInfo := map[string]interface{}{
-			"filePath":   f.FilePath,
-			"changeType": f.ChangeType,
-			"additions":  f.Additions,
-			"deletions":  f.Deletions,
-			"riskLevel":  f.RiskLevel,
-		}
-		if f.OldPath != "" {
-			fileInfo["oldPath"] = f.OldPath
-		}
-		if f.Language != "" {
-			fileInfo["language"] = f.Language
-		}
-		if f.Role != "" {
-			fileInfo["role"] = f.Role
-		}
-		changedFiles = append(changedFiles, fileInfo)
-	}
-
-	// Build symbols affected response
-	symbolsAffected := make([]map[string]interface{}, 0, len(resp.SymbolsAffected))
-	for _, sym := range resp.SymbolsAffected {
-		symInfo := map[string]interface{}{
-			"name":        sym.Name,
-			"kind":        sym.Kind,
-			"filePath":    sym.FilePath,
-			"changeType":  sym.ChangeType,
-			"isPublicApi": sym.IsPublicAPI,
-		}
-		if sym.SymbolId != "" {
-			symInfo["symbolId"] = sym.SymbolId
-		}
-		if sym.IsEntrypoint {
-			symInfo["isEntrypoint"] = true
-		}
-		symbolsAffected = append(symbolsAffected, symInfo)
-	}
-
-	// Build risk signals response
-	riskSignals := make([]map[string]interface{}, 0, len(resp.RiskSignals))
-	for _, r := range resp.RiskSignals {
-		riskSignals = append(riskSignals, map[string]interface{}{
-			"type":        r.Type,
-			"severity":    r.Severity,
-			"filePath":    r.FilePath,
-			"description": r.Description,
-			"confidence":  r.Confidence,
-		})
-	}
-
-	// Build suggested tests response
-	suggestedTests := make([]map[string]interface{}, 0, len(resp.SuggestedTests))
-	for _, t := range resp.SuggestedTests {
-		suggestedTests = append(suggestedTests, map[string]interface{}{
-			"testPath": t.TestPath,
-			"reason":   t.Reason,
-			"priority": t.Priority,
-		})
-	}
-
-	// Build commits response
-	commits := make([]map[string]interface{}, 0, len(resp.Commits))
-	for _, c := range resp.Commits {
-		commitInfo := map[string]interface{}{
-			"hash": c.Hash,
-		}
-		if c.Message != "" {
-			commitInfo["message"] = c.Message
-		}
-		if c.Author != "" {
-			commitInfo["author"] = c.Author
-		}
-		if c.Timestamp != "" {
-			commitInfo["timestamp"] = c.Timestamp
-		}
-		commits = append(commits, commitInfo)
-	}
-
-	result := map[string]interface{}{
-		"meta": map[string]interface{}{
-			"ckbVersion":    resp.CkbVersion,
-			"schemaVersion": resp.SchemaVersion,
-			"tool":          resp.Tool,
-		},
-		"selector": map[string]interface{}{
-			"type":  resp.Selector.Type,
-			"value": resp.Selector.Value,
-		},
-		"changedFiles":    changedFiles,
-		"symbolsAffected": symbolsAffected,
-		"riskSignals":     riskSignals,
-		"suggestedTests":  suggestedTests,
-		"summary": map[string]interface{}{
-			"oneLiner":     resp.Summary.OneLiner,
-			"keyChanges":   resp.Summary.KeyChanges,
-			"riskOverview": resp.Summary.RiskOverview,
-		},
-		"commits":         commits,
-		"confidence":      resp.Confidence,
-		"confidenceBasis": resp.ConfidenceBasis,
-	}
-
-	if len(resp.Limitations) > 0 {
-		result["limitations"] = resp.Limitations
-	}
-
-	if resp.Provenance != nil {
-		result["provenance"] = map[string]interface{}{
-			"repoStateId":     resp.Provenance.RepoStateId,
-			"repoStateDirty":  resp.Provenance.RepoStateDirty,
-			"queryDurationMs": resp.Provenance.QueryDurationMs,
-		}
-	}
-
-	if len(resp.Drilldowns) > 0 {
-		drilldowns := make([]map[string]interface{}, 0, len(resp.Drilldowns))
-		for _, d := range resp.Drilldowns {
-			drilldowns = append(drilldowns, map[string]interface{}{
-				"label":          d.Label,
-				"query":          d.Query,
-				"relevanceScore": d.RelevanceScore,
-			})
-		}
-		result["drilldowns"] = drilldowns
-	}
-
-	jsonBytesDiff, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytesDiff), nil
+	return NewToolResponse().
+		Data(resp).
+		WithProvenance(resp.Provenance).
+		WithDrilldowns(resp.Drilldowns).
+		Build(), nil
 }
 
 // toolGetHotspots handles the getHotspots tool call
-func (s *MCPServer) toolGetHotspots(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolGetHotspots(params map[string]interface{}) (*envelope.Response, error) {
+	timer := NewWideResultTimer()
 	ctx := context.Background()
 
 	opts := query.GetHotspotsOptions{}
@@ -1288,98 +981,27 @@ func (s *MCPServer) toolGetHotspots(params map[string]interface{}) (interface{},
 		return nil, fmt.Errorf("getHotspots failed: %w", err)
 	}
 
-	// Build hotspots response
-	hotspots := make([]map[string]interface{}, 0, len(resp.Hotspots))
-	for _, h := range resp.Hotspots {
-		hotspotInfo := map[string]interface{}{
-			"filePath":  h.FilePath,
-			"recency":   h.Recency,
-			"riskLevel": h.RiskLevel,
-			"churn": map[string]interface{}{
-				"changeCount":    h.Churn.ChangeCount,
-				"authorCount":    h.Churn.AuthorCount,
-				"averageChanges": h.Churn.AverageChanges,
-				"score":          h.Churn.Score,
-			},
-		}
-		if h.Role != "" {
-			hotspotInfo["role"] = h.Role
-		}
-		if h.Language != "" {
-			hotspotInfo["language"] = h.Language
-		}
-		if h.Coupling != nil {
-			hotspotInfo["coupling"] = map[string]interface{}{
-				"dependentCount":  h.Coupling.DependentCount,
-				"dependencyCount": h.Coupling.DependencyCount,
-				"score":           h.Coupling.Score,
-			}
-		}
-		if h.Complexity != nil {
-			hotspotInfo["complexity"] = map[string]interface{}{
-				"cyclomatic":    h.Complexity.Cyclomatic,
-				"cognitive":     h.Complexity.Cognitive,
-				"functionCount": h.Complexity.FunctionCount,
-				"score":         h.Complexity.Score,
-			}
-		}
-		if h.Ranking != nil {
-			hotspotInfo["ranking"] = map[string]interface{}{
-				"score":         h.Ranking.Score,
-				"signals":       h.Ranking.Signals,
-				"policyVersion": h.Ranking.PolicyVersion,
-			}
-		}
-		hotspots = append(hotspots, hotspotInfo)
-	}
+	// Record wide-result metrics
+	responseBytes := MeasureJSONSize(resp)
+	RecordWideResult(WideResultMetrics{
+		ToolName:        "getHotspots",
+		TotalResults:    resp.TotalCount,
+		ReturnedResults: len(resp.Hotspots),
+		TruncatedCount:  resp.TotalCount - len(resp.Hotspots),
+		ResponseBytes:   responseBytes,
+		EstimatedTokens: EstimateTokens(responseBytes),
+		ExecutionMs:     timer.ElapsedMs(),
+	})
 
-	result := map[string]interface{}{
-		"meta": map[string]interface{}{
-			"ckbVersion":    resp.CkbVersion,
-			"schemaVersion": resp.SchemaVersion,
-			"tool":          resp.Tool,
-		},
-		"hotspots":        hotspots,
-		"totalCount":      resp.TotalCount,
-		"timeWindow":      resp.TimeWindow,
-		"confidence":      resp.Confidence,
-		"confidenceBasis": resp.ConfidenceBasis,
-	}
-
-	if len(resp.Limitations) > 0 {
-		result["limitations"] = resp.Limitations
-	}
-
-	if resp.Provenance != nil {
-		result["provenance"] = map[string]interface{}{
-			"repoStateId":     resp.Provenance.RepoStateId,
-			"repoStateDirty":  resp.Provenance.RepoStateDirty,
-			"queryDurationMs": resp.Provenance.QueryDurationMs,
-		}
-	}
-
-	if len(resp.Drilldowns) > 0 {
-		drilldowns := make([]map[string]interface{}, 0, len(resp.Drilldowns))
-		for _, d := range resp.Drilldowns {
-			drilldowns = append(drilldowns, map[string]interface{}{
-				"label":          d.Label,
-				"query":          d.Query,
-				"relevanceScore": d.RelevanceScore,
-			})
-		}
-		result["drilldowns"] = drilldowns
-	}
-
-	jsonBytesHotspots, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytesHotspots), nil
+	return NewToolResponse().
+		Data(resp).
+		WithProvenance(resp.Provenance).
+		WithDrilldowns(resp.Drilldowns).
+		Build(), nil
 }
 
 // toolExplainPath handles the explainPath tool call
-func (s *MCPServer) toolExplainPath(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolExplainPath(params map[string]interface{}) (*envelope.Response, error) {
 	ctx := context.Background()
 
 	filePath, ok := params["filePath"].(string)
@@ -1400,74 +1022,15 @@ func (s *MCPServer) toolExplainPath(params map[string]interface{}) (interface{},
 		return nil, fmt.Errorf("explainPath failed: %w", err)
 	}
 
-	// Build classification basis response
-	classificationBasis := make([]map[string]interface{}, 0, len(resp.ClassificationBasis))
-	for _, b := range resp.ClassificationBasis {
-		classificationBasis = append(classificationBasis, map[string]interface{}{
-			"type":       b.Type,
-			"signal":     b.Signal,
-			"confidence": b.Confidence,
-		})
-	}
-
-	// Build related paths response
-	relatedPaths := make([]map[string]interface{}, 0, len(resp.RelatedPaths))
-	for _, r := range resp.RelatedPaths {
-		relatedPaths = append(relatedPaths, map[string]interface{}{
-			"path":     r.Path,
-			"relation": r.Relation,
-		})
-	}
-
-	result := map[string]interface{}{
-		"meta": map[string]interface{}{
-			"ckbVersion":    resp.CkbVersion,
-			"schemaVersion": resp.SchemaVersion,
-			"tool":          resp.Tool,
-		},
-		"filePath":            resp.FilePath,
-		"role":                resp.Role,
-		"roleExplanation":     resp.RoleExplanation,
-		"classificationBasis": classificationBasis,
-		"relatedPaths":        relatedPaths,
-		"confidence":          resp.Confidence,
-		"confidenceBasis":     resp.ConfidenceBasis,
-	}
-
-	if len(resp.Limitations) > 0 {
-		result["limitations"] = resp.Limitations
-	}
-
-	if resp.Provenance != nil {
-		result["provenance"] = map[string]interface{}{
-			"repoStateId":     resp.Provenance.RepoStateId,
-			"repoStateDirty":  resp.Provenance.RepoStateDirty,
-			"queryDurationMs": resp.Provenance.QueryDurationMs,
-		}
-	}
-
-	if len(resp.Drilldowns) > 0 {
-		drilldowns := make([]map[string]interface{}, 0, len(resp.Drilldowns))
-		for _, d := range resp.Drilldowns {
-			drilldowns = append(drilldowns, map[string]interface{}{
-				"label":          d.Label,
-				"query":          d.Query,
-				"relevanceScore": d.RelevanceScore,
-			})
-		}
-		result["drilldowns"] = drilldowns
-	}
-
-	jsonBytesPath, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytesPath), nil
+	return NewToolResponse().
+		Data(resp).
+		WithProvenance(resp.Provenance).
+		WithDrilldowns(resp.Drilldowns).
+		Build(), nil
 }
 
 // toolListKeyConcepts handles the listKeyConcepts tool call
-func (s *MCPServer) toolListKeyConcepts(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolListKeyConcepts(params map[string]interface{}) (*envelope.Response, error) {
 	ctx := context.Background()
 
 	limit := 12
@@ -1480,77 +1043,15 @@ func (s *MCPServer) toolListKeyConcepts(params map[string]interface{}) (interfac
 		return nil, fmt.Errorf("listKeyConcepts failed: %w", err)
 	}
 
-	// Build concepts response
-	concepts := make([]map[string]interface{}, 0, len(resp.Concepts))
-	for _, c := range resp.Concepts {
-		conceptInfo := map[string]interface{}{
-			"name":        c.Name,
-			"category":    c.Category,
-			"occurrences": c.Occurrences,
-			"description": c.Description,
-		}
-		if len(c.Files) > 0 {
-			conceptInfo["files"] = c.Files
-		}
-		if len(c.Symbols) > 0 {
-			conceptInfo["symbols"] = c.Symbols
-		}
-		if c.Ranking != nil {
-			conceptInfo["ranking"] = map[string]interface{}{
-				"score":         c.Ranking.Score,
-				"signals":       c.Ranking.Signals,
-				"policyVersion": c.Ranking.PolicyVersion,
-			}
-		}
-		concepts = append(concepts, conceptInfo)
-	}
-
-	result := map[string]interface{}{
-		"meta": map[string]interface{}{
-			"ckbVersion":    resp.CkbVersion,
-			"schemaVersion": resp.SchemaVersion,
-			"tool":          resp.Tool,
-		},
-		"concepts":        concepts,
-		"totalFound":      resp.TotalFound,
-		"confidence":      resp.Confidence,
-		"confidenceBasis": resp.ConfidenceBasis,
-	}
-
-	if len(resp.Limitations) > 0 {
-		result["limitations"] = resp.Limitations
-	}
-
-	if resp.Provenance != nil {
-		result["provenance"] = map[string]interface{}{
-			"repoStateId":     resp.Provenance.RepoStateId,
-			"repoStateDirty":  resp.Provenance.RepoStateDirty,
-			"queryDurationMs": resp.Provenance.QueryDurationMs,
-		}
-	}
-
-	if len(resp.Drilldowns) > 0 {
-		drilldowns := make([]map[string]interface{}, 0, len(resp.Drilldowns))
-		for _, d := range resp.Drilldowns {
-			drilldowns = append(drilldowns, map[string]interface{}{
-				"label":          d.Label,
-				"query":          d.Query,
-				"relevanceScore": d.RelevanceScore,
-			})
-		}
-		result["drilldowns"] = drilldowns
-	}
-
-	jsonBytesConcepts, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytesConcepts), nil
+	return NewToolResponse().
+		Data(resp).
+		WithProvenance(resp.Provenance).
+		WithDrilldowns(resp.Drilldowns).
+		Build(), nil
 }
 
 // toolRecentlyRelevant handles the recentlyRelevant tool call
-func (s *MCPServer) toolRecentlyRelevant(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolRecentlyRelevant(params map[string]interface{}) (*envelope.Response, error) {
 	ctx := context.Background()
 
 	opts := query.RecentlyRelevantOptions{}
@@ -1582,81 +1083,15 @@ func (s *MCPServer) toolRecentlyRelevant(params map[string]interface{}) (interfa
 		return nil, fmt.Errorf("recentlyRelevant failed: %w", err)
 	}
 
-	// Build items response
-	items := make([]map[string]interface{}, 0, len(resp.Items))
-	for _, item := range resp.Items {
-		itemInfo := map[string]interface{}{
-			"type":         item.Type,
-			"name":         item.Name,
-			"changeCount":  item.ChangeCount,
-			"lastModified": item.LastModified,
-		}
-		if item.Path != "" {
-			itemInfo["path"] = item.Path
-		}
-		if item.SymbolId != "" {
-			itemInfo["symbolId"] = item.SymbolId
-		}
-		if len(item.Authors) > 0 {
-			itemInfo["authors"] = item.Authors
-		}
-		if item.Ranking != nil {
-			itemInfo["ranking"] = map[string]interface{}{
-				"score":         item.Ranking.Score,
-				"signals":       item.Ranking.Signals,
-				"policyVersion": item.Ranking.PolicyVersion,
-			}
-		}
-		items = append(items, itemInfo)
-	}
-
-	result := map[string]interface{}{
-		"meta": map[string]interface{}{
-			"ckbVersion":    resp.CkbVersion,
-			"schemaVersion": resp.SchemaVersion,
-			"tool":          resp.Tool,
-		},
-		"items":           items,
-		"totalCount":      resp.TotalCount,
-		"timeWindow":      resp.TimeWindow,
-		"confidence":      resp.Confidence,
-		"confidenceBasis": resp.ConfidenceBasis,
-	}
-
-	if len(resp.Limitations) > 0 {
-		result["limitations"] = resp.Limitations
-	}
-
-	if resp.Provenance != nil {
-		result["provenance"] = map[string]interface{}{
-			"repoStateId":     resp.Provenance.RepoStateId,
-			"repoStateDirty":  resp.Provenance.RepoStateDirty,
-			"queryDurationMs": resp.Provenance.QueryDurationMs,
-		}
-	}
-
-	if len(resp.Drilldowns) > 0 {
-		drilldowns := make([]map[string]interface{}, 0, len(resp.Drilldowns))
-		for _, d := range resp.Drilldowns {
-			drilldowns = append(drilldowns, map[string]interface{}{
-				"label":          d.Label,
-				"query":          d.Query,
-				"relevanceScore": d.RelevanceScore,
-			})
-		}
-		result["drilldowns"] = drilldowns
-	}
-
-	jsonBytesRecent, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytesRecent), nil
+	return NewToolResponse().
+		Data(resp).
+		WithProvenance(resp.Provenance).
+		WithDrilldowns(resp.Drilldowns).
+		Build(), nil
 }
 
 // toolRefreshArchitecture handles the refreshArchitecture tool call (v6.0)
-func (s *MCPServer) toolRefreshArchitecture(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolRefreshArchitecture(params map[string]interface{}) (*envelope.Response, error) {
 	ctx := context.Background()
 
 	// Parse scope (default: "all")
@@ -1702,68 +1137,14 @@ func (s *MCPServer) toolRefreshArchitecture(params map[string]interface{}) (inte
 		return nil, fmt.Errorf("refreshArchitecture failed: %w", err)
 	}
 
-	// Build changes response
-	changes := make(map[string]interface{})
-	if resp.Changes != nil {
-		if resp.Changes.ModulesUpdated > 0 {
-			changes["modulesUpdated"] = resp.Changes.ModulesUpdated
-		}
-		if resp.Changes.ModulesCreated > 0 {
-			changes["modulesCreated"] = resp.Changes.ModulesCreated
-		}
-		if resp.Changes.OwnershipUpdated > 0 {
-			changes["ownershipUpdated"] = resp.Changes.OwnershipUpdated
-		}
-		if resp.Changes.HotspotsUpdated > 0 {
-			changes["hotspotsUpdated"] = resp.Changes.HotspotsUpdated
-		}
-		if resp.Changes.ResponsibilitiesUpdated > 0 {
-			changes["responsibilitiesUpdated"] = resp.Changes.ResponsibilitiesUpdated
-		}
-	}
-
-	result := map[string]interface{}{
-		"meta": map[string]interface{}{
-			"ckbVersion":    resp.CkbVersion,
-			"schemaVersion": resp.SchemaVersion,
-			"tool":          resp.Tool,
-		},
-		"status":     resp.Status,
-		"scope":      resp.Scope,
-		"changes":    changes,
-		"durationMs": resp.DurationMs,
-	}
-
-	if resp.DryRun {
-		result["dryRun"] = true
-	}
-
-	if resp.JobId != "" {
-		result["jobId"] = resp.JobId
-	}
-
-	if len(resp.Warnings) > 0 {
-		result["warnings"] = resp.Warnings
-	}
-
-	if resp.Provenance != nil {
-		result["provenance"] = map[string]interface{}{
-			"repoStateId":     resp.Provenance.RepoStateId,
-			"repoStateDirty":  resp.Provenance.RepoStateDirty,
-			"queryDurationMs": resp.Provenance.QueryDurationMs,
-		}
-	}
-
-	jsonBytesRefresh, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytesRefresh), nil
+	return NewToolResponse().
+		Data(resp).
+		WithProvenance(resp.Provenance).
+		Build(), nil
 }
 
 // toolGetOwnership handles the getOwnership tool call (v6.0)
-func (s *MCPServer) toolGetOwnership(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolGetOwnership(params map[string]interface{}) (*envelope.Response, error) {
 	ctx := context.Background()
 
 	// Parse path (required)
@@ -1801,109 +1182,15 @@ func (s *MCPServer) toolGetOwnership(params map[string]interface{}) (interface{}
 		return nil, fmt.Errorf("getOwnership failed: %w", err)
 	}
 
-	// Build owners response
-	owners := make([]map[string]interface{}, 0, len(resp.Owners))
-	for _, o := range resp.Owners {
-		ownerInfo := map[string]interface{}{
-			"id":         o.ID,
-			"type":       o.Type,
-			"scope":      o.Scope,
-			"source":     o.Source,
-			"confidence": o.Confidence,
-		}
-		owners = append(owners, ownerInfo)
-	}
-
-	// Build blame contributors if present
-	var blameContributors []map[string]interface{}
-	if resp.BlameOwnership != nil {
-		blameContributors = make([]map[string]interface{}, 0, len(resp.BlameOwnership.Contributors))
-		for _, c := range resp.BlameOwnership.Contributors {
-			contribInfo := map[string]interface{}{
-				"author":     c.Author,
-				"email":      c.Email,
-				"lineCount":  c.LineCount,
-				"percentage": c.Percentage,
-			}
-			blameContributors = append(blameContributors, contribInfo)
-		}
-	}
-
-	// Build history events if present
-	var history []map[string]interface{}
-	if len(resp.History) > 0 {
-		history = make([]map[string]interface{}, 0, len(resp.History))
-		for _, h := range resp.History {
-			historyInfo := map[string]interface{}{
-				"pattern":    h.Pattern,
-				"ownerId":    h.OwnerID,
-				"event":      h.Event,
-				"recordedAt": h.RecordedAt,
-			}
-			if h.Reason != "" {
-				historyInfo["reason"] = h.Reason
-			}
-			history = append(history, historyInfo)
-		}
-	}
-
-	result := map[string]interface{}{
-		"meta": map[string]interface{}{
-			"ckbVersion":    resp.CkbVersion,
-			"schemaVersion": resp.SchemaVersion,
-			"tool":          resp.Tool,
-		},
-		"path":            resp.Path,
-		"owners":          owners,
-		"confidence":      resp.Confidence,
-		"confidenceBasis": resp.ConfidenceBasis,
-	}
-
-	if blameContributors != nil {
-		result["blameOwnership"] = map[string]interface{}{
-			"totalLines":   resp.BlameOwnership.TotalLines,
-			"contributors": blameContributors,
-		}
-	}
-
-	if history != nil {
-		result["history"] = history
-	}
-
-	if len(resp.Limitations) > 0 {
-		result["limitations"] = resp.Limitations
-	}
-
-	if resp.Provenance != nil {
-		result["provenance"] = map[string]interface{}{
-			"repoStateId":     resp.Provenance.RepoStateId,
-			"repoStateDirty":  resp.Provenance.RepoStateDirty,
-			"queryDurationMs": resp.Provenance.QueryDurationMs,
-		}
-	}
-
-	if len(resp.Drilldowns) > 0 {
-		drilldowns := make([]map[string]interface{}, 0, len(resp.Drilldowns))
-		for _, d := range resp.Drilldowns {
-			drilldowns = append(drilldowns, map[string]interface{}{
-				"label":          d.Label,
-				"query":          d.Query,
-				"relevanceScore": d.RelevanceScore,
-			})
-		}
-		result["drilldowns"] = drilldowns
-	}
-
-	jsonBytesOwnership, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytesOwnership), nil
+	return NewToolResponse().
+		Data(resp).
+		WithProvenance(resp.Provenance).
+		WithDrilldowns(resp.Drilldowns).
+		Build(), nil
 }
 
 // toolGetModuleResponsibilities handles the getModuleResponsibilities tool call (v6.0)
-func (s *MCPServer) toolGetModuleResponsibilities(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolGetModuleResponsibilities(params map[string]interface{}) (*envelope.Response, error) {
 	ctx := context.Background()
 
 	// Parse moduleId (optional)
@@ -1938,80 +1225,15 @@ func (s *MCPServer) toolGetModuleResponsibilities(params map[string]interface{})
 		return nil, fmt.Errorf("getModuleResponsibilities failed: %w", err)
 	}
 
-	// Build modules response
-	modules := make([]map[string]interface{}, 0, len(resp.Modules))
-	for _, m := range resp.Modules {
-		moduleInfo := map[string]interface{}{
-			"moduleId":   m.ModuleId,
-			"name":       m.Name,
-			"path":       m.Path,
-			"summary":    m.Summary,
-			"source":     m.Source,
-			"confidence": m.Confidence,
-		}
-		if len(m.Capabilities) > 0 {
-			moduleInfo["capabilities"] = m.Capabilities
-		}
-		if len(m.Files) > 0 {
-			files := make([]map[string]interface{}, 0, len(m.Files))
-			for _, f := range m.Files {
-				files = append(files, map[string]interface{}{
-					"path":       f.Path,
-					"summary":    f.Summary,
-					"confidence": f.Confidence,
-				})
-			}
-			moduleInfo["files"] = files
-		}
-		modules = append(modules, moduleInfo)
-	}
-
-	result := map[string]interface{}{
-		"meta": map[string]interface{}{
-			"ckbVersion":    resp.CkbVersion,
-			"schemaVersion": resp.SchemaVersion,
-			"tool":          resp.Tool,
-		},
-		"modules":         modules,
-		"totalCount":      resp.TotalCount,
-		"confidence":      resp.Confidence,
-		"confidenceBasis": resp.ConfidenceBasis,
-	}
-
-	if len(resp.Limitations) > 0 {
-		result["limitations"] = resp.Limitations
-	}
-
-	if resp.Provenance != nil {
-		result["provenance"] = map[string]interface{}{
-			"repoStateId":     resp.Provenance.RepoStateId,
-			"repoStateDirty":  resp.Provenance.RepoStateDirty,
-			"queryDurationMs": resp.Provenance.QueryDurationMs,
-		}
-	}
-
-	if len(resp.Drilldowns) > 0 {
-		drilldowns := make([]map[string]interface{}, 0, len(resp.Drilldowns))
-		for _, d := range resp.Drilldowns {
-			drilldowns = append(drilldowns, map[string]interface{}{
-				"label":          d.Label,
-				"query":          d.Query,
-				"relevanceScore": d.RelevanceScore,
-			})
-		}
-		result["drilldowns"] = drilldowns
-	}
-
-	jsonBytesResp, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytesResp), nil
+	return NewToolResponse().
+		Data(resp).
+		WithProvenance(resp.Provenance).
+		WithDrilldowns(resp.Drilldowns).
+		Build(), nil
 }
 
 // toolRecordDecision handles the recordDecision tool call (v6.0)
-func (s *MCPServer) toolRecordDecision(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolRecordDecision(params map[string]interface{}) (*envelope.Response, error) {
 	// Parse required parameters
 	title, ok := params["title"].(string)
 	if !ok || title == "" {
@@ -2086,33 +1308,11 @@ func (s *MCPServer) toolRecordDecision(params map[string]interface{}) (interface
 		return nil, fmt.Errorf("recordDecision failed: %w", err)
 	}
 
-	result := map[string]interface{}{
-		"id":       resp.Decision.ID,
-		"title":    resp.Decision.Title,
-		"status":   resp.Decision.Status,
-		"filePath": resp.Decision.FilePath,
-		"date":     resp.Decision.Date.Format("2006-01-02"),
-		"source":   resp.Source,
-	}
-
-	if resp.Decision.Author != "" {
-		result["author"] = resp.Decision.Author
-	}
-
-	if len(resp.Decision.AffectedModules) > 0 {
-		result["affectedModules"] = resp.Decision.AffectedModules
-	}
-
-	jsonBytesDecision, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytesDecision), nil
+	return OperationalResponse(resp), nil
 }
 
 // toolGetDecisions handles the getDecisions tool call (v6.0)
-func (s *MCPServer) toolGetDecisions(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolGetDecisions(params map[string]interface{}) (*envelope.Response, error) {
 	// Check if specific ID is requested
 	if id, ok := params["id"].(string); ok && id != "" {
 		s.logger.Debug("Executing getDecisions (single)", map[string]interface{}{
@@ -2124,40 +1324,7 @@ func (s *MCPServer) toolGetDecisions(params map[string]interface{}) (interface{}
 			return nil, fmt.Errorf("getDecision failed: %w", err)
 		}
 
-		result := map[string]interface{}{
-			"id":           resp.Decision.ID,
-			"title":        resp.Decision.Title,
-			"status":       resp.Decision.Status,
-			"context":      resp.Decision.Context,
-			"decision":     resp.Decision.Decision,
-			"consequences": resp.Decision.Consequences,
-			"date":         resp.Decision.Date.Format("2006-01-02"),
-			"filePath":     resp.Decision.FilePath,
-			"source":       resp.Source,
-		}
-
-		if resp.Decision.Author != "" {
-			result["author"] = resp.Decision.Author
-		}
-
-		if len(resp.Decision.AffectedModules) > 0 {
-			result["affectedModules"] = resp.Decision.AffectedModules
-		}
-
-		if len(resp.Decision.Alternatives) > 0 {
-			result["alternatives"] = resp.Decision.Alternatives
-		}
-
-		if resp.Decision.SupersededBy != "" {
-			result["supersededBy"] = resp.Decision.SupersededBy
-		}
-
-		jsonBytesSingle, err := json.MarshalIndent(result, "", "  ")
-		if err != nil {
-			return nil, err
-		}
-
-		return string(jsonBytesSingle), nil
+		return OperationalResponse(resp), nil
 	}
 
 	// List/search decisions
@@ -2191,59 +1358,11 @@ func (s *MCPServer) toolGetDecisions(params map[string]interface{}) (interface{}
 		return nil, fmt.Errorf("getDecisions failed: %w", err)
 	}
 
-	// Build decisions response
-	decisions := make([]map[string]interface{}, 0, len(resp.Decisions))
-	for _, d := range resp.Decisions {
-		decisionInfo := map[string]interface{}{
-			"id":       d.ID,
-			"title":    d.Title,
-			"status":   d.Status,
-			"date":     d.Date.Format("2006-01-02"),
-			"filePath": d.FilePath,
-		}
-
-		if d.Author != "" {
-			decisionInfo["author"] = d.Author
-		}
-
-		if len(d.AffectedModules) > 0 {
-			decisionInfo["affectedModules"] = d.AffectedModules
-		}
-
-		decisions = append(decisions, decisionInfo)
-	}
-
-	result := map[string]interface{}{
-		"decisions":  decisions,
-		"totalCount": resp.Total,
-	}
-
-	if resp.Query != nil {
-		query := map[string]interface{}{}
-		if resp.Query.Status != "" {
-			query["status"] = resp.Query.Status
-		}
-		if resp.Query.ModuleID != "" {
-			query["moduleId"] = resp.Query.ModuleID
-		}
-		if resp.Query.Search != "" {
-			query["search"] = resp.Query.Search
-		}
-		if len(query) > 0 {
-			result["query"] = query
-		}
-	}
-
-	jsonBytesDecisions, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytesDecisions), nil
+	return OperationalResponse(resp), nil
 }
 
 // toolAnnotateModule handles the annotateModule tool call (v6.0)
-func (s *MCPServer) toolAnnotateModule(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolAnnotateModule(params map[string]interface{}) (*envelope.Response, error) {
 	// Parse required parameters
 	moduleId, ok := params["moduleId"].(string)
 	if !ok || moduleId == "" {
@@ -2310,49 +1429,13 @@ func (s *MCPServer) toolAnnotateModule(params map[string]interface{}) (interface
 		return nil, fmt.Errorf("annotateModule failed: %w", err)
 	}
 
-	result := map[string]interface{}{
-		"moduleId": resp.ModuleId,
-		"updated":  resp.Updated,
-		"created":  resp.Created,
-	}
-
-	if resp.Responsibility != "" {
-		result["responsibility"] = resp.Responsibility
-	}
-
-	if len(resp.Capabilities) > 0 {
-		result["capabilities"] = resp.Capabilities
-	}
-
-	if len(resp.Tags) > 0 {
-		result["tags"] = resp.Tags
-	}
-
-	if resp.Boundaries != nil {
-		boundaries := map[string]interface{}{}
-		if len(resp.Boundaries.Public) > 0 {
-			boundaries["public"] = resp.Boundaries.Public
-		}
-		if len(resp.Boundaries.Internal) > 0 {
-			boundaries["internal"] = resp.Boundaries.Internal
-		}
-		if len(boundaries) > 0 {
-			result["boundaries"] = boundaries
-		}
-	}
-
-	jsonBytesAnnotate, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytesAnnotate), nil
+	return OperationalResponse(resp), nil
 }
 
 // v6.1 Job management tools
 
 // toolGetJobStatus handles the getJobStatus tool call
-func (s *MCPServer) toolGetJobStatus(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolGetJobStatus(params map[string]interface{}) (*envelope.Response, error) {
 	// Parse jobId (required)
 	jobId, ok := params["jobId"].(string)
 	if !ok || jobId == "" {
@@ -2372,58 +1455,11 @@ func (s *MCPServer) toolGetJobStatus(params map[string]interface{}) (interface{}
 		return nil, fmt.Errorf("job not found: %s", jobId)
 	}
 
-	result := map[string]interface{}{
-		"meta": map[string]interface{}{
-			"ckbVersion": "6.1",
-			"tool":       "getJobStatus",
-		},
-		"job": map[string]interface{}{
-			"id":        job.ID,
-			"type":      job.Type,
-			"status":    job.Status,
-			"progress":  job.Progress,
-			"createdAt": job.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		},
-	}
-
-	jobMap, _ := result["job"].(map[string]interface{})
-
-	if job.StartedAt != nil {
-		jobMap["startedAt"] = job.StartedAt.Format("2006-01-02T15:04:05Z")
-	}
-
-	if job.CompletedAt != nil {
-		jobMap["completedAt"] = job.CompletedAt.Format("2006-01-02T15:04:05Z")
-	}
-
-	if job.Error != "" {
-		jobMap["error"] = job.Error
-	}
-
-	if job.Result != "" {
-		// Parse result JSON if possible
-		var resultData interface{}
-		if unmarshalErr := json.Unmarshal([]byte(job.Result), &resultData); unmarshalErr == nil {
-			jobMap["result"] = resultData
-		} else {
-			jobMap["result"] = job.Result
-		}
-	}
-
-	if job.IsTerminal() {
-		jobMap["duration"] = job.Duration().String()
-	}
-
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return OperationalResponse(job), nil
 }
 
 // toolListJobs handles the listJobs tool call
-func (s *MCPServer) toolListJobs(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolListJobs(params map[string]interface{}) (*envelope.Response, error) {
 	s.logger.Debug("Executing listJobs", params)
 
 	opts := jobs.ListJobsOptions{}
@@ -2451,46 +1487,11 @@ func (s *MCPServer) toolListJobs(params map[string]interface{}) (interface{}, er
 		return nil, fmt.Errorf("listJobs failed: %w", err)
 	}
 
-	jobsList := make([]map[string]interface{}, 0, len(resp.Jobs))
-	for _, j := range resp.Jobs {
-		jobMap := map[string]interface{}{
-			"id":        j.ID,
-			"type":      j.Type,
-			"status":    j.Status,
-			"progress":  j.Progress,
-			"createdAt": j.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		}
-
-		if j.CompletedAt != nil {
-			jobMap["completedAt"] = j.CompletedAt.Format("2006-01-02T15:04:05Z")
-		}
-
-		if j.Error != "" {
-			jobMap["error"] = j.Error
-		}
-
-		jobsList = append(jobsList, jobMap)
-	}
-
-	result := map[string]interface{}{
-		"meta": map[string]interface{}{
-			"ckbVersion": "6.1",
-			"tool":       "listJobs",
-		},
-		"jobs":       jobsList,
-		"totalCount": resp.TotalCount,
-	}
-
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return OperationalResponse(resp), nil
 }
 
 // toolCancelJob handles the cancelJob tool call
-func (s *MCPServer) toolCancelJob(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolCancelJob(params map[string]interface{}) (*envelope.Response, error) {
 	// Parse jobId (required)
 	jobId, ok := params["jobId"].(string)
 	if !ok || jobId == "" {
@@ -2506,25 +1507,15 @@ func (s *MCPServer) toolCancelJob(params map[string]interface{}) (interface{}, e
 		return nil, fmt.Errorf("cancelJob failed: %w", err)
 	}
 
-	result := map[string]interface{}{
-		"meta": map[string]interface{}{
-			"ckbVersion": "6.1",
-			"tool":       "cancelJob",
-		},
+	return OperationalResponse(map[string]interface{}{
 		"jobId":  jobId,
 		"status": "cancelled",
-	}
-
-	jsonBytes, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	}), nil
 }
 
 // toolSummarizePr handles the summarizePr tool call
-func (s *MCPServer) toolSummarizePr(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolSummarizePr(params map[string]interface{}) (*envelope.Response, error) {
+	timer := NewWideResultTimer()
 	ctx := context.Background()
 
 	// Parse baseBranch (optional, default: "main")
@@ -2562,16 +1553,26 @@ func (s *MCPServer) toolSummarizePr(params map[string]interface{}) (interface{},
 		return nil, fmt.Errorf("summarizePr failed: %w", err)
 	}
 
-	jsonBytes, err := json.MarshalIndent(resp, "", "  ")
-	if err != nil {
-		return nil, err
-	}
+	// Record wide-result metrics
+	responseBytes := MeasureJSONSize(resp)
+	RecordWideResult(WideResultMetrics{
+		ToolName:        "summarizePr",
+		TotalResults:    len(resp.ChangedFiles),
+		ReturnedResults: len(resp.ChangedFiles),
+		TruncatedCount:  0, // summarizePr doesn't truncate currently
+		ResponseBytes:   responseBytes,
+		EstimatedTokens: EstimateTokens(responseBytes),
+		ExecutionMs:     timer.ElapsedMs(),
+	})
 
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(resp).
+		WithProvenance(resp.Provenance).
+		Build(), nil
 }
 
 // toolGetOwnershipDrift handles the getOwnershipDrift tool call
-func (s *MCPServer) toolGetOwnershipDrift(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolGetOwnershipDrift(params map[string]interface{}) (*envelope.Response, error) {
 	ctx := context.Background()
 
 	// Parse scope (optional)
@@ -2609,16 +1610,14 @@ func (s *MCPServer) toolGetOwnershipDrift(params map[string]interface{}) (interf
 		return nil, fmt.Errorf("getOwnershipDrift failed: %w", err)
 	}
 
-	jsonBytes, err := json.MarshalIndent(resp, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return string(jsonBytes), nil
+	return NewToolResponse().
+		Data(resp).
+		WithProvenance(resp.Provenance).
+		Build(), nil
 }
 
 // toolGetFileComplexity handles the getFileComplexity tool call
-func (s *MCPServer) toolGetFileComplexity(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolGetFileComplexity(params map[string]interface{}) (*envelope.Response, error) {
 	ctx := context.Background()
 
 	// Parse filePath (required)
@@ -2665,10 +1664,13 @@ func (s *MCPServer) toolGetFileComplexity(params map[string]interface{}) (interf
 
 	// Check if complexity analysis is available
 	if !complexity.IsAvailable() {
-		return map[string]interface{}{
-			"path":  filePath,
-			"error": "complexity analysis unavailable (requires CGO)",
-		}, nil
+		return NewToolResponse().
+			Data(map[string]interface{}{
+				"path":  filePath,
+				"error": "complexity analysis unavailable (requires CGO)",
+			}).
+			Warning("complexity analysis unavailable").
+			Build(), nil
 	}
 
 	// Analyze the file
@@ -2680,10 +1682,13 @@ func (s *MCPServer) toolGetFileComplexity(params map[string]interface{}) (interf
 
 	// Check for analysis error
 	if result.Error != "" {
-		return map[string]interface{}{
-			"path":  filePath,
-			"error": result.Error,
-		}, nil
+		return NewToolResponse().
+			Data(map[string]interface{}{
+				"path":  filePath,
+				"error": result.Error,
+			}).
+			Warning(result.Error).
+			Build(), nil
 	}
 
 	// Build response
@@ -2736,10 +1741,42 @@ func (s *MCPServer) toolGetFileComplexity(params map[string]interface{}) (interf
 		resp["functions"] = funcList
 	}
 
-	jsonBytes, err := json.MarshalIndent(resp, "", "  ")
-	if err != nil {
-		return nil, err
+	return OperationalResponse(resp), nil
+}
+
+// toolGetWideResultMetrics returns aggregated metrics for wide-result tools.
+// This is an internal/debug tool to inform the Frontier mode decision.
+func (s *MCPServer) toolGetWideResultMetrics(params map[string]interface{}) (*envelope.Response, error) {
+	s.logger.Debug("Executing getWideResultMetrics", map[string]interface{}{
+		"params": params,
+	})
+
+	summary := GetWideResultSummary()
+
+	// Convert to list format sorted by tool name
+	tools := make([]map[string]interface{}, 0, len(summary))
+	for _, m := range summary {
+		tools = append(tools, map[string]interface{}{
+			"toolName":          m.ToolName,
+			"queryCount":        m.QueryCount,
+			"totalResults":      m.TotalResults,
+			"totalReturned":     m.TotalReturned,
+			"totalTruncated":    m.TotalTruncated,
+			"avgTruncationRate": m.AvgTruncationRate(),
+			"avgTokens":         m.AvgTokens(),
+			"avgLatencyMs":      m.AvgLatencyMs(),
+		})
 	}
 
-	return string(jsonBytes), nil
+	// Sort by tool name for consistent output
+	sort.Slice(tools, func(i, j int) bool {
+		nameI, _ := tools[i]["toolName"].(string)
+		nameJ, _ := tools[j]["toolName"].(string)
+		return nameI < nameJ
+	})
+
+	return OperationalResponse(map[string]interface{}{
+		"tools":       tools,
+		"description": "Wide-result tool metrics for Frontier mode decision. High avgTruncationRate indicates tools that would benefit from frontierMode.",
+	}), nil
 }

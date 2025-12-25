@@ -18,6 +18,9 @@ type RateLimiter struct {
 	coalesceWindow time.Duration
 	pendingQueries map[string]*coalescedQuery
 	mu             sync.RWMutex
+
+	// done channel for graceful shutdown of cleanup goroutine
+	done chan struct{}
 }
 
 // semaphore implements a counting semaphore for rate limiting
@@ -80,6 +83,7 @@ func NewRateLimiter(policy *QueryPolicy) *RateLimiter {
 		semaphores:     make(map[BackendID]*semaphore),
 		coalesceWindow: time.Duration(policy.CoalesceWindowMs) * time.Millisecond,
 		pendingQueries: make(map[string]*coalescedQuery),
+		done:           make(chan struct{}),
 	}
 
 	// Initialize semaphores for each backend
@@ -91,6 +95,11 @@ func NewRateLimiter(policy *QueryPolicy) *RateLimiter {
 	go limiter.cleanupExpiredQueries()
 
 	return limiter
+}
+
+// Stop gracefully shuts down the rate limiter's background goroutines
+func (l *RateLimiter) Stop() {
+	close(l.done)
 }
 
 // Acquire acquires a permit for the given backend
@@ -198,14 +207,19 @@ func (l *RateLimiter) cleanupExpiredQueries() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		now := time.Now()
-		l.mu.Lock()
-		for key, cq := range l.pendingQueries {
-			if now.After(cq.expiry) {
-				delete(l.pendingQueries, key)
+	for {
+		select {
+		case <-l.done:
+			return
+		case <-ticker.C:
+			now := time.Now()
+			l.mu.Lock()
+			for key, cq := range l.pendingQueries {
+				if now.After(cq.expiry) {
+					delete(l.pendingQueries, key)
+				}
 			}
+			l.mu.Unlock()
 		}
-		l.mu.Unlock()
 	}
 }

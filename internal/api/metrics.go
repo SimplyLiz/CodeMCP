@@ -10,6 +10,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"ckb/internal/version"
 )
 
 // MetricsConfig contains metrics configuration
@@ -258,7 +260,7 @@ func (m *MetricsCollector) WritePrometheus(w http.ResponseWriter) {
 	// Write process info
 	_, _ = fmt.Fprintf(w, "# HELP ckb_info CKB build information\n")
 	_, _ = fmt.Fprintf(w, "# TYPE ckb_info gauge\n")
-	_, _ = fmt.Fprintf(w, "ckb_info{version=\"%s\"} 1\n\n", "7.3.0") // Should use version.Version
+	_, _ = fmt.Fprintf(w, "ckb_info{version=\"%s\"} 1\n\n", version.Version)
 
 	// Write uptime
 	_, _ = fmt.Fprintf(w, "# HELP ckb_uptime_seconds Time since CKB started\n")
@@ -410,7 +412,9 @@ func (c *Counter) labelsToKey(values []string) string {
 func (h *Histogram) Observe(value float64, labelValues ...string) {
 	key := h.labelsToKey(labelValues)
 
-	val, loaded := h.values.LoadOrStore(key, &histogramValue{
+	// Create new histogramValue with buckets pre-initialized
+	// LoadOrStore is atomic - either stores the new value or returns existing
+	val, _ := h.values.LoadOrStore(key, &histogramValue{
 		buckets: make([]uint64, len(h.buckets)+1), // +1 for +Inf
 	})
 
@@ -418,10 +422,8 @@ func (h *Histogram) Observe(value float64, labelValues ...string) {
 	if !ok {
 		return
 	}
-	if !loaded {
-		hv.buckets = make([]uint64, len(h.buckets)+1)
-	}
 
+	// Lock before any access to hv fields
 	hv.mu.Lock()
 	defer hv.mu.Unlock()
 

@@ -6,6 +6,163 @@ All notable changes to CKB will be documented in this file.
 
 ### Added
 
+#### Tool Presets & Pagination
+Token-optimized tool discovery reducing context overhead by up to 83%:
+
+**Presets:**
+| Preset | Tools | Tokens | Use Case |
+|--------|------:|-------:|----------|
+| `core` (default) | 14 | ~1,531 | Essential navigation and analysis |
+| `review` | 19 | ~2,294 | Code review: PR summary, ownership |
+| `refactor` | 19 | ~2,216 | Refactoring: coupling, dead code |
+| `docs` | 20 | ~2,093 | Documentation: coverage, staleness |
+| `ops` | 25 | ~2,366 | Operations: jobs, webhooks, metrics |
+| `federation` | 28 | ~3,122 | Multi-repo: cross-repo search |
+| `full` | 76 | ~9,043 | All tools (legacy behavior) |
+
+**Features:**
+- **MCP-compliant pagination** — `tools/list` cursor-based pagination per spec
+- **Core-first ordering** — Page 1 always contains functional toolset for non-paginating clients
+- **Cursor invalidation** — Cursor rejected when preset or toolset changes
+- **`expandToolset` meta-tool** — Dynamic preset expansion with rate limiting (once per session)
+- **`tools.listChanged` capability** — Enables dynamic tool list updates
+
+**CLI:**
+```bash
+ckb mcp                      # Default: core preset (14 tools)
+ckb mcp --preset=review      # Code review workflow
+ckb mcp --preset=full        # All 76 tools (legacy)
+```
+
+**Setup Wizard:**
+- `ckb setup` now prompts for preset selection
+- `--preset` flag for non-interactive configuration
+
+**Files Added:**
+- `internal/mcp/presets.go` — Preset definitions and core-first ordering
+- `internal/mcp/cursor.go` — MCP-compliant cursor pagination
+
+**Files Changed:**
+- `internal/mcp/server.go` — Preset management and toolset hash
+- `internal/mcp/handler.go` — Paginated `handleListTools`
+- `internal/mcp/tools.go` — `expandToolset` tool definition
+- `internal/mcp/tool_impls.go` — `expandToolset` handler with rate limiting
+- `internal/mcp/capabilities.go` — `tools.listChanged: true`
+- `cmd/ckb/mcp.go` — `--preset` flag
+- `cmd/ckb/setup.go` — Preset selection in wizard
+
+#### Wide-Result Metrics Tracking
+Infrastructure for monitoring tool output sizes and truncation rates:
+
+- **`getWideResultMetrics` tool** — Expose wide-result statistics
+- **SQLite persistence** — Historical tracking for optimization work
+- **Per-tool aggregation** — Invocations, bytes, tokens, truncations
+- **Response byte tracking** — Actual JSON payload size for each tool response
+- **`ckb metrics` CLI** — View aggregated metrics with `--days`, `--tool`, `--format` flags
+- **`ckb metrics export`** — Export versioned metrics to JSON for cross-version comparison
+
+Tracked tools: searchSymbols, findReferences, analyzeImpact, getCallGraph, getHotspots, summarizePr
+
+**Telemetry Findings:**
+| Tool | Truncation Rate | Needs Frontier? |
+|------|-----------------|-----------------|
+| searchSymbols | 45% | Yes |
+| getHotspots | 50% | Yes |
+| findReferences | 18% | No |
+| getCallGraph | 0% | No |
+| analyzeImpact | 0% | No |
+
+**Files Added:**
+- `internal/mcp/wide_result_metrics.go` — In-memory aggregation with DB persistence
+- `internal/storage/metrics_store.go` — SQLite metrics storage
+- `cmd/ckb/metrics.go` — CLI metrics command
+
+### Performance
+
+#### SCIP Backend Optimizations
+Major performance improvements to the SCIP backend through pre-computed indexes:
+
+| Operation | Before | After | Improvement |
+|-----------|--------|-------|-------------|
+| FindReferences | 340μs | 2.5μs | **136x faster** |
+| SearchSymbols | 930μs | 136μs | **7x faster** |
+| FindSymbolLocation | 70μs | 28ns | **2,500x faster** |
+| GetCachedSymbol | 210ns | 7.5ns | **28x faster** |
+
+**Changes:**
+- **RefIndex**: Inverted reference index built during SCIP load for O(1) reference lookups instead of O(n×m) scans
+- **ConvertedSymbols Cache**: Pre-converted symbols avoid repeated parsing of SCIP identifiers, visibility inference, and location lookups
+- **ContainerIndex**: Maps occurrence positions to containing symbols for O(1) containment lookup instead of O(n²) nested loops
+- **Fast Location Lookup**: `findSymbolLocationFast` uses RefIndex for O(k) definition lookup where k = number of occurrences
+- **RateLimiter Cleanup**: Added graceful shutdown with `Stop()` method to prevent goroutine leaks
+
+**Files Changed:**
+- `internal/backends/scip/loader.go` — Added `OccurrenceRef`, `RefIndex`, `ConvertedSymbols`, `ContainerIndex` to `SCIPIndex`
+- `internal/backends/scip/references.go` — `FindReferences` uses inverted index, added `findContainingSymbolFast`
+- `internal/backends/scip/symbols.go` — Added `GetCachedSymbol`, `findSymbolLocationFast`, cached `SearchSymbols`
+- `internal/backends/limiter.go` — Added `done` channel and `Stop()` method
+
+**Tests Added:**
+- `internal/backends/scip/performance_test.go` — 11 unit tests + 10 benchmarks
+- `internal/backends/limiter_test.go` — 5 unit tests + 1 benchmark
+
+#### Git Backend Optimizations
+Major performance improvement to `getHotspots` by consolidating git commands:
+
+| Operation | Before | After | Improvement |
+|-----------|--------|-------|-------------|
+| getHotspots | 26.7s | 498ms | **53x faster** |
+
+**Problem:** For each changed file, ran 4 separate git commands (rev-list, shortlog, log × 2).
+With 100+ files = 400+ process spawns.
+
+**Solution:** Single `git log --format=%H|%an|%aI --numstat` command parses all data in one pass.
+
+**Files Changed:**
+- `internal/backends/git/churn.go` — Rewrote `GetHotspots` to use single git command
+
+### Added
+
+#### Standardized Response Envelope
+All 76 MCP tool responses now include structured metadata in a consistent envelope format:
+
+**Envelope Schema:**
+```json
+{
+  "schemaVersion": "1.0",
+  "data": { },
+  "meta": {
+    "confidence": { "score": 0.85, "tier": "medium", "reasons": [] },
+    "provenance": { "backends": ["scip", "git"], "repoStateId": "..." },
+    "freshness": { "indexAge": { "commitsBehind": 3, "staleReason": "behind-head" } },
+    "truncation": { "isTruncated": true, "shown": 10, "total": 47, "reason": "max-symbols" }
+  },
+  "warnings": [],
+  "suggestedNextCalls": [{ "tool": "findReferences", "params": {...}, "reason": "..." }]
+}
+```
+
+**Key Features:**
+- **Confidence Tiers** — Results scored as high (≥0.95), medium (0.70-0.94), low (0.30-0.69), or speculative (<0.30)
+- **Provenance Tracking** — See which backends (SCIP, LSP, git) contributed to results
+- **Freshness Info** — Know how stale your index is (commits behind, uncommitted changes)
+- **Truncation Metadata** — See how many results were trimmed and why
+- **Suggested Next Calls** — AI-friendly drilldown suggestions as structured tool calls
+- **Cross-repo Marking** — Federation queries automatically marked as speculative tier
+
+**Files Added:**
+- `internal/envelope/envelope.go` — Core types (Response, Meta, Confidence, etc.)
+- `internal/envelope/builder.go` — Fluent builder API
+- `internal/envelope/confidence.go` — Score to tier mapping
+- `internal/envelope/envelope_test.go` — Comprehensive tests
+- `internal/mcp/tool_helpers.go` — Convenience wrappers for tool implementations
+- `internal/mcp/tool_helpers_test.go` — Tool helper tests
+
+**Files Changed:**
+- `internal/mcp/tools.go` — Updated ToolHandler signature
+- `internal/mcp/handler.go` — Updated handleCallTool for envelope format
+- All `internal/mcp/tool_impls*.go` files — Refactored to return envelope responses
+
 #### npm Update Notifications
 Automatic update checking for npm installations:
 
@@ -59,6 +216,17 @@ See Wiki for full documentation.
 ## [7.3.0]
 
 ### Added
+
+#### npm Package Improvements
+Better npmjs.com presence and npx reliability:
+
+- **README on npmjs.com** - Package now displays full README on npm registry
+- **LICENSE included** - MIT license file bundled with npm package
+- **Issue tracker link** - "Report a bug" link on npm page
+- **npx sandbox fix** - Node shim auto-detects repo root, fixing #1 support issue
+
+**How the npx fix works:**
+The Node.js shim walks up from `process.cwd()` looking for `.ckb/` or `.git/` and sets `CKB_REPO` automatically. This means `npx @tastehub/ckb` now works from subdirectories and MCP clients that don't guarantee working directory.
 
 #### Incremental Indexing v4 (Production-Grade)
 Fast, reliable incremental indexing for large codebases:

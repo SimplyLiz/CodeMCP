@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"time"
 
+	"ckb/internal/envelope"
 	"ckb/internal/telemetry"
 )
 
 // v6.4 Telemetry tool implementations
 
 // toolGetTelemetryStatus returns telemetry system status
-func (s *MCPServer) toolGetTelemetryStatus(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolGetTelemetryStatus(params map[string]interface{}) (*envelope.Response, error) {
 	cfg := s.engine().GetConfig()
 	if cfg == nil {
 		return nil, fmt.Errorf("configuration not available")
@@ -25,13 +26,13 @@ func (s *MCPServer) toolGetTelemetryStatus(params map[string]interface{}) (inter
 			"Telemetry is disabled. Enable with: ckb config set telemetry.enabled true",
 			"Configure service map to map service names to repository IDs",
 		}
-		return status, nil
+		return OperationalResponse(status), nil
 	}
 
 	// Get telemetry storage
 	storage := s.getTelemetryStorage()
 	if storage == nil {
-		return status, nil
+		return OperationalResponse(status), nil
 	}
 
 	// Get last sync
@@ -93,11 +94,11 @@ func (s *MCPServer) toolGetTelemetryStatus(params map[string]interface{}) (inter
 			"No telemetry events received in last 24h. Check OTEL collector configuration.")
 	}
 
-	return status, nil
+	return OperationalResponse(status), nil
 }
 
 // toolGetObservedUsage returns observed usage data for a symbol
-func (s *MCPServer) toolGetObservedUsage(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolGetObservedUsage(params map[string]interface{}) (*envelope.Response, error) {
 	symbolID, _ := params["symbolId"].(string)
 	if symbolID == "" {
 		return nil, fmt.Errorf("symbolId is required")
@@ -185,11 +186,13 @@ func (s *MCPServer) toolGetObservedUsage(params map[string]interface{}) (interfa
 		response.BlendedConfidence = 0.79 // static only
 	}
 
-	return response, nil
+	return NewToolResponse().
+		Data(response).
+		Build(), nil
 }
 
 // toolFindDeadCodeCandidates finds potential dead code based on telemetry
-func (s *MCPServer) toolFindDeadCodeCandidates(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolFindDeadCodeCandidates(params map[string]interface{}) (*envelope.Response, error) {
 	minConfidence := 0.7
 	if v, ok := params["minConfidence"].(float64); ok {
 		minConfidence = v
@@ -214,15 +217,17 @@ func (s *MCPServer) toolFindDeadCodeCandidates(params map[string]interface{}) (i
 	exact, strong, weak, unmatched, _ := storage.GetMatchStats()
 	total := exact + strong + weak + unmatched
 	if total == 0 {
-		return telemetry.DeadCodeResponse{
-			Limitations: []telemetry.Limitation{
-				{
-					Type:        "no_data",
-					Description: "No telemetry data available",
-					Impact:      "Cannot detect dead code without runtime telemetry",
+		return NewToolResponse().
+			Data(telemetry.DeadCodeResponse{
+				Limitations: []telemetry.Limitation{
+					{
+						Type:        "no_data",
+						Description: "No telemetry data available",
+						Impact:      "Cannot detect dead code without runtime telemetry",
+					},
 				},
-			},
-		}, nil
+			}).
+			Build(), nil
 	}
 
 	// Build coverage
@@ -254,31 +259,35 @@ func (s *MCPServer) toolFindDeadCodeCandidates(params map[string]interface{}) (i
 
 	// Check coverage requirement
 	if !coverage.CanUseDeadCode() {
-		return telemetry.DeadCodeResponse{
-			Coverage: coverage,
-			Limitations: []telemetry.Limitation{
-				{
-					Type:        "insufficient_coverage",
-					Description: fmt.Sprintf("Coverage level %s is below required medium", coverageLevel),
-					Impact:      "Cannot reliably detect dead code",
+		return NewToolResponse().
+			Data(telemetry.DeadCodeResponse{
+				Coverage: coverage,
+				Limitations: []telemetry.Limitation{
+					{
+						Type:        "insufficient_coverage",
+						Description: fmt.Sprintf("Coverage level %s is below required medium", coverageLevel),
+						Impact:      "Cannot reliably detect dead code",
+					},
 				},
-			},
-		}, nil
+			}).
+			Build(), nil
 	}
 
 	// Get symbols with zero calls
 	observationDays, _ := storage.GetObservationWindowDays()
 	if observationDays < cfg.Telemetry.DeadCode.MinObservationDays {
-		return telemetry.DeadCodeResponse{
-			Coverage: coverage,
-			Limitations: []telemetry.Limitation{
-				{
-					Type:        "short_observation_window",
-					Description: fmt.Sprintf("Only %d days of data (need %d)", observationDays, cfg.Telemetry.DeadCode.MinObservationDays),
-					Impact:      "Wait for more telemetry data to accumulate",
+		return NewToolResponse().
+			Data(telemetry.DeadCodeResponse{
+				Coverage: coverage,
+				Limitations: []telemetry.Limitation{
+					{
+						Type:        "short_observation_window",
+						Description: fmt.Sprintf("Only %d days of data (need %d)", observationDays, cfg.Telemetry.DeadCode.MinObservationDays),
+						Impact:      "Wait for more telemetry data to accumulate",
+					},
 				},
-			},
-		}, nil
+			}).
+			Build(), nil
 	}
 
 	// Create detector with options
@@ -322,7 +331,9 @@ func (s *MCPServer) toolFindDeadCodeCandidates(params map[string]interface{}) (i
 		})
 	}
 
-	return response, nil
+	return NewToolResponse().
+		Data(response).
+		Build(), nil
 }
 
 // getTelemetryStorage returns the telemetry storage instance

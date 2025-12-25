@@ -12,6 +12,12 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// OccurrenceRef is a lightweight reference to an occurrence for the inverted index
+type OccurrenceRef struct {
+	Doc *Document
+	Occ *Occurrence
+}
+
 // SCIPIndex represents a loaded SCIP index
 type SCIPIndex struct {
 	// Metadata contains index metadata
@@ -22,6 +28,16 @@ type SCIPIndex struct {
 
 	// Symbols maps symbol IDs to symbol information
 	Symbols map[string]*SymbolInformation
+
+	// RefIndex is an inverted index for O(1) reference lookups: symbolId -> occurrences
+	RefIndex map[string][]*OccurrenceRef
+
+	// ConvertedSymbols caches pre-converted SCIPSymbol objects to avoid repeated conversion
+	ConvertedSymbols map[string]*SCIPSymbol
+
+	// ContainerIndex maps occurrence positions to their containing symbol for O(1) lookup
+	// Key format: "docPath:line:col" -> containerSymbolId
+	ContainerIndex map[string]string
 
 	// LoadedAt is when the index was loaded
 	LoadedAt time.Time
@@ -79,17 +95,90 @@ func LoadSCIPIndex(path string) (*SCIPIndex, error) {
 
 	// Convert to internal representation
 	scipIndex := &SCIPIndex{
-		Metadata:  convertMetadata(index.Metadata),
-		Documents: convertDocuments(index.Documents),
-		Symbols:   make(map[string]*SymbolInformation),
-		LoadedAt:  time.Now(),
-		raw:       &index,
+		Metadata:         convertMetadata(index.Metadata),
+		Documents:        convertDocuments(index.Documents),
+		Symbols:          make(map[string]*SymbolInformation),
+		RefIndex:         make(map[string][]*OccurrenceRef),
+		ConvertedSymbols: make(map[string]*SCIPSymbol),
+		ContainerIndex:   make(map[string]string),
+		LoadedAt:         time.Now(),
+		raw:              &index,
 	}
 
-	// Build symbol map
+	// Build symbol map and reference index in a single pass
 	for _, doc := range scipIndex.Documents {
+		// Index symbols
 		for _, sym := range doc.Symbols {
 			scipIndex.Symbols[sym.Symbol] = sym
+		}
+
+		// Build inverted reference index for O(1) lookups
+		for _, occ := range doc.Occurrences {
+			if occ.Symbol != "" {
+				scipIndex.RefIndex[occ.Symbol] = append(
+					scipIndex.RefIndex[occ.Symbol],
+					&OccurrenceRef{Doc: doc, Occ: occ},
+				)
+			}
+		}
+
+		// Build container index for O(1) containment lookup
+		// First collect all definition occurrences with enclosing ranges
+		type defScope struct {
+			symbol    string
+			startLine int32
+			endLine   int32
+		}
+		var defScopes []defScope
+		for _, occ := range doc.Occurrences {
+			if occ.SymbolRoles&SymbolRoleDefinition != 0 && len(occ.EnclosingRange) >= 3 {
+				startLine := occ.EnclosingRange[0]
+				var endLine int32
+				if len(occ.EnclosingRange) >= 4 {
+					endLine = occ.EnclosingRange[2]
+				} else {
+					endLine = startLine
+				}
+				defScopes = append(defScopes, defScope{
+					symbol:    occ.Symbol,
+					startLine: startLine,
+					endLine:   endLine,
+				})
+			}
+		}
+
+		// For each occurrence, find its innermost containing scope
+		for _, occ := range doc.Occurrences {
+			if len(occ.Range) < 2 {
+				continue
+			}
+			occLine := occ.Range[0]
+
+			// Find the smallest (innermost) scope containing this occurrence
+			var bestScope *defScope
+			var bestSize int32 = -1
+			for i := range defScopes {
+				ds := &defScopes[i]
+				if occLine >= ds.startLine && occLine <= ds.endLine {
+					size := ds.endLine - ds.startLine
+					if bestScope == nil || size < bestSize {
+						bestScope = ds
+						bestSize = size
+					}
+				}
+			}
+
+			if bestScope != nil {
+				key := fmt.Sprintf("%s:%d:%d", doc.RelativePath, occ.Range[0], occ.Range[1])
+				scipIndex.ContainerIndex[key] = bestScope.symbol
+			}
+		}
+	}
+
+	// Pre-convert all symbols to avoid repeated conversion during queries
+	for symbolId, symInfo := range scipIndex.Symbols {
+		if converted, err := convertToSCIPSymbol(symInfo, scipIndex); err == nil {
+			scipIndex.ConvertedSymbols[symbolId] = converted
 		}
 	}
 

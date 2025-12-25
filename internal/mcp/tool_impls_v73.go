@@ -5,12 +5,13 @@ import (
 	"time"
 
 	"ckb/internal/docs"
+	"ckb/internal/envelope"
 )
 
 // v7.3 Doc-Symbol Linking tool implementations
 
 // toolGetDocsForSymbol finds documentation that references a symbol
-func (s *MCPServer) toolGetDocsForSymbol(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolGetDocsForSymbol(params map[string]interface{}) (*envelope.Response, error) {
 	symbol, ok := params["symbol"].(string)
 	if !ok || symbol == "" {
 		return nil, fmt.Errorf("symbol is required")
@@ -44,15 +45,17 @@ func (s *MCPServer) toolGetDocsForSymbol(params map[string]interface{}) (interfa
 		result = append(result, item)
 	}
 
-	return map[string]interface{}{
-		"symbol":     symbol,
-		"references": result,
-		"count":      len(result),
-	}, nil
+	return NewToolResponse().
+		Data(map[string]interface{}{
+			"symbol":     symbol,
+			"references": result,
+			"count":      len(result),
+		}).
+		Build(), nil
 }
 
 // toolGetSymbolsInDoc lists all symbol references found in a documentation file
-func (s *MCPServer) toolGetSymbolsInDoc(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolGetSymbolsInDoc(params map[string]interface{}) (*envelope.Response, error) {
 	path, ok := params["path"].(string)
 	if !ok || path == "" {
 		return nil, fmt.Errorf("path is required")
@@ -86,19 +89,21 @@ func (s *MCPServer) toolGetSymbolsInDoc(params map[string]interface{}) (interfac
 		symbols = append(symbols, item)
 	}
 
-	return map[string]interface{}{
-		"path":        doc.Path,
-		"type":        string(doc.Type),
-		"title":       doc.Title,
-		"symbols":     symbols,
-		"symbolCount": len(symbols),
-		"modules":     doc.Modules,
-		"lastIndexed": doc.LastIndexed.Format(time.RFC3339),
-	}, nil
+	return NewToolResponse().
+		Data(map[string]interface{}{
+			"path":        doc.Path,
+			"type":        string(doc.Type),
+			"title":       doc.Title,
+			"symbols":     symbols,
+			"symbolCount": len(symbols),
+			"modules":     doc.Modules,
+			"lastIndexed": doc.LastIndexed.Format(time.RFC3339),
+		}).
+		Build(), nil
 }
 
 // toolGetDocsForModule finds documentation explicitly linked to a module
-func (s *MCPServer) toolGetDocsForModule(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolGetDocsForModule(params map[string]interface{}) (*envelope.Response, error) {
 	moduleID, ok := params["moduleId"].(string)
 	if !ok || moduleID == "" {
 		return nil, fmt.Errorf("moduleId is required")
@@ -119,15 +124,17 @@ func (s *MCPServer) toolGetDocsForModule(params map[string]interface{}) (interfa
 		})
 	}
 
-	return map[string]interface{}{
-		"moduleId": moduleID,
-		"docs":     result,
-		"count":    len(result),
-	}, nil
+	return NewToolResponse().
+		Data(map[string]interface{}{
+			"moduleId": moduleID,
+			"docs":     result,
+			"count":    len(result),
+		}).
+		Build(), nil
 }
 
 // toolCheckDocStaleness checks documentation for stale symbol references
-func (s *MCPServer) toolCheckDocStaleness(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolCheckDocStaleness(params map[string]interface{}) (*envelope.Response, error) {
 	path, _ := params["path"].(string)
 	checkAll, _ := params["all"].(bool)
 
@@ -161,16 +168,16 @@ func (s *MCPServer) toolCheckDocStaleness(params map[string]interface{}) (interf
 			continue
 		}
 		staleRefs := make([]map[string]interface{}, 0, len(r.Stale))
-		for _, s := range r.Stale {
+		for _, staleRef := range r.Stale {
 			item := map[string]interface{}{
-				"rawText": s.RawText,
-				"line":    s.Line,
-				"reason":  string(s.Reason),
-				"message": s.Message,
+				"rawText": staleRef.RawText,
+				"line":    staleRef.Line,
+				"reason":  string(staleRef.Reason),
+				"message": staleRef.Message,
 			}
-			if len(s.Suggestions) > 0 {
+			if len(staleRef.Suggestions) > 0 {
 				// Limit suggestions
-				suggestions := s.Suggestions
+				suggestions := staleRef.Suggestions
 				if len(suggestions) > 5 {
 					suggestions = suggestions[:5]
 				}
@@ -187,14 +194,16 @@ func (s *MCPServer) toolCheckDocStaleness(params map[string]interface{}) (interf
 		totalStale += len(r.Stale)
 	}
 
-	return map[string]interface{}{
-		"reports":    result,
-		"totalStale": totalStale,
-	}, nil
+	return NewToolResponse().
+		Data(map[string]interface{}{
+			"reports":    result,
+			"totalStale": totalStale,
+		}).
+		Build(), nil
 }
 
 // toolIndexDocs scans and indexes documentation for symbol references
-func (s *MCPServer) toolIndexDocs(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolIndexDocs(params map[string]interface{}) (*envelope.Response, error) {
 	force := false
 	if v, ok := params["force"].(bool); ok {
 		force = v
@@ -206,7 +215,7 @@ func (s *MCPServer) toolIndexDocs(params map[string]interface{}) (interface{}, e
 		return nil, fmt.Errorf("failed to index docs: %w", err)
 	}
 
-	return map[string]interface{}{
+	return OperationalResponse(map[string]interface{}{
 		"docsIndexed":     stats.DocsIndexed,
 		"docsSkipped":     stats.DocsSkipped,
 		"referencesFound": stats.ReferencesFound,
@@ -214,11 +223,11 @@ func (s *MCPServer) toolIndexDocs(params map[string]interface{}) (interface{}, e
 		"ambiguous":       stats.Ambiguous,
 		"missing":         stats.Missing,
 		"durationMs":      time.Since(start).Milliseconds(),
-	}, nil
+	}), nil
 }
 
 // toolGetDocCoverage returns documentation coverage statistics
-func (s *MCPServer) toolGetDocCoverage(params map[string]interface{}) (interface{}, error) {
+func (s *MCPServer) toolGetDocCoverage(params map[string]interface{}) (*envelope.Response, error) {
 	exportedOnly := false
 	if v, ok := params["exportedOnly"].(bool); ok {
 		exportedOnly = v
@@ -244,13 +253,15 @@ func (s *MCPServer) toolGetDocCoverage(params map[string]interface{}) (interface
 		})
 	}
 
-	return map[string]interface{}{
-		"totalSymbols":    report.TotalSymbols,
-		"documented":      report.Documented,
-		"undocumented":    report.Undocumented,
-		"coveragePercent": report.CoveragePercent,
-		"topUndocumented": topUndocumented,
-	}, nil
+	return NewToolResponse().
+		Data(map[string]interface{}{
+			"totalSymbols":    report.TotalSymbols,
+			"documented":      report.Documented,
+			"undocumented":    report.Undocumented,
+			"coveragePercent": report.CoveragePercent,
+			"topUndocumented": topUndocumented,
+		}).
+		Build(), nil
 }
 
 // truncateString truncates a string to max length, adding ellipsis if needed

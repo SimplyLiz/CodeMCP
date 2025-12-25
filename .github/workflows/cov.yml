@@ -1,0 +1,72 @@
+name: Coverage
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [develop, main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    name: Test Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Run tests with coverage
+        run: |
+          go test -v -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./... 2>&1 | tee test-output.txt
+
+          COVERAGE="N/A"
+          if [ -f coverage.out ]; then
+            go tool cover -func=coverage.out -o coverage.txt
+            COVERAGE=$(grep "^total:" coverage.txt | awk '{print $3}' | sed 's/%//')
+          else
+            : > coverage.txt
+          fi
+
+          # Job summary
+          echo "### ✅ Tests | ${COVERAGE}% Coverage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Coverage threshold enforced by [Codecov](https://app.codecov.io/gh/${{ github.repository }})." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "<details>" >> $GITHUB_STEP_SUMMARY
+          echo "<summary>Coverage by package</summary>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          head -50 coverage.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "</details>" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.out
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            coverage.out
+            coverage.txt
+            test-output.txt
+          retention-days: 7
