@@ -17,10 +17,14 @@ import (
 func newTestMCPServer(t *testing.T) *MCPServer {
 	t.Helper()
 
+	// Use a unique temp directory for each test to avoid database locking
+	// issues when running parallel tests with -race
+	tempDir := t.TempDir()
+
 	// Create minimal config
 	cfg := &config.Config{
 		Version:  5,
-		RepoRoot: ".",
+		RepoRoot: tempDir,
 		Backends: config.BackendsConfig{
 			Git: config.GitConfig{
 				Enabled: false,
@@ -40,14 +44,14 @@ func newTestMCPServer(t *testing.T) *MCPServer {
 		Output: io.Discard,
 	})
 
-	// Create in-memory database
-	db, err := storage.Open(":memory:", logger)
+	// Create database in temp directory (each test gets its own isolated DB)
+	db, err := storage.Open(tempDir, logger)
 	if err != nil {
 		t.Fatalf("Failed to create test database: %v", err)
 	}
 
 	// Create query engine with minimal setup
-	engine, err := query.NewEngine(".", db, logger, cfg)
+	engine, err := query.NewEngine(tempDir, db, logger, cfg)
 	if err != nil {
 		t.Fatalf("Failed to create query engine: %v", err)
 	}
