@@ -70,9 +70,9 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 			"headCommit":  statusResp.RepoState.HeadCommit,
 		},
 		"preset": map[string]interface{}{
-			"active":           preset,
-			"exposed":          exposedCount,
-			"total":            totalCount,
+			"active":              preset,
+			"exposed":             exposedCount,
+			"total":               totalCount,
 			"expanded":            s.IsExpanded(),
 			"estimatedTokens":     activeTokens,
 			"fullPresetTokens":    fullTokens,
