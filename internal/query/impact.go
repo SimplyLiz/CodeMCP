@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"ckb/internal/backends"
+	"ckb/internal/backends/scip"
 	"ckb/internal/compression"
 	"ckb/internal/errors"
 	"ckb/internal/impact"
@@ -28,6 +29,7 @@ type AnalyzeImpactResponse struct {
 	Symbol            *SymbolInfo           `json:"symbol"`
 	Visibility        *VisibilityInfo       `json:"visibility"`
 	RiskScore         *RiskScore            `json:"riskScore"`
+	BlastRadius       *BlastRadiusSummary   `json:"blastRadius,omitempty"`
 	DirectImpact      []ImpactItem          `json:"directImpact"`
 	TransitiveImpact  []ImpactItem          `json:"transitiveImpact,omitempty"`
 	ModulesAffected   []ModuleImpact        `json:"modulesAffected"`
@@ -94,6 +96,75 @@ type ModuleImpact struct {
 	ImpactCount   int    `json:"impactCount"`
 	DirectCount   int    `json:"directCount"`
 	BreakingCount int    `json:"breakingCount,omitempty"`
+}
+
+// BlastRadiusSummary summarizes the spread of impact across the codebase.
+type BlastRadiusSummary struct {
+	ModuleCount       int    `json:"moduleCount"`
+	FileCount         int    `json:"fileCount"`
+	UniqueCallerCount int    `json:"uniqueCallerCount"`
+	RiskLevel         string `json:"riskLevel"` // "low", "medium", "high"
+}
+
+// scipCallerProvider adapts SCIPAdapter to the TransitiveCallerProvider interface
+type scipCallerProvider struct {
+	adapter *scip.SCIPAdapter
+}
+
+// GetTransitiveCallers implements impact.TransitiveCallerProvider
+func (p *scipCallerProvider) GetTransitiveCallers(symbolId string, maxDepth int) (map[string]int, error) {
+	graph, err := p.adapter.BuildCallGraph(symbolId, scip.CallGraphOptions{
+		Direction: scip.DirectionCallers,
+		MaxDepth:  maxDepth,
+		MaxNodes:  100, // Bounded for performance
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]int)
+	if graph == nil {
+		return result, nil
+	}
+
+	// BFS to compute depths from root
+	visited := make(map[string]bool)
+	queue := []struct {
+		id    string
+		depth int
+	}{{symbolId, 0}}
+	visited[symbolId] = true
+
+	// Build adjacency list from edges (caller -> callee)
+	// For callers direction: edges go from caller to callee
+	// So we need to invert: who calls X?
+	callersOf := make(map[string][]string)
+	for _, edge := range graph.Edges {
+		// edge.From is caller, edge.To is callee
+		// We want: for each callee, list of callers
+		callersOf[edge.To] = append(callersOf[edge.To], edge.From)
+	}
+
+	for len(queue) > 0 {
+		curr := queue[0]
+		queue = queue[1:]
+
+		for _, callerId := range callersOf[curr.id] {
+			if !visited[callerId] {
+				visited[callerId] = true
+				callerDepth := curr.depth + 1
+				result[callerId] = callerDepth
+				if callerDepth < maxDepth {
+					queue = append(queue, struct {
+						id    string
+						depth int
+					}{callerId, callerDepth})
+				}
+			}
+		}
+	}
+
+	return result, nil
 }
 
 // AnalyzeImpact analyzes the impact of changing a symbol.
@@ -210,8 +281,14 @@ func (e *Engine) AnalyzeImpact(ctx context.Context, opts AnalyzeImpactOptions) (
 		refs = filterTestReferences(refs)
 	}
 
-	// Create impact analyzer and run analysis
-	analyzer := impact.NewImpactAnalyzer(opts.Depth)
+	// Create impact analyzer with transitive caller support if SCIP available
+	var analyzer *impact.ImpactAnalyzer
+	if e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
+		callerProv := &scipCallerProvider{adapter: e.scipAdapter}
+		analyzer = impact.NewImpactAnalyzerWithCallers(opts.Depth, callerProv)
+	} else {
+		analyzer = impact.NewImpactAnalyzer(opts.Depth)
+	}
 
 	impactSymbol := &impact.Symbol{
 		StableId: symbolInfo.StableId,
@@ -348,10 +425,22 @@ func (e *Engine) AnalyzeImpact(ctx context.Context, opts AnalyzeImpactOptions) (
 		docsToUpdate = e.getDocsToUpdate(symbolInfo.StableId, 5)
 	}
 
+	// Convert blast radius
+	var blastRadius *BlastRadiusSummary
+	if result.BlastRadius != nil {
+		blastRadius = &BlastRadiusSummary{
+			ModuleCount:       result.BlastRadius.ModuleCount,
+			FileCount:         result.BlastRadius.FileCount,
+			UniqueCallerCount: result.BlastRadius.UniqueCallerCount,
+			RiskLevel:         result.BlastRadius.RiskLevel,
+		}
+	}
+
 	return &AnalyzeImpactResponse{
 		Symbol:            symbolInfo,
 		Visibility:        visibility,
 		RiskScore:         riskScore,
+		BlastRadius:       blastRadius,
 		DirectImpact:      directImpact,
 		TransitiveImpact:  transitiveImpact,
 		ModulesAffected:   modulesAffected,

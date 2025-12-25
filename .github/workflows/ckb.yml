@@ -216,8 +216,9 @@ jobs:
       - name: Blast Radius
         id: blast
         run: |
-          # Use impact analysis on changed symbols from pr-summary
-          # blast-radius command doesn't exist - derive from pr-summary data
+          # Derive blast radius from pr-summary changed files
+          # Note: v7.6+ provides per-symbol blast radius via `ckb impact <symbol-id>`
+          # TODO: Add --include-blast-radius to pr-summary for aggregate PR-level data
           if [ -f analysis.json ]; then
             jq '{
               affectedSymbols: (.changedFiles // []) | map(.symbols // []) | flatten,

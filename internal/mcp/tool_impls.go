@@ -706,6 +706,16 @@ func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (*envelope.
 		data["observedUsage"] = observedUsage
 	}
 
+	// Add blast radius summary if available
+	if impactResp.BlastRadius != nil {
+		data["blastRadius"] = map[string]interface{}{
+			"moduleCount":       impactResp.BlastRadius.ModuleCount,
+			"fileCount":         impactResp.BlastRadius.FileCount,
+			"uniqueCallerCount": impactResp.BlastRadius.UniqueCallerCount,
+			"riskLevel":         impactResp.BlastRadius.RiskLevel,
+		}
+	}
+
 	// Record wide-result metrics
 	totalImpact := len(impactResp.DirectImpact) + len(impactResp.TransitiveImpact)
 	responseBytes := MeasureJSONSize(data)
