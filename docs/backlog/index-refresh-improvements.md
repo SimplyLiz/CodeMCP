@@ -40,24 +40,30 @@ watcher.Add(filepath.Join(repoRoot, ".git", "index"))
 **Effort:** Medium (1-2 days)
 **Impact:** High for MCP-only users
 
-### 2. Add Refresh Source Visibility
+### 2. Add Refresh Source Visibility ✅ DONE (v7.6)
 
 **Gap:** Users can't see what triggered a refresh.
 
-**Fix:** Add trigger reason to logs and `getStatus` response:
-```
-[INFO] Refresh triggered: .git/HEAD changed (branch: main → feature/auth)
-```
+**Fix:** Added `lastRefresh` to `getStatus` response and enhanced daemon logging:
 
 ```json
 {
   "lastRefresh": {
     "at": "2024-12-25T10:00:00Z",
-    "trigger": "HEAD changed (main → feature/auth)",
-    "duration": "1.2s"
+    "trigger": "head-changed",
+    "triggerInfo": "branch or commit changed",
+    "durationMs": 1200
   }
 }
 ```
+
+**Trigger types:**
+- `head-changed` - Branch switch or new commit
+- `index-changed` - Staged files modified
+- `manual` - CLI `ckb index` command
+- `scheduled` - Daemon scheduler
+- `webhook` - External webhook trigger
+- `stale` - Generic staleness detection
 
 **Effort:** Low (0.5 days)
 **Impact:** Medium - helps users understand the system
@@ -148,12 +154,12 @@ VS Code/Cursor extensions could call refresh API on file save for real-time inde
 
 ## Recommended Action
 
-**Status: Largely addressed.** The poll interval reduction (Priority 4) is done. Both daemon and MCP modes now have reasonable latency.
+**Status: Addressed.** Both Priority 2 (visibility) and Priority 4 (poll interval) are done.
 
 **Remaining opportunities:**
-1. Add refresh source visibility (Priority 2) - helps users understand what triggered reindex
-2. Document the polling behavior more clearly (Priority 3)
+1. Document the polling behavior more clearly (Priority 3) - wiki already updated
 
 **Not recommended:**
 - Git hooks (marginal benefit for significant complexity)
 - fsnotify migration (current polling works well, cross-platform compatible)
+- Priority 1 (MCP file watching) - 10s polling is acceptable

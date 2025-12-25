@@ -70,20 +70,29 @@ type RefreshResult struct {
 	Duration     time.Duration `json:"duration"`
 	FilesChanged int           `json:"filesChanged,omitempty"`
 	Error        string        `json:"error,omitempty"`
+	Trigger      string        `json:"trigger,omitempty"`
+	TriggerInfo  string        `json:"triggerInfo,omitempty"`
 }
 
 // RunIncrementalRefresh performs an incremental refresh on a repository
 func (rm *RefreshManager) RunIncrementalRefresh(ctx context.Context, repoPath string) *RefreshResult {
+	return rm.RunIncrementalRefreshWithTrigger(ctx, repoPath, index.TriggerStale, "")
+}
+
+// RunIncrementalRefreshWithTrigger performs an incremental refresh with trigger info
+func (rm *RefreshManager) RunIncrementalRefreshWithTrigger(ctx context.Context, repoPath string, trigger index.RefreshTrigger, triggerInfo string) *RefreshResult {
 	rm.markPending(repoPath)
 	defer rm.clearPending(repoPath)
 
 	start := time.Now()
 	result := &RefreshResult{
-		RepoPath: repoPath,
-		Type:     "incremental",
+		RepoPath:    repoPath,
+		Type:        "incremental",
+		Trigger:     string(trigger),
+		TriggerInfo: triggerInfo,
 	}
 
-	rm.stdLogger.Printf("Starting incremental refresh for %s", repoPath)
+	rm.stdLogger.Printf("Starting incremental refresh for %s (trigger: %s)", repoPath, trigger)
 
 	// Open database
 	db, err := storage.Open(repoPath, rm.logger)
@@ -102,14 +111,14 @@ func (rm *RefreshManager) RunIncrementalRefresh(ctx context.Context, repoPath st
 	needsFull, reason := indexer.NeedsFullReindex()
 	if needsFull {
 		rm.stdLogger.Printf("Incremental not possible for %s: %s, falling back to full", repoPath, reason)
-		return rm.RunFullReindex(ctx, repoPath)
+		return rm.RunFullReindexWithTrigger(ctx, repoPath, trigger, triggerInfo)
 	}
 
 	// Run incremental update
 	stats, err := indexer.IndexIncremental(ctx, "")
 	if err != nil {
 		rm.stdLogger.Printf("Incremental refresh failed for %s: %v, falling back to full", repoPath, err)
-		return rm.RunFullReindex(ctx, repoPath)
+		return rm.RunFullReindexWithTrigger(ctx, repoPath, trigger, triggerInfo)
 	}
 
 	result.Success = true
@@ -151,13 +160,20 @@ func (rm *RefreshManager) emitWebhookEvent(eventType, source string, data map[st
 
 // RunFullReindex performs a full reindex on a repository
 func (rm *RefreshManager) RunFullReindex(ctx context.Context, repoPath string) *RefreshResult {
+	return rm.RunFullReindexWithTrigger(ctx, repoPath, index.TriggerStale, "")
+}
+
+// RunFullReindexWithTrigger performs a full reindex with trigger info
+func (rm *RefreshManager) RunFullReindexWithTrigger(ctx context.Context, repoPath string, trigger index.RefreshTrigger, triggerInfo string) *RefreshResult {
 	start := time.Now()
 	result := &RefreshResult{
-		RepoPath: repoPath,
-		Type:     "full",
+		RepoPath:    repoPath,
+		Type:        "full",
+		Trigger:     string(trigger),
+		TriggerInfo: triggerInfo,
 	}
 
-	rm.stdLogger.Printf("Starting full reindex for %s", repoPath)
+	rm.stdLogger.Printf("Starting full reindex for %s (trigger: %s)", repoPath, trigger)
 
 	// Detect language
 	lang, _, _ := project.DetectAllLanguages(repoPath)
@@ -218,12 +234,20 @@ func (rm *RefreshManager) RunFullReindex(ctx context.Context, repoPath string) *
 		return result
 	}
 
-	// Update metadata
+	duration := time.Since(start)
+
+	// Update metadata with refresh trigger info
 	meta := &index.IndexMeta{
 		CreatedAt:   time.Now(),
-		Duration:    time.Since(start).Round(time.Millisecond * 100).String(),
+		Duration:    duration.Round(time.Millisecond * 100).String(),
 		Indexer:     indexer.CheckCommand,
 		IndexerArgs: parts,
+		LastRefresh: &index.LastRefresh{
+			At:          time.Now(),
+			Trigger:     trigger,
+			TriggerInfo: triggerInfo,
+			DurationMs:  duration.Milliseconds(),
+		},
 	}
 
 	if rs, rsErr := repostate.ComputeRepoState(repoPath); rsErr == nil {
@@ -236,9 +260,9 @@ func (rm *RefreshManager) RunFullReindex(ctx context.Context, repoPath string) *
 	}
 
 	result.Success = true
-	result.Duration = time.Since(start)
+	result.Duration = duration
 
-	rm.stdLogger.Printf("Full reindex completed for %s in %v", repoPath, result.Duration.Round(time.Millisecond))
+	rm.stdLogger.Printf("Full reindex completed for %s in %v (trigger: %s)", repoPath, duration.Round(time.Millisecond), trigger)
 
 	// Emit webhook event
 	rm.emitWebhookEvent("index.updated", repoPath, map[string]interface{}{
