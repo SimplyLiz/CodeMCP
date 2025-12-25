@@ -595,3 +595,347 @@ func TestGetSupportedEnvVars(t *testing.T) {
 		t.Error("GetSupportedEnvVars() should include CKB_BUDGET_MAX_MODULES")
 	}
 }
+
+func TestApplyOverride_AllPaths(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		value    interface{}
+		validate func(t *testing.T, cfg *Config) bool
+	}{
+		// Tier
+		{"tier", "tier", "fast", func(t *testing.T, cfg *Config) bool { return cfg.Tier == "fast" }},
+		// Logging
+		{"logging.level", "logging.level", "debug", func(t *testing.T, cfg *Config) bool { return cfg.Logging.Level == "debug" }},
+		{"logging.format", "logging.format", "json", func(t *testing.T, cfg *Config) bool { return cfg.Logging.Format == "json" }},
+		// Cache
+		{"cache.queryTtlSeconds", "cache.queryTtlSeconds", 600, func(t *testing.T, cfg *Config) bool { return cfg.Cache.QueryTtlSeconds == 600 }},
+		{"cache.viewTtlSeconds", "cache.viewTtlSeconds", 7200, func(t *testing.T, cfg *Config) bool { return cfg.Cache.ViewTtlSeconds == 7200 }},
+		{"cache.negativeTtlSeconds", "cache.negativeTtlSeconds", 120, func(t *testing.T, cfg *Config) bool { return cfg.Cache.NegativeTtlSeconds == 120 }},
+		// Budget
+		{"budget.maxModules", "budget.maxModules", 50, func(t *testing.T, cfg *Config) bool { return cfg.Budget.MaxModules == 50 }},
+		{"budget.maxSymbolsPerModule", "budget.maxSymbolsPerModule", 10, func(t *testing.T, cfg *Config) bool { return cfg.Budget.MaxSymbolsPerModule == 10 }},
+		{"budget.maxImpactItems", "budget.maxImpactItems", 30, func(t *testing.T, cfg *Config) bool { return cfg.Budget.MaxImpactItems == 30 }},
+		{"budget.maxDrilldowns", "budget.maxDrilldowns", 10, func(t *testing.T, cfg *Config) bool { return cfg.Budget.MaxDrilldowns == 10 }},
+		{"budget.estimatedMaxTokens", "budget.estimatedMaxTokens", 8000, func(t *testing.T, cfg *Config) bool { return cfg.Budget.EstimatedMaxTokens == 8000 }},
+		// Backends
+		{"backends.scip.enabled", "backends.scip.enabled", false, func(t *testing.T, cfg *Config) bool { return cfg.Backends.Scip.Enabled == false }},
+		{"backends.lsp.enabled", "backends.lsp.enabled", false, func(t *testing.T, cfg *Config) bool { return cfg.Backends.Lsp.Enabled == false }},
+		{"backends.git.enabled", "backends.git.enabled", false, func(t *testing.T, cfg *Config) bool { return cfg.Backends.Git.Enabled == false }},
+		// Telemetry
+		{"telemetry.enabled", "telemetry.enabled", true, func(t *testing.T, cfg *Config) bool { return cfg.Telemetry.Enabled == true }},
+		// Daemon
+		{"daemon.port", "daemon.port", 8080, func(t *testing.T, cfg *Config) bool { return cfg.Daemon.Port == 8080 }},
+		{"daemon.bind", "daemon.bind", "0.0.0.0", func(t *testing.T, cfg *Config) bool { return cfg.Daemon.Bind == "0.0.0.0" }},
+		// Privacy
+		{"privacy.mode", "privacy.mode", "redacted", func(t *testing.T, cfg *Config) bool { return cfg.Privacy.Mode == "redacted" }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := DefaultConfig()
+			result := applyOverride(cfg, tt.path, tt.value)
+
+			if !result {
+				t.Errorf("applyOverride() returned false for path %q", tt.path)
+			}
+
+			if !tt.validate(t, cfg) {
+				t.Errorf("applyOverride() did not set value correctly for path %q", tt.path)
+			}
+		})
+	}
+}
+
+func TestApplyOverride_InvalidPaths(t *testing.T) {
+	tests := []struct {
+		name  string
+		path  string
+		value interface{}
+	}{
+		{"unknown top-level", "unknown", "value"},
+		{"invalid logging path", "logging", "value"},
+		{"invalid cache path", "cache", 100},
+		{"invalid budget path", "budget", 100},
+		{"invalid backends path", "backends.unknown.enabled", true},
+		{"invalid telemetry path", "telemetry", true},
+		{"invalid daemon path", "daemon", 8080},
+		{"invalid privacy path", "privacy", "mode"},
+		// Wrong types
+		{"tier wrong type", "tier", 123},
+		{"logging.level wrong type", "logging.level", 123},
+		{"logging.format wrong type", "logging.format", 123},
+		{"cache.queryTtlSeconds wrong type", "cache.queryTtlSeconds", "string"},
+		{"budget.maxModules wrong type", "budget.maxModules", "string"},
+		{"backends.scip.enabled wrong type", "backends.scip.enabled", "string"},
+		{"telemetry.enabled wrong type", "telemetry.enabled", "string"},
+		{"daemon.port wrong type", "daemon.port", "string"},
+		{"daemon.bind wrong type", "daemon.bind", 123},
+		{"privacy.mode wrong type", "privacy.mode", 123},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := DefaultConfig()
+			result := applyOverride(cfg, tt.path, tt.value)
+
+			if result {
+				t.Errorf("applyOverride() should return false for invalid path %q", tt.path)
+			}
+		})
+	}
+}
+
+func TestApplyOverride_PartialPaths(t *testing.T) {
+	cfg := DefaultConfig()
+
+	// Test paths with insufficient parts
+	tests := []struct {
+		path  string
+		value interface{}
+	}{
+		{"logging", "value"},
+		{"cache", 100},
+		{"budget", 100},
+		{"backends.scip", true},
+		{"backends", true},
+		{"telemetry", true},
+		{"daemon", 8080},
+		{"privacy", "mode"},
+	}
+
+	for _, tt := range tests {
+		result := applyOverride(cfg, tt.path, tt.value)
+		if result {
+			t.Errorf("applyOverride() should return false for incomplete path %q", tt.path)
+		}
+	}
+}
+
+func TestLoadConfigFromPath_InvalidJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "bad-config.json")
+
+	// Write invalid JSON
+	if err := os.WriteFile(configPath, []byte("{ invalid json }"), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	_, err := loadConfigFromPath(configPath)
+	if err == nil {
+		t.Error("loadConfigFromPath() should return error for invalid JSON")
+	}
+}
+
+func TestLoadConfigFromPath_NotFound(t *testing.T) {
+	_, err := loadConfigFromPath("/nonexistent/path/config.json")
+	if err == nil {
+		t.Error("loadConfigFromPath() should return error for nonexistent file")
+	}
+}
+
+func TestLoadConfigWithDetails_InvalidConfigPath(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Set invalid CKB_CONFIG_PATH
+	os.Setenv("CKB_CONFIG_PATH", "/nonexistent/config.json")
+	defer os.Unsetenv("CKB_CONFIG_PATH")
+
+	_, err := LoadConfigWithDetails(tmpDir)
+	if err == nil {
+		t.Error("LoadConfigWithDetails() should return error for nonexistent CKB_CONFIG_PATH")
+	}
+}
+
+func TestLoadConfigWithDetails_InvalidJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	ckbDir := filepath.Join(tmpDir, ".ckb")
+	if err := os.MkdirAll(ckbDir, 0755); err != nil {
+		t.Fatalf("Failed to create .ckb dir: %v", err)
+	}
+
+	// Write invalid JSON
+	configPath := filepath.Join(ckbDir, "config.json")
+	if err := os.WriteFile(configPath, []byte("{ invalid }"), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	// Clear CKB_CONFIG_PATH to use default location
+	os.Unsetenv("CKB_CONFIG_PATH")
+
+	_, err := LoadConfigWithDetails(tmpDir)
+	if err == nil {
+		t.Error("LoadConfigWithDetails() should return error for invalid JSON config")
+	}
+}
+
+func TestApplyEnvOverrides_InvalidBool(t *testing.T) {
+	// Clear env vars first
+	for envVar := range envVarMappings {
+		os.Unsetenv(envVar)
+	}
+
+	// Set invalid bool
+	os.Setenv("CKB_BACKENDS_SCIP_ENABLED", "not-a-bool")
+	defer os.Unsetenv("CKB_BACKENDS_SCIP_ENABLED")
+
+	cfg := DefaultConfig()
+	originalValue := cfg.Backends.Scip.Enabled
+	overrides := applyEnvOverrides(cfg)
+
+	// Should keep original value
+	if cfg.Backends.Scip.Enabled != originalValue {
+		t.Error("applyEnvOverrides() should not change value for invalid bool")
+	}
+
+	// Should not record override
+	for _, ov := range overrides {
+		if ov.EnvVar == "CKB_BACKENDS_SCIP_ENABLED" {
+			t.Error("applyEnvOverrides() should not record override for invalid bool")
+		}
+	}
+}
+
+func TestApplyEnvOverrides_AllEnvVars(t *testing.T) {
+	// Clear all env vars first
+	for envVar := range envVarMappings {
+		os.Unsetenv(envVar)
+	}
+
+	// Set all supported env vars with valid values
+	testValues := map[string]string{
+		"CKB_LOG_LEVEL":                    "warn",
+		"CKB_LOG_FORMAT":                   "json",
+		"CKB_LOGGING_LEVEL":                "error", // Will be overridden by CKB_LOG_LEVEL in iteration order
+		"CKB_LOGGING_FORMAT":               "human",
+		"CKB_TIER":                         "full",
+		"CKB_CACHE_QUERY_TTL_SECONDS":      "500",
+		"CKB_CACHE_VIEW_TTL_SECONDS":       "5000",
+		"CKB_CACHE_NEGATIVE_TTL_SECONDS":   "100",
+		"CKB_BUDGET_MAX_MODULES":           "25",
+		"CKB_BUDGET_MAX_SYMBOLS_PER_MODULE": "15",
+		"CKB_BUDGET_MAX_IMPACT_ITEMS":      "40",
+		"CKB_BUDGET_MAX_DRILLDOWNS":        "8",
+		"CKB_BUDGET_ESTIMATED_MAX_TOKENS":  "6000",
+		"CKB_BACKENDS_SCIP_ENABLED":        "false",
+		"CKB_BACKENDS_LSP_ENABLED":         "false",
+		"CKB_BACKENDS_GIT_ENABLED":         "false",
+		"CKB_TELEMETRY_ENABLED":            "true",
+		"CKB_DAEMON_PORT":                  "9999",
+		"CKB_DAEMON_BIND":                  "127.0.0.1",
+		"CKB_PRIVACY_MODE":                 "redacted",
+	}
+
+	for k, v := range testValues {
+		os.Setenv(k, v)
+	}
+	defer func() {
+		for k := range testValues {
+			os.Unsetenv(k)
+		}
+	}()
+
+	cfg := DefaultConfig()
+	overrides := applyEnvOverrides(cfg)
+
+	// Should have many overrides
+	if len(overrides) < 10 {
+		t.Errorf("applyEnvOverrides() returned %d overrides, expected at least 10", len(overrides))
+	}
+
+	// Verify some values were applied
+	if cfg.Budget.MaxModules != 25 {
+		t.Errorf("Budget.MaxModules = %d, want 25", cfg.Budget.MaxModules)
+	}
+	if cfg.Daemon.Port != 9999 {
+		t.Errorf("Daemon.Port = %d, want 9999", cfg.Daemon.Port)
+	}
+	if cfg.Privacy.Mode != "redacted" {
+		t.Errorf("Privacy.Mode = %q, want %q", cfg.Privacy.Mode, "redacted")
+	}
+}
+
+func TestLoadConfig_WithEnvOverrides(t *testing.T) {
+	tmpDir := t.TempDir()
+	ckbDir := filepath.Join(tmpDir, ".ckb")
+	if err := os.MkdirAll(ckbDir, 0755); err != nil {
+		t.Fatalf("Failed to create .ckb dir: %v", err)
+	}
+
+	// Write a config file
+	configContent := `{"version": 5, "budget": {"maxModules": 10}}`
+	if err := os.WriteFile(filepath.Join(ckbDir, "config.json"), []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	// Clear env
+	os.Unsetenv("CKB_CONFIG_PATH")
+	os.Setenv("CKB_BUDGET_MAX_MODULES", "99")
+	defer os.Unsetenv("CKB_BUDGET_MAX_MODULES")
+
+	cfg, err := LoadConfig(tmpDir)
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+
+	// Should have env override applied
+	if cfg.Budget.MaxModules != 99 {
+		t.Errorf("Budget.MaxModules = %d, want 99 (from env override)", cfg.Budget.MaxModules)
+	}
+}
+
+func TestSave_ErrorHandling(t *testing.T) {
+	cfg := DefaultConfig()
+
+	// Try to save to a directory that doesn't exist
+	// This should fail since the .ckb directory won't exist
+	err := cfg.Save("/nonexistent/directory")
+	if err == nil {
+		t.Error("Save() should return error when directory doesn't exist")
+	}
+}
+
+func TestLoadConfig_ErrorHandling(t *testing.T) {
+	// Set CKB_CONFIG_PATH to an invalid file
+	os.Setenv("CKB_CONFIG_PATH", "/nonexistent/config.json")
+	defer os.Unsetenv("CKB_CONFIG_PATH")
+
+	_, err := LoadConfig("/tmp")
+	if err == nil {
+		t.Error("LoadConfig() should return error for invalid CKB_CONFIG_PATH")
+	}
+}
+
+func TestLoadConfigWithDetails_FromStandardLocation(t *testing.T) {
+	tmpDir := t.TempDir()
+	ckbDir := filepath.Join(tmpDir, ".ckb")
+	if err := os.MkdirAll(ckbDir, 0755); err != nil {
+		t.Fatalf("Failed to create .ckb dir: %v", err)
+	}
+
+	// Write a config file
+	configContent := `{"version": 5, "tier": "fast"}`
+	if err := os.WriteFile(filepath.Join(ckbDir, "config.json"), []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	// Clear CKB_CONFIG_PATH
+	os.Unsetenv("CKB_CONFIG_PATH")
+
+	result, err := LoadConfigWithDetails(tmpDir)
+	if err != nil {
+		t.Fatalf("LoadConfigWithDetails() error = %v", err)
+	}
+
+	if result.UsedDefaults {
+		t.Error("UsedDefaults should be false when config file exists")
+	}
+
+	if result.ConfigPath == "" {
+		t.Error("ConfigPath should be set when config file exists")
+	}
+
+	if result.Config.Tier != "fast" {
+		t.Errorf("Tier = %q, want %q", result.Config.Tier, "fast")
+	}
+}
