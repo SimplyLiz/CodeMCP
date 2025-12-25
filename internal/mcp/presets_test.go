@@ -225,3 +225,63 @@ func TestToolsetHash(t *testing.T) {
 		t.Error("different descriptions should have different hashes")
 	}
 }
+
+func TestGetAllPresetInfo(t *testing.T) {
+	logger := logging.NewLogger(logging.Config{
+		Level: logging.ErrorLevel,
+	})
+
+	server := NewMCPServer("test", nil, logger)
+	allTools := server.GetToolDefinitions()
+	infos := GetAllPresetInfo(allTools)
+
+	// Should return info for all presets
+	if len(infos) != len(ValidPresets()) {
+		t.Errorf("expected %d preset infos, got %d", len(ValidPresets()), len(infos))
+	}
+
+	// Verify each preset has valid data
+	for _, info := range infos {
+		if info.Name == "" {
+			t.Error("preset info has empty name")
+		}
+		if info.ToolCount == 0 {
+			t.Errorf("preset %s has 0 tools", info.Name)
+		}
+		if info.TokenCount == 0 {
+			t.Errorf("preset %s has 0 tokens", info.Name)
+		}
+		if info.Description == "" {
+			t.Errorf("preset %s has no description", info.Name)
+		}
+	}
+
+	// Verify core is the default
+	var foundDefault bool
+	for _, info := range infos {
+		if info.Name == PresetCore && info.IsDefault {
+			foundDefault = true
+		}
+	}
+	if !foundDefault {
+		t.Error("core preset should be marked as default")
+	}
+
+	// Full preset should have the most tools
+	var fullInfo *PresetInfo
+	for i := range infos {
+		if infos[i].Name == PresetFull {
+			fullInfo = &infos[i]
+			break
+		}
+	}
+	if fullInfo == nil {
+		t.Fatal("full preset not found")
+	}
+	for _, info := range infos {
+		if info.Name != PresetFull && info.ToolCount > fullInfo.ToolCount {
+			t.Errorf("preset %s has more tools (%d) than full (%d)",
+				info.Name, info.ToolCount, fullInfo.ToolCount)
+		}
+	}
+}

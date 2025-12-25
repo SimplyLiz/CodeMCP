@@ -52,6 +52,7 @@ var (
 	mcpWatchInterval time.Duration
 	mcpRepo          string
 	mcpPreset        string
+	mcpListPresets   bool
 )
 
 const defaultWatchInterval = 30 * time.Second
@@ -65,9 +66,16 @@ func init() {
 	mcpCmd.Flags().StringVar(&mcpRepo, "repo", "", "Repository path or registry name (auto-detected)")
 	mcpCmd.Flags().StringVar(&mcpPreset, "preset", mcp.DefaultPreset,
 		"Tool preset: core, review, refactor, federation, docs, ops, full")
+	mcpCmd.Flags().BoolVar(&mcpListPresets, "list-presets", false,
+		"List available presets with tool counts and token estimates")
 }
 
 func runMCP(cmd *cobra.Command, args []string) error {
+	// Handle --list-presets flag
+	if mcpListPresets {
+		return listPresets()
+	}
+
 	// Create logger for MCP server
 	// Use stderr for logs since stdout is used for MCP protocol
 	logger := logging.NewLogger(logging.Config{
@@ -323,6 +331,48 @@ func triggerReindex(repoRoot, ckbDir string, logger *logging.Logger) error {
 		"duration": duration.String(),
 		"files":    newMeta.FileCount,
 	})
+
+	return nil
+}
+
+// listPresets prints available presets with tool counts and token estimates
+func listPresets() error {
+	// Create a minimal logger for server initialization
+	logger := logging.NewLogger(logging.Config{
+		Level:  logging.ErrorLevel,
+		Output: os.Stderr,
+	})
+
+	// Create server to get tool definitions
+	server := mcp.NewMCPServer(version.Version, nil, logger)
+	allTools := server.GetToolDefinitions()
+	presets := mcp.GetAllPresetInfo(allTools)
+
+	fmt.Println()
+	fmt.Println("Available presets:")
+	fmt.Println()
+
+	// Print table header
+	fmt.Printf("  %-12s %6s %14s  %s\n", "PRESET", "TOOLS", "TOKENS", "DESCRIPTION")
+	fmt.Printf("  %-12s %6s %14s  %s\n", "------", "-----", "------", "-----------")
+
+	for _, p := range presets {
+		suffix := ""
+		if p.IsDefault {
+			suffix = " (default)"
+		}
+		fmt.Printf("  %-12s %6d %14s  %s%s\n",
+			p.Name,
+			p.ToolCount,
+			mcp.FormatTokens(p.TokenCount),
+			p.Description,
+			suffix,
+		)
+	}
+
+	fmt.Println()
+	fmt.Printf("Use: ckb mcp --preset=<name>\n")
+	fmt.Println()
 
 	return nil
 }
