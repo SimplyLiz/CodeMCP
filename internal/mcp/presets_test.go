@@ -175,6 +175,73 @@ func TestExpandToolsetRateLimit(t *testing.T) {
 	}
 }
 
+func TestSetPresetInvalid(t *testing.T) {
+	logger := logging.NewLogger(logging.Config{
+		Level: logging.ErrorLevel,
+	})
+
+	server := NewMCPServer("test", nil, logger)
+
+	// Try to set an invalid preset
+	err := server.SetPreset("nonexistent")
+	if err == nil {
+		t.Error("expected error for invalid preset")
+	}
+
+	// Verify the preset wasn't changed
+	if server.GetActivePreset() != DefaultPreset {
+		t.Errorf("preset should remain %s after invalid SetPreset, got %s",
+			DefaultPreset, server.GetActivePreset())
+	}
+}
+
+func TestGetActivePresetAfterSet(t *testing.T) {
+	logger := logging.NewLogger(logging.Config{
+		Level: logging.ErrorLevel,
+	})
+
+	server := NewMCPServer("test", nil, logger)
+
+	// Initially should return default
+	if server.GetActivePreset() != DefaultPreset {
+		t.Errorf("expected default preset %s, got %s", DefaultPreset, server.GetActivePreset())
+	}
+
+	// Set to review preset
+	if err := server.SetPreset(PresetReview); err != nil {
+		t.Fatalf("SetPreset failed: %v", err)
+	}
+
+	// Should return review
+	if server.GetActivePreset() != PresetReview {
+		t.Errorf("expected preset %s, got %s", PresetReview, server.GetActivePreset())
+	}
+}
+
+func TestPresetDescriptionsComplete(t *testing.T) {
+	// Verify all presets have descriptions
+	for _, preset := range ValidPresets() {
+		desc, ok := PresetDescriptions[preset]
+		if !ok {
+			t.Errorf("preset %s missing from PresetDescriptions", preset)
+		}
+		if desc == "" {
+			t.Errorf("preset %s has empty description", preset)
+		}
+	}
+}
+
+func TestGetPresetToolsInvalid(t *testing.T) {
+	// Invalid preset should return core tools
+	tools := GetPresetTools("nonexistent")
+	coreTools := GetPresetTools(PresetCore)
+
+	if len(tools) != len(coreTools) {
+		t.Errorf("invalid preset should return core tools, got %d tools instead of %d",
+			len(tools), len(coreTools))
+	}
+}
+
 func TestFormatTokens(t *testing.T) {
 	tests := []struct {
 		tokens   int
