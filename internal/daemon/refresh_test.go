@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 	"testing"
 	"time"
@@ -281,4 +282,199 @@ func TestRefreshManager_EmitWebhookEvent_NilManager(t *testing.T) {
 	})
 
 	// No error expected
+}
+
+func TestRefreshManager_EmitWebhookEvent_WithData(t *testing.T) {
+	stdLogger := &mockLogger{}
+	rm := NewRefreshManager(nil, stdLogger, nil)
+
+	// Test with various data types
+	rm.emitWebhookEvent("index.updated", "/test/repo", map[string]interface{}{
+		"type":         "incremental",
+		"filesChanged": 5,
+		"duration":     "1.5s",
+		"nested": map[string]interface{}{
+			"key": "value",
+		},
+	})
+
+	// No panic expected
+}
+
+func TestRefreshManager_RunIncrementalRefresh_SetsType(t *testing.T) {
+	logger := logging.NewLogger(logging.Config{
+		Level:  logging.ErrorLevel,
+		Format: logging.HumanFormat,
+	})
+	stdLogger := &mockLogger{}
+
+	rm := NewRefreshManager(logger, stdLogger, nil)
+
+	ctx := context.Background()
+	result := rm.RunIncrementalRefresh(ctx, "/nonexistent/repo/path")
+
+	// Even on failure, type should be set correctly
+	if result.Type != "incremental" {
+		t.Errorf("expected Type='incremental', got %q", result.Type)
+	}
+}
+
+func TestRefreshManager_RunFullReindex_SetsType(t *testing.T) {
+	logger := logging.NewLogger(logging.Config{
+		Level:  logging.ErrorLevel,
+		Format: logging.HumanFormat,
+	})
+	stdLogger := &mockLogger{}
+
+	rm := NewRefreshManager(logger, stdLogger, nil)
+
+	ctx := context.Background()
+	result := rm.RunFullReindex(ctx, "/nonexistent/repo/path")
+
+	// Even on failure, type should be set correctly
+	if result.Type != "full" {
+		t.Errorf("expected Type='full', got %q", result.Type)
+	}
+}
+
+func TestRefreshManager_RunIncrementalRefresh_SetsDuration(t *testing.T) {
+	logger := logging.NewLogger(logging.Config{
+		Level:  logging.ErrorLevel,
+		Format: logging.HumanFormat,
+	})
+	stdLogger := &mockLogger{}
+
+	rm := NewRefreshManager(logger, stdLogger, nil)
+
+	ctx := context.Background()
+	result := rm.RunIncrementalRefresh(ctx, "/nonexistent/repo/path")
+
+	// Duration should be positive even on failure
+	if result.Duration <= 0 {
+		t.Error("expected positive Duration")
+	}
+}
+
+func TestRefreshManager_RunFullReindex_SetsDuration(t *testing.T) {
+	logger := logging.NewLogger(logging.Config{
+		Level:  logging.ErrorLevel,
+		Format: logging.HumanFormat,
+	})
+	stdLogger := &mockLogger{}
+
+	rm := NewRefreshManager(logger, stdLogger, nil)
+
+	ctx := context.Background()
+	result := rm.RunFullReindex(ctx, "/nonexistent/repo/path")
+
+	// Duration should be positive even on failure
+	if result.Duration <= 0 {
+		t.Error("expected positive Duration")
+	}
+}
+
+func TestRefreshManager_PendingClearedAfterRefresh(t *testing.T) {
+	logger := logging.NewLogger(logging.Config{
+		Level:  logging.ErrorLevel,
+		Format: logging.HumanFormat,
+	})
+	stdLogger := &mockLogger{}
+
+	rm := NewRefreshManager(logger, stdLogger, nil)
+	repoPath := "/nonexistent/repo/path"
+
+	// Run refresh (will fail but should still clear pending)
+	ctx := context.Background()
+	rm.RunIncrementalRefresh(ctx, repoPath)
+
+	// Pending should be cleared after refresh completes
+	if rm.HasPendingRefresh(repoPath) {
+		t.Error("pending state should be cleared after refresh completes")
+	}
+}
+
+func TestRefreshResult_JSONMarshaling(t *testing.T) {
+	result := &RefreshResult{
+		RepoPath:     "/test/repo",
+		Type:         "incremental",
+		Success:      true,
+		Duration:     2 * time.Second,
+		FilesChanged: 5,
+	}
+
+	// Marshal should work
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	// Unmarshal should work
+	var decoded RefreshResult
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+
+	if decoded.RepoPath != result.RepoPath {
+		t.Errorf("expected RepoPath=%q, got %q", result.RepoPath, decoded.RepoPath)
+	}
+	if decoded.Type != result.Type {
+		t.Errorf("expected Type=%q, got %q", result.Type, decoded.Type)
+	}
+	if !decoded.Success {
+		t.Error("expected Success=true")
+	}
+	if decoded.FilesChanged != result.FilesChanged {
+		t.Errorf("expected FilesChanged=%d, got %d", result.FilesChanged, decoded.FilesChanged)
+	}
+}
+
+func TestRefreshResult_JSONMarshaling_WithError(t *testing.T) {
+	result := &RefreshResult{
+		RepoPath: "/test/repo",
+		Type:     "full",
+		Success:  false,
+		Duration: 500 * time.Millisecond,
+		Error:    "indexer not found",
+	}
+
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	var decoded RefreshResult
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+
+	if decoded.Success {
+		t.Error("expected Success=false")
+	}
+	if decoded.Error != "indexer not found" {
+		t.Errorf("expected Error='indexer not found', got %q", decoded.Error)
+	}
+}
+
+func TestMockLogger_Concurrent(t *testing.T) {
+	logger := &mockLogger{}
+	var wg sync.WaitGroup
+
+	// Concurrent logging should not panic
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			logger.Printf("message %d", n)
+		}(i)
+	}
+
+	wg.Wait()
+
+	logger.mu.Lock()
+	count := len(logger.messages)
+	logger.mu.Unlock()
+
+	if count != 100 {
+		t.Errorf("expected 100 messages, got %d", count)
+	}
 }
