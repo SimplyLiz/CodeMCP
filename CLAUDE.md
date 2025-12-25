@@ -48,6 +48,12 @@ golangci-lint run
 # Start MCP server (for AI tool integration)
 ./ckb mcp
 
+# List available presets with token estimates
+./ckb mcp --list-presets
+
+# Start with a specific preset
+./ckb mcp --preset=review
+
 # Auto-configure AI tool integration (interactive)
 ./ckb setup
 
