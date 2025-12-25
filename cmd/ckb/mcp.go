@@ -249,11 +249,23 @@ func runWatchLoop(repoRoot string, interval time.Duration, logger *logging.Logge
 			continue
 		}
 
+		// Determine trigger type based on freshness reason
+		trigger := index.TriggerStale
+		triggerInfo := freshness.Reason
+		if freshness.CommitsBehind > 0 {
+			trigger = index.TriggerHEAD
+			// Try to get branch info for triggerInfo
+			if meta.CommitHash != "" && freshness.CurrentCommit != "" {
+				triggerInfo = fmt.Sprintf("%d commit(s) behind", freshness.CommitsBehind)
+			}
+		}
+
 		logger.Info("Index stale, triggering reindex", map[string]interface{}{
-			"reason": freshness.Reason,
+			"trigger": string(trigger),
+			"reason":  freshness.Reason,
 		})
 
-		if err := triggerReindex(repoRoot, ckbDir, logger); err != nil {
+		if err := triggerReindex(repoRoot, ckbDir, trigger, triggerInfo, logger); err != nil {
 			logger.Error("Reindex failed", map[string]interface{}{
 				"error": err.Error(),
 			})
@@ -262,7 +274,7 @@ func runWatchLoop(repoRoot string, interval time.Duration, logger *logging.Logge
 }
 
 // triggerReindex runs the SCIP indexer and updates metadata
-func triggerReindex(repoRoot, ckbDir string, logger *logging.Logger) error {
+func triggerReindex(repoRoot, ckbDir string, trigger index.RefreshTrigger, triggerInfo string, logger *logging.Logger) error {
 	// Load project config to get language and indexer
 	config, err := project.LoadConfig(repoRoot)
 	if err != nil {
@@ -307,13 +319,19 @@ func triggerReindex(repoRoot, ckbDir string, logger *logging.Logger) error {
 
 	duration := time.Since(start)
 
-	// Update metadata
+	// Update metadata with refresh trigger info
 	newMeta := &index.IndexMeta{
 		CreatedAt:   time.Now(),
 		FileCount:   countSourceFiles(repoRoot, config.Language),
 		Duration:    duration.Round(time.Millisecond * 100).String(),
 		Indexer:     indexer.CheckCommand,
 		IndexerArgs: parts,
+		LastRefresh: &index.LastRefresh{
+			At:          time.Now(),
+			Trigger:     trigger,
+			TriggerInfo: triggerInfo,
+			DurationMs:  duration.Milliseconds(),
+		},
 	}
 
 	if rs, err := repostate.ComputeRepoState(repoRoot); err == nil {
@@ -328,6 +346,7 @@ func triggerReindex(repoRoot, ckbDir string, logger *logging.Logger) error {
 	}
 
 	logger.Info("Reindex complete", map[string]interface{}{
+		"trigger":  string(trigger),
 		"duration": duration.String(),
 		"files":    newMeta.FileCount,
 	})

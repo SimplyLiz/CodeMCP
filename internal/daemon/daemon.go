@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"ckb/internal/config"
+	"ckb/internal/index"
 	"ckb/internal/logging"
 	"ckb/internal/paths"
 	"ckb/internal/scheduler"
@@ -142,12 +144,28 @@ func (d *Daemon) onWatcherChange(repoPath string, events []watcher.Event) {
 		return
 	}
 
+	// Determine trigger type from events
+	trigger, triggerInfo := d.detectTriggerFromEvents(events)
+
 	// Queue incremental refresh in background
 	d.wg.Add(1)
 	go func() {
 		defer d.wg.Done()
-		d.refreshManager.RunIncrementalRefresh(d.ctx, repoPath)
+		d.refreshManager.RunIncrementalRefreshWithTrigger(d.ctx, repoPath, trigger, triggerInfo)
 	}()
+}
+
+// detectTriggerFromEvents determines the trigger type from watcher events
+func (d *Daemon) detectTriggerFromEvents(events []watcher.Event) (index.RefreshTrigger, string) {
+	for _, e := range events {
+		if strings.HasSuffix(e.Path, "HEAD") {
+			return index.TriggerHEAD, "branch or commit changed"
+		}
+		if strings.HasSuffix(e.Path, "index") {
+			return index.TriggerIndex, "staged files changed"
+		}
+	}
+	return index.TriggerStale, ""
 }
 
 // Start starts the daemon

@@ -2,23 +2,26 @@ package query
 
 import (
 	"context"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"time"
 
+	"ckb/internal/index"
 	"ckb/internal/tier"
 	"ckb/internal/version"
 )
 
 // StatusResponse is the response for getStatus.
 type StatusResponse struct {
-	CkbVersion      string          `json:"ckbVersion"`
-	Healthy         bool            `json:"healthy"`
-	Tier            *tier.TierInfo  `json:"tier"`
-	RepoState       *RepoState      `json:"repoState"`
-	Backends        []BackendStatus `json:"backends"`
-	Cache           *CacheStatus    `json:"cache"`
-	QueryDurationMs int64           `json:"queryDurationMs"`
+	CkbVersion      string              `json:"ckbVersion"`
+	Healthy         bool                `json:"healthy"`
+	Tier            *tier.TierInfo      `json:"tier"`
+	RepoState       *RepoState          `json:"repoState"`
+	Backends        []BackendStatus     `json:"backends"`
+	Cache           *CacheStatus        `json:"cache"`
+	LastRefresh     *index.LastRefresh  `json:"lastRefresh,omitempty"`
+	QueryDurationMs int64               `json:"queryDurationMs"`
 }
 
 // BackendStatus describes the status of a backend.
@@ -69,6 +72,13 @@ func (e *Engine) GetStatus(ctx context.Context) (*StatusResponse, error) {
 	// Get tier info
 	tierInfo := e.GetTierInfo()
 
+	// Get last refresh info from index metadata
+	var lastRefresh *index.LastRefresh
+	ckbDir := filepath.Join(e.repoRoot, ".ckb")
+	if meta, err := index.LoadMeta(ckbDir); err == nil && meta != nil {
+		lastRefresh = meta.LastRefresh
+	}
+
 	return &StatusResponse{
 		CkbVersion:      version.Version,
 		Healthy:         healthy,
@@ -76,6 +86,7 @@ func (e *Engine) GetStatus(ctx context.Context) (*StatusResponse, error) {
 		RepoState:       repoState,
 		Backends:        backendStatuses,
 		Cache:           cacheStatus,
+		LastRefresh:     lastRefresh,
 		QueryDurationMs: time.Since(startTime).Milliseconds(),
 	}, nil
 }

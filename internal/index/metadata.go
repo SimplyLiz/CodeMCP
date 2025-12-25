@@ -21,6 +21,26 @@ const (
 	metadataFile = "index-meta.json"
 )
 
+// RefreshTrigger describes what caused an index refresh.
+type RefreshTrigger string
+
+const (
+	TriggerManual    RefreshTrigger = "manual"
+	TriggerHEAD      RefreshTrigger = "head-changed"
+	TriggerIndex     RefreshTrigger = "index-changed"
+	TriggerScheduled RefreshTrigger = "scheduled"
+	TriggerWebhook   RefreshTrigger = "webhook"
+	TriggerStale     RefreshTrigger = "stale"
+)
+
+// LastRefresh describes the most recent index refresh.
+type LastRefresh struct {
+	At          time.Time      `json:"at"`
+	Trigger     RefreshTrigger `json:"trigger"`
+	TriggerInfo string         `json:"triggerInfo,omitempty"` // e.g., "main → feature/auth"
+	DurationMs  int64          `json:"durationMs"`
+}
+
 // IndexMeta contains metadata about the SCIP index.
 type IndexMeta struct {
 	Version     int       `json:"version"`
@@ -31,6 +51,7 @@ type IndexMeta struct {
 	Duration    string    `json:"duration"`
 	Indexer     string    `json:"indexer"`
 	IndexerArgs []string  `json:"indexerArgs,omitempty"`
+	LastRefresh *LastRefresh `json:"lastRefresh,omitempty"`
 }
 
 // FreshnessResult describes index freshness status.
