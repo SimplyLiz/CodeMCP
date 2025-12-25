@@ -3,6 +3,7 @@ updates:
   # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
+    target-branch: "develop"
     schedule:
       interval: "weekly"
     groups:
@@ -15,6 +16,7 @@ updates:
   # Go modules
   - package-ecosystem: "gomod"
     directory: "/"
+    target-branch: "develop"
     schedule:
       interval: "weekly"
     groups:
@@ -31,6 +33,7 @@ updates:
   # npm (for the npm distribution wrapper)
   - package-ecosystem: "npm"
     directory: "/npm"
+    target-branch: "develop"
     schedule:
       interval: "weekly"
     commit-message:
