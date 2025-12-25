@@ -1,0 +1,183 @@
+# CKB NFR (Non-Functional Requirements) Testing Workflow
+# This workflow validates token budgets for MCP tools to ensure
+# responses fit within LLM context windows.
+
+name: CKB NFR Tests
+
+on:
+  pull_request:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  nfr:
+    name: NFR Scenarios
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Run NFR Tests
+        id: nfr
+        run: |
+          # Run NFR scenario tests
+          set +e
+          go test -v -run TestNFRScenarios ./internal/mcp/... 2>&1 | tee nfr-output.txt
+          TEST_EXIT=${PIPESTATUS[0]}
+          set -e
+
+          # Parse results
+          PASS=$(grep -c -- "--- PASS" nfr-output.txt) || PASS=0
+          FAIL=$(grep -c -- "--- FAIL" nfr-output.txt) || FAIL=0
+          TOTAL=$((PASS + FAIL))
+
+          # Job summary
+          echo "## NFR Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Passed | $PASS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Failed | $FAIL |" >> $GITHUB_STEP_SUMMARY
+          echo "| Total | $TOTAL |" >> $GITHUB_STEP_SUMMARY
+
+          # Set outputs
+          echo "pass=$PASS" >> $GITHUB_OUTPUT
+          echo "fail=$FAIL" >> $GITHUB_OUTPUT
+          echo "total=$TOTAL" >> $GITHUB_OUTPUT
+
+          exit $TEST_EXIT
+
+      - name: Parse NFR Metrics
+        id: metrics
+        if: always()
+        run: |
+          # Extract token counts and timings from test output
+          # Format: tool_tier: N bytes (baseline: M, max: X) [timing]
+
+          cat > parse_nfr.py << 'EOF'
+          import re
+
+          rows = []
+          with open("nfr-output.txt", "r") as f:
+              content = f.read()
+
+          # Parse: "searchSymbols_small: 3500 bytes (baseline: 3600, max: 3960) [1.234ms]"
+          pattern = r'(\w+)_(\w+): (\d+) bytes \(baseline: (\d+), max: (\d+)\) \[([^\]]+)\]'
+          for match in re.finditer(pattern, content):
+              tool, tier, actual, baseline, max_allowed, timing = match.groups()
+              actual, baseline, max_allowed = int(actual), int(baseline), int(max_allowed)
+              diff_pct = ((actual - baseline) / baseline) * 100
+              budget_pct = (actual / max_allowed) * 100 if max_allowed > 0 else 0
+
+              if diff_pct >= 10:
+                  verdict = "FAIL"
+              elif diff_pct >= 5:
+                  verdict = "WARN"
+              elif diff_pct <= -5:
+                  verdict = "GOOD"
+              else:
+                  verdict = "OK"
+
+              rows.append({
+                  "tool": tool, "tier": tier, "actual": actual,
+                  "baseline": baseline, "max": max_allowed,
+                  "diff_pct": diff_pct, "budget_pct": budget_pct,
+                  "timing": timing, "verdict": verdict
+              })
+
+          if rows:
+              fails = [r for r in rows if r["verdict"] == "FAIL"]
+              warns = [r for r in rows if r["verdict"] == "WARN"]
+              goods = [r for r in rows if r["verdict"] == "GOOD"]
+              oks = [r for r in rows if r["verdict"] == "OK"]
+
+              # Header
+              indicators = []
+              if fails: indicators.append(f"FAIL {len(fails)}")
+              if warns: indicators.append(f"WARN {len(warns)}")
+              if goods: indicators.append(f"IMPROVED {len(goods)}")
+              indicators.append(f"OK {len(oks)}")
+
+              print(f"## NFR Tests: {' | '.join(indicators)}\n")
+              print("**Thresholds:** WARN >= +5% | FAIL >= +10% | Hotspot >= 90% budget\n")
+
+              # Diff block for issues
+              issues = [r for r in rows if r["diff_pct"] >= 5 or r["budget_pct"] >= 90]
+              if issues:
+                  print("```diff")
+                  for r in sorted(issues, key=lambda x: -x["diff_pct"]):
+                      name = f"{r['tool']}/{r['tier']}"
+                      prefix = "-" if r["verdict"] == "FAIL" else "!"
+                      print(f"{prefix} {r['verdict']:4} {name:<25} {r['diff_pct']:+6.1f}%  {r['actual']:>8,}B  budget {r['budget_pct']:>2.0f}%")
+                  print("```\n")
+
+              # Full table in details
+              print("<details><summary>All scenarios</summary>\n")
+              print("| Status | Scenario | Change | Actual | Baseline | Budget % |")
+              print("|:------:|----------|-------:|-------:|---------:|---------:|")
+              for r in sorted(rows, key=lambda x: -x["diff_pct"]):
+                  icon = {"FAIL": "🔴", "WARN": "🟡", "GOOD": "🟢", "OK": "⚪"}[r["verdict"]]
+                  print(f"| {icon} | {r['tool']}/{r['tier']} | {r['diff_pct']:+.1f}% | {r['actual']:,} | {r['baseline']:,} | {r['budget_pct']:.0f}% |")
+              print("\n</details>")
+          else:
+              print("No NFR metrics found in output")
+          EOF
+
+          python3 parse_nfr.py > nfr-comment.md 2>&1 || echo "Failed to parse metrics" > nfr-comment.md
+          cat nfr-comment.md
+
+      - name: Comment on PR
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            let body = 'No NFR metrics available';
+            try {
+              body = fs.readFileSync('nfr-comment.md', 'utf8');
+            } catch (e) {}
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes('NFR Tests')
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nfr-results
+          path: |
+            nfr-output.txt
+            nfr-comment.md
+          retention-days: 7

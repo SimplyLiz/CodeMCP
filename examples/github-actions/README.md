@@ -31,6 +31,33 @@ Runs daily to refresh CKB's architectural model:
 2. Update the CKB installation step
 3. Optionally enable the "Commit CKB Database" step to cache results
 
+### nfr.yml
+
+Tests Non-Functional Requirements (NFR) for MCP tools:
+- Validates response sizes against token budgets
+- Detects regressions (WARN >= +5%, FAIL >= +10%)
+- Posts formatted PR comments with diff-style output
+- Tracks budget utilization (hotspots at >= 90%)
+
+**Usage:**
+1. Copy to `.github/workflows/nfr.yml`
+2. Ensure your project has NFR test scenarios in `internal/mcp/`
+3. Runs automatically on PRs
+
+### publish-index.yml
+
+Publishes SCIP index to a central CKB server:
+- Generates SCIP index for your codebase
+- Uploads with gzip compression
+- Includes commit and branch metadata
+- Enables cross-repository code intelligence
+
+**Usage:**
+1. Copy to `.github/workflows/publish-index.yml`
+2. Set `CKB_SERVER_URL` as a repository variable
+3. Set `CKB_TOKEN` as a repository secret
+4. Runs on push to main branch
+
 ## Configuration
 
 ### Installing CKB

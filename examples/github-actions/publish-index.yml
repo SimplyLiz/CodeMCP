@@ -1,0 +1,105 @@
+# CKB Index Publishing Workflow
+# This workflow generates a SCIP index and publishes it to a central
+# CKB index server for cross-repository code intelligence.
+
+name: Publish CKB Index
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish Index
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for git metadata
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Install SCIP Indexer
+        run: |
+          # Install the appropriate indexer for your language
+          # Go:
+          go install github.com/sourcegraph/scip-go/cmd/scip-go@latest
+
+          # TypeScript (uncomment if needed):
+          # npm install -g @sourcegraph/scip-typescript
+
+          # Python (uncomment if needed):
+          # pip install scip-python
+
+      - name: Generate SCIP Index
+        run: |
+          # Generate index (command varies by language)
+          scip-go
+
+          # Verify index was created
+          if [ ! -f "index.scip" ]; then
+            echo "::error::SCIP index not generated"
+            exit 1
+          fi
+
+          # Show index size
+          ls -lh index.scip
+
+      - name: Upload to CKB Server
+        env:
+          CKB_SERVER_URL: ${{ vars.CKB_SERVER_URL }}
+          CKB_TOKEN: ${{ secrets.CKB_TOKEN }}
+        run: |
+          if [ -z "$CKB_SERVER_URL" ]; then
+            echo "::warning::CKB_SERVER_URL not configured, skipping upload"
+            exit 0
+          fi
+
+          echo "Uploading index to $CKB_SERVER_URL"
+
+          # Upload with gzip compression
+          RESPONSE=$(gzip -c index.scip | curl -s -w "\n%{http_code}" \
+            -X POST "$CKB_SERVER_URL/index/repos/${{ github.repository }}/upload" \
+            -H "Authorization: Bearer $CKB_TOKEN" \
+            -H "Content-Type: application/octet-stream" \
+            -H "Content-Encoding: gzip" \
+            -H "X-CKB-Commit: ${{ github.sha }}" \
+            -H "X-CKB-Branch: ${{ github.ref_name }}" \
+            -H "X-CKB-Language: go" \
+            --data-binary @-)
+
+          # Parse response
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            echo "Upload successful"
+            echo "$BODY" | jq . 2>/dev/null || echo "$BODY"
+          else
+            echo "::error::Upload failed with status $HTTP_CODE"
+            echo "$BODY"
+            exit 1
+          fi
+
+      - name: Summary
+        run: |
+          echo "## CKB Index Published" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Index Size:** $(ls -lh index.scip | awk '{print $5}')" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scip-index
+          path: index.scip
+          retention-days: 7
