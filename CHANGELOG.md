@@ -31,12 +31,31 @@ CKB MCP Server v7.5.0
 
 This addresses community feedback about MCP tools consuming 50-80k tokens before conversations even start. CKB's preset system delivers 83% token reduction while maintaining full functionality.
 
+**Preset Discoverability (`--list-presets`):**
+```
+$ ckb mcp --list-presets
+
+Available presets:
+
+  PRESET        TOOLS         TOKENS  DESCRIPTION
+  ------        -----         ------  -----------
+  core             14     ~2k tokens  Quick navigation, search, impact analysis (default)
+  review           19     ~2k tokens  Code review with ownership and PR summaries
+  refactor         19     ~2k tokens  Refactoring analysis with coupling and dead code
+  federation       28     ~3k tokens  Multi-repo queries and cross-repo visibility
+  docs             20     ~2k tokens  Documentation-symbol linking and coverage
+  ops              25     ~2k tokens  Diagnostics, daemon, webhooks, jobs
+  full             76     ~9k tokens  Complete feature set (all tools)
+
+Use: ckb mcp --preset=<name>
+```
+
 **Future:** Per-tool token breakdown (`--tokens` flag showing individual tool costs) planned for a later release.
 
 **Files Changed:**
-- `cmd/ckb/mcp.go` — Multi-line startup banner with token info
+- `cmd/ckb/mcp.go` — Multi-line startup banner with token info, `--list-presets` flag
 - `internal/mcp/server.go` — Added `EstimateActiveTokens()`, `EstimateFullTokens()` methods
-- `internal/mcp/presets.go` — Added `FormatTokens()` helper
+- `internal/mcp/presets.go` — Added `FormatTokens()`, `GetAllPresetInfo()`, `PresetDescriptions`
 - `internal/mcp/tool_impls.go` — Token fields in getStatus response
 
 #### Auto Index Updates
