@@ -2,9 +2,13 @@ package index
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"ckb/internal/repostate"
 )
 
 func TestLoadMeta_NoFile(t *testing.T) {
@@ -279,4 +283,157 @@ func TestFreshnessResult_Fields(t *testing.T) {
 	if result.CurrentRepoState != "state789" {
 		t.Errorf("expected CurrentRepoState='state789', got %q", result.CurrentRepoState)
 	}
+}
+
+// =============================================================================
+// Git-based Freshness Tests (with real git repos)
+// =============================================================================
+
+func TestCheckFreshness_GitRepo_Fresh(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Initialize git repo
+	runGit(t, tmpDir, "init")
+	runGit(t, tmpDir, "config", "user.email", "test@test.com")
+	runGit(t, tmpDir, "config", "user.name", "Test")
+
+	// Create a file and commit
+	testFile := filepath.Join(tmpDir, "test.go")
+	if err := os.WriteFile(testFile, []byte("package main"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, tmpDir, "add", ".")
+	runGit(t, tmpDir, "commit", "-m", "initial")
+
+	// Get current commit hash
+	commitHash := getGitOutput(t, tmpDir, "rev-parse", "HEAD")
+
+	// Create metadata with current commit
+	meta := &IndexMeta{
+		CreatedAt:   time.Now(),
+		CommitHash:  commitHash,
+		RepoStateID: computeTestRepoState(t, tmpDir),
+	}
+
+	result := meta.CheckFreshness(tmpDir)
+	if !result.Fresh {
+		t.Errorf("expected fresh index, got stale: %s", result.Reason)
+	}
+}
+
+func TestCheckFreshness_GitRepo_BehindCommits(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Initialize git repo
+	runGit(t, tmpDir, "init")
+	runGit(t, tmpDir, "config", "user.email", "test@test.com")
+	runGit(t, tmpDir, "config", "user.name", "Test")
+
+	// Create initial commit
+	testFile := filepath.Join(tmpDir, "test.go")
+	if err := os.WriteFile(testFile, []byte("package main"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, tmpDir, "add", ".")
+	runGit(t, tmpDir, "commit", "-m", "initial")
+
+	// Get first commit hash (this will be our "indexed" commit)
+	indexedCommit := getGitOutput(t, tmpDir, "rev-parse", "HEAD")
+
+	// Create additional commits
+	for i := 1; i <= 3; i++ {
+		content := []byte("package main // v" + string(rune('0'+i)))
+		if err := os.WriteFile(testFile, content, 0644); err != nil {
+			t.Fatal(err)
+		}
+		runGit(t, tmpDir, "add", ".")
+		runGit(t, tmpDir, "commit", "-m", "commit "+string(rune('0'+i)))
+	}
+
+	// Create metadata with old commit
+	meta := &IndexMeta{
+		CreatedAt:   time.Now(),
+		CommitHash:  indexedCommit,
+		RepoStateID: "old-state-id",
+	}
+
+	result := meta.CheckFreshness(tmpDir)
+	if result.Fresh {
+		t.Error("expected stale index, got fresh")
+	}
+	if result.CommitsBehind != 3 {
+		t.Errorf("expected 3 commits behind, got %d", result.CommitsBehind)
+	}
+	if result.IndexedCommit != indexedCommit {
+		t.Errorf("expected IndexedCommit=%s, got %s", indexedCommit, result.IndexedCommit)
+	}
+}
+
+func TestCheckFreshness_GitRepo_UncommittedChanges(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Initialize git repo
+	runGit(t, tmpDir, "init")
+	runGit(t, tmpDir, "config", "user.email", "test@test.com")
+	runGit(t, tmpDir, "config", "user.name", "Test")
+
+	// Create initial commit
+	testFile := filepath.Join(tmpDir, "test.go")
+	if err := os.WriteFile(testFile, []byte("package main"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, tmpDir, "add", ".")
+	runGit(t, tmpDir, "commit", "-m", "initial")
+
+	commitHash := getGitOutput(t, tmpDir, "rev-parse", "HEAD")
+
+	// Make uncommitted change
+	if err := os.WriteFile(testFile, []byte("package main // modified"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create metadata with current commit but old repoStateID
+	meta := &IndexMeta{
+		CreatedAt:   time.Now(),
+		CommitHash:  commitHash,
+		RepoStateID: "old-state-id", // This won't match current state with dirty files
+	}
+
+	result := meta.CheckFreshness(tmpDir)
+	if result.Fresh {
+		t.Error("expected stale due to uncommitted changes")
+	}
+	if !result.HasUncommitted {
+		t.Error("expected HasUncommitted=true")
+	}
+}
+
+// Helper functions for git tests
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v failed: %v\n%s", args, err, out)
+	}
+}
+
+func getGitOutput(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git %v failed: %v", args, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func computeTestRepoState(t *testing.T, repoRoot string) string {
+	t.Helper()
+	rs, err := repostate.ComputeRepoState(repoRoot)
+	if err != nil {
+		t.Fatalf("failed to compute repo state: %v", err)
+	}
+	return rs.RepoStateID
 }
