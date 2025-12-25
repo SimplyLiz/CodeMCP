@@ -126,6 +126,72 @@ Now Claude can answer questions like:
 | **[CLI](https://github.com/SimplyLiz/CodeMCP/wiki/User-Guide)** | Quick lookups from terminal, scripting |
 | **[HTTP API](https://github.com/SimplyLiz/CodeMCP/wiki/API-Reference)** | IDE plugins, CI integration, custom tooling |
 
+## How Indexing Works
+
+CKB uses **SCIP indexes** to understand your code. Think of it like a database that knows where every function is defined, who calls it, and how everything connects.
+
+### The Basics
+
+```bash
+# 1. Generate an index (auto-detects language)
+ckb index
+
+# 2. Check if your index is fresh
+ckb status
+```
+
+Without an index, CKB still works using tree-sitter parsing (basic mode), but with an index you get:
+- Cross-file references ("who calls this function?")
+- Precise impact analysis
+- Call graph navigation
+
+### Language Support
+
+Not all languages are equal. CKB classifies languages into **quality tiers** based on indexer maturity:
+
+| Tier | Quality | Languages |
+|------|---------|-----------|
+| **Tier 1** | Full support, all features | Go |
+| **Tier 2** | Full support, minor edge cases | TypeScript, JavaScript, Python |
+| **Tier 3** | Basic support, call graph may be incomplete | Rust, Java, Kotlin, C++, Ruby, Dart |
+| **Tier 4** | Experimental | C#, PHP |
+
+**Key limitations:**
+- **Incremental indexing** is Go-only. Other languages require full reindex.
+- **TypeScript monorepos** may need `--infer-tsconfig` flag
+- **C/C++** requires `compile_commands.json`
+- **Python** works best with activated virtual environment
+
+Run `ckb doctor --tier standard` to check if your language tools are properly installed.
+
+See **[Language Support](https://github.com/SimplyLiz/CodeMCP/wiki/Language-Support)** for indexer installation, known issues, and the full feature matrix.
+
+### Keeping Your Index Fresh
+
+Your index becomes stale when you make commits. CKB offers several ways to stay current:
+
+| Method | Command | When to Use |
+|--------|---------|-------------|
+| Manual | `ckb index` | One-off updates, scripts |
+| Watch mode | `ckb index --watch` | Auto-refresh during development |
+| MCP watch | `ckb mcp --watch` | Auto-refresh in AI sessions |
+| CI webhook | `POST /api/v1/refresh` | Trigger from CI/CD |
+
+**Quick start for AI sessions:**
+```bash
+ckb mcp --watch  # Auto-reindexes every 30s when stale
+```
+
+**Check staleness:**
+```bash
+ckb status
+# Shows: "5 commits behind HEAD" or "Up to date"
+```
+
+For Go projects, CKB uses **incremental indexing**—only changed files are processed, making updates fast.
+
+See the **[Index Management Guide](https://github.com/SimplyLiz/CodeMCP/wiki/Index-Management)** for complete documentation.
+
 ## Features
 
 ### Core Intelligence
@@ -148,10 +214,11 @@ Now Claude can answer questions like:
 - **Runtime Observability** — OpenTelemetry integration for dead code detection
 - **Developer Intelligence** — Symbol origins, co-change coupling, risk audit
 
-### Fast Indexing
+### Fast Indexing & Auto-Updates
 - **Zero-Index Operation** — Tree-sitter fallback works without SCIP index
 - **Incremental Updates** — O(changed files) instead of full reindex (Go)
 - **Smart Caching** — Skip-if-fresh, watch mode, transitive invalidation
+- **Auto-Refresh** — Multiple methods: watch mode, daemon watcher, CI webhook (v7.5)
 
 ### Remote Index Server
 - **Index Serving** — Serve symbol indexes over HTTP for federation
@@ -675,10 +742,11 @@ See the **[Full Documentation Wiki](https://github.com/SimplyLiz/CodeMCP/wiki)**
 - [Language Support](https://github.com/SimplyLiz/CodeMCP/wiki/Language-Support) — SCIP indexers and support tiers
 - [Practical Limits](https://github.com/SimplyLiz/CodeMCP/wiki/Practical-Limits) — Accuracy notes, blind spots
 - [User Guide](https://github.com/SimplyLiz/CodeMCP/wiki/User-Guide) — CLI commands and best practices
+- [Index Management](https://github.com/SimplyLiz/CodeMCP/wiki/Index-Management) — How indexing works, auto-refresh methods
 - [Incremental Indexing](https://github.com/SimplyLiz/CodeMCP/wiki/Incremental-Indexing) — Fast index updates for Go projects
 - [Doc-Symbol Linking](https://github.com/SimplyLiz/CodeMCP/wiki/Doc-Symbol-Linking) — Symbol detection in docs, staleness checking
 - [Authentication](https://github.com/SimplyLiz/CodeMCP/wiki/Authentication) — API tokens, scopes, rate limiting
-- [MCP Integration](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration) — Claude Code setup, 71 tools
+- [MCP Integration](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration) — Claude Code setup, 74 tools
 - [API Reference](https://github.com/SimplyLiz/CodeMCP/wiki/API-Reference) — HTTP API documentation
 - [Daemon Mode](https://github.com/SimplyLiz/CodeMCP/wiki/Daemon-Mode) — Always-on service with scheduler, webhooks
 - [Configuration](https://github.com/SimplyLiz/CodeMCP/wiki/Configuration) — All options including MODULES.toml

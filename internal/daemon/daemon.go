@@ -32,6 +32,8 @@ type Daemon struct {
 	scheduler      *scheduler.Scheduler
 	watcher        *watcher.Watcher
 	webhookManager *webhooks.Manager
+	refreshManager *RefreshManager
+	structuredLog  *logging.Logger
 
 	// Shutdown coordination
 	ctx    context.Context
@@ -92,10 +94,11 @@ func New(cfg *config.DaemonConfig) (*Daemon, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	d := &Daemon{
-		config: cfg,
-		logger: logger,
-		ctx:    ctx,
-		cancel: cancel,
+		config:        cfg,
+		logger:        logger,
+		structuredLog: structuredLogger,
+		ctx:           ctx,
+		cancel:        cancel,
 	}
 
 	// Initialize scheduler
@@ -123,13 +126,28 @@ func New(cfg *config.DaemonConfig) (*Daemon, error) {
 	}
 	d.webhookManager = webhookMgr
 
+	// Initialize refresh manager
+	d.refreshManager = NewRefreshManager(structuredLogger, logger, webhookMgr)
+
 	return d, nil
 }
 
 // onWatcherChange handles file system change events
 func (d *Daemon) onWatcherChange(repoPath string, events []watcher.Event) {
 	d.logger.Printf("File changes detected in %s (%d events)", repoPath, len(events))
-	// TODO: Queue refresh job for the repository
+
+	// Skip if refresh already pending for this repo
+	if d.refreshManager.HasPendingRefresh(repoPath) {
+		d.logger.Printf("Refresh already pending for %s, skipping", repoPath)
+		return
+	}
+
+	// Queue incremental refresh in background
+	d.wg.Add(1)
+	go func() {
+		defer d.wg.Done()
+		d.refreshManager.RunIncrementalRefresh(d.ctx, repoPath)
+	}()
 }
 
 // Start starts the daemon
