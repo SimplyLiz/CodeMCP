@@ -47,18 +47,21 @@ not directly by users.`,
 }
 
 var (
-	mcpStdio  bool
-	mcpWatch  bool
-	mcpRepo   string
-	mcpPreset string
+	mcpStdio         bool
+	mcpWatch         bool
+	mcpWatchInterval time.Duration
+	mcpRepo          string
+	mcpPreset        string
 )
 
-const watchPollInterval = 30 * time.Second
+const defaultWatchInterval = 30 * time.Second
 
 func init() {
 	rootCmd.AddCommand(mcpCmd)
 	mcpCmd.Flags().BoolVar(&mcpStdio, "stdio", true, "Use stdio for communication (default)")
 	mcpCmd.Flags().BoolVar(&mcpWatch, "watch", false, "Watch for changes and auto-reindex")
+	mcpCmd.Flags().DurationVar(&mcpWatchInterval, "watch-interval", defaultWatchInterval,
+		"Watch mode polling interval (min 5s, max 5m)")
 	mcpCmd.Flags().StringVar(&mcpRepo, "repo", "", "Repository path or registry name (auto-detected)")
 	mcpCmd.Flags().StringVar(&mcpPreset, "preset", mcp.DefaultPreset,
 		"Tool preset: core, review, refactor, federation, docs, ops, full")
@@ -171,9 +174,18 @@ func runMCP(cmd *cobra.Command, args []string) error {
 
 	// Start watch mode if enabled
 	if mcpWatch {
-		go runWatchLoop(repoRoot, logger)
+		// Validate and clamp watch interval
+		watchInterval := mcpWatchInterval
+		if watchInterval < 5*time.Second {
+			watchInterval = 5 * time.Second
+		}
+		if watchInterval > 5*time.Minute {
+			watchInterval = 5 * time.Minute
+		}
+
+		go runWatchLoop(repoRoot, watchInterval, logger)
 		logger.Info("Watch mode enabled", map[string]interface{}{
-			"pollInterval": watchPollInterval.String(),
+			"pollInterval": watchInterval.String(),
 		})
 	}
 
@@ -206,9 +218,9 @@ func isRepoPath(s string) bool {
 }
 
 // runWatchLoop periodically checks index freshness and reindexes if stale
-func runWatchLoop(repoRoot string, logger *logging.Logger) {
+func runWatchLoop(repoRoot string, interval time.Duration, logger *logging.Logger) {
 	ckbDir := filepath.Join(repoRoot, ".ckb")
-	ticker := time.NewTicker(watchPollInterval)
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for range ticker.C {

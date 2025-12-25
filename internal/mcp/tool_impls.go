@@ -9,6 +9,7 @@ import (
 
 	"ckb/internal/complexity"
 	"ckb/internal/envelope"
+	"ckb/internal/index"
 	"ckb/internal/jobs"
 	"ckb/internal/query"
 )
@@ -44,6 +45,9 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 	// Get preset info
 	preset, exposedCount, totalCount := s.GetPresetStats()
 
+	// Get index staleness info
+	indexInfo := s.getIndexStaleness()
+
 	data := map[string]interface{}{
 		"status":   status,
 		"healthy":  statusResp.Healthy,
@@ -65,9 +69,41 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 			"total":    totalCount,
 			"expanded": s.IsExpanded(),
 		},
+		"index": indexInfo,
 	}
 
 	return OperationalResponse(data), nil
+}
+
+// getIndexStaleness returns index freshness information
+func (s *MCPServer) getIndexStaleness() map[string]interface{} {
+	repoRoot := s.engine().GetRepoRoot()
+	if repoRoot == "" {
+		return map[string]interface{}{
+			"exists": false,
+			"fresh":  false,
+			"reason": "no repository configured",
+		}
+	}
+
+	ckbDir := filepath.Join(repoRoot, ".ckb")
+	meta, err := index.LoadMeta(ckbDir)
+	if err != nil || meta == nil {
+		return map[string]interface{}{
+			"exists": false,
+			"fresh":  false,
+			"reason": "no index metadata found",
+		}
+	}
+
+	staleness := meta.GetStaleness(repoRoot)
+	return map[string]interface{}{
+		"exists":        true,
+		"fresh":         !staleness.IsStale,
+		"reason":        staleness.Reason,
+		"indexAge":      staleness.IndexAge,
+		"commitsBehind": staleness.CommitsBehind,
+	}
 }
 
 // toolDoctor implements the doctor tool

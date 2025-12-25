@@ -188,6 +188,34 @@ func countCommitsBehind(repoRoot, fromCommit, toCommit string) int {
 	return count
 }
 
+// Staleness provides a summary of index freshness for display.
+type Staleness struct {
+	IsStale       bool   `json:"isStale"`
+	CommitsBehind int    `json:"commitsBehind"`
+	IndexAge      string `json:"indexAge"`
+	Reason        string `json:"reason,omitempty"`
+}
+
+// GetStaleness returns a staleness summary for the index.
+func (m *IndexMeta) GetStaleness(repoRoot string) Staleness {
+	if m == nil {
+		return Staleness{
+			IsStale: true,
+			Reason:  "no index metadata found",
+		}
+	}
+
+	freshness := m.CheckFreshness(repoRoot)
+	age := time.Since(m.CreatedAt)
+
+	return Staleness{
+		IsStale:       !freshness.Fresh,
+		CommitsBehind: freshness.CommitsBehind,
+		IndexAge:      humanDuration(age),
+		Reason:        freshness.Reason,
+	}
+}
+
 // humanDuration formats a duration in human-readable form.
 func humanDuration(d time.Duration) string {
 	if d < time.Minute {

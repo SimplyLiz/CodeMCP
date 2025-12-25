@@ -83,6 +83,7 @@ type IndexStatusCLI struct {
 	Fresh          bool      `json:"fresh"`
 	Reason         string    `json:"reason,omitempty"`
 	CreatedAt      time.Time `json:"createdAt,omitempty"`
+	IndexAge       string    `json:"indexAge,omitempty"`
 	CommitHash     string    `json:"commitHash,omitempty"`
 	FileCount      int       `json:"fileCount,omitempty"`
 	CommitsBehind  int       `json:"commitsBehind,omitempty"`
@@ -169,14 +170,16 @@ func getIndexStatus(ckbDir, repoRoot string) *IndexStatusCLI {
 		}
 	}
 
-	// Check freshness
+	// Check freshness and staleness
 	freshness := meta.CheckFreshness(repoRoot)
+	staleness := meta.GetStaleness(repoRoot)
 
 	return &IndexStatusCLI{
 		Exists:         true,
 		Fresh:          freshness.Fresh,
 		Reason:         freshness.Reason,
 		CreatedAt:      meta.CreatedAt,
+		IndexAge:       staleness.IndexAge,
 		CommitHash:     meta.CommitHash,
 		FileCount:      meta.FileCount,
 		CommitsBehind:  freshness.CommitsBehind,
