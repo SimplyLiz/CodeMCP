@@ -145,6 +145,27 @@ Without an index, CKB still works using tree-sitter parsing (basic mode), but wi
 - Precise impact analysis
 - Call graph navigation
 
+### Language Support
+
+Not all languages are equal. CKB classifies languages into **quality tiers** based on indexer maturity:
+
+| Tier | Quality | Languages |
+|------|---------|-----------|
+| **Tier 1** | Full support, all features | Go |
+| **Tier 2** | Full support, minor edge cases | TypeScript, JavaScript, Python |
+| **Tier 3** | Basic support, call graph may be incomplete | Rust, Java, Kotlin, C++, Ruby, Dart |
+| **Tier 4** | Experimental | C#, PHP |
+
+**Key limitations:**
+- **Incremental indexing** is Go-only. Other languages require full reindex.
+- **TypeScript monorepos** may need `--infer-tsconfig` flag
+- **C/C++** requires `compile_commands.json`
+- **Python** works best with activated virtual environment
+
+Run `ckb doctor --tier standard` to check if your language tools are properly installed.
+
+See **[Language Support](https://github.com/SimplyLiz/CodeMCP/wiki/Language-Support)** for indexer installation, known issues, and the full feature matrix.
+
 ### Keeping Your Index Fresh
 
 Your index becomes stale when you make commits. CKB offers several ways to stay current:
