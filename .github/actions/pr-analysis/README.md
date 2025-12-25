@@ -101,7 +101,7 @@ The action posts a comment like this:
 - uses: tastehub/ckb-action@v1
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
-    ckb-version: '7.3.0'
+    ckb-version: '7.4.0'
 ```
 
 ## Requirements
