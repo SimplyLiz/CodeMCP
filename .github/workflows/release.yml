@@ -74,7 +74,7 @@ jobs:
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
 
-          # Publish main package (--ignore-scripts for security)
+          # Publish main package (prepublishOnly copies README.md and LICENSE)
           if ! npm publish --access public 2>&1 | tee /tmp/npm-publish.log; then
             if grep -q "already exists" /tmp/npm-publish.log; then
               echo "::warning::Main package version already exists, skipping"
