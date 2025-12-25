@@ -55,7 +55,7 @@ var (
 	mcpListPresets   bool
 )
 
-const defaultWatchInterval = 30 * time.Second
+const defaultWatchInterval = 10 * time.Second
 
 func init() {
 	rootCmd.AddCommand(mcpCmd)
