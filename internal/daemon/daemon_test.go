@@ -422,3 +422,49 @@ func TestAuthConstants(t *testing.T) {
 		t.Errorf("Expected DaemonTokenEnvVar='CKB_DAEMON_TOKEN', got %q", DaemonTokenEnvVar)
 	}
 }
+
+func TestRefreshRequest(t *testing.T) {
+	req := RefreshRequest{
+		Full: true,
+		Repo: "/path/to/repo",
+	}
+
+	if !req.Full {
+		t.Error("Expected Full=true")
+	}
+	if req.Repo != "/path/to/repo" {
+		t.Errorf("Expected Repo='/path/to/repo', got %q", req.Repo)
+	}
+}
+
+func TestRefreshResponse(t *testing.T) {
+	resp := RefreshResponse{
+		Status: "queued",
+		Repo:   "/path/to/repo",
+		Type:   "incremental",
+	}
+
+	if resp.Status != "queued" {
+		t.Errorf("Expected Status='queued', got %q", resp.Status)
+	}
+	if resp.Repo != "/path/to/repo" {
+		t.Errorf("Expected Repo='/path/to/repo', got %q", resp.Repo)
+	}
+	if resp.Type != "incremental" {
+		t.Errorf("Expected Type='incremental', got %q", resp.Type)
+	}
+}
+
+func TestRefreshResponse_WithError(t *testing.T) {
+	resp := RefreshResponse{
+		Status: "error",
+		Error:  "repository not found",
+	}
+
+	if resp.Status != "error" {
+		t.Errorf("Expected Status='error', got %q", resp.Status)
+	}
+	if resp.Error != "repository not found" {
+		t.Errorf("Expected Error='repository not found', got %q", resp.Error)
+	}
+}
