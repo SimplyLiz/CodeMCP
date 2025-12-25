@@ -25,11 +25,13 @@ CKB MCP Server v7.5.0
   "total": 76,
   "estimatedTokens": 1529,
   "fullPresetTokens": 9040,
-  "tokenSavings": "83%"
+  "tokenSavingsPercent": 83
 }
 ```
 
 This addresses community feedback about MCP tools consuming 50-80k tokens before conversations even start. CKB's preset system delivers 83% token reduction while maintaining full functionality.
+
+**Future:** Per-tool token breakdown (`--tokens` flag showing individual tool costs) planned for a later release.
 
 **Files Changed:**
 - `cmd/ckb/mcp.go` — Multi-line startup banner with token info
