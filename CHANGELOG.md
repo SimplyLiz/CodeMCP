@@ -2,6 +2,70 @@
 
 All notable changes to CKB will be documented in this file.
 
+## [7.5.0]
+
+### Added
+
+#### Auto Index Updates
+Automatic index maintenance across all CKB interfaces—keep your index fresh without manual intervention:
+
+**Watch Mode (CLI):**
+```bash
+# Watch for changes and auto-reindex (standalone)
+ckb index --watch
+ckb index --watch --watch-interval 15s
+
+# Watch with MCP server (existing, now configurable)
+ckb mcp --watch
+ckb mcp --watch --watch-interval 1m
+```
+
+**Daemon File Watcher:**
+The daemon's file watcher now triggers actual incremental refreshes instead of just logging. When git changes are detected, the daemon queues and executes an incremental update.
+
+**Webhook API:**
+```bash
+# Trigger incremental refresh via HTTP
+curl -X POST http://localhost:9120/api/v1/refresh
+
+# Force full reindex
+curl -X POST http://localhost:9120/api/v1/refresh -d '{"full": true}'
+
+# Specify repository
+curl -X POST http://localhost:9120/api/v1/refresh -d '{"repo": "/path/to/repo"}'
+```
+
+**Response:**
+```json
+{
+  "status": "queued",
+  "repo": "/path/to/repo",
+  "type": "incremental"
+}
+```
+
+**Index Staleness Visibility:**
+- `ckb status` now shows commits behind HEAD and index age
+- MCP `getStatus` response includes `index.commitsBehind`, `index.indexAge`, `index.reason`
+- Fresh indexes show ✓, stale indexes show ⚠ with specific reason
+
+**Files Added:**
+- `internal/daemon/refresh.go` — RefreshManager for incremental/full reindex
+- `cmd/ckb/status_test.go` — Status type tests
+- `internal/daemon/refresh_test.go` — RefreshManager unit tests
+
+**Files Changed:**
+- `cmd/ckb/index.go` — Added `--watch` and `--watch-interval` flags
+- `cmd/ckb/mcp.go` — Added `--watch-interval` flag (min 5s, max 5m)
+- `cmd/ckb/status.go` — Added staleness display with commits behind
+- `internal/daemon/daemon.go` — Connected file watcher to RefreshManager
+- `internal/daemon/server.go` — Added `/api/v1/refresh` endpoint
+- `internal/index/metadata.go` — Added `Staleness` type and `GetStaleness()` method
+- `internal/mcp/tool_impls.go` — Added index staleness to `getStatus` response
+- `CLAUDE.md` — Added "Keeping Your Index Fresh" section
+
+See [[Index-Management]] in the wiki for detailed documentation.
+
 ## [7.4.0]
 
 ### Added
