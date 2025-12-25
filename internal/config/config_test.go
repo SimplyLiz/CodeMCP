@@ -343,3 +343,255 @@ func TestModulesConfig(t *testing.T) {
 		t.Error("Modules.Ignore should have defaults")
 	}
 }
+
+func TestApplyEnvOverrides(t *testing.T) {
+	tests := []struct {
+		name     string
+		envVars  map[string]string
+		validate func(t *testing.T, cfg *Config, overrides []EnvOverride)
+	}{
+		{
+			name: "logging level override",
+			envVars: map[string]string{
+				"CKB_LOG_LEVEL": "debug",
+			},
+			validate: func(t *testing.T, cfg *Config, overrides []EnvOverride) {
+				if cfg.Logging.Level != "debug" {
+					t.Errorf("Logging.Level = %q, want %q", cfg.Logging.Level, "debug")
+				}
+				if len(overrides) != 1 {
+					t.Errorf("len(overrides) = %d, want 1", len(overrides))
+				}
+			},
+		},
+		{
+			name: "budget int override",
+			envVars: map[string]string{
+				"CKB_BUDGET_MAX_MODULES": "50",
+			},
+			validate: func(t *testing.T, cfg *Config, overrides []EnvOverride) {
+				if cfg.Budget.MaxModules != 50 {
+					t.Errorf("Budget.MaxModules = %d, want 50", cfg.Budget.MaxModules)
+				}
+			},
+		},
+		{
+			name: "backend bool override",
+			envVars: map[string]string{
+				"CKB_BACKENDS_SCIP_ENABLED": "false",
+			},
+			validate: func(t *testing.T, cfg *Config, overrides []EnvOverride) {
+				if cfg.Backends.Scip.Enabled {
+					t.Error("Backends.Scip.Enabled should be false")
+				}
+			},
+		},
+		{
+			name: "multiple overrides",
+			envVars: map[string]string{
+				"CKB_LOG_LEVEL":          "warn",
+				"CKB_BUDGET_MAX_MODULES": "100",
+				"CKB_TELEMETRY_ENABLED":  "true",
+			},
+			validate: func(t *testing.T, cfg *Config, overrides []EnvOverride) {
+				if cfg.Logging.Level != "warn" {
+					t.Errorf("Logging.Level = %q, want %q", cfg.Logging.Level, "warn")
+				}
+				if cfg.Budget.MaxModules != 100 {
+					t.Errorf("Budget.MaxModules = %d, want 100", cfg.Budget.MaxModules)
+				}
+				if !cfg.Telemetry.Enabled {
+					t.Error("Telemetry.Enabled should be true")
+				}
+				if len(overrides) != 3 {
+					t.Errorf("len(overrides) = %d, want 3", len(overrides))
+				}
+			},
+		},
+		{
+			name: "invalid int ignored",
+			envVars: map[string]string{
+				"CKB_BUDGET_MAX_MODULES": "not-a-number",
+			},
+			validate: func(t *testing.T, cfg *Config, overrides []EnvOverride) {
+				// Should keep default value
+				if cfg.Budget.MaxModules != 10 {
+					t.Errorf("Budget.MaxModules = %d, want 10 (default)", cfg.Budget.MaxModules)
+				}
+				if len(overrides) != 0 {
+					t.Errorf("len(overrides) = %d, want 0 (invalid value should be skipped)", len(overrides))
+				}
+			},
+		},
+		{
+			name: "tier override",
+			envVars: map[string]string{
+				"CKB_TIER": "fast",
+			},
+			validate: func(t *testing.T, cfg *Config, overrides []EnvOverride) {
+				if cfg.Tier != "fast" {
+					t.Errorf("Tier = %q, want %q", cfg.Tier, "fast")
+				}
+			},
+		},
+		{
+			name: "daemon port override",
+			envVars: map[string]string{
+				"CKB_DAEMON_PORT": "8080",
+			},
+			validate: func(t *testing.T, cfg *Config, overrides []EnvOverride) {
+				if cfg.Daemon.Port != 8080 {
+					t.Errorf("Daemon.Port = %d, want 8080", cfg.Daemon.Port)
+				}
+			},
+		},
+		{
+			name: "cache ttl overrides",
+			envVars: map[string]string{
+				"CKB_CACHE_QUERY_TTL_SECONDS": "600",
+				"CKB_CACHE_VIEW_TTL_SECONDS":  "7200",
+			},
+			validate: func(t *testing.T, cfg *Config, overrides []EnvOverride) {
+				if cfg.Cache.QueryTtlSeconds != 600 {
+					t.Errorf("Cache.QueryTtlSeconds = %d, want 600", cfg.Cache.QueryTtlSeconds)
+				}
+				if cfg.Cache.ViewTtlSeconds != 7200 {
+					t.Errorf("Cache.ViewTtlSeconds = %d, want 7200", cfg.Cache.ViewTtlSeconds)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clear any existing env vars
+			for envVar := range envVarMappings {
+				os.Unsetenv(envVar)
+			}
+
+			// Set test env vars
+			for k, v := range tt.envVars {
+				os.Setenv(k, v)
+			}
+			defer func() {
+				for k := range tt.envVars {
+					os.Unsetenv(k)
+				}
+			}()
+
+			cfg := DefaultConfig()
+			overrides := applyEnvOverrides(cfg)
+
+			tt.validate(t, cfg, overrides)
+		})
+	}
+}
+
+func TestLoadConfigWithDetails(t *testing.T) {
+	// Create a temp directory without config
+	tmpDir := t.TempDir()
+
+	// Clear env vars
+	os.Unsetenv("CKB_CONFIG_PATH")
+	os.Unsetenv("CKB_LOG_LEVEL")
+
+	result, err := LoadConfigWithDetails(tmpDir)
+	if err != nil {
+		t.Fatalf("LoadConfigWithDetails() error = %v", err)
+	}
+
+	if !result.UsedDefaults {
+		t.Error("UsedDefaults should be true when no config file exists")
+	}
+
+	if result.ConfigPath != "" {
+		t.Errorf("ConfigPath = %q, want empty string", result.ConfigPath)
+	}
+}
+
+func TestLoadConfigWithDetails_EnvConfigPath(t *testing.T) {
+	// Create a temp config file
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "custom-config.json")
+	configContent := `{
+		"version": 5,
+		"budget": {"maxModules": 99}
+	}`
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	// Set CKB_CONFIG_PATH
+	os.Setenv("CKB_CONFIG_PATH", configPath)
+	defer os.Unsetenv("CKB_CONFIG_PATH")
+
+	result, err := LoadConfigWithDetails(tmpDir)
+	if err != nil {
+		t.Fatalf("LoadConfigWithDetails() error = %v", err)
+	}
+
+	if result.ConfigPath != configPath {
+		t.Errorf("ConfigPath = %q, want %q", result.ConfigPath, configPath)
+	}
+
+	if result.Config.Budget.MaxModules != 99 {
+		t.Errorf("Budget.MaxModules = %d, want 99", result.Config.Budget.MaxModules)
+	}
+}
+
+func TestLoadConfigWithDetails_EnvOverridesApplied(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Set env vars
+	os.Setenv("CKB_BUDGET_MAX_MODULES", "42")
+	os.Setenv("CKB_LOG_LEVEL", "error")
+	defer func() {
+		os.Unsetenv("CKB_BUDGET_MAX_MODULES")
+		os.Unsetenv("CKB_LOG_LEVEL")
+	}()
+
+	result, err := LoadConfigWithDetails(tmpDir)
+	if err != nil {
+		t.Fatalf("LoadConfigWithDetails() error = %v", err)
+	}
+
+	// Check overrides were applied
+	if result.Config.Budget.MaxModules != 42 {
+		t.Errorf("Budget.MaxModules = %d, want 42", result.Config.Budget.MaxModules)
+	}
+	if result.Config.Logging.Level != "error" {
+		t.Errorf("Logging.Level = %q, want %q", result.Config.Logging.Level, "error")
+	}
+
+	// Check overrides are recorded
+	if len(result.EnvOverrides) != 2 {
+		t.Errorf("len(EnvOverrides) = %d, want 2", len(result.EnvOverrides))
+	}
+}
+
+func TestGetSupportedEnvVars(t *testing.T) {
+	vars := GetSupportedEnvVars()
+
+	if len(vars) == 0 {
+		t.Error("GetSupportedEnvVars() should return non-empty list")
+	}
+
+	// Check some expected vars are present
+	hasLogLevel := false
+	hasBudgetMaxModules := false
+	for _, v := range vars {
+		if v == "CKB_LOG_LEVEL" || v == "CKB_LOGGING_LEVEL" {
+			hasLogLevel = true
+		}
+		if v == "CKB_BUDGET_MAX_MODULES" {
+			hasBudgetMaxModules = true
+		}
+	}
+
+	if !hasLogLevel {
+		t.Error("GetSupportedEnvVars() should include CKB_LOG_LEVEL or CKB_LOGGING_LEVEL")
+	}
+	if !hasBudgetMaxModules {
+		t.Error("GetSupportedEnvVars() should include CKB_BUDGET_MAX_MODULES")
+	}
+}
