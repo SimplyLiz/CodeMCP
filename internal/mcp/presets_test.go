@@ -175,6 +175,31 @@ func TestExpandToolsetRateLimit(t *testing.T) {
 	}
 }
 
+func TestFormatTokens(t *testing.T) {
+	tests := []struct {
+		tokens   int
+		expected string
+	}{
+		{0, "~0 tokens"},
+		{500, "~500 tokens"},
+		{999, "~999 tokens"},
+		{1000, "~1k tokens"},  // (1000+500)/1000 = 1
+		{1499, "~1k tokens"},  // (1499+500)/1000 = 1
+		{1500, "~2k tokens"},  // (1500+500)/1000 = 2 (rounds up at .5)
+		{1501, "~2k tokens"},  // (1501+500)/1000 = 2
+		{9040, "~9k tokens"},  // (9040+500)/1000 = 9
+		{9499, "~9k tokens"},  // (9499+500)/1000 = 9
+		{9500, "~10k tokens"}, // (9500+500)/1000 = 10 (rounds up at .5)
+	}
+
+	for _, tc := range tests {
+		result := FormatTokens(tc.tokens)
+		if result != tc.expected {
+			t.Errorf("FormatTokens(%d) = %q, want %q", tc.tokens, result, tc.expected)
+		}
+	}
+}
+
 func TestToolsetHash(t *testing.T) {
 	tools1 := []Tool{
 		{Name: "a", Description: "desc a"},

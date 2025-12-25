@@ -81,8 +81,6 @@ func runMCP(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid preset: %s (valid: %v)", mcpPreset, mcp.ValidPresets())
 	}
 
-	fmt.Fprintf(os.Stderr, "CKB MCP Server v%s | preset=%s\n", version.Version, mcpPreset)
-
 	// Determine mode and repo
 	var server *mcp.MCPServer
 	var repoRoot string
@@ -168,9 +166,17 @@ func runMCP(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to set preset: %w", err)
 	}
 
-	// Log preset statistics
+	// Log startup banner with token efficiency info
 	preset, exposedCount, totalCount := server.GetPresetStats()
-	fmt.Fprintf(os.Stderr, "Tools: %d/%d (preset: %s)\n", exposedCount, totalCount, preset)
+	activeTokens := server.EstimateActiveTokens()
+	percentage := (exposedCount * 100) / totalCount
+
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintf(os.Stderr, "CKB MCP Server v%s\n", version.Version)
+	fmt.Fprintf(os.Stderr, "  Active tools: %d / %d (%d%%)\n", exposedCount, totalCount, percentage)
+	fmt.Fprintf(os.Stderr, "  Estimated context: %s\n", mcp.FormatTokens(activeTokens))
+	fmt.Fprintf(os.Stderr, "  Preset: %s\n", preset)
+	fmt.Fprintln(os.Stderr)
 
 	// Start watch mode if enabled
 	if mcpWatch {

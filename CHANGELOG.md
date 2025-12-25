@@ -6,6 +6,39 @@ All notable changes to CKB will be documented in this file.
 
 ### Added
 
+#### Token Efficiency Visibility
+Users can now see CKB's token savings compared to bloated MCP servers:
+
+**Startup Banner:**
+```
+CKB MCP Server v7.5.0
+  Active tools: 14 / 76 (18%)
+  Estimated context: ~1k tokens
+  Preset: core
+```
+
+**getStatus Response:**
+```json
+"preset": {
+  "active": "core",
+  "exposed": 14,
+  "total": 76,
+  "estimatedTokens": 1529,
+  "fullPresetTokens": 9040,
+  "tokenSavingsPercent": 83
+}
+```
+
+This addresses community feedback about MCP tools consuming 50-80k tokens before conversations even start. CKB's preset system delivers 83% token reduction while maintaining full functionality.
+
+**Future:** Per-tool token breakdown (`--tokens` flag showing individual tool costs) planned for a later release.
+
+**Files Changed:**
+- `cmd/ckb/mcp.go` — Multi-line startup banner with token info
+- `internal/mcp/server.go` — Added `EstimateActiveTokens()`, `EstimateFullTokens()` methods
+- `internal/mcp/presets.go` — Added `FormatTokens()` helper
+- `internal/mcp/tool_impls.go` — Token fields in getStatus response
+
 #### Auto Index Updates
 Automatic index maintenance across all CKB interfaces—keep your index fresh without manual intervention:
 

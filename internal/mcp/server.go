@@ -277,6 +277,18 @@ func (s *MCPServer) GetPresetStats() (preset string, exposedCount int, totalCoun
 	return preset, len(filteredTools), len(allTools)
 }
 
+// EstimateActiveTokens returns estimated tokens for the active preset's tools/list response
+func (s *MCPServer) EstimateActiveTokens() int {
+	tools := s.GetFilteredTools()
+	return EstimateTokens(MeasureJSONSize(tools))
+}
+
+// EstimateFullTokens returns estimated tokens for the full preset (all tools)
+func (s *MCPServer) EstimateFullTokens() int {
+	allTools := s.GetToolDefinitions()
+	return EstimateTokens(MeasureJSONSize(allTools))
+}
+
 // updateToolsetHash recomputes the toolset hash (call with lock held or during init)
 func (s *MCPServer) updateToolsetHash() {
 	s.mu.Lock()
