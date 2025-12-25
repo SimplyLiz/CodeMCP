@@ -209,89 +209,21 @@ See the **[Index Management Guide](https://github.com/SimplyLiz/CodeMCP/wiki/Ind
 
 ## Features
 
-### Core Intelligence
-- **Symbol Navigation** — Find any function, class, or variable in milliseconds
-- **Call Flow & Tracing** — Trace how code is reached from API endpoints, CLI commands, or jobs
-- **Impact Analysis** — Know exactly what breaks before refactoring, with risk scores
-- **Architecture Maps** — Module dependency graphs, responsibilities, domain concepts
-- **Dead Code Detection** — Keep/investigate/remove verdicts based on usage analysis
+| Category | Capabilities |
+|----------|--------------|
+| **Code Navigation** | Symbol search, call graphs, trace usage, entrypoints, key concepts |
+| **Impact Analysis** | Blast radius, risk scoring, hotspots, PR analysis, breaking changes |
+| **Architecture** | Module overview, ADRs, explain origin, dependency graphs |
+| **Ownership** | CODEOWNERS + git blame, ownership drift, reviewer suggestions |
+| **Code Quality** | Dead code detection, coupling analysis, complexity, quick wins |
+| **Documentation** | Doc-symbol linking, staleness detection, coverage enforcement |
+| **Multi-Repo** | Federation, contracts, remote index serving, repo registry |
+| **Runtime** | OpenTelemetry integration, observed usage, production dead code |
+| **Automation** | Daemon mode, watch mode, webhooks, incremental indexing |
 
-### Ownership & Risk
-- **Ownership Intelligence** — CODEOWNERS + git blame with time-weighted analysis
-- **Hotspot Detection** — Track churn trends, get 30-day risk projections
-- **Architectural Decisions** — Record and query ADRs with full-text search
+**📖 [Full Features Guide](https://github.com/SimplyLiz/CodeMCP/wiki/Features)** — Detailed documentation with examples and prompts
 
-### Advanced Capabilities
-- **Federation** — Query across multiple repos organization-wide
-- **Multi-Repo Management** — Named repo registry with quick MCP context switching
-- **Daemon Mode** — Always-on service with HTTP API, scheduled tasks, webhooks
-- **Contract Analysis** — Protobuf and OpenAPI discovery with cross-repo impact
-- **Runtime Observability** — OpenTelemetry integration for dead code detection
-- **Developer Intelligence** — Symbol origins, co-change coupling, risk audit
-
-### Fast Indexing & Auto-Updates
-- **Zero-Index Operation** — Tree-sitter fallback works without SCIP index
-- **Incremental Updates** — O(changed files) instead of full reindex (Go)
-- **Smart Caching** — Skip-if-fresh, watch mode, transitive invalidation
-- **Auto-Refresh** — Multiple methods: watch mode, daemon watcher, CI webhook (v7.5)
-
-### Remote Index Server
-- **Index Serving** — Serve symbol indexes over HTTP for federation
-- **Index Upload** — Push SCIP indexes with compression (gzip/zstd)
-- **Delta Updates** — Upload only changed files
-- **API Key Auth** — Scoped keys with rate limiting
-- **Remote Federation** — Connect to remote CKB servers and query alongside local repos
-
-📋 **[Full Changelog](https://github.com/SimplyLiz/CodeMCP/blob/main/CHANGELOG.md)** — Detailed version history from v5.1 to current
-
-### Zero-Friction UX (v7.0+)
-- **npm Distribution** — `npm install -g @tastehub/ckb` or `npx @tastehub/ckb`
-- **Auto-Setup** — `ckb setup` configures Claude Code integration automatically
-- **Update Notifications** — Automatic update check for all install methods via GitHub Releases (disable with `CKB_NO_UPDATE_CHECK=1`)
-
-### Zero-Index Operation (v7.1)
-- **Tree-sitter Fallback** — Symbol search works without SCIP index (8 languages)
-- **Auto-Index** — `ckb index` detects language and runs the right SCIP indexer
-- **Install Guidance** — Shows indexer install commands when missing
-- **Universal MCP Docs** — Setup for Claude Code, Cursor, Windsurf, VS Code, OpenCode, Claude Desktop
-
-### Smart Indexing & Explicit Tiers (v7.2)
-- **Skip-if-Fresh** — `ckb index` automatically skips if index is current with HEAD
-- **Freshness Tracking** — Tracks commits behind HEAD + uncommitted changes
-- **Index Status** — `ckb status` shows index freshness with commit hash
-- **Watch Mode** — `ckb mcp --watch` polls every 30s and auto-reindexes when stale
-- **Lock File** — Prevents concurrent indexing with flock-based locking
-- **Explicit Tiers** — Control analysis mode: `--tier=fast|standard|full` or `CKB_TIER` env var
-- **Tier Diagnostics** — `ckb doctor --tier enhanced` shows exactly what's missing and how to fix it
-
-### Doc-Symbol Linking (v7.3)
-- **Backtick Detection** — Automatically detect `Symbol.Name` references in markdown
-- **Directive Support** — Explicit `<!-- ckb:symbol -->` and `<!-- ckb:module -->` directives
-- **Fence Scanning** — Extract symbols from fenced code blocks via tree-sitter (8 languages)
-- **Staleness Detection** — Find broken references when symbols are renamed or deleted
-- **Rename Awareness** — Suggest new names when documented symbols are renamed
-- **CI Enforcement** — `--fail-under` flag for documentation coverage thresholds
-
-### Standardized Response Envelope (v7.4)
-- **Unified Metadata** — All 76 MCP tool responses now include structured metadata
-- **Confidence Tiers** — High/Medium/Low/Speculative tiers based on data freshness and source
-- **Provenance Tracking** — Know which backends (SCIP, Git, LSP) contributed to results
-- **Truncation Awareness** — Metadata shows when results are truncated and total counts
-- **Suggested Next Calls** — Structured drilldown suggestions for follow-up queries
-
-### Production Hardening (v7.3)
-- **Delta Artifacts** — CI-generated diffs for O(delta) ingestion instead of O(N)
-- **FTS5 Search** — SQLite FTS5 for instant search (replaces LIKE scans)
-- **Compaction Scheduler** — Automatic snapshot cleanup and database maintenance
-- **Prometheus Metrics** — `/metrics` endpoint for monitoring and alerting
-- **Load Shedding** — Graceful degradation under load with priority endpoints
-- **Health Details** — `/health/detailed` endpoint with per-repo and storage metrics
-
-### Language Quality (v7.3)
-- **Quality Tiers** — 4-tier classification (Tier 1: Go, Tier 2: TS/Python, Tier 3: Rust/Java, Tier 4: Experimental)
-- **Quality Assessment** — Per-language metrics (ref accuracy, callgraph quality)
-- **Python Venv Detection** — Auto-detect virtual environments with activation recommendations
-- **TypeScript Monorepo** — Detect pnpm, lerna, nx, yarn workspaces with per-package tsconfig status
+📋 **[Changelog](https://github.com/SimplyLiz/CodeMCP/blob/main/CHANGELOG.md)** — Version history from v5.1 to current
 
 ## MCP Tools (76 Available)
 
