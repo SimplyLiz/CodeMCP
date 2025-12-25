@@ -146,8 +146,8 @@ jobs:
           for f in $(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(go|ts|js|py)$' | head -20); do
             [ -f "$f" ] || continue
             r=$(./ckb complexity "$f" --format=json 2>/dev/null || echo '{}')
-            cy=$(echo "$r" | jq '.cyclomatic // 0')
-            cg=$(echo "$r" | jq '.cognitive // 0')
+            cy=$(echo "$r" | jq '.summary.maxCyclomatic // 0')
+            cg=$(echo "$r" | jq '.summary.maxCognitive // 0')
 
             if [ "$cy" -gt ${{ env.COMPLEXITY_CYCLOMATIC }} ]; then
               echo "::warning file=$f::Cyclomatic complexity $cy exceeds threshold ${{ env.COMPLEXITY_CYCLOMATIC }}"
@@ -170,21 +170,32 @@ jobs:
       - name: Coupling
         id: coupling
         run: |
-          # coupling command takes single file, analyze each changed file
-          echo '{"missingCoupled":[]}' > coupling.json
-          missing_total=0
+          # Get list of changed files for comparison
+          changed_files=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(go|ts|js|py)$' || true)
+          echo '[]' > missing_coupled.json
 
-          for f in $(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(go|ts|js|py)$' | head -10); do
+          for f in $(echo "$changed_files" | head -10); do
             [ -f "$f" ] || continue
             result=$(./ckb coupling "$f" --min-correlation=${{ env.COUPLING_MIN }} --format=json 2>/dev/null || echo '{}')
-            # Check if any coupled files are missing from this PR
-            missing=$(echo "$result" | jq '[.coupledFiles // [] | .[] | select(.presentInPR == false)] | length' 2>/dev/null || echo 0)
-            missing_total=$((missing_total + missing))
+
+            # Extract correlations and check if coupled files are in the PR
+            echo "$result" | jq -r --arg changed "$changed_files" --arg source "$f" '
+              .correlations // [] | .[] |
+              select(.correlation >= ${{ env.COUPLING_MIN }}) |
+              select(($changed | split("\n") | map(select(. != "")) | index(.file)) == null) |
+              {file: .file, coupledTo: $source, correlation: .correlation}
+            ' 2>/dev/null >> missing_coupled.json.tmp || true
           done
 
-          jq -n --argjson m "$missing_total" '{missingCoupled: (if $m > 0 then [range($m) | {file: "coupled-file"}] else [] end)}' > coupling.json
+          # Deduplicate and format final output
+          if [ -f missing_coupled.json.tmp ]; then
+            jq -s 'unique_by(.file) | {missingCoupled: .}' missing_coupled.json.tmp > coupling.json 2>/dev/null || echo '{"missingCoupled":[]}' > coupling.json
+            rm -f missing_coupled.json.tmp
+          else
+            echo '{"missingCoupled":[]}' > coupling.json
+          fi
 
-          echo "missing=$missing_total" >> $GITHUB_OUTPUT
+          echo "missing=$(jq '.missingCoupled | length' coupling.json)" >> $GITHUB_OUTPUT
 
       - name: Contracts
         id: contracts
