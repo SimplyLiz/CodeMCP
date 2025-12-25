@@ -146,8 +146,8 @@ jobs:
           for f in $(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(go|ts|js|py)$' | head -20); do
             [ -f "$f" ] || continue
             r=$(./ckb complexity "$f" --format=json 2>/dev/null || echo '{}')
-            cy=$(echo "$r" | jq '.cyclomatic // 0')
-            cg=$(echo "$r" | jq '.cognitive // 0')
+            cy=$(echo "$r" | jq '.summary.maxCyclomatic // 0')
+            cg=$(echo "$r" | jq '.summary.maxCognitive // 0')
 
             if [ "$cy" -gt ${{ env.COMPLEXITY_CYCLOMATIC }} ]; then
               echo "::warning file=$f::Cyclomatic complexity $cy exceeds threshold ${{ env.COMPLEXITY_CYCLOMATIC }}"
@@ -170,21 +170,32 @@ jobs:
       - name: Coupling
         id: coupling
         run: |
-          # coupling command takes single file, analyze each changed file
-          echo '{"missingCoupled":[]}' > coupling.json
-          missing_total=0
+          # Get list of changed files for comparison
+          changed_files=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(go|ts|js|py)$' || true)
+          echo '[]' > missing_coupled.json
 
-          for f in $(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(go|ts|js|py)$' | head -10); do
+          for f in $(echo "$changed_files" | head -10); do
             [ -f "$f" ] || continue
             result=$(./ckb coupling "$f" --min-correlation=${{ env.COUPLING_MIN }} --format=json 2>/dev/null || echo '{}')
-            # Check if any coupled files are missing from this PR
-            missing=$(echo "$result" | jq '[.coupledFiles // [] | .[] | select(.presentInPR == false)] | length' 2>/dev/null || echo 0)
-            missing_total=$((missing_total + missing))
+
+            # Extract correlations and check if coupled files are in the PR
+            echo "$result" | jq -r --arg changed "$changed_files" --arg source "$f" '
+              .correlations // [] | .[] |
+              select(.correlation >= ${{ env.COUPLING_MIN }}) |
+              select(($changed | split("\n") | map(select(. != "")) | index(.file)) == null) |
+              {file: .file, coupledTo: $source, correlation: .correlation}
+            ' 2>/dev/null >> missing_coupled.json.tmp || true
           done
 
-          jq -n --argjson m "$missing_total" '{missingCoupled: (if $m > 0 then [range($m) | {file: "coupled-file"}] else [] end)}' > coupling.json
+          # Deduplicate and format final output
+          if [ -f missing_coupled.json.tmp ]; then
+            jq -s 'unique_by(.file) | {missingCoupled: .}' missing_coupled.json.tmp > coupling.json 2>/dev/null || echo '{"missingCoupled":[]}' > coupling.json
+            rm -f missing_coupled.json.tmp
+          else
+            echo '{"missingCoupled":[]}' > coupling.json
+          fi
 
-          echo "missing=$missing_total" >> $GITHUB_OUTPUT
+          echo "missing=$(jq '.missingCoupled | length' coupling.json)" >> $GITHUB_OUTPUT
 
       - name: Contracts
         id: contracts
@@ -240,12 +251,12 @@ jobs:
           ./ckb docs coverage --format=json > docs-coverage.json 2>/dev/null || echo '{"coverage":0}' > docs-coverage.json
           ./ckb docs stale --all --format=json > docs-stale.json 2>/dev/null || echo '{"totalStale":0,"reports":[]}' > docs-stale.json
 
-          echo "coverage=$(jq '.coverage // 0' docs-coverage.json)" >> $GITHUB_OUTPUT
+          echo "coverage=$(jq '.coveragePercent // 0' docs-coverage.json)" >> $GITHUB_OUTPUT
           echo "stale=$(jq '.totalStale // 0' docs-stale.json)" >> $GITHUB_OUTPUT
 
       - name: Drift
         run: |
-          ./ckb ownership drift --threshold=0.3 --limit=10 --format=json > drift.json 2>/dev/null || echo '[]' > drift.json
+          ./ckb ownership drift --threshold=0.3 --limit=10 --format=json > drift.json 2>/dev/null || echo '{"driftedFiles":[]}' > drift.json
 
       - name: Languages
         id: languages
@@ -266,15 +277,15 @@ jobs:
         id: eval
         run: |
           if [ -d ".ckb/fixtures" ]; then
-            ./ckb eval --fixtures=.ckb/fixtures --format=json > eval.json 2>/dev/null || echo '{"passed":0,"total":0,"results":[]}' > eval.json
+            ./ckb eval --fixtures=.ckb/fixtures --format=json > eval.json 2>/dev/null || echo '{"passedTests":0,"totalTests":0,"results":[]}' > eval.json
             echo "skipped=false" >> $GITHUB_OUTPUT
           else
-            echo '{"passed":0,"total":0,"results":[],"skipped":true}' > eval.json
+            echo '{"passedTests":0,"totalTests":0,"results":[],"skipped":true}' > eval.json
             echo "skipped=true" >> $GITHUB_OUTPUT
           fi
 
-          echo "passed=$(jq '.passed // 0' eval.json)" >> $GITHUB_OUTPUT
-          echo "total=$(jq '.total // 0' eval.json)" >> $GITHUB_OUTPUT
+          echo "passed=$(jq '.passedTests // 0' eval.json)" >> $GITHUB_OUTPUT
+          echo "total=$(jq '.totalTests // 0' eval.json)" >> $GITHUB_OUTPUT
 
       # ───────────────────────────────────────────────────────────────────────
       # Quality Gates
@@ -413,7 +424,7 @@ jobs:
             // Metrics Table
             c.push('| Metric | Value | |');
             c.push('|:-------|------:|:-:|');
-            c.push(`| Doc Coverage | ${docsCov.coverage || 0}% | ${(docsCov.coverage || 0) >= TH_DOC ? '✅' : '⚠️'} |`);
+            c.push(`| Doc Coverage | ${docsCov.coveragePercent || docsCov.coverage || 0}% | ${(docsCov.coveragePercent || docsCov.coverage || 0) >= TH_DOC ? '✅' : '⚠️'} |`);
             c.push(`| Complexity | ${complexViolations.length} violations | ${complexViolations.length === 0 ? '✅' : '⚠️'} |`);
             c.push(`| Coupling | ${coupling.missingCoupled?.length || 0} gaps | ${!coupling.missingCoupled?.length ? '✅' : '⚠️'} |`);
             c.push(`| Blast Radius | ${blastSymbols.length} symbols, ${blastTests.length} tests | ${blastSymbols.length + blastTests.length === 0 ? '✅' : '⚠️'} |`);
@@ -573,14 +584,15 @@ jobs:
             }
 
             // 👤 Ownership Drift
-            if (Array.isArray(drift) && drift.length > 0) {
+            const driftedFiles = drift.driftedFiles || [];
+            if (driftedFiles.length > 0) {
               c.push('<details>');
-              c.push(`<summary>👤 Ownership drift · ${drift.length} files</summary>`);
+              c.push(`<summary>👤 Ownership drift · ${driftedFiles.length} files</summary>`);
               c.push('');
               c.push('| File | CODEOWNERS | Actual Top Contributor |');
               c.push('|:-----|:-----------|:-----------------------|');
-              drift.slice(0, 8).forEach(d => {
-                c.push(`| ${linkedFile(d.path)} | ${d.declaredOwner || '—'} | ${d.actualOwner || '—'} |`);
+              driftedFiles.slice(0, 8).forEach(d => {
+                c.push(`| ${linkedFile(d.path || d.file)} | ${d.declaredOwner || d.codeowner || '—'} | ${d.actualOwner || d.topContributor || '—'} |`);
               });
               c.push('');
               c.push('</details>');
@@ -634,10 +646,10 @@ jobs:
             }
 
             // 🧪 Eval Suite
-            const failed = (evalResults.results || []).filter(r => !r.passed);
-            if (!evalResults.skipped && evalResults.total > 0) {
-              const evalPassed = evalResults.passed || 0;
-              const evalTotal = evalResults.total || 0;
+            const failed = (evalResults.results || evalResults.failedTests || []).filter(r => !r.passed);
+            if (!evalResults.skipped && (evalResults.totalTests || evalResults.total) > 0) {
+              const evalPassed = evalResults.passedTests || evalResults.passed || 0;
+              const evalTotal = evalResults.totalTests || evalResults.total || 0;
               const evalPct = Math.round((evalPassed / evalTotal) * 100);
               const evalIcon = evalPct >= TH_EVAL ? '✅' : '⚠️';
 

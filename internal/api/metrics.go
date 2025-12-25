@@ -10,6 +10,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"ckb/internal/version"
 )
 
 // MetricsConfig contains metrics configuration
@@ -258,7 +260,7 @@ func (m *MetricsCollector) WritePrometheus(w http.ResponseWriter) {
 	// Write process info
 	_, _ = fmt.Fprintf(w, "# HELP ckb_info CKB build information\n")
 	_, _ = fmt.Fprintf(w, "# TYPE ckb_info gauge\n")
-	_, _ = fmt.Fprintf(w, "ckb_info{version=\"%s\"} 1\n\n", "7.3.0") // Should use version.Version
+	_, _ = fmt.Fprintf(w, "ckb_info{version=\"%s\"} 1\n\n", version.Version)
 
 	// Write uptime
 	_, _ = fmt.Fprintf(w, "# HELP ckb_uptime_seconds Time since CKB started\n")
