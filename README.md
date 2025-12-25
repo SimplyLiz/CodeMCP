@@ -247,7 +247,7 @@ See the **[Index Management Guide](https://github.com/SimplyLiz/CodeMCP/wiki/Ind
 ### Zero-Friction UX (v7.0+)
 - **npm Distribution** — `npm install -g @tastehub/ckb` or `npx @tastehub/ckb`
 - **Auto-Setup** — `ckb setup` configures Claude Code integration automatically
-- **Update Notifications** — Automatic update check for npm installs (disable with `CKB_NO_UPDATE_CHECK=1`)
+- **Update Notifications** — Automatic update check for all install methods via GitHub Releases (disable with `CKB_NO_UPDATE_CHECK=1`)
 
 ### Zero-Index Operation (v7.1)
 - **Tree-sitter Fallback** — Symbol search works without SCIP index (8 languages)
