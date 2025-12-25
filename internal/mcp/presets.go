@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"sort"
 )
 
@@ -291,4 +292,12 @@ func ComputeToolsetHash(tools []Tool) string {
 	}
 
 	return hex.EncodeToString(h.Sum(nil))[:10]
+}
+
+// FormatTokens formats a token count for display (e.g., "~12k tokens")
+func FormatTokens(tokens int) string {
+	if tokens >= 1000 {
+		return fmt.Sprintf("~%dk tokens", tokens/1000)
+	}
+	return fmt.Sprintf("~%d tokens", tokens)
 }

@@ -42,8 +42,14 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 		status = "healthy"
 	}
 
-	// Get preset info
+	// Get preset info with token estimates
 	preset, exposedCount, totalCount := s.GetPresetStats()
+	activeTokens := s.EstimateActiveTokens()
+	fullTokens := s.EstimateFullTokens()
+	tokenSavings := 0
+	if fullTokens > 0 {
+		tokenSavings = ((fullTokens - activeTokens) * 100) / fullTokens
+	}
 
 	// Get index staleness info
 	indexInfo := s.getIndexStaleness()
@@ -64,10 +70,13 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 			"headCommit":  statusResp.RepoState.HeadCommit,
 		},
 		"preset": map[string]interface{}{
-			"active":   preset,
-			"exposed":  exposedCount,
-			"total":    totalCount,
-			"expanded": s.IsExpanded(),
+			"active":           preset,
+			"exposed":          exposedCount,
+			"total":            totalCount,
+			"expanded":         s.IsExpanded(),
+			"estimatedTokens":  activeTokens,
+			"fullPresetTokens": fullTokens,
+			"tokenSavings":     fmt.Sprintf("%d%%", tokenSavings),
 		},
 		"index": indexInfo,
 	}
