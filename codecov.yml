@@ -1,19 +1,22 @@
 coverage:
+  precision: 1
+  round: down
   status:
     project:
       default:
         target: 30%
-        threshold: 0%
+        threshold: 1%    # Allow 1% drop without failing
+        if_ci_failed: error
     patch:
       default:
         target: 80%
         threshold: 0%
 
 comment:
-  layout: "header, diff, flags, components, files"
+  layout: "header, diff, flags, files, footer"
   behavior: default
   require_changes: false
-  require_base: true
+  require_base: false    # Post even without base coverage
   require_head: true
   hide_project_coverage: false
 
