@@ -1,15 +1,33 @@
 {
   "name": "@tastehub/ckb",
   "version": "7.3.0",
-  "description": "Code Knowledge Base - AI-friendly code intelligence for Claude and other LLM assistants",
+  "description": "Code intelligence for AI assistants (MCP), CLI, and HTTP API - symbol navigation, impact analysis, architecture",
   "keywords": [
-    "code-intelligence",
     "mcp",
+    "modelcontextprotocol",
     "claude",
+    "cursor",
+    "windsurf",
     "llm",
+    "ai-assistant",
+    "code-intelligence",
+    "code-analysis",
+    "code-navigation",
     "scip",
     "lsp",
-    "analysis"
+    "developer-tools",
+    "codebase",
+    "refactoring"
+  ],
+  "type": "commonjs",
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
   ],
   "homepage": "https://github.com/SimplyLiz/CodeMCP",
   "bugs": {

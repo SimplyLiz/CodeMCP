@@ -422,3 +422,94 @@ func TestSnapshotDeterminism(t *testing.T) {
 		}
 	}
 }
+
+func TestDeepEqual(t *testing.T) {
+	tests := []struct {
+		name string
+		a    interface{}
+		b    interface{}
+		want bool
+	}{
+		{
+			name: "equal strings",
+			a:    "hello",
+			b:    "hello",
+			want: true,
+		},
+		{
+			name: "different strings",
+			a:    "hello",
+			b:    "world",
+			want: false,
+		},
+		{
+			name: "equal ints",
+			a:    42,
+			b:    42,
+			want: true,
+		},
+		{
+			name: "different ints",
+			a:    42,
+			b:    43,
+			want: false,
+		},
+		{
+			name: "equal slices",
+			a:    []int{1, 2, 3},
+			b:    []int{1, 2, 3},
+			want: true,
+		},
+		{
+			name: "different slices",
+			a:    []int{1, 2, 3},
+			b:    []int{1, 2, 4},
+			want: false,
+		},
+		{
+			name: "equal maps",
+			a:    map[string]int{"a": 1, "b": 2},
+			b:    map[string]int{"a": 1, "b": 2},
+			want: true,
+		},
+		{
+			name: "different maps",
+			a:    map[string]int{"a": 1, "b": 2},
+			b:    map[string]int{"a": 1, "b": 3},
+			want: false,
+		},
+		{
+			name: "nil vs nil",
+			a:    nil,
+			b:    nil,
+			want: true,
+		},
+		{
+			name: "nil vs empty slice",
+			a:    []int(nil),
+			b:    []int{},
+			want: false,
+		},
+		{
+			name: "equal structs",
+			a:    struct{ Name string }{Name: "test"},
+			b:    struct{ Name string }{Name: "test"},
+			want: true,
+		},
+		{
+			name: "different structs",
+			a:    struct{ Name string }{Name: "test1"},
+			b:    struct{ Name string }{Name: "test2"},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := DeepEqual(tt.a, tt.b)
+			if got != tt.want {
+				t.Errorf("DeepEqual(%v, %v) = %v, want %v", tt.a, tt.b, got, tt.want)
+			}
+		})
+	}
+}
