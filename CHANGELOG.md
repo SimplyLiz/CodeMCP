@@ -279,13 +279,14 @@ All 76 MCP tool responses now include structured metadata in a consistent envelo
 - `internal/mcp/handler.go` — Updated handleCallTool for envelope format
 - All `internal/mcp/tool_impls*.go` files — Refactored to return envelope responses
 
-#### npm Update Notifications
-Automatic update checking for npm installations:
+#### Update Notifications
+Automatic update checking for all installation methods:
 
-- **Auto-detection** — Detects when running from `npm install -g @tastehub/ckb`
-- **Non-blocking check** — Runs asynchronously, never delays command execution
-- **24-hour cache** — Checks npm registry at most once per day
-- **Silent failures** — Network timeouts (3s), errors, and offline mode fail silently
+- **GitHub Releases API** — Single source of truth for all install methods (npm, go install, binary)
+- **Deferred notification** — Shows at command START from cache (instant, no HTTP during execution)
+- **Background refresh** — Cache updated asynchronously for next run
+- **24-hour cache** — Checks GitHub at most once per day, stored in `~/.ckb/update-check.json`
+- **Smart upgrade message** — npm users see `npm update`, others see GitHub releases URL
 - **Protocol-safe** — Skips `mcp` and `serve` commands to avoid breaking protocols
 
 **Disable with:**
@@ -293,11 +294,19 @@ Automatic update checking for npm installations:
 export CKB_NO_UPDATE_CHECK=1
 ```
 
-**Example output:**
+**Example output (npm install):**
 ```
 ╭─────────────────────────────────────────────────────╮
 │  Update available: 7.3.0 → 7.4.0                    │
 │  Run: npm update -g @tastehub/ckb                   │
+╰─────────────────────────────────────────────────────╯
+```
+
+**Example output (go install / binary):**
+```
+╭─────────────────────────────────────────────────────╮
+│  Update available: 7.3.0 → 7.4.0                    │
+│  https://github.com/SimplyLiz/CodeMCP/releases      │
 ╰─────────────────────────────────────────────────────╯
 ```
 
