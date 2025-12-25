@@ -85,8 +85,8 @@ func outputConfigJSON(result *config.LoadResult, diffOnly bool) {
 	}
 
 	var configMap map[string]interface{}
-	if err := json.Unmarshal(configBytes, &configMap); err != nil {
-		fmt.Fprintf(os.Stderr, "Error unmarshaling config: %v\n", err)
+	if unmarshalErr := json.Unmarshal(configBytes, &configMap); unmarshalErr != nil {
+		fmt.Fprintf(os.Stderr, "Error unmarshaling config: %v\n", unmarshalErr)
 		os.Exit(1)
 	}
 
@@ -94,7 +94,7 @@ func outputConfigJSON(result *config.LoadResult, diffOnly bool) {
 		// Get defaults and compute diff
 		defaultBytes, _ := json.Marshal(config.DefaultConfig())
 		var defaultMap map[string]interface{}
-		json.Unmarshal(defaultBytes, &defaultMap)
+		_ = json.Unmarshal(defaultBytes, &defaultMap)
 		configMap = computeDiff(configMap, defaultMap)
 	}
 
