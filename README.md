@@ -293,7 +293,7 @@ See the **[Index Management Guide](https://github.com/SimplyLiz/CodeMCP/wiki/Ind
 - **Python Venv Detection** — Auto-detect virtual environments with activation recommendations
 - **TypeScript Monorepo** — Detect pnpm, lerna, nx, yarn workspaces with per-package tsconfig status
 
-## MCP Tools (74 Available)
+## MCP Tools (76 Available)
 
 CKB exposes code intelligence through the Model Context Protocol:
 
