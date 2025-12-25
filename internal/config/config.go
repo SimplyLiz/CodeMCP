@@ -5,9 +5,27 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/spf13/viper"
 )
+
+// EnvOverride records an environment variable override that was applied
+type EnvOverride struct {
+	EnvVar    string      // e.g., "CKB_BUDGET_MAX_MODULES"
+	Path      string      // e.g., "budget.maxModules"
+	Value     interface{} // The parsed value that was applied
+	FromValue string      // Original string value from env
+}
+
+// LoadResult contains the loaded config plus metadata about how it was loaded
+type LoadResult struct {
+	Config       *Config
+	ConfigPath   string        // Path to config file that was loaded (empty if defaults used)
+	EnvOverrides []EnvOverride // Environment variable overrides that were applied
+	UsedDefaults bool          // True if no config file was found
+}
 
 // Config represents the complete CKB configuration (v5 schema, extended in v6.2.1)
 type Config struct {
@@ -390,34 +408,325 @@ func DefaultConfig() *Config {
 }
 
 // LoadConfig loads configuration from .ckb/config.json
+// For more detailed loading info (env overrides, config path), use LoadConfigWithDetails
 func LoadConfig(repoRoot string) (*Config, error) {
-	v := viper.New()
+	result, err := LoadConfigWithDetails(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	return result.Config, nil
+}
 
-	// Set defaults
-	v.SetDefault("version", 5)
-	v.SetDefault("repoRoot", ".")
+// LoadConfigWithDetails loads configuration and returns detailed info about how it was loaded
+func LoadConfigWithDetails(repoRoot string) (*LoadResult, error) {
+	result := &LoadResult{}
 
-	// Configure viper
-	v.SetConfigName("config")
-	v.SetConfigType("json")
-	v.AddConfigPath(filepath.Join(repoRoot, ".ckb"))
-
-	// Read config file
-	if err := v.ReadInConfig(); err != nil {
-		// If config doesn't exist, return default config
-		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			return DefaultConfig(), nil
+	// Check for CKB_CONFIG_PATH override
+	configPath := os.Getenv("CKB_CONFIG_PATH")
+	if configPath != "" {
+		// Load from specified path
+		cfg, err := loadConfigFromPath(configPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load config from CKB_CONFIG_PATH=%s: %w", configPath, err)
 		}
+		result.Config = cfg
+		result.ConfigPath = configPath
+	} else {
+		// Load from default location
+		v := viper.New()
+
+		// Set defaults
+		v.SetDefault("version", 5)
+		v.SetDefault("repoRoot", ".")
+
+		// Configure viper
+		v.SetConfigName("config")
+		v.SetConfigType("json")
+		v.AddConfigPath(filepath.Join(repoRoot, ".ckb"))
+
+		// Read config file
+		if err := v.ReadInConfig(); err != nil {
+			// If config doesn't exist, use default config
+			if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+				result.Config = DefaultConfig()
+				result.UsedDefaults = true
+			} else {
+				return nil, err
+			}
+		} else {
+			// Unmarshal into config struct
+			var cfg Config
+			if err := v.Unmarshal(&cfg); err != nil {
+				return nil, err
+			}
+			result.Config = &cfg
+			result.ConfigPath = v.ConfigFileUsed()
+		}
+	}
+
+	// Apply environment variable overrides
+	result.EnvOverrides = applyEnvOverrides(result.Config)
+
+	return result, nil
+}
+
+// loadConfigFromPath loads a config file from a specific path
+func loadConfigFromPath(path string) (*Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
 		return nil, err
 	}
 
-	// Unmarshal into config struct
 	var cfg Config
-	if err := v.Unmarshal(&cfg); err != nil {
-		return nil, err
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("invalid JSON in config file: %w", err)
 	}
 
 	return &cfg, nil
+}
+
+// envVarMapping defines the supported environment variable overrides
+// Format: env var name -> (config path, type)
+type envVarDef struct {
+	path    string
+	varType string // "string", "int", "bool"
+}
+
+var envVarMappings = map[string]envVarDef{
+	// Logging (support both CKB_LOG_* and CKB_LOGGING_* for compatibility)
+	"CKB_LOG_LEVEL":      {path: "logging.level", varType: "string"},
+	"CKB_LOG_FORMAT":     {path: "logging.format", varType: "string"},
+	"CKB_LOGGING_LEVEL":  {path: "logging.level", varType: "string"},
+	"CKB_LOGGING_FORMAT": {path: "logging.format", varType: "string"},
+
+	// Tier
+	"CKB_TIER": {path: "tier", varType: "string"},
+
+	// Cache
+	"CKB_CACHE_QUERY_TTL_SECONDS":    {path: "cache.queryTtlSeconds", varType: "int"},
+	"CKB_CACHE_VIEW_TTL_SECONDS":     {path: "cache.viewTtlSeconds", varType: "int"},
+	"CKB_CACHE_NEGATIVE_TTL_SECONDS": {path: "cache.negativeTtlSeconds", varType: "int"},
+
+	// Budget
+	"CKB_BUDGET_MAX_MODULES":            {path: "budget.maxModules", varType: "int"},
+	"CKB_BUDGET_MAX_SYMBOLS_PER_MODULE": {path: "budget.maxSymbolsPerModule", varType: "int"},
+	"CKB_BUDGET_MAX_IMPACT_ITEMS":       {path: "budget.maxImpactItems", varType: "int"},
+	"CKB_BUDGET_MAX_DRILLDOWNS":         {path: "budget.maxDrilldowns", varType: "int"},
+	"CKB_BUDGET_ESTIMATED_MAX_TOKENS":   {path: "budget.estimatedMaxTokens", varType: "int"},
+
+	// Backends
+	"CKB_BACKENDS_SCIP_ENABLED": {path: "backends.scip.enabled", varType: "bool"},
+	"CKB_BACKENDS_LSP_ENABLED":  {path: "backends.lsp.enabled", varType: "bool"},
+	"CKB_BACKENDS_GIT_ENABLED":  {path: "backends.git.enabled", varType: "bool"},
+
+	// Telemetry
+	"CKB_TELEMETRY_ENABLED": {path: "telemetry.enabled", varType: "bool"},
+
+	// Daemon
+	"CKB_DAEMON_PORT": {path: "daemon.port", varType: "int"},
+	"CKB_DAEMON_BIND": {path: "daemon.bind", varType: "string"},
+
+	// Privacy
+	"CKB_PRIVACY_MODE": {path: "privacy.mode", varType: "string"},
+}
+
+// applyEnvOverrides applies environment variable overrides to the config
+func applyEnvOverrides(cfg *Config) []EnvOverride {
+	var overrides []EnvOverride
+
+	for envVar, def := range envVarMappings {
+		value := os.Getenv(envVar)
+		if value == "" {
+			continue
+		}
+
+		var parsedValue interface{}
+		var err error
+
+		switch def.varType {
+		case "string":
+			parsedValue = value
+		case "int":
+			parsedValue, err = strconv.Atoi(value)
+			if err != nil {
+				// Skip invalid int values silently (could log warning)
+				continue
+			}
+		case "bool":
+			parsedValue, err = strconv.ParseBool(value)
+			if err != nil {
+				// Skip invalid bool values silently
+				continue
+			}
+		}
+
+		// Apply the override
+		if applyOverride(cfg, def.path, parsedValue) {
+			overrides = append(overrides, EnvOverride{
+				EnvVar:    envVar,
+				Path:      def.path,
+				Value:     parsedValue,
+				FromValue: value,
+			})
+		}
+	}
+
+	return overrides
+}
+
+// applyOverride applies a single override to the config struct
+func applyOverride(cfg *Config, path string, value interface{}) bool {
+	parts := strings.Split(path, ".")
+
+	switch parts[0] {
+	case "tier":
+		if v, ok := value.(string); ok {
+			cfg.Tier = v
+			return true
+		}
+	case "logging":
+		if len(parts) < 2 {
+			return false
+		}
+		switch parts[1] {
+		case "level":
+			if v, ok := value.(string); ok {
+				cfg.Logging.Level = v
+				return true
+			}
+		case "format":
+			if v, ok := value.(string); ok {
+				cfg.Logging.Format = v
+				return true
+			}
+		}
+	case "cache":
+		if len(parts) < 2 {
+			return false
+		}
+		switch parts[1] {
+		case "queryTtlSeconds":
+			if v, ok := value.(int); ok {
+				cfg.Cache.QueryTtlSeconds = v
+				return true
+			}
+		case "viewTtlSeconds":
+			if v, ok := value.(int); ok {
+				cfg.Cache.ViewTtlSeconds = v
+				return true
+			}
+		case "negativeTtlSeconds":
+			if v, ok := value.(int); ok {
+				cfg.Cache.NegativeTtlSeconds = v
+				return true
+			}
+		}
+	case "budget":
+		if len(parts) < 2 {
+			return false
+		}
+		switch parts[1] {
+		case "maxModules":
+			if v, ok := value.(int); ok {
+				cfg.Budget.MaxModules = v
+				return true
+			}
+		case "maxSymbolsPerModule":
+			if v, ok := value.(int); ok {
+				cfg.Budget.MaxSymbolsPerModule = v
+				return true
+			}
+		case "maxImpactItems":
+			if v, ok := value.(int); ok {
+				cfg.Budget.MaxImpactItems = v
+				return true
+			}
+		case "maxDrilldowns":
+			if v, ok := value.(int); ok {
+				cfg.Budget.MaxDrilldowns = v
+				return true
+			}
+		case "estimatedMaxTokens":
+			if v, ok := value.(int); ok {
+				cfg.Budget.EstimatedMaxTokens = v
+				return true
+			}
+		}
+	case "backends":
+		if len(parts) < 3 {
+			return false
+		}
+		switch parts[1] {
+		case "scip":
+			if parts[2] == "enabled" {
+				if v, ok := value.(bool); ok {
+					cfg.Backends.Scip.Enabled = v
+					return true
+				}
+			}
+		case "lsp":
+			if parts[2] == "enabled" {
+				if v, ok := value.(bool); ok {
+					cfg.Backends.Lsp.Enabled = v
+					return true
+				}
+			}
+		case "git":
+			if parts[2] == "enabled" {
+				if v, ok := value.(bool); ok {
+					cfg.Backends.Git.Enabled = v
+					return true
+				}
+			}
+		}
+	case "telemetry":
+		if len(parts) < 2 {
+			return false
+		}
+		if parts[1] == "enabled" {
+			if v, ok := value.(bool); ok {
+				cfg.Telemetry.Enabled = v
+				return true
+			}
+		}
+	case "daemon":
+		if len(parts) < 2 {
+			return false
+		}
+		switch parts[1] {
+		case "port":
+			if v, ok := value.(int); ok {
+				cfg.Daemon.Port = v
+				return true
+			}
+		case "bind":
+			if v, ok := value.(string); ok {
+				cfg.Daemon.Bind = v
+				return true
+			}
+		}
+	case "privacy":
+		if len(parts) < 2 {
+			return false
+		}
+		if parts[1] == "mode" {
+			if v, ok := value.(string); ok {
+				cfg.Privacy.Mode = v
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// GetSupportedEnvVars returns a list of all supported environment variables
+func GetSupportedEnvVars() []string {
+	vars := make([]string, 0, len(envVarMappings))
+	for v := range envVarMappings {
+		vars = append(vars, v)
+	}
+	return vars
 }
 
 // Save writes the configuration to .ckb/config.json
