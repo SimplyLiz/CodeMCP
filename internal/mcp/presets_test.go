@@ -175,6 +175,73 @@ func TestExpandToolsetRateLimit(t *testing.T) {
 	}
 }
 
+func TestSetPresetInvalid(t *testing.T) {
+	logger := logging.NewLogger(logging.Config{
+		Level: logging.ErrorLevel,
+	})
+
+	server := NewMCPServer("test", nil, logger)
+
+	// Try to set an invalid preset
+	err := server.SetPreset("nonexistent")
+	if err == nil {
+		t.Error("expected error for invalid preset")
+	}
+
+	// Verify the preset wasn't changed
+	if server.GetActivePreset() != DefaultPreset {
+		t.Errorf("preset should remain %s after invalid SetPreset, got %s",
+			DefaultPreset, server.GetActivePreset())
+	}
+}
+
+func TestGetActivePresetAfterSet(t *testing.T) {
+	logger := logging.NewLogger(logging.Config{
+		Level: logging.ErrorLevel,
+	})
+
+	server := NewMCPServer("test", nil, logger)
+
+	// Initially should return default
+	if server.GetActivePreset() != DefaultPreset {
+		t.Errorf("expected default preset %s, got %s", DefaultPreset, server.GetActivePreset())
+	}
+
+	// Set to review preset
+	if err := server.SetPreset(PresetReview); err != nil {
+		t.Fatalf("SetPreset failed: %v", err)
+	}
+
+	// Should return review
+	if server.GetActivePreset() != PresetReview {
+		t.Errorf("expected preset %s, got %s", PresetReview, server.GetActivePreset())
+	}
+}
+
+func TestPresetDescriptionsComplete(t *testing.T) {
+	// Verify all presets have descriptions
+	for _, preset := range ValidPresets() {
+		desc, ok := PresetDescriptions[preset]
+		if !ok {
+			t.Errorf("preset %s missing from PresetDescriptions", preset)
+		}
+		if desc == "" {
+			t.Errorf("preset %s has empty description", preset)
+		}
+	}
+}
+
+func TestGetPresetToolsInvalid(t *testing.T) {
+	// Invalid preset should return core tools
+	tools := GetPresetTools("nonexistent")
+	coreTools := GetPresetTools(PresetCore)
+
+	if len(tools) != len(coreTools) {
+		t.Errorf("invalid preset should return core tools, got %d tools instead of %d",
+			len(tools), len(coreTools))
+	}
+}
+
 func TestFormatTokens(t *testing.T) {
 	tests := []struct {
 		tokens   int
@@ -223,5 +290,65 @@ func TestToolsetHash(t *testing.T) {
 	}
 	if hash1 == hash3 {
 		t.Error("different descriptions should have different hashes")
+	}
+}
+
+func TestGetAllPresetInfo(t *testing.T) {
+	logger := logging.NewLogger(logging.Config{
+		Level: logging.ErrorLevel,
+	})
+
+	server := NewMCPServer("test", nil, logger)
+	allTools := server.GetToolDefinitions()
+	infos := GetAllPresetInfo(allTools)
+
+	// Should return info for all presets
+	if len(infos) != len(ValidPresets()) {
+		t.Errorf("expected %d preset infos, got %d", len(ValidPresets()), len(infos))
+	}
+
+	// Verify each preset has valid data
+	for _, info := range infos {
+		if info.Name == "" {
+			t.Error("preset info has empty name")
+		}
+		if info.ToolCount == 0 {
+			t.Errorf("preset %s has 0 tools", info.Name)
+		}
+		if info.TokenCount == 0 {
+			t.Errorf("preset %s has 0 tokens", info.Name)
+		}
+		if info.Description == "" {
+			t.Errorf("preset %s has no description", info.Name)
+		}
+	}
+
+	// Verify core is the default
+	var foundDefault bool
+	for _, info := range infos {
+		if info.Name == PresetCore && info.IsDefault {
+			foundDefault = true
+		}
+	}
+	if !foundDefault {
+		t.Error("core preset should be marked as default")
+	}
+
+	// Full preset should have the most tools
+	var fullInfo *PresetInfo
+	for i := range infos {
+		if infos[i].Name == PresetFull {
+			fullInfo = &infos[i]
+			break
+		}
+	}
+	if fullInfo == nil {
+		t.Fatal("full preset not found")
+	}
+	for _, info := range infos {
+		if info.Name != PresetFull && info.ToolCount > fullInfo.ToolCount {
+			t.Errorf("preset %s has more tools (%d) than full (%d)",
+				info.Name, info.ToolCount, fullInfo.ToolCount)
+		}
 	}
 }

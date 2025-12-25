@@ -302,3 +302,45 @@ func FormatTokens(tokens int) string {
 	}
 	return fmt.Sprintf("~%d tokens", tokens)
 }
+
+// PresetDescriptions provides human-readable descriptions for each preset
+var PresetDescriptions = map[string]string{
+	PresetCore:       "Quick navigation, search, impact analysis",
+	PresetReview:     "Code review with ownership and PR summaries",
+	PresetRefactor:   "Refactoring analysis with coupling and dead code",
+	PresetFederation: "Multi-repo queries and cross-repo visibility",
+	PresetDocs:       "Documentation-symbol linking and coverage",
+	PresetOps:        "Diagnostics, daemon, webhooks, jobs",
+	PresetFull:       "Complete feature set (all tools)",
+}
+
+// PresetInfo contains display information about a preset
+type PresetInfo struct {
+	Name        string
+	ToolCount   int
+	TokenCount  int
+	Description string
+	IsDefault   bool
+}
+
+// GetAllPresetInfo returns information about all presets including tool counts and token estimates.
+// Requires tool definitions to calculate accurate token estimates.
+func GetAllPresetInfo(allTools []Tool) []PresetInfo {
+	presets := ValidPresets()
+	infos := make([]PresetInfo, 0, len(presets))
+
+	for _, name := range presets {
+		filtered := FilterAndOrderTools(allTools, name)
+		tokens := EstimateTokens(MeasureJSONSize(filtered))
+
+		infos = append(infos, PresetInfo{
+			Name:        name,
+			ToolCount:   len(filtered),
+			TokenCount:  tokens,
+			Description: PresetDescriptions[name],
+			IsDefault:   name == DefaultPreset,
+		})
+	}
+
+	return infos
+}
