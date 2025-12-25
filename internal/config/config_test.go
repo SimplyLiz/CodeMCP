@@ -804,26 +804,26 @@ func TestApplyEnvOverrides_AllEnvVars(t *testing.T) {
 
 	// Set all supported env vars with valid values
 	testValues := map[string]string{
-		"CKB_LOG_LEVEL":                    "warn",
-		"CKB_LOG_FORMAT":                   "json",
-		"CKB_LOGGING_LEVEL":                "error", // Will be overridden by CKB_LOG_LEVEL in iteration order
-		"CKB_LOGGING_FORMAT":               "human",
-		"CKB_TIER":                         "full",
-		"CKB_CACHE_QUERY_TTL_SECONDS":      "500",
-		"CKB_CACHE_VIEW_TTL_SECONDS":       "5000",
-		"CKB_CACHE_NEGATIVE_TTL_SECONDS":   "100",
-		"CKB_BUDGET_MAX_MODULES":           "25",
+		"CKB_LOG_LEVEL":                     "warn",
+		"CKB_LOG_FORMAT":                    "json",
+		"CKB_LOGGING_LEVEL":                 "error", // Will be overridden by CKB_LOG_LEVEL in iteration order
+		"CKB_LOGGING_FORMAT":                "human",
+		"CKB_TIER":                          "full",
+		"CKB_CACHE_QUERY_TTL_SECONDS":       "500",
+		"CKB_CACHE_VIEW_TTL_SECONDS":        "5000",
+		"CKB_CACHE_NEGATIVE_TTL_SECONDS":    "100",
+		"CKB_BUDGET_MAX_MODULES":            "25",
 		"CKB_BUDGET_MAX_SYMBOLS_PER_MODULE": "15",
-		"CKB_BUDGET_MAX_IMPACT_ITEMS":      "40",
-		"CKB_BUDGET_MAX_DRILLDOWNS":        "8",
-		"CKB_BUDGET_ESTIMATED_MAX_TOKENS":  "6000",
-		"CKB_BACKENDS_SCIP_ENABLED":        "false",
-		"CKB_BACKENDS_LSP_ENABLED":         "false",
-		"CKB_BACKENDS_GIT_ENABLED":         "false",
-		"CKB_TELEMETRY_ENABLED":            "true",
-		"CKB_DAEMON_PORT":                  "9999",
-		"CKB_DAEMON_BIND":                  "127.0.0.1",
-		"CKB_PRIVACY_MODE":                 "redacted",
+		"CKB_BUDGET_MAX_IMPACT_ITEMS":       "40",
+		"CKB_BUDGET_MAX_DRILLDOWNS":         "8",
+		"CKB_BUDGET_ESTIMATED_MAX_TOKENS":   "6000",
+		"CKB_BACKENDS_SCIP_ENABLED":         "false",
+		"CKB_BACKENDS_LSP_ENABLED":          "false",
+		"CKB_BACKENDS_GIT_ENABLED":          "false",
+		"CKB_TELEMETRY_ENABLED":             "true",
+		"CKB_DAEMON_PORT":                   "9999",
+		"CKB_DAEMON_BIND":                   "127.0.0.1",
+		"CKB_PRIVACY_MODE":                  "redacted",
 	}
 
 	for k, v := range testValues {

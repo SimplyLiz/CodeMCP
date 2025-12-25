@@ -494,8 +494,8 @@ type envVarDef struct {
 
 var envVarMappings = map[string]envVarDef{
 	// Logging (support both CKB_LOG_* and CKB_LOGGING_* for compatibility)
-	"CKB_LOG_LEVEL":     {path: "logging.level", varType: "string"},
-	"CKB_LOG_FORMAT":    {path: "logging.format", varType: "string"},
+	"CKB_LOG_LEVEL":      {path: "logging.level", varType: "string"},
+	"CKB_LOG_FORMAT":     {path: "logging.format", varType: "string"},
 	"CKB_LOGGING_LEVEL":  {path: "logging.level", varType: "string"},
 	"CKB_LOGGING_FORMAT": {path: "logging.format", varType: "string"},
 

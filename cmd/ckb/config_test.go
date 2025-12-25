@@ -232,7 +232,7 @@ func TestPrintConfigSection(t *testing.T) {
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	// Should not show "(default: ...)" when values match
@@ -254,7 +254,7 @@ func TestPrintConfigSection(t *testing.T) {
 	os.Stdout = old
 
 	buf.Reset()
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output = buf.String()
 
 	if !strings.Contains(output, "(default: oldvalue)") {
@@ -282,7 +282,7 @@ func TestPrintConfigDiff(t *testing.T) {
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	if !strings.Contains(output, "budget.maxModules: 50") {
@@ -309,7 +309,7 @@ func TestPrintConfigDiff_NoChanges(t *testing.T) {
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	if !strings.Contains(output, "no modifications") {
@@ -352,7 +352,7 @@ func TestPrintConfigDiff_AllFields(t *testing.T) {
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	// Check that all modified fields are reported
@@ -410,7 +410,7 @@ func TestOutputConfigHuman(t *testing.T) {
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	// Check header
@@ -450,7 +450,7 @@ func TestOutputConfigHuman_Defaults(t *testing.T) {
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	if !strings.Contains(output, "defaults") {
@@ -478,7 +478,7 @@ func TestOutputConfigHuman_DiffMode(t *testing.T) {
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	if !strings.Contains(output, "Modified Settings") {
@@ -512,7 +512,7 @@ func TestOutputConfigJSON(t *testing.T) {
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	// Should be valid JSON
@@ -550,7 +550,7 @@ func TestOutputConfigJSON_DiffMode(t *testing.T) {
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	// Should be valid JSON with only diff
@@ -577,7 +577,7 @@ func TestRunConfigEnv(t *testing.T) {
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	// Check header
