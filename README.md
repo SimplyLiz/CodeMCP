@@ -27,6 +27,13 @@ Your codebase has valuable intelligence scattered across SCIP indexes, language 
 
 Even with 100K+ token context, you can't dump your entire codebase into an LLM. You need relevant information only, properly compressed, with smart truncation.
 
+### MCP Tool Bloat
+
+Other MCP servers consume 50-80k tokens just for tool definitions:
+> "My MCP tools were consuming 66,000+ tokens before I even started a conversation." — Community feedback
+
+CKB solves this with smart presets—**83% token reduction** while maintaining full functionality.
+
 ## What CKB Gives You
 
 ```
@@ -98,6 +105,14 @@ ckb setup  # creates .mcp.json automatically
 
 # Or manually:
 claude mcp add --transport stdio ckb -- npx @tastehub/ckb mcp
+```
+
+**Token efficiency shown at startup:**
+```
+CKB MCP Server v7.5.0
+  Active tools: 14 / 76 (18%)
+  Estimated context: ~1k tokens
+  Preset: core
 ```
 
 Now Claude can answer questions like:
