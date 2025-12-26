@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"ckb/internal/config"
 	"ckb/internal/index"
 	"ckb/internal/project"
 	"ckb/internal/query"
@@ -228,8 +229,14 @@ func getChangeImpactStatus(repoRoot string) *ChangeImpactStatusCLI {
 		status.Language = string(lang)
 	}
 
-	// Detect coverage file
-	status.Coverage = detectCoverage(repoRoot, lang)
+	// Load config for coverage settings
+	cfg, _ := config.LoadConfig(repoRoot)
+	if cfg == nil {
+		cfg = config.DefaultConfig()
+	}
+
+	// Detect coverage file (using config)
+	status.Coverage = detectCoverage(repoRoot, lang, &cfg.Coverage)
 
 	// Detect CODEOWNERS
 	status.Codeowners = detectCodeowners(repoRoot)
@@ -283,20 +290,34 @@ var genericCoveragePaths = []string{
 }
 
 // detectCoverage looks for coverage files in the repository
-func detectCoverage(repoRoot string, lang project.Language) *CoverageStatusCLI {
+func detectCoverage(repoRoot string, lang project.Language, coverageCfg *config.CoverageConfig) *CoverageStatusCLI {
 	status := &CoverageStatusCLI{Found: false}
 
-	// Get language-specific paths
 	var paths []string
 	var generateCmd string
 
-	if loc, ok := coverageByLang[lang]; ok {
-		paths = loc.paths
-		generateCmd = loc.generateCmd
+	// Use custom paths from config first
+	if coverageCfg != nil && len(coverageCfg.Paths) > 0 {
+		paths = append(paths, coverageCfg.Paths...)
 	}
 
-	// Add generic paths
-	paths = append(paths, genericCoveragePaths...)
+	// Add auto-detected paths if enabled (default: true)
+	if coverageCfg == nil || coverageCfg.AutoDetect {
+		if loc, ok := coverageByLang[lang]; ok {
+			paths = append(paths, loc.paths...)
+			generateCmd = loc.generateCmd
+		}
+		// Add generic paths
+		paths = append(paths, genericCoveragePaths...)
+	}
+
+	// Parse max age from config (default: 168h = 7 days)
+	maxAge := 7 * 24 * time.Hour
+	if coverageCfg != nil && coverageCfg.MaxAge != "" {
+		if parsed, err := time.ParseDuration(coverageCfg.MaxAge); err == nil {
+			maxAge = parsed
+		}
+	}
 
 	// Check each path
 	for _, relPath := range paths {
@@ -308,8 +329,8 @@ func detectCoverage(repoRoot string, lang project.Language) *CoverageStatusCLI {
 			status.ModTime = info.ModTime()
 			status.Age = formatDuration(time.Since(info.ModTime()))
 
-			// Check if stale (> 7 days old)
-			if time.Since(info.ModTime()) > 7*24*time.Hour {
+			// Check if stale based on config max age
+			if time.Since(info.ModTime()) > maxAge {
 				status.Stale = true
 			}
 			break

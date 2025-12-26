@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -50,6 +51,7 @@ func (e *Engine) Doctor(ctx context.Context, checkName string) (*DoctorResponse,
 		checks = append(checks, e.checkLsp(ctx))
 		checks = append(checks, e.checkConfig(ctx))
 		checks = append(checks, e.checkStorage(ctx))
+		checks = append(checks, e.checkOrphanedIndexes(ctx))
 		checks = append(checks, e.checkOptionalTools(ctx))
 	} else {
 		switch checkName {
@@ -63,6 +65,8 @@ func (e *Engine) Doctor(ctx context.Context, checkName string) (*DoctorResponse,
 			checks = append(checks, e.checkConfig(ctx))
 		case "storage":
 			checks = append(checks, e.checkStorage(ctx))
+		case "orphaned":
+			checks = append(checks, e.checkOrphanedIndexes(ctx))
 		case "optional":
 			checks = append(checks, e.checkOptionalTools(ctx))
 		default:
@@ -404,6 +408,135 @@ func (e *Engine) detectSCIPCommand() string {
 func (e *Engine) hasFile(name string) bool {
 	_, err := os.Stat(filepath.Join(e.repoRoot, name))
 	return err == nil
+}
+
+// checkOrphanedIndexes scans for indexes pointing to repos that no longer exist.
+func (e *Engine) checkOrphanedIndexes(ctx context.Context) DoctorCheck {
+	check := DoctorCheck{
+		Name: "orphaned-indexes",
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		check.Status = "info"
+		check.Message = "Could not determine home directory"
+		return check
+	}
+
+	cacheDir := filepath.Join(homeDir, ".ckb", "cache", "indexes")
+	if _, err := os.Stat(cacheDir); os.IsNotExist(err) {
+		check.Status = "pass"
+		check.Message = "No index cache directory"
+		return check
+	}
+
+	// Scan for index directories
+	entries, err := os.ReadDir(cacheDir)
+	if err != nil {
+		check.Status = "info"
+		check.Message = fmt.Sprintf("Could not read cache directory: %v", err)
+		return check
+	}
+
+	var totalSize int64
+	var repoCount int
+	var orphaned []string
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		indexDir := filepath.Join(cacheDir, entry.Name())
+		repoCount++
+
+		// Calculate size
+		dirSize, _ := getDirSize(indexDir)
+		totalSize += dirSize
+
+		// Check if the meta.json points to a valid repo
+		metaPath := filepath.Join(indexDir, "meta.json")
+		if _, err := os.Stat(metaPath); os.IsNotExist(err) {
+			continue // No metadata, skip
+		}
+
+		// Read meta.json to find repo path
+		metaData, err := os.ReadFile(metaPath)
+		if err != nil {
+			continue
+		}
+
+		// Parse JSON metadata
+		var meta indexMeta
+		if err := json.Unmarshal(metaData, &meta); err != nil {
+			continue
+		}
+
+		if meta.RepoPath != "" {
+			if _, err := os.Stat(meta.RepoPath); os.IsNotExist(err) {
+				orphaned = append(orphaned, fmt.Sprintf("%s → %s", entry.Name(), meta.RepoPath))
+			}
+		}
+	}
+
+	if len(orphaned) > 0 {
+		check.Status = "warn"
+		check.Message = fmt.Sprintf("Index cache: %s (%d repos), %d orphaned (repos deleted)",
+			formatBytes(totalSize), repoCount, len(orphaned))
+		check.SuggestedFixes = []FixAction{
+			{
+				Type:        "run-command",
+				Command:     "ckb cache clean --orphaned",
+				Safe:        true,
+				Description: fmt.Sprintf("Remove %d orphaned indexes", len(orphaned)),
+			},
+		}
+	} else {
+		check.Status = "pass"
+		check.Message = fmt.Sprintf("Index cache: %s (%d repos), no orphans",
+			formatBytes(totalSize), repoCount)
+	}
+
+	return check
+}
+
+// getDirSize calculates the total size of a directory.
+func getDirSize(path string) (int64, error) {
+	var size int64
+	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			size += info.Size()
+		}
+		return nil
+	})
+	return size, err
+}
+
+// formatBytes formats bytes in human-readable form.
+func formatBytes(bytes int64) string {
+	const (
+		KB = 1024
+		MB = KB * 1024
+		GB = MB * 1024
+	)
+	switch {
+	case bytes >= GB:
+		return fmt.Sprintf("%.1f GB", float64(bytes)/GB)
+	case bytes >= MB:
+		return fmt.Sprintf("%.1f MB", float64(bytes)/MB)
+	case bytes >= KB:
+		return fmt.Sprintf("%.1f KB", float64(bytes)/KB)
+	default:
+		return fmt.Sprintf("%d B", bytes)
+	}
+}
+
+// indexMeta represents the metadata stored with an index.
+type indexMeta struct {
+	RepoPath string `json:"repoPath"`
 }
 
 // checkOptionalTools verifies optional tools that enhance CKB functionality.

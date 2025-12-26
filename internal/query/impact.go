@@ -3,7 +3,9 @@ package query
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -273,6 +275,7 @@ func (e *Engine) AnalyzeImpact(ctx context.Context, opts AnalyzeImpactOptions) (
 						FileId:    ref.Location.Path,
 						StartLine: ref.Location.Line,
 					},
+					IsTest: isTestFilePath(ref.Location.Path), // Set IsTest based on file path
 				}
 				refs = append(refs, impactRef)
 			}
@@ -993,6 +996,17 @@ func (e *Engine) AnalyzeChangeSet(ctx context.Context, opts AnalyzeChangeSetOpti
 		}
 	}
 
+	// Filter out test files from changed symbols if --include-tests=false
+	if !opts.IncludeTests {
+		filteredSymbols := make([]impact.ChangedSymbol, 0, len(changedSymbols))
+		for _, sym := range changedSymbols {
+			if !isTestFilePath(sym.File) {
+				filteredSymbols = append(filteredSymbols, sym)
+			}
+		}
+		changedSymbols = filteredSymbols
+	}
+
 	// Analyze impact for each changed symbol
 	var allDirectImpact []ImpactItem
 	var allTransitiveImpact []ImpactItem
@@ -1303,6 +1317,367 @@ func (e *Engine) calculateAggregatedRisk(
 		Explanation: explanation,
 		Factors:     factors,
 	}
+}
+
+// GetAffectedTestsOptions contains options for GetAffectedTests.
+type GetAffectedTestsOptions struct {
+	DiffContent     string // Raw git diff content (if empty, uses git)
+	Staged          bool   // If true, analyze only staged changes
+	BaseBranch      string // Base branch for comparison (default: HEAD)
+	TransitiveDepth int    // Max depth for transitive impact (default: 1)
+	UseCoverage     bool   // Use coverage data if available
+}
+
+// AffectedTestsResponse contains the list of tests affected by changes.
+type AffectedTestsResponse struct {
+	Tests         []AffectedTest    `json:"tests"`
+	Summary       *TestSummary      `json:"summary"`
+	CoverageUsed  bool              `json:"coverageUsed"`
+	Confidence    float64           `json:"confidence"`
+	RunCommand    string            `json:"runCommand,omitempty"`
+	Provenance    *Provenance       `json:"provenance,omitempty"`
+}
+
+// AffectedTest describes a test that should be run.
+type AffectedTest struct {
+	FilePath      string   `json:"filePath"`
+	TestNames     []string `json:"testNames,omitempty"` // Specific test functions if known
+	Reason        string   `json:"reason"`              // "direct", "transitive", "coverage"
+	AffectedBy    []string `json:"affectedBy,omitempty"` // Symbol IDs that caused this test to be selected
+	Confidence    float64  `json:"confidence"`
+}
+
+// TestSummary provides an overview of affected tests.
+type TestSummary struct {
+	TotalFiles       int    `json:"totalFiles"`
+	DirectFiles      int    `json:"directFiles"`
+	TransitiveFiles  int    `json:"transitiveFiles"`
+	CoverageFiles    int    `json:"coverageFiles"`
+	EstimatedRuntime string `json:"estimatedRuntime,omitempty"`
+}
+
+// GetAffectedTests returns the list of tests affected by the current changes.
+func (e *Engine) GetAffectedTests(ctx context.Context, opts GetAffectedTestsOptions) (*AffectedTestsResponse, error) {
+	startTime := time.Now()
+
+	// Default options
+	if opts.TransitiveDepth <= 0 {
+		opts.TransitiveDepth = 1 // Shallower default for tests
+	}
+	if opts.BaseBranch == "" {
+		opts.BaseBranch = "HEAD"
+	}
+
+	// First, get the change set analysis (with tests included)
+	changeSetOpts := AnalyzeChangeSetOptions{
+		DiffContent:     opts.DiffContent,
+		Staged:          opts.Staged,
+		BaseBranch:      opts.BaseBranch,
+		TransitiveDepth: opts.TransitiveDepth,
+		IncludeTests:    true, // Important: include tests
+		Strict:          false,
+	}
+
+	changeSet, err := e.AnalyzeChangeSet(ctx, changeSetOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	// Collect test files
+	testFileMap := make(map[string]*AffectedTest)
+	var coverageUsed bool
+
+	// 1. Direct test files (tests that reference changed symbols)
+	for _, sym := range changeSet.AffectedSymbols {
+		if isTestFile(sym.Location) {
+			path := ""
+			if sym.Location != nil {
+				path = sym.Location.FileId
+			} else {
+				continue
+			}
+
+			if existing, ok := testFileMap[path]; ok {
+				existing.AffectedBy = append(existing.AffectedBy, sym.StableId)
+				if sym.Confidence > existing.Confidence {
+					existing.Confidence = sym.Confidence
+				}
+			} else {
+				testFileMap[path] = &AffectedTest{
+					FilePath:   path,
+					Reason:     categorizeTestReason(sym.Distance),
+					AffectedBy: []string{sym.StableId},
+					Confidence: sym.Confidence,
+				}
+			}
+		}
+	}
+
+	// 2. Test files for changed production code (heuristic: find corresponding test files)
+	for _, sym := range changeSet.ChangedSymbols {
+		if isTestFilePathEnhanced(sym.File) {
+			continue // Already a test file
+		}
+
+		// Find corresponding test files
+		testFiles := findCorrespondingTestFiles(e.repoRoot, sym.File)
+		for _, testFile := range testFiles {
+			if _, ok := testFileMap[testFile]; !ok {
+				testFileMap[testFile] = &AffectedTest{
+					FilePath:   testFile,
+					Reason:     "direct",
+					AffectedBy: []string{sym.SymbolID},
+					Confidence: 0.8, // High confidence for corresponding test
+				}
+			}
+		}
+	}
+
+	// 3. TODO: Use coverage data if available and requested
+	// This would require parsing coverage files and mapping to tests
+
+	// Convert map to slice
+	tests := make([]AffectedTest, 0, len(testFileMap))
+	for _, test := range testFileMap {
+		// Cap affected-by list
+		if len(test.AffectedBy) > 5 {
+			test.AffectedBy = test.AffectedBy[:5]
+		}
+		tests = append(tests, *test)
+	}
+
+	// Sort by confidence then path
+	sort.Slice(tests, func(i, j int) bool {
+		if tests[i].Confidence != tests[j].Confidence {
+			return tests[i].Confidence > tests[j].Confidence
+		}
+		return tests[i].FilePath < tests[j].FilePath
+	})
+
+	// Build summary
+	summary := &TestSummary{TotalFiles: len(tests)}
+	for _, t := range tests {
+		switch t.Reason {
+		case "direct":
+			summary.DirectFiles++
+		case "transitive":
+			summary.TransitiveFiles++
+		case "coverage":
+			summary.CoverageFiles++
+		}
+	}
+
+	// Calculate overall confidence
+	var totalConf float64
+	for _, t := range tests {
+		totalConf += t.Confidence
+	}
+	avgConfidence := 0.0
+	if len(tests) > 0 {
+		avgConfidence = totalConf / float64(len(tests))
+	}
+
+	// Generate run command
+	runCommand := generateTestRunCommand(e.repoRoot, tests)
+
+	// Build provenance
+	repoState, _ := e.GetRepoState(ctx, "fast")
+	provenance := e.buildProvenance(repoState, "fast", startTime, nil, CompletenessInfo{Score: avgConfidence})
+
+	return &AffectedTestsResponse{
+		Tests:        tests,
+		Summary:      summary,
+		CoverageUsed: coverageUsed,
+		Confidence:   avgConfidence,
+		RunCommand:   runCommand,
+		Provenance:   provenance,
+	}, nil
+}
+
+// isTestFile checks if a location is in a test file.
+func isTestFile(loc *LocationInfo) bool {
+	if loc == nil {
+		return false
+	}
+	return isTestFilePathEnhanced(loc.FileId)
+}
+
+// isTestFilePathEnhanced checks if a file path is a test file (more comprehensive than isTestFilePath).
+func isTestFilePathEnhanced(path string) bool {
+	pathLower := strings.ToLower(path)
+
+	// Go tests
+	if strings.HasSuffix(pathLower, "_test.go") {
+		return true
+	}
+	// TypeScript/JavaScript tests
+	if strings.HasSuffix(pathLower, ".test.ts") || strings.HasSuffix(pathLower, ".test.js") ||
+		strings.HasSuffix(pathLower, ".spec.ts") || strings.HasSuffix(pathLower, ".spec.js") ||
+		strings.HasSuffix(pathLower, ".test.tsx") || strings.HasSuffix(pathLower, ".spec.tsx") {
+		return true
+	}
+	// Python tests
+	if strings.HasSuffix(pathLower, "_test.py") || strings.HasPrefix(filepath.Base(pathLower), "test_") {
+		return true
+	}
+	// Dart tests
+	if strings.HasSuffix(pathLower, "_test.dart") {
+		return true
+	}
+	// Test directory patterns
+	if strings.Contains(pathLower, "/test/") || strings.Contains(pathLower, "/tests/") ||
+		strings.Contains(pathLower, "/__tests__/") || strings.Contains(pathLower, "/spec/") {
+		return true
+	}
+
+	return false
+}
+
+// categorizeTestReason determines if a test is direct or transitive based on distance.
+func categorizeTestReason(distance int) string {
+	if distance <= 1 {
+		return "direct"
+	}
+	return "transitive"
+}
+
+// findCorrespondingTestFiles finds test files that likely test a given source file.
+func findCorrespondingTestFiles(repoRoot, sourcePath string) []string {
+	var candidates []string
+
+	ext := filepath.Ext(sourcePath)
+	base := strings.TrimSuffix(filepath.Base(sourcePath), ext)
+	dir := filepath.Dir(sourcePath)
+
+	switch ext {
+	case ".go":
+		// Go: foo.go -> foo_test.go
+		testFile := filepath.Join(repoRoot, dir, base+"_test.go")
+		if fileExists(testFile) {
+			candidates = append(candidates, filepath.Join(dir, base+"_test.go"))
+		}
+	case ".ts", ".tsx":
+		// TypeScript: foo.ts -> foo.test.ts, foo.spec.ts
+		for _, suffix := range []string{".test.ts", ".spec.ts", ".test.tsx", ".spec.tsx"} {
+			testFile := filepath.Join(repoRoot, dir, base+suffix)
+			if fileExists(testFile) {
+				candidates = append(candidates, filepath.Join(dir, base+suffix))
+			}
+		}
+		// Also check __tests__ directory
+		testsDir := filepath.Join(repoRoot, dir, "__tests__", base+".test.ts")
+		if fileExists(testsDir) {
+			candidates = append(candidates, filepath.Join(dir, "__tests__", base+".test.ts"))
+		}
+	case ".js", ".jsx":
+		// JavaScript: same as TypeScript
+		for _, suffix := range []string{".test.js", ".spec.js", ".test.jsx", ".spec.jsx"} {
+			testFile := filepath.Join(repoRoot, dir, base+suffix)
+			if fileExists(testFile) {
+				candidates = append(candidates, filepath.Join(dir, base+suffix))
+			}
+		}
+	case ".py":
+		// Python: foo.py -> test_foo.py or foo_test.py
+		testFile1 := filepath.Join(repoRoot, dir, "test_"+base+".py")
+		testFile2 := filepath.Join(repoRoot, dir, base+"_test.py")
+		if fileExists(testFile1) {
+			candidates = append(candidates, filepath.Join(dir, "test_"+base+".py"))
+		}
+		if fileExists(testFile2) {
+			candidates = append(candidates, filepath.Join(dir, base+"_test.py"))
+		}
+		// Check tests/ directory
+		testsDir := filepath.Join(repoRoot, "tests", "test_"+base+".py")
+		if fileExists(testsDir) {
+			candidates = append(candidates, "tests/test_"+base+".py")
+		}
+	case ".dart":
+		// Dart: foo.dart -> foo_test.dart (usually in test/ mirroring lib/)
+		if strings.HasPrefix(sourcePath, "lib/") {
+			testPath := strings.Replace(sourcePath, "lib/", "test/", 1)
+			testPath = strings.TrimSuffix(testPath, ".dart") + "_test.dart"
+			if fileExists(filepath.Join(repoRoot, testPath)) {
+				candidates = append(candidates, testPath)
+			}
+		}
+	}
+
+	return candidates
+}
+
+// fileExists checks if a file exists.
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
+}
+
+// generateTestRunCommand generates a command to run the affected tests.
+func generateTestRunCommand(repoRoot string, tests []AffectedTest) string {
+	if len(tests) == 0 {
+		return ""
+	}
+
+	// Detect test framework from file extensions
+	var goTests, jsTests, pyTests, dartTests []string
+
+	for _, t := range tests {
+		ext := filepath.Ext(t.FilePath)
+		switch {
+		case strings.HasSuffix(t.FilePath, "_test.go"):
+			goTests = append(goTests, t.FilePath)
+		case ext == ".ts" || ext == ".tsx" || ext == ".js" || ext == ".jsx":
+			jsTests = append(jsTests, t.FilePath)
+		case ext == ".py":
+			pyTests = append(pyTests, t.FilePath)
+		case ext == ".dart":
+			dartTests = append(dartTests, t.FilePath)
+		}
+	}
+
+	// Generate command based on dominant test type
+	switch {
+	case len(goTests) > 0:
+		// Group by package
+		packages := make(map[string]bool)
+		for _, t := range goTests {
+			pkg := "./" + filepath.Dir(t) + "/..."
+			packages[pkg] = true
+		}
+		pkgList := make([]string, 0, len(packages))
+		for pkg := range packages {
+			pkgList = append(pkgList, pkg)
+		}
+		sort.Strings(pkgList)
+		return fmt.Sprintf("go test %s", strings.Join(pkgList, " "))
+
+	case len(jsTests) > 0:
+		// Check for common test runners
+		if fileExists(filepath.Join(repoRoot, "jest.config.js")) ||
+			fileExists(filepath.Join(repoRoot, "jest.config.ts")) {
+			return fmt.Sprintf("npm test -- %s", strings.Join(jsTests[:min(5, len(jsTests))], " "))
+		}
+		return fmt.Sprintf("npx jest %s", strings.Join(jsTests[:min(5, len(jsTests))], " "))
+
+	case len(pyTests) > 0:
+		return fmt.Sprintf("pytest %s", strings.Join(pyTests[:min(10, len(pyTests))], " "))
+
+	case len(dartTests) > 0:
+		if len(dartTests) <= 3 {
+			return fmt.Sprintf("flutter test %s", strings.Join(dartTests, " "))
+		}
+		return "flutter test"
+	}
+
+	return ""
+}
+
+// min returns the minimum of two integers.
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // generateRecommendations creates actionable recommendations based on impact analysis.
