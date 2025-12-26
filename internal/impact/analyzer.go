@@ -5,9 +5,19 @@ import (
 	"sort"
 )
 
+// TransitiveCallerProvider provides transitive caller information
+// This interface allows the analyzer to fetch callers at depth > 1 without
+// depending directly on SCIP or other backends
+type TransitiveCallerProvider interface {
+	// GetTransitiveCallers returns callers up to maxDepth levels
+	// Returns map of symbolId -> depth (1 = direct, 2+ = transitive)
+	GetTransitiveCallers(symbolId string, maxDepth int) (map[string]int, error)
+}
+
 // ImpactAnalyzer performs impact analysis on symbols
 type ImpactAnalyzer struct {
-	maxDepth int // Maximum depth for transitive analysis (default 2)
+	maxDepth   int                      // Maximum depth for transitive analysis (default 2)
+	callerProv TransitiveCallerProvider // Optional provider for transitive callers
 }
 
 // NewImpactAnalyzer creates a new ImpactAnalyzer with the specified max depth
@@ -20,11 +30,26 @@ func NewImpactAnalyzer(maxDepth int) *ImpactAnalyzer {
 	}
 }
 
+// NewImpactAnalyzerWithCallers creates an analyzer with transitive caller support
+func NewImpactAnalyzerWithCallers(maxDepth int, prov TransitiveCallerProvider) *ImpactAnalyzer {
+	if maxDepth <= 0 {
+		maxDepth = 2
+	}
+	if maxDepth > 4 {
+		maxDepth = 4 // Cap at 4 for performance
+	}
+	return &ImpactAnalyzer{
+		maxDepth:   maxDepth,
+		callerProv: prov,
+	}
+}
+
 // ImpactAnalysisResult contains the complete results of an impact analysis
 type ImpactAnalysisResult struct {
 	Symbol           *Symbol         // The analyzed symbol
 	Visibility       *VisibilityInfo // Visibility information
 	RiskScore        *RiskScore      // Risk assessment
+	BlastRadius      *BlastRadius    // Blast radius summary
 	DirectImpact     []ImpactItem    // Direct references (distance = 1)
 	TransitiveImpact []ImpactItem    // Transitive references (distance > 1)
 	ModulesAffected  []ModuleSummary // Summary by module
@@ -64,10 +89,16 @@ func (a *ImpactAnalyzer) Analyze(symbol *Symbol, refs []Reference) (*ImpactAnaly
 	directImpact := a.processDirectReferences(symbol, refs, result.Visibility)
 	result.DirectImpact = directImpact
 
-	// Note: Transitive analysis would require additional reference data
-	// For now, we only process direct references
-	if a.maxDepth > 1 {
-		result.AnalysisLimits.AddNote("Transitive impact analysis requires additional reference data")
+	// Transitive analysis: fetch callers at depth > 1 if provider available
+	if a.maxDepth > 1 && a.callerProv != nil {
+		transitiveImpact, err := a.processTransitiveCallers(symbol, result.Visibility)
+		if err != nil {
+			result.AnalysisLimits.AddNote(fmt.Sprintf("Transitive analysis partial: %v", err))
+		} else {
+			result.TransitiveImpact = transitiveImpact
+		}
+	} else if a.maxDepth > 1 {
+		result.AnalysisLimits.AddNote("Transitive impact analysis requires call graph data")
 	}
 
 	// Combine all impact items for risk calculation
@@ -79,6 +110,9 @@ func (a *ImpactAnalyzer) Analyze(symbol *Symbol, refs []Reference) (*ImpactAnaly
 
 	// Generate module summaries
 	result.ModulesAffected = a.generateModuleSummaries(allImpact)
+
+	// Compute blast radius summary
+	result.BlastRadius = a.computeBlastRadius(allImpact)
 
 	return result, nil
 }
@@ -244,4 +278,72 @@ func (a *ImpactAnalyzer) AnalyzeWithOptions(symbol *Symbol, refs []Reference, op
 
 	// Perform standard analysis
 	return a.Analyze(symbol, filteredRefs)
+}
+
+// processTransitiveCallers fetches transitive callers using the provider
+func (a *ImpactAnalyzer) processTransitiveCallers(symbol *Symbol, vis *VisibilityInfo) ([]ImpactItem, error) {
+	callerDepths, err := a.callerProv.GetTransitiveCallers(symbol.StableId, a.maxDepth)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]ImpactItem, 0)
+	for callerId, depth := range callerDepths {
+		if depth <= 1 {
+			continue // Skip direct callers, already in DirectImpact
+		}
+		// Confidence decreases with depth: 0.85 for depth 2, 0.75 for depth 3, etc.
+		confidence := 0.85 - float64(depth-2)*0.1
+		if confidence < 0.5 {
+			confidence = 0.5
+		}
+		item := ImpactItem{
+			StableId:   callerId,
+			Name:       extractNameFromStableId(callerId),
+			Kind:       TransitiveCaller,
+			Confidence: confidence,
+			Distance:   depth,
+			Visibility: vis,
+		}
+		items = append(items, item)
+	}
+
+	// Sort by distance (ascending), then by name
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Distance != items[j].Distance {
+			return items[i].Distance < items[j].Distance
+		}
+		return items[i].Name < items[j].Name
+	})
+
+	return items, nil
+}
+
+// computeBlastRadius calculates blast radius metrics from all impact items
+func (a *ImpactAnalyzer) computeBlastRadius(allImpact []ImpactItem) *BlastRadius {
+	moduleSet := make(map[string]bool)
+	fileSet := make(map[string]bool)
+	callerCount := 0
+
+	for _, item := range allImpact {
+		if item.ModuleId != "" {
+			moduleSet[item.ModuleId] = true
+		}
+		if item.Location != nil && item.Location.FileId != "" {
+			fileSet[item.Location.FileId] = true
+		}
+		if item.Kind == DirectCaller || item.Kind == TransitiveCaller {
+			callerCount++
+		}
+	}
+
+	moduleCount := len(moduleSet)
+	fileCount := len(fileSet)
+
+	return &BlastRadius{
+		ModuleCount:       moduleCount,
+		FileCount:         fileCount,
+		UniqueCallerCount: callerCount,
+		RiskLevel:         ClassifyBlastRadius(moduleCount, callerCount),
+	}
 }

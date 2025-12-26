@@ -14,14 +14,14 @@ import (
 
 // StatusResponse is the response for getStatus.
 type StatusResponse struct {
-	CkbVersion      string              `json:"ckbVersion"`
-	Healthy         bool                `json:"healthy"`
-	Tier            *tier.TierInfo      `json:"tier"`
-	RepoState       *RepoState          `json:"repoState"`
-	Backends        []BackendStatus     `json:"backends"`
-	Cache           *CacheStatus        `json:"cache"`
-	LastRefresh     *index.LastRefresh  `json:"lastRefresh,omitempty"`
-	QueryDurationMs int64               `json:"queryDurationMs"`
+	CkbVersion      string             `json:"ckbVersion"`
+	Healthy         bool               `json:"healthy"`
+	Tier            *tier.TierInfo     `json:"tier"`
+	RepoState       *RepoState         `json:"repoState"`
+	Backends        []BackendStatus    `json:"backends"`
+	Cache           *CacheStatus       `json:"cache"`
+	LastRefresh     *index.LastRefresh `json:"lastRefresh,omitempty"`
+	QueryDurationMs int64              `json:"queryDurationMs"`
 }
 
 // BackendStatus describes the status of a backend.
