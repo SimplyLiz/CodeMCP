@@ -1,5 +1,11 @@
 // Package query provides the central query engine that coordinates all CKB operations.
 // It connects backends, compression, caching, and response formatting.
+//
+// The Engine is the main entry point for all CKB queries. It orchestrates:
+//   - Backend selection (SCIP, LSP, Git) based on query policy
+//   - Response compression for LLM-optimized output
+//   - Caching at multiple tiers (query, view, negative)
+//   - Symbol identity resolution with alias chains
 package query
 
 import (
@@ -628,4 +634,90 @@ func (e *Engine) GetReferenceCount(symbolId string) (int, error) {
 	}
 
 	return e.scipAdapter.GetReferenceCount(symbolId), nil
+}
+
+// validateQueryOptions validates query options and returns appropriate defaults.
+// This function demonstrates complex validation logic for the CI demo.
+// Cyclomatic complexity: ~20 (intentionally complex for demo purposes)
+func validateQueryOptions(opts map[string]interface{}) (map[string]interface{}, error) {
+	result := make(map[string]interface{})
+
+	// Validate depth parameter
+	if depth, ok := opts["depth"]; ok {
+		switch v := depth.(type) {
+		case int:
+			if v < 1 {
+				result["depth"] = 1
+			} else if v > 10 {
+				result["depth"] = 10
+			} else {
+				result["depth"] = v
+			}
+		case float64:
+			if v < 1 {
+				result["depth"] = 1
+			} else if v > 10 {
+				result["depth"] = 10
+			} else {
+				result["depth"] = int(v)
+			}
+		case string:
+			if v == "shallow" {
+				result["depth"] = 1
+			} else if v == "deep" {
+				result["depth"] = 5
+			} else if v == "full" {
+				result["depth"] = 10
+			} else {
+				result["depth"] = 2
+			}
+		default:
+			result["depth"] = 2
+		}
+	} else {
+		result["depth"] = 2
+	}
+
+	// Validate limit parameter
+	if limit, ok := opts["limit"]; ok {
+		switch v := limit.(type) {
+		case int:
+			if v < 1 {
+				result["limit"] = 10
+			} else if v > 1000 {
+				result["limit"] = 1000
+			} else {
+				result["limit"] = v
+			}
+		case float64:
+			if v < 1 {
+				result["limit"] = 10
+			} else if v > 1000 {
+				result["limit"] = 1000
+			} else {
+				result["limit"] = int(v)
+			}
+		default:
+			result["limit"] = 100
+		}
+	} else {
+		result["limit"] = 100
+	}
+
+	// Validate format parameter
+	if format, ok := opts["format"]; ok {
+		if f, isStr := format.(string); isStr {
+			if f == "json" || f == "markdown" || f == "text" {
+				result["format"] = f
+			} else {
+				result["format"] = "json"
+			}
+		} else {
+			result["format"] = "json"
+		}
+	} else {
+		result["format"] = "json"
+	}
+
+	return result, nil
 }

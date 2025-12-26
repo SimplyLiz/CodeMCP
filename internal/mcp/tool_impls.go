@@ -1,3 +1,5 @@
+// Package mcp implements the Model Context Protocol server for CKB.
+// It provides 58 code intelligence tools via MCP for AI tool integration.
 package mcp
 
 import (
