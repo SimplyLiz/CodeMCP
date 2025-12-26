@@ -195,3 +195,141 @@ func TestConvertStatusResponse_NilCache(t *testing.T) {
 		t.Errorf("Expected QueryCount=0 for nil cache, got %d", cliResp.Cache.QueryCount)
 	}
 }
+
+func TestFormatDuration(t *testing.T) {
+	tests := []struct {
+		name     string
+		duration time.Duration
+		expected string
+	}{
+		{"just now", 30 * time.Second, "just now"},
+		{"1 minute", 1 * time.Minute, "1 minute ago"},
+		{"5 minutes", 5 * time.Minute, "5 minutes ago"},
+		{"59 minutes", 59 * time.Minute, "59 minutes ago"},
+		{"1 hour", 1 * time.Hour, "1 hour ago"},
+		{"2 hours", 2 * time.Hour, "2 hours ago"},
+		{"23 hours", 23 * time.Hour, "23 hours ago"},
+		{"1 day", 24 * time.Hour, "1 day ago"},
+		{"2 days", 48 * time.Hour, "2 days ago"},
+		{"7 days", 7 * 24 * time.Hour, "7 days ago"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := formatDuration(tt.duration)
+			if result != tt.expected {
+				t.Errorf("formatDuration(%v) = %q, want %q", tt.duration, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestChangeImpactStatusCLI(t *testing.T) {
+	status := &ChangeImpactStatusCLI{
+		Coverage: &CoverageStatusCLI{
+			Found:       true,
+			Path:        "coverage.out",
+			Age:         "2 hours ago",
+			Stale:       false,
+			GenerateCmd: "",
+		},
+		Codeowners: &CodeownersStatusCLI{
+			Found:        true,
+			Path:         ".github/CODEOWNERS",
+			TeamCount:    3,
+			PatternCount: 15,
+		},
+		Language: "go",
+	}
+
+	if !status.Coverage.Found {
+		t.Error("Expected Coverage.Found=true")
+	}
+	if status.Coverage.Path != "coverage.out" {
+		t.Errorf("Expected Coverage.Path='coverage.out', got %q", status.Coverage.Path)
+	}
+	if !status.Codeowners.Found {
+		t.Error("Expected Codeowners.Found=true")
+	}
+	if status.Codeowners.TeamCount != 3 {
+		t.Errorf("Expected Codeowners.TeamCount=3, got %d", status.Codeowners.TeamCount)
+	}
+	if status.Language != "go" {
+		t.Errorf("Expected Language='go', got %q", status.Language)
+	}
+}
+
+func TestCoverageStatusCLI(t *testing.T) {
+	t.Run("found and fresh", func(t *testing.T) {
+		status := &CoverageStatusCLI{
+			Found: true,
+			Path:  "coverage.out",
+			Age:   "1 hour ago",
+			Stale: false,
+		}
+		if !status.Found {
+			t.Error("Expected Found=true")
+		}
+		if status.Stale {
+			t.Error("Expected Stale=false")
+		}
+	})
+
+	t.Run("found but stale", func(t *testing.T) {
+		status := &CoverageStatusCLI{
+			Found: true,
+			Path:  "coverage.out",
+			Age:   "10 days ago",
+			Stale: true,
+		}
+		if !status.Found {
+			t.Error("Expected Found=true")
+		}
+		if !status.Stale {
+			t.Error("Expected Stale=true")
+		}
+	})
+
+	t.Run("not found with generate command", func(t *testing.T) {
+		status := &CoverageStatusCLI{
+			Found:       false,
+			GenerateCmd: "go test -coverprofile=coverage.out ./...",
+		}
+		if status.Found {
+			t.Error("Expected Found=false")
+		}
+		if status.GenerateCmd == "" {
+			t.Error("Expected GenerateCmd to be set")
+		}
+	})
+}
+
+func TestCodeownersStatusCLI(t *testing.T) {
+	t.Run("found with teams", func(t *testing.T) {
+		status := &CodeownersStatusCLI{
+			Found:        true,
+			Path:         ".github/CODEOWNERS",
+			TeamCount:    5,
+			PatternCount: 20,
+		}
+		if !status.Found {
+			t.Error("Expected Found=true")
+		}
+		if status.TeamCount != 5 {
+			t.Errorf("Expected TeamCount=5, got %d", status.TeamCount)
+		}
+		if status.PatternCount != 20 {
+			t.Errorf("Expected PatternCount=20, got %d", status.PatternCount)
+		}
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		status := &CodeownersStatusCLI{Found: false}
+		if status.Found {
+			t.Error("Expected Found=false")
+		}
+		if status.Path != "" {
+			t.Error("Expected Path to be empty")
+		}
+	})
+}
