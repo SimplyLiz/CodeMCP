@@ -150,8 +150,9 @@ Now Claude can answer questions like:
 
 ### Fast Indexing
 - **Zero-Index Operation** — Tree-sitter fallback works without SCIP index
-- **Incremental Updates** — O(changed files) instead of full reindex (Go)
+- **Incremental Updates** — O(changed files) instead of full reindex (Go, TypeScript, Python, Dart, Rust)
 - **Smart Caching** — Skip-if-fresh, watch mode, transitive invalidation
+- **Auto Index Updates** — Watch mode, daemon file watcher, webhook API for CI/CD
 
 ### Remote Index Server
 - **Index Serving** — Serve symbol indexes over HTTP for federation
@@ -211,7 +212,24 @@ Now Claude can answer questions like:
 - **Python Venv Detection** — Auto-detect virtual environments with activation recommendations
 - **TypeScript Monorepo** — Detect pnpm, lerna, nx, yarn workspaces with per-package tsconfig status
 
-## MCP Tools (74 Available)
+### Auto Index Updates (v7.5)
+- **Watch Mode** — `ckb index --watch` and `ckb mcp --watch --watch-interval 15s`
+- **Daemon File Watcher** — Automatic incremental refresh on git changes
+- **Webhook API** — `POST /api/v1/refresh` for CI/CD integration
+- **Index Staleness** — `ckb status` and `getStatus` show commits behind, index age, staleness reasons
+- **Token Efficiency Visibility** — Startup banner shows active tools, estimated tokens, preset savings (83% with core)
+
+### Multi-Language Incremental (v7.5)
+- **Expanded Support** — Go, TypeScript, Python, Dart, Rust (automatic indexer detection)
+- **Graceful Degradation** — Install hints when indexer is missing
+- **Unified API** — `IndexIncrementalWithLang(ctx, since, lang)` for all languages
+
+### Performance Improvements (v7.5)
+- **SCIP Backend** — Up to 2,500x faster: FindReferences (136x), SearchSymbols (7x), FindSymbolLocation (2,500x)
+- **Git Backend** — 53x faster getHotspots (single git command vs 4 per file)
+- **Pre-computed Indexes** — RefIndex, ConvertedSymbols cache, ContainerIndex for O(1) lookups
+
+## MCP Tools (76 Available)
 
 CKB exposes code intelligence through the Model Context Protocol:
 
@@ -678,7 +696,7 @@ See the **[Full Documentation Wiki](https://github.com/SimplyLiz/CodeMCP/wiki)**
 - [Incremental Indexing](https://github.com/SimplyLiz/CodeMCP/wiki/Incremental-Indexing) — Fast index updates for Go projects
 - [Doc-Symbol Linking](https://github.com/SimplyLiz/CodeMCP/wiki/Doc-Symbol-Linking) — Symbol detection in docs, staleness checking
 - [Authentication](https://github.com/SimplyLiz/CodeMCP/wiki/Authentication) — API tokens, scopes, rate limiting
-- [MCP Integration](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration) — Claude Code setup, 71 tools
+- [MCP Integration](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration) — Claude Code setup, 76 tools
 - [API Reference](https://github.com/SimplyLiz/CodeMCP/wiki/API-Reference) — HTTP API documentation
 - [Daemon Mode](https://github.com/SimplyLiz/CodeMCP/wiki/Daemon-Mode) — Always-on service with scheduler, webhooks
 - [Configuration](https://github.com/SimplyLiz/CodeMCP/wiki/Configuration) — All options including MODULES.toml
