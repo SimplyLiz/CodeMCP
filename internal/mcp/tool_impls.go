@@ -78,7 +78,8 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 			"fullPresetTokens":    fullTokens,
 			"tokenSavingsPercent": tokenSavings,
 		},
-		"index": indexInfo,
+		"index":       indexInfo,
+		"lastRefresh": statusResp.LastRefresh,
 	}
 
 	return OperationalResponse(data), nil
