@@ -284,3 +284,344 @@ func TestMin(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatSymbolHuman(t *testing.T) {
+	resp := &SymbolResponseCLI{
+		Symbol: SymbolInfoCLI{
+			StableID:             "sym123",
+			Name:                 "Engine",
+			Kind:                 "struct",
+			Visibility:           "public",
+			VisibilityConfidence: 0.95,
+			ContainerName:        "query",
+		},
+		Location: &LocationCLI{
+			FileID:      "engine.go",
+			StartLine:   10,
+			StartColumn: 5,
+		},
+		Module: &ModuleInfoCLI{
+			ModuleID: "internal/query",
+		},
+	}
+
+	result, err := formatSymbolHuman(resp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(result, "Symbol Details") {
+		t.Error("missing header")
+	}
+	if !strings.Contains(result, "Name: Engine") {
+		t.Error("missing name")
+	}
+	if !strings.Contains(result, "Kind: struct") {
+		t.Error("missing kind")
+	}
+	if !strings.Contains(result, "Container: query") {
+		t.Error("missing container")
+	}
+	if !strings.Contains(result, "engine.go:10:5") {
+		t.Error("missing location")
+	}
+	if !strings.Contains(result, "Module: internal/query") {
+		t.Error("missing module")
+	}
+}
+
+func TestFormatSymbolHuman_MinimalFields(t *testing.T) {
+	resp := &SymbolResponseCLI{
+		Symbol: SymbolInfoCLI{
+			StableID:   "sym456",
+			Name:       "Foo",
+			Kind:       "function",
+			Visibility: "private",
+		},
+	}
+
+	result, err := formatSymbolHuman(resp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(result, "Name: Foo") {
+		t.Error("missing name")
+	}
+	// Should not contain optional fields
+	if strings.Contains(result, "Container:") {
+		t.Error("should not have container when empty")
+	}
+	if strings.Contains(result, "Location:") {
+		t.Error("should not have location when nil")
+	}
+}
+
+func TestFormatRefsHuman(t *testing.T) {
+	resp := &ReferencesResponseCLI{
+		SymbolID:        "sym123",
+		TotalReferences: 3,
+		ByModule: []ModuleReferencesCLI{
+			{ModuleID: "module1", Count: 2},
+			{ModuleID: "module2", Count: 1},
+		},
+		References: []ReferenceCLI{
+			{Location: &LocationCLI{FileID: "foo.go", StartLine: 10}, Kind: "call", IsTest: false},
+			{Location: &LocationCLI{FileID: "bar.go", StartLine: 20}, Kind: "call", IsTest: true},
+			{Location: &LocationCLI{FileID: "baz.go", StartLine: 30}, Kind: "import", IsTest: false},
+		},
+	}
+
+	result, err := formatRefsHuman(resp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(result, "References to: sym123") {
+		t.Error("missing header")
+	}
+	if !strings.Contains(result, "Total references: 3") {
+		t.Error("missing total count")
+	}
+	if !strings.Contains(result, "module1: 2 references") {
+		t.Error("missing module1 count")
+	}
+	if !strings.Contains(result, "foo.go:10 (call)") {
+		t.Error("missing first reference")
+	}
+	if !strings.Contains(result, "[test]") {
+		t.Error("missing test marker")
+	}
+}
+
+func TestFormatRefsHuman_EmptyRefs(t *testing.T) {
+	resp := &ReferencesResponseCLI{
+		SymbolID:        "sym456",
+		TotalReferences: 0,
+		References:      []ReferenceCLI{},
+	}
+
+	result, err := formatRefsHuman(resp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(result, "Total references: 0") {
+		t.Error("missing zero count")
+	}
+}
+
+func TestFormatArchHuman(t *testing.T) {
+	resp := &ArchitectureResponseCLI{
+		Modules: []ModuleSummaryCLI{
+			{
+				ModuleID:      "mod1",
+				Name:          "Query Engine",
+				RootPath:      "internal/query",
+				Language:      "go",
+				FileCount:     10,
+				SymbolCount:   50,
+				IncomingEdges: 5,
+				OutgoingEdges: 3,
+			},
+		},
+		DependencyGraph: []DependencyEdgeCLI{
+			{From: "mod1", To: "mod2", Kind: "import"},
+		},
+		Entrypoints: []EntrypointCLI{
+			{Name: "main", Kind: "binary", FileID: "cmd/ckb/main.go"},
+		},
+	}
+
+	result, err := formatArchHuman(resp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(result, "Architecture Overview") {
+		t.Error("missing header")
+	}
+	if !strings.Contains(result, "Modules: 1") {
+		t.Error("missing module count")
+	}
+	if !strings.Contains(result, "Dependencies: 1") {
+		t.Error("missing dependency count")
+	}
+	if !strings.Contains(result, "Entrypoints: 1") {
+		t.Error("missing entrypoint count")
+	}
+	if !strings.Contains(result, "Query Engine (go)") {
+		t.Error("missing module name with language")
+	}
+	if !strings.Contains(result, "Path: internal/query") {
+		t.Error("missing module path")
+	}
+	if !strings.Contains(result, "Files: 10, Symbols: 50") {
+		t.Error("missing file/symbol counts")
+	}
+	if !strings.Contains(result, "Deps: 5 incoming, 3 outgoing") {
+		t.Error("missing edge counts")
+	}
+	if !strings.Contains(result, "main (binary)") {
+		t.Error("missing entrypoint")
+	}
+}
+
+func TestFormatArchHuman_Empty(t *testing.T) {
+	resp := &ArchitectureResponseCLI{
+		Modules:         []ModuleSummaryCLI{},
+		DependencyGraph: []DependencyEdgeCLI{},
+		Entrypoints:     []EntrypointCLI{},
+	}
+
+	result, err := formatArchHuman(resp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(result, "Modules: 0") {
+		t.Error("missing zero module count")
+	}
+}
+
+func TestFormatCallgraphHuman(t *testing.T) {
+	resp := &CallgraphResponseCLI{
+		Root: "Engine.Search",
+		Nodes: []CallgraphNodeCLI{
+			{ID: "1", Name: "Caller1", Depth: -1, Role: "caller"},
+			{ID: "2", Name: "Caller2", Depth: -2, Role: "caller"},
+			{ID: "3", Name: "Callee1", Depth: 1, Role: "callee"},
+		},
+		Edges: []CallgraphEdgeCLI{
+			{From: "1", To: "root"},
+			{From: "root", To: "3"},
+		},
+	}
+
+	result, err := formatCallgraphHuman(resp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(result, "Call Graph for: Engine.Search") {
+		t.Error("missing header")
+	}
+	if !strings.Contains(result, "Nodes: 3, Edges: 2") {
+		t.Error("missing counts")
+	}
+	if !strings.Contains(result, "Callers (who calls this)") {
+		t.Error("missing callers section")
+	}
+	if !strings.Contains(result, "Callees (what this calls)") {
+		t.Error("missing callees section")
+	}
+	if !strings.Contains(result, "Caller1 (caller)") {
+		t.Error("missing caller node")
+	}
+	if !strings.Contains(result, "Callee1 (callee)") {
+		t.Error("missing callee node")
+	}
+}
+
+func TestFormatCallgraphHuman_Empty(t *testing.T) {
+	resp := &CallgraphResponseCLI{
+		Root:  "Orphan",
+		Nodes: []CallgraphNodeCLI{},
+		Edges: []CallgraphEdgeCLI{},
+	}
+
+	result, err := formatCallgraphHuman(resp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(result, "Nodes: 0, Edges: 0") {
+		t.Error("missing zero counts")
+	}
+}
+
+func TestFormatHotspotsHuman(t *testing.T) {
+	resp := &HotspotsResponseCLI{
+		TimeWindow: "90 days",
+		TotalCount: 2,
+		Hotspots: []HotspotCLI{
+			{
+				FilePath:  "internal/query/engine.go",
+				Score:     0.95,
+				RiskLevel: "high",
+				Churn:     HotspotChurnCLI{ChangeCount: 50, AuthorCount: 5},
+			},
+			{
+				FilePath:  "internal/mcp/server.go",
+				Score:     0.75,
+				RiskLevel: "medium",
+				Churn:     HotspotChurnCLI{ChangeCount: 25, AuthorCount: 3},
+			},
+		},
+	}
+
+	result, err := formatHotspotsHuman(resp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(result, "Code Hotspots") {
+		t.Error("missing header")
+	}
+	if !strings.Contains(result, "Total Hotspots: 2 (period: 90 days)") {
+		t.Error("missing total count and period")
+	}
+	if !strings.Contains(result, "1. internal/query/engine.go") {
+		t.Error("missing first hotspot")
+	}
+	if !strings.Contains(result, "Risk: high") {
+		t.Error("missing risk level")
+	}
+	if !strings.Contains(result, "Changes: 50, Authors: 5") {
+		t.Error("missing churn stats")
+	}
+}
+
+func TestFormatJustifyHuman(t *testing.T) {
+	tests := []struct {
+		name     string
+		verdict  string
+		wantIcon string
+	}{
+		{"keep verdict", "keep", "✓"},
+		{"investigate verdict", "investigate", "⚠"},
+		{"remove verdict", "remove", "✗"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := &JustifyResponseCLI{
+				SymbolId:   "sym123",
+				Verdict:    tt.verdict,
+				Confidence: 0.85,
+				Reasoning:  "Test reasoning",
+			}
+
+			result, err := formatJustifyHuman(resp)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if !strings.Contains(result, "Symbol Justification: sym123") {
+				t.Error("missing header")
+			}
+			if !strings.Contains(result, tt.wantIcon) {
+				t.Errorf("missing verdict icon %q", tt.wantIcon)
+			}
+			if !strings.Contains(result, tt.verdict) {
+				t.Errorf("missing verdict %q", tt.verdict)
+			}
+			if !strings.Contains(result, "85%") {
+				t.Error("missing confidence percentage")
+			}
+			if !strings.Contains(result, "Reasoning: Test reasoning") {
+				t.Error("missing reasoning")
+			}
+		})
+	}
+}
