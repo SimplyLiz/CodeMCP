@@ -211,6 +211,116 @@ func TestGolden_FindReferences(t *testing.T) {
 	})
 }
 
+// TestGolden_ExplainSymbol tests ExplainSymbol against golden files.
+func TestGolden_ExplainSymbol(t *testing.T) {
+	testutil.ForEachLanguage(t, func(t *testing.T, fixture *testutil.FixtureContext) {
+		engine, cleanup := setupGoldenEngine(t, fixture)
+		defer cleanup()
+
+		ctx := context.Background()
+
+		// Find symbols to explain
+		// Use specific names to avoid non-deterministic results
+		testCases := []struct {
+			searchQuery string
+			goldenName  string
+		}{
+			{"NewHandler", "explain_NewHandler"},
+			{"DefaultService", "explain_DefaultService"},
+			{"FormatOutput", "explain_FormatOutput"},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.goldenName, func(t *testing.T) {
+				// Find the symbol first
+				searchResp, err := engine.SearchSymbols(ctx, SearchSymbolsOptions{
+					Query: tc.searchQuery,
+					Limit: 1,
+				})
+				if err != nil {
+					t.Fatalf("SearchSymbols failed: %v", err)
+				}
+				if len(searchResp.Symbols) == 0 {
+					t.Skipf("No %s symbol found", tc.searchQuery)
+				}
+
+				symbolID := searchResp.Symbols[0].StableId
+
+				resp, err := engine.ExplainSymbol(ctx, ExplainSymbolOptions{
+					SymbolId: symbolID,
+				})
+				if err != nil {
+					t.Fatalf("ExplainSymbol failed: %v", err)
+				}
+
+				result := normalizeExplainSymbol(resp)
+				testutil.CompareGolden(t, fixture, tc.goldenName, result)
+			})
+		}
+	})
+}
+
+// TestGolden_GetArchitecture tests GetArchitecture against golden files.
+func TestGolden_GetArchitecture(t *testing.T) {
+	testutil.ForEachLanguage(t, func(t *testing.T, fixture *testutil.FixtureContext) {
+		engine, cleanup := setupGoldenEngine(t, fixture)
+		defer cleanup()
+
+		ctx := context.Background()
+
+		t.Run("arch_default", func(t *testing.T) {
+			resp, err := engine.GetArchitecture(ctx, GetArchitectureOptions{
+				Depth:               2,
+				IncludeExternalDeps: false,
+			})
+			if err != nil {
+				t.Fatalf("GetArchitecture failed: %v", err)
+			}
+
+			result := normalizeArchitecture(resp)
+			testutil.CompareGolden(t, fixture, "arch_default", result)
+		})
+	})
+}
+
+// TestGolden_TraceUsage tests TraceUsage against golden files.
+func TestGolden_TraceUsage(t *testing.T) {
+	testutil.ForEachLanguage(t, func(t *testing.T, fixture *testutil.FixtureContext) {
+		engine, cleanup := setupGoldenEngine(t, fixture)
+		defer cleanup()
+
+		ctx := context.Background()
+
+		// Find an internal symbol to trace
+		searchResp, err := engine.SearchSymbols(ctx, SearchSymbolsOptions{
+			Query: "FormatOutput",
+			Limit: 1,
+		})
+		if err != nil {
+			t.Fatalf("SearchSymbols failed: %v", err)
+		}
+		if len(searchResp.Symbols) == 0 {
+			t.Skip("No FormatOutput symbol found")
+		}
+
+		symbolID := searchResp.Symbols[0].StableId
+
+		t.Run("trace_FormatOutput", func(t *testing.T) {
+			resp, err := engine.TraceUsage(ctx, TraceUsageOptions{
+				SymbolId: symbolID,
+				MaxPaths: 10,
+				MaxDepth: 5,
+			})
+			if err != nil {
+				t.Fatalf("TraceUsage failed: %v", err)
+			}
+
+			result := normalizeTraceUsage(resp)
+			testutil.CompareGolden(t, fixture, "trace_FormatOutput", result)
+		})
+	})
+}
+
 // normalizeSearchResults normalizes SearchSymbolsResponse for golden comparison.
 func normalizeSearchResults(resp *SearchSymbolsResponse) map[string]any {
 	results := make([]map[string]any, 0, len(resp.Symbols))
@@ -315,6 +425,99 @@ func indexLast(s, substr string) int {
 		}
 	}
 	return -1
+}
+
+// normalizeExplainSymbol normalizes ExplainSymbolResponse for golden comparison.
+func normalizeExplainSymbol(resp *ExplainSymbolResponse) map[string]any {
+	facts := map[string]any{
+		"module": resp.Facts.Module,
+	}
+
+	if resp.Facts.Symbol != nil {
+		file := ""
+		if resp.Facts.Symbol.Location != nil {
+			file = resp.Facts.Symbol.Location.FileId
+		}
+		facts["symbol"] = map[string]any{
+			"name": resp.Facts.Symbol.Name,
+			"kind": resp.Facts.Symbol.Kind,
+			"file": normalizeFilePath(file),
+		}
+	}
+
+	if resp.Facts.Usage != nil {
+		facts["usage"] = map[string]any{
+			"callerCount":    resp.Facts.Usage.CallerCount,
+			"calleeCount":    resp.Facts.Usage.CalleeCount,
+			"referenceCount": resp.Facts.Usage.ReferenceCount,
+		}
+	}
+
+	return map[string]any{
+		"facts": facts,
+		"summary": map[string]any{
+			"tldr":     resp.Summary.Tldr,
+			"identity": resp.Summary.Identity,
+			"usage":    resp.Summary.Usage,
+		},
+	}
+}
+
+// normalizeArchitecture normalizes GetArchitectureResponse for golden comparison.
+func normalizeArchitecture(resp *GetArchitectureResponse) map[string]any {
+	modules := make([]map[string]any, 0, len(resp.Modules))
+	for _, m := range resp.Modules {
+		modules = append(modules, map[string]any{
+			"moduleId":    m.ModuleId,
+			"name":        m.Name,
+			"path":        m.Path,
+			"symbolCount": m.SymbolCount,
+			"fileCount":   m.FileCount,
+		})
+	}
+
+	deps := make([]map[string]any, 0, len(resp.DependencyGraph))
+	for _, d := range resp.DependencyGraph {
+		deps = append(deps, map[string]any{
+			"from": d.From,
+			"to":   d.To,
+		})
+	}
+
+	return map[string]any{
+		"modules":         modules,
+		"dependencyGraph": deps,
+	}
+}
+
+// normalizeTraceUsage normalizes TraceUsageResponse for golden comparison.
+func normalizeTraceUsage(resp *TraceUsageResponse) map[string]any {
+	paths := make([]map[string]any, 0, len(resp.Paths))
+	for _, p := range resp.Paths {
+		nodes := make([]map[string]any, 0, len(p.Nodes))
+		for _, n := range p.Nodes {
+			file := ""
+			if n.Location != nil {
+				file = n.Location.FileId
+			}
+			nodes = append(nodes, map[string]any{
+				"name": n.Name,
+				"kind": n.Kind,
+				"role": n.Role,
+				"file": normalizeFilePath(file),
+			})
+		}
+		paths = append(paths, map[string]any{
+			"pathType": p.PathType,
+			"nodes":    nodes,
+		})
+	}
+
+	return map[string]any{
+		"targetSymbol":    resp.TargetSymbol,
+		"paths":           paths,
+		"totalPathsFound": resp.TotalPathsFound,
+	}
 }
 
 // TestGolden_SCIPBackendDirect tests SCIP backend methods directly.
