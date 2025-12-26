@@ -580,13 +580,15 @@ func TestIndexIncrementalWithLang_IndexerNotInstalled(t *testing.T) {
 	defer cleanup()
 
 	ctx := t.Context()
-	lang := parseTestLanguage("go") // Go supports incremental but scip-go may not be installed
+	// Use Python - supports incremental but scip-python is unlikely to be installed
+	// This ensures we always test the "not installed" error path
+	lang := project.LangPython
 
 	_, err := indexer.IndexIncrementalWithLang(ctx, "", lang)
 
 	if err == nil {
-		// If scip-go is installed, the test still passes (we're just testing the flow)
-		t.Skip("scip-go is installed, skipping indexer-not-installed test")
+		// If scip-python is somehow installed, skip
+		t.Skip("scip-python is installed, skipping indexer-not-installed test")
 	}
 
 	// Should return ErrIndexerNotInstalled or similar
@@ -620,21 +622,17 @@ func TestCanUseIncremental_InstallInfo(t *testing.T) {
 	defer cleanup()
 
 	// Test that CanUseIncremental includes install command in reason when available
-	// Go has install info defined
-	canUse, reason := indexer.CanUseIncremental(project.LangGo)
+	// Use Python - supports incremental but scip-python is unlikely to be installed
+	canUse, reason := indexer.CanUseIncremental(project.LangPython)
 
 	if canUse {
-		// If scip-go is installed, skip this test
-		t.Skip("scip-go is installed, can't test install info message")
+		// If scip-python is somehow installed, skip this test
+		t.Skip("scip-python is installed, can't test install info message")
 	}
 
-	// Reason should include install command
-	if !contains(reason, "go install") {
-		t.Logf("reason: %s", reason)
-		// It should at least mention "not installed"
-		if !contains(reason, "not installed") {
-			t.Errorf("expected reason to mention 'not installed', got: %s", reason)
-		}
+	// Reason should include install command or mention "not installed"
+	if !contains(reason, "pip install") && !contains(reason, "not installed") {
+		t.Errorf("expected reason to mention install command or 'not installed', got: %s", reason)
 	}
 }
 
