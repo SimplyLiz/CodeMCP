@@ -53,6 +53,16 @@ type Config struct {
 	// v7.2 Analysis tier
 	// Values: "auto", "fast", "standard", "full"
 	Tier string `json:"tier,omitempty" mapstructure:"tier"`
+
+	// v8.1 Change Impact Analysis
+	Coverage CoverageConfig `json:"coverage" mapstructure:"coverage"`
+}
+
+// CoverageConfig contains coverage file configuration (v8.1)
+type CoverageConfig struct {
+	Paths      []string `json:"paths" mapstructure:"paths"`           // Custom paths to check for coverage files
+	AutoDetect bool     `json:"autoDetect" mapstructure:"autoDetect"` // Use language-specific auto-detection (default: true)
+	MaxAge     string   `json:"maxAge" mapstructure:"maxAge"`         // Max age before marking as stale (default: "168h" = 7 days)
 }
 
 // BackendsConfig contains backend-specific configuration
@@ -362,6 +372,11 @@ func DefaultConfig() *Config {
 			},
 		},
 		Webhooks: []WebhookConfig{},
+		Coverage: CoverageConfig{
+			Paths:      []string{}, // Empty = use auto-detection only
+			AutoDetect: true,
+			MaxAge:     "168h", // 7 days
+		},
 		Telemetry: TelemetryConfig{
 			Enabled:         false, // Explicit opt-in required
 			ServiceMap:      map[string]string{},

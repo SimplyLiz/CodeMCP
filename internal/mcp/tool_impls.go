@@ -735,6 +735,92 @@ func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (*envelope.
 		Build(), nil
 }
 
+// toolAnalyzeChange implements the analyzeChange tool
+func (s *MCPServer) toolAnalyzeChange(params map[string]interface{}) (*envelope.Response, error) {
+	timer := NewWideResultTimer()
+
+	// Extract parameters with defaults
+	diffContent := ""
+	if v, ok := params["diffContent"].(string); ok {
+		diffContent = v
+	}
+
+	staged := false
+	if v, ok := params["staged"].(bool); ok {
+		staged = v
+	}
+
+	baseBranch := "HEAD"
+	if v, ok := params["baseBranch"].(string); ok && v != "" {
+		baseBranch = v
+	}
+
+	depth := 2
+	if v, ok := params["depth"].(float64); ok {
+		depth = int(v)
+		if depth < 1 {
+			depth = 1
+		} else if depth > 4 {
+			depth = 4
+		}
+	}
+
+	includeTests := false
+	if v, ok := params["includeTests"].(bool); ok {
+		includeTests = v
+	}
+
+	strict := false
+	if v, ok := params["strict"].(bool); ok {
+		strict = v
+	}
+
+	s.logger.Debug("Executing analyzeChange", map[string]interface{}{
+		"staged":       staged,
+		"baseBranch":   baseBranch,
+		"depth":        depth,
+		"includeTests": includeTests,
+		"strict":       strict,
+		"hasDiff":      diffContent != "",
+	})
+
+	ctx := context.Background()
+	resp, err := s.engine().AnalyzeChangeSet(ctx, query.AnalyzeChangeSetOptions{
+		DiffContent:     diffContent,
+		Staged:          staged,
+		BaseBranch:      baseBranch,
+		TransitiveDepth: depth,
+		IncludeTests:    includeTests,
+		Strict:          strict,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("analyzeChange failed: %w", err)
+	}
+
+	// Record wide-result metrics
+	totalAffected := len(resp.AffectedSymbols)
+	data := resp
+	responseBytes := MeasureJSONSize(data)
+	truncatedCount := 0
+	if resp.Truncated && resp.TruncationInfo != nil {
+		truncatedCount = resp.TruncationInfo.OriginalCount - resp.TruncationInfo.ReturnedCount
+	}
+	RecordWideResult(WideResultMetrics{
+		ToolName:        "analyzeChange",
+		TotalResults:    totalAffected + truncatedCount,
+		ReturnedResults: totalAffected,
+		TruncatedCount:  truncatedCount,
+		ResponseBytes:   responseBytes,
+		EstimatedTokens: EstimateTokens(responseBytes),
+		ExecutionMs:     timer.ElapsedMs(),
+	})
+
+	return NewToolResponse().
+		Data(data).
+		WithProvenance(resp.Provenance).
+		Build(), nil
+}
+
 // toolExplainSymbol implements the explainSymbol tool
 func (s *MCPServer) toolExplainSymbol(params map[string]interface{}) (*envelope.Response, error) {
 	symbolId, ok := params["symbolId"].(string)

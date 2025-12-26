@@ -225,7 +225,7 @@ See the **[Index Management Guide](https://github.com/SimplyLiz/CodeMCP/wiki/Ind
 
 📋 **[Changelog](https://github.com/SimplyLiz/CodeMCP/blob/main/CHANGELOG.md)** — Version history from v5.1 to current
 
-## MCP Tools (76 Available)
+## MCP Tools (77 Available)
 
 CKB exposes code intelligence through the Model Context Protocol:
 
@@ -241,7 +241,8 @@ CKB exposes code intelligence through the Model Context Protocol:
 | `justifySymbol` | Keep/investigate/remove verdict |
 | `getCallGraph` | Caller/callee relationships |
 | `getModuleOverview` | Module statistics |
-| `analyzeImpact` | Change risk analysis |
+| `analyzeImpact` | Change risk analysis (single symbol) |
+| `analyzeChange` | Change risk analysis (git diff) |
 | `getStatus` | System health |
 | `doctor` | Diagnostics |
 
@@ -372,8 +373,11 @@ ckb refs NewServer
 # Get architecture overview
 ckb arch
 
-# Analyze change impact
+# Analyze change impact (single symbol)
 ckb impact <symbol-id>
+
+# Analyze change impact (git diff)
+ckb impact diff
 
 # Query ownership
 ckb ownership internal/api/handler.go
@@ -624,7 +628,7 @@ Use `cmd /c` wrapper in any config above:
 <details>
 <summary><strong>Presets (Token Optimization)</strong></summary>
 
-CKB exposes 76 tools, but most sessions only need a subset. Use presets to reduce token overhead by up to 83%:
+CKB exposes 77 tools, but most sessions only need a subset. Use presets to reduce token overhead by up to 83%:
 
 ```bash
 # List all available presets with tool counts and token estimates

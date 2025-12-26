@@ -8,6 +8,7 @@ require (
 	github.com/klauspost/compress v1.18.2
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/smacker/go-tree-sitter v0.0.0-20240827094217-dd81d9e9be82
+	github.com/sourcegraph/go-diff v0.7.0
 	github.com/sourcegraph/scip v0.6.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0

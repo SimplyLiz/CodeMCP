@@ -43,14 +43,14 @@ type LastRefresh struct {
 
 // IndexMeta contains metadata about the SCIP index.
 type IndexMeta struct {
-	Version     int       `json:"version"`
-	CreatedAt   time.Time `json:"createdAt"`
-	CommitHash  string    `json:"commitHash"`
-	RepoStateID string    `json:"repoStateId"`
-	FileCount   int       `json:"fileCount"`
-	Duration    string    `json:"duration"`
-	Indexer     string    `json:"indexer"`
-	IndexerArgs []string  `json:"indexerArgs,omitempty"`
+	Version     int          `json:"version"`
+	CreatedAt   time.Time    `json:"createdAt"`
+	CommitHash  string       `json:"commitHash"`
+	RepoStateID string       `json:"repoStateId"`
+	FileCount   int          `json:"fileCount"`
+	Duration    string       `json:"duration"`
+	Indexer     string       `json:"indexer"`
+	IndexerArgs []string     `json:"indexerArgs,omitempty"`
 	LastRefresh *LastRefresh `json:"lastRefresh,omitempty"`
 }
 
