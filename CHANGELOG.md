@@ -57,6 +57,42 @@ analyzeImpact({ symbolId: "...", depth: 3 })
 
 ### Added
 
+#### Change Impact Analysis
+Analyze the impact of code changes from git diffs *before* committing. This feature answers: "What downstream code might break?"
+
+**CLI:**
+```bash
+ckb impact diff                # Analyze working tree changes
+ckb impact diff --staged       # Analyze only staged changes
+ckb impact diff --base=main    # Compare against a branch
+ckb impact diff --depth=3      # Deeper transitive analysis
+ckb impact diff --strict       # Fail if index is stale
+```
+
+**MCP Tool:** `analyzeChange`
+
+**Key Features:**
+- **Git diff parsing** — Uses `sourcegraph/go-diff` to parse unified diffs into structured hunks
+- **Symbol mapping** — Maps changed lines to SCIP symbol definitions with confidence scoring
+- **Confidence levels** — 1.0 (exact definition), 0.8 (body change), 0.7 (reference), 0.3 (file-level)
+- **Aggregated risk** — Weighted factors: symbols changed (20%), direct impact (30%), transitive impact (20%), module spread (30%)
+- **Index staleness** — Warns when SCIP index is behind HEAD; `--strict` mode fails if stale
+- **Recommendations** — Actionable suggestions (review, test, split) based on analysis
+
+**Files Added:**
+- `internal/impact/interfaces.go` — Core types (ChangedSymbol, ParsedDiff, ChangeType)
+- `internal/diff/gitdiff.go` — Git diff parser with source file filtering
+- `internal/diff/symbolmap.go` — Diff-to-symbol mapper with confidence scoring
+- `internal/diff/scipadapter.go` — SCIP index adapter for symbol lookup
+
+**Files Changed:**
+- `internal/query/impact.go` — Added `AnalyzeChangeSet()` engine method
+- `internal/mcp/tools.go` — Added `analyzeChange` tool definition
+- `internal/mcp/tool_impls.go` — Added `analyzeChange` handler
+- `cmd/ckb/impact.go` — Added `ckb impact diff` subcommand
+
+See [[Change-Impact-Analysis]] in the wiki for full documentation.
+
 #### Token Efficiency Visibility
 Users can now see CKB's token savings compared to bloated MCP servers:
 
