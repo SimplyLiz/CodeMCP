@@ -2,11 +2,14 @@ package incremental
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"ckb/internal/logging"
+	"ckb/internal/project"
 	"ckb/internal/storage"
 )
 
@@ -476,5 +479,354 @@ func TestNeedsFullReindex_NoCommit_NonGitRepo(t *testing.T) {
 	// The detector.isGitRepo() should return false, so "no tracked commit" check is skipped
 	if needs {
 		t.Errorf("expected NeedsFullReindex=false in non-git repo, got true with reason: %q", reason)
+	}
+}
+
+// Multi-language support tests (v7.6)
+
+func TestCanUseIncremental_SupportedLanguages(t *testing.T) {
+	indexer, _, cleanup := setupTestIndexer(t)
+	defer cleanup()
+
+	// Test unsupported languages - these should always return false with specific reason
+	unsupportedTests := []struct {
+		name     string
+		lang     string
+		wantDesc string // Partial match on reason
+	}{
+		{"Java", "java", "not enabled"},
+		{"Kotlin", "kotlin", "not enabled"},
+		{"Cpp", "cpp", "not enabled"},
+		{"Ruby", "ruby", "not enabled"},
+		{"CSharp", "csharp", "not enabled"},
+		{"PHP", "php", "not enabled"},
+		{"Unknown", "unknown", "no indexer configured"},
+	}
+
+	for _, tt := range unsupportedTests {
+		t.Run(tt.name, func(t *testing.T) {
+			lang := parseTestLanguage(tt.lang)
+			canUse, reason := indexer.CanUseIncremental(lang)
+
+			if canUse {
+				t.Errorf("CanUseIncremental(%s) = true, want false", tt.lang)
+			}
+
+			if !contains(reason, tt.wantDesc) {
+				t.Errorf("CanUseIncremental(%s) reason = %q, want to contain %q", tt.lang, reason, tt.wantDesc)
+			}
+		})
+	}
+
+	// Test supported languages - result depends on whether indexer is installed
+	supportedTests := []string{"go", "typescript", "javascript", "python", "dart", "rust"}
+
+	for _, lang := range supportedTests {
+		t.Run("Supported_"+lang, func(t *testing.T) {
+			parsedLang := parseTestLanguage(lang)
+			canUse, reason := indexer.CanUseIncremental(parsedLang)
+
+			// Either it works (indexer installed) or it should mention "not installed"
+			if !canUse && !contains(reason, "not installed") {
+				t.Errorf("CanUseIncremental(%s) = false but reason %q doesn't mention 'not installed'", lang, reason)
+			}
+			// If canUse is true, reason should be empty
+			if canUse && reason != "" {
+				t.Errorf("CanUseIncremental(%s) = true but reason is not empty: %q", lang, reason)
+			}
+		})
+	}
+}
+
+func TestIndexIncrementalWithLang_UnsupportedLanguage(t *testing.T) {
+	indexer, _, cleanup := setupTestIndexer(t)
+	defer cleanup()
+
+	ctx := t.Context()
+	lang := parseTestLanguage("java") // Java doesn't support incremental
+
+	_, err := indexer.IndexIncrementalWithLang(ctx, "", lang)
+
+	if err == nil {
+		t.Fatal("expected error for unsupported language")
+	}
+
+	// Should return ErrIncrementalNotSupported
+	if !contains(err.Error(), "not supported") && !contains(err.Error(), "not enabled") {
+		t.Errorf("expected 'not supported' or 'not enabled' error, got: %v", err)
+	}
+}
+
+func TestIndexIncrementalWithLang_UnknownLanguage(t *testing.T) {
+	indexer, _, cleanup := setupTestIndexer(t)
+	defer cleanup()
+
+	ctx := t.Context()
+	lang := parseTestLanguage("unknown")
+
+	_, err := indexer.IndexIncrementalWithLang(ctx, "", lang)
+
+	if err == nil {
+		t.Fatal("expected error for unknown language")
+	}
+
+	if !contains(err.Error(), "not supported") {
+		t.Errorf("expected 'not supported' error, got: %v", err)
+	}
+}
+
+func TestIndexIncrementalWithLang_IndexerNotInstalled(t *testing.T) {
+	indexer, _, cleanup := setupTestIndexer(t)
+	defer cleanup()
+
+	ctx := t.Context()
+	// Use Python - supports incremental but scip-python is unlikely to be installed
+	// This ensures we always test the "not installed" error path
+	lang := project.LangPython
+
+	_, err := indexer.IndexIncrementalWithLang(ctx, "", lang)
+
+	if err == nil {
+		// If scip-python is somehow installed, skip
+		t.Skip("scip-python is installed, skipping indexer-not-installed test")
+	}
+
+	// Should return ErrIndexerNotInstalled or similar
+	if !contains(err.Error(), "not installed") && !contains(err.Error(), "install") {
+		t.Errorf("expected 'not installed' error, got: %v", err)
+	}
+}
+
+func TestErrorTypes(t *testing.T) {
+	// Test that error types are properly defined
+	if ErrIncrementalNotSupported == nil {
+		t.Error("ErrIncrementalNotSupported should not be nil")
+	}
+	if ErrIndexerNotInstalled == nil {
+		t.Error("ErrIndexerNotInstalled should not be nil")
+	}
+
+	// Test error messages
+	if !contains(ErrIncrementalNotSupported.Error(), "not supported") {
+		t.Errorf("ErrIncrementalNotSupported message should contain 'not supported', got: %s",
+			ErrIncrementalNotSupported.Error())
+	}
+	if !contains(ErrIndexerNotInstalled.Error(), "not installed") {
+		t.Errorf("ErrIndexerNotInstalled message should contain 'not installed', got: %s",
+			ErrIndexerNotInstalled.Error())
+	}
+}
+
+func TestCanUseIncremental_InstallInfo(t *testing.T) {
+	indexer, _, cleanup := setupTestIndexer(t)
+	defer cleanup()
+
+	// Test that CanUseIncremental includes install command in reason when available
+	// Use Python - supports incremental but scip-python is unlikely to be installed
+	canUse, reason := indexer.CanUseIncremental(project.LangPython)
+
+	if canUse {
+		// If scip-python is somehow installed, skip this test
+		t.Skip("scip-python is installed, can't test install info message")
+	}
+
+	// Reason should include install command or mention "not installed"
+	if !contains(reason, "pip install") && !contains(reason, "not installed") {
+		t.Errorf("expected reason to mention install command or 'not installed', got: %s", reason)
+	}
+}
+
+func TestCanUseIncremental_AllLanguages(t *testing.T) {
+	indexer, _, cleanup := setupTestIndexer(t)
+	defer cleanup()
+
+	// Test all languages to ensure CanUseIncremental doesn't panic
+	// and returns sensible values
+	allLanguages := []project.Language{
+		project.LangGo,
+		project.LangTypeScript,
+		project.LangJavaScript,
+		project.LangPython,
+		project.LangRust,
+		project.LangDart,
+		project.LangJava,
+		project.LangKotlin,
+		project.LangCpp,
+		project.LangRuby,
+		project.LangCSharp,
+		project.LangPHP,
+		project.LangUnknown,
+	}
+
+	for _, lang := range allLanguages {
+		t.Run(string(lang), func(t *testing.T) {
+			canUse, reason := indexer.CanUseIncremental(lang)
+
+			// For supported languages, either it works or has specific reason
+			config := project.GetIndexerConfig(lang)
+			if config == nil {
+				// Unknown languages should report no indexer
+				if canUse {
+					t.Error("expected canUse=false for unknown language")
+				}
+				if !contains(reason, "no indexer") {
+					t.Errorf("expected 'no indexer' in reason, got: %s", reason)
+				}
+				return
+			}
+
+			if !config.SupportsIncremental {
+				// Languages without incremental support
+				if canUse {
+					t.Error("expected canUse=false for non-incremental language")
+				}
+				if !contains(reason, "not enabled") {
+					t.Errorf("expected 'not enabled' in reason, got: %s", reason)
+				}
+				return
+			}
+
+			// For supported languages, check reason is consistent with result
+			if canUse && reason != "" {
+				t.Errorf("expected empty reason when canUse=true, got: %s", reason)
+			}
+			if !canUse && reason == "" {
+				t.Error("expected non-empty reason when canUse=false")
+			}
+		})
+	}
+}
+
+func TestIndexIncremental_Deprecated(t *testing.T) {
+	// Test that deprecated IndexIncremental calls IndexIncrementalWithLang
+	indexer, _, cleanup := setupTestIndexer(t)
+	defer cleanup()
+
+	ctx := t.Context()
+
+	// IndexIncremental should behave the same as IndexIncrementalWithLang(LangGo)
+	_, err1 := indexer.IndexIncremental(ctx, "")
+	_, err2 := indexer.IndexIncrementalWithLang(ctx, "", project.LangGo)
+
+	// Both should fail in the same way (no indexer installed typically)
+	if (err1 == nil) != (err2 == nil) {
+		t.Errorf("IndexIncremental and IndexIncrementalWithLang should have same error state: %v vs %v", err1, err2)
+	}
+
+	// If both have errors, they should be similar
+	if err1 != nil && err2 != nil {
+		// Both should mention the same issue
+		if !contains(err1.Error(), "not installed") && !contains(err1.Error(), "not supported") {
+			// scip-go is installed, errors might be different
+			t.Logf("IndexIncremental error: %v", err1)
+			t.Logf("IndexIncrementalWithLang error: %v", err2)
+		}
+	}
+}
+
+func TestIndexIncrementalWithLang_NoChanges(t *testing.T) {
+	indexer, tmpDir, cleanup := setupTestIndexer(t)
+	defer cleanup()
+
+	// Create a Go module to make detection work
+	goMod := filepath.Join(tmpDir, "go.mod")
+	if err := os.WriteFile(goMod, []byte("module test\n\ngo 1.21\n"), 0644); err != nil {
+		t.Fatalf("failed to create go.mod: %v", err)
+	}
+
+	// Initialize git to enable change detection
+	initGit(t, tmpDir)
+
+	// Set up a full index state so incremental can run
+	if err := indexer.store.SaveFileState(&IndexedFile{Path: "main.go", Hash: "abc123"}); err != nil {
+		t.Fatalf("SaveFileState failed: %v", err)
+	}
+	if err := indexer.store.SetIndexStateFull(); err != nil {
+		t.Fatalf("SetIndexStateFull failed: %v", err)
+	}
+	if err := indexer.store.SetLastIndexedCommit(getGitHead(t, tmpDir)); err != nil {
+		t.Fatalf("SetLastIndexedCommit failed: %v", err)
+	}
+
+	ctx := t.Context()
+	lang := project.LangGo
+
+	// Check if Go incremental is available
+	canUse, _ := indexer.CanUseIncremental(lang)
+	if !canUse {
+		t.Skip("scip-go not installed, skipping no-changes test")
+	}
+
+	// With no changes, should return unchanged stats
+	stats, err := indexer.IndexIncrementalWithLang(ctx, "", lang)
+	if err != nil {
+		t.Fatalf("IndexIncrementalWithLang failed: %v", err)
+	}
+
+	if stats.IndexState != "unchanged" {
+		t.Errorf("expected IndexState='unchanged', got %q", stats.IndexState)
+	}
+}
+
+// initGit initializes a git repo in the given directory
+func initGit(t *testing.T, dir string) {
+	t.Helper()
+	cmds := [][]string{
+		{"git", "init"},
+		{"git", "config", "user.email", "test@test.com"},
+		{"git", "config", "user.name", "Test"},
+		{"git", "add", "."},
+		{"git", "commit", "-m", "initial"},
+	}
+	for _, args := range cmds {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = dir
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("git command %v failed: %v", args, err)
+		}
+	}
+}
+
+// getGitHead returns the current HEAD commit
+func getGitHead(t *testing.T, dir string) string {
+	t.Helper()
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git rev-parse HEAD failed: %v", err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// parseTestLanguage converts a string to project.Language for testing
+func parseTestLanguage(s string) project.Language {
+	switch s {
+	case "go":
+		return project.LangGo
+	case "typescript":
+		return project.LangTypeScript
+	case "javascript":
+		return project.LangJavaScript
+	case "python":
+		return project.LangPython
+	case "rust":
+		return project.LangRust
+	case "java":
+		return project.LangJava
+	case "kotlin":
+		return project.LangKotlin
+	case "cpp":
+		return project.LangCpp
+	case "dart":
+		return project.LangDart
+	case "ruby":
+		return project.LangRuby
+	case "csharp":
+		return project.LangCSharp
+	case "php":
+		return project.LangPHP
+	default:
+		return project.LangUnknown
 	}
 }

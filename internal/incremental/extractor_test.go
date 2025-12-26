@@ -3,10 +3,12 @@ package incremental
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"ckb/internal/backends/scip"
 	"ckb/internal/logging"
+	"ckb/internal/project"
 )
 
 func TestIsLocalSymbol(t *testing.T) {
@@ -619,5 +621,342 @@ func TestExtractFileDelta_CallEdges(t *testing.T) {
 	// CallerID should be resolved to main.main since the call is on line 8, within main (lines 6-end)
 	if edge.CallerID != "scip-go gomod example 1.0 main.main()." {
 		t.Errorf("expected caller 'main.main', got %q", edge.CallerID)
+	}
+}
+
+// Multi-language support tests (v7.6)
+
+func TestIsIndexerInstalled(t *testing.T) {
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	ext := NewSCIPExtractor("/repo", ".scip/index.scip", logger)
+
+	tests := []struct {
+		name   string
+		lang   project.Language
+		exists bool // Whether the test expects the indexer to exist (may vary by environment)
+	}{
+		// These tests check that IsIndexerInstalled doesn't panic
+		// Actual availability depends on the test environment
+		{"Go", project.LangGo, false}, // scip-go typically not in test env
+		{"TypeScript", project.LangTypeScript, false},
+		{"Python", project.LangPython, false},
+		{"Dart", project.LangDart, false},
+		{"Rust", project.LangRust, false},
+		{"Java", project.LangJava, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := project.GetIndexerConfig(tt.lang)
+			if config == nil {
+				t.Skipf("no indexer config for %s", tt.lang)
+			}
+
+			// Should not panic
+			_ = ext.IsIndexerInstalled(config)
+		})
+	}
+}
+
+func TestRunIndexer_CreatesOutputDirectory(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "extractor-runindexer-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Use a nested output path that doesn't exist
+	outputPath := filepath.Join(tmpDir, "nested", "deep", "index.scip")
+
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	ext := NewSCIPExtractor(tmpDir, outputPath, logger)
+
+	config := project.GetIndexerConfig(project.LangGo)
+	if config == nil {
+		t.Skip("no Go indexer config")
+	}
+
+	// RunIndexer should create the output directory
+	// (It will fail because scip-go isn't installed, but the directory should be created first)
+	_ = ext.RunIndexer(config)
+
+	// Check that the directory was created
+	outputDir := filepath.Dir(outputPath)
+	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
+		t.Errorf("expected output directory %s to be created", outputDir)
+	}
+}
+
+func TestRunSCIPGo_Deprecated(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "extractor-runscipgo-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	ext := NewSCIPExtractor(tmpDir, ".scip/index.scip", logger)
+
+	// RunSCIPGo should call RunIndexer internally
+	// It will fail because scip-go isn't installed, but it shouldn't panic
+	err = ext.RunSCIPGo()
+
+	// We expect an error (indexer not found or similar)
+	if err == nil {
+		t.Skip("scip-go is installed, test passes")
+	}
+
+	// Error should be about the indexer failing, not a nil pointer or similar
+	if err.Error() == "" {
+		t.Error("expected non-empty error message")
+	}
+}
+
+func TestGetIndexerConfigForAllLanguages(t *testing.T) {
+	// Verify that GetIndexerConfig returns correct configs for supported languages
+	supportedLangs := []project.Language{
+		project.LangGo,
+		project.LangTypeScript,
+		project.LangJavaScript,
+		project.LangPython,
+		project.LangDart,
+		project.LangRust,
+	}
+
+	for _, lang := range supportedLangs {
+		t.Run(string(lang), func(t *testing.T) {
+			config := project.GetIndexerConfig(lang)
+			if config == nil {
+				t.Errorf("expected non-nil config for %s", lang)
+				return
+			}
+
+			if config.Cmd == "" {
+				t.Errorf("expected non-empty Cmd for %s", lang)
+			}
+
+			if !config.SupportsIncremental {
+				t.Errorf("expected SupportsIncremental=true for %s", lang)
+			}
+		})
+	}
+
+	// Verify unsupported languages
+	unsupportedLangs := []project.Language{
+		project.LangJava,
+		project.LangKotlin,
+		project.LangCpp,
+		project.LangRuby,
+		project.LangCSharp,
+		project.LangPHP,
+	}
+
+	for _, lang := range unsupportedLangs {
+		t.Run(string(lang)+"_no_incremental", func(t *testing.T) {
+			config := project.GetIndexerConfig(lang)
+			if config == nil {
+				t.Skipf("no config for %s", lang)
+			}
+
+			if config.SupportsIncremental {
+				t.Errorf("expected SupportsIncremental=false for %s", lang)
+			}
+		})
+	}
+}
+
+func TestIndexerConfigBuildCommand(t *testing.T) {
+	tests := []struct {
+		name       string
+		lang       project.Language
+		outputPath string
+		wantCmd    string
+	}{
+		{
+			name:       "Go with output",
+			lang:       project.LangGo,
+			outputPath: "/tmp/index.scip",
+			wantCmd:    "scip-go",
+		},
+		{
+			name:       "TypeScript with output",
+			lang:       project.LangTypeScript,
+			outputPath: "/tmp/index.scip",
+			wantCmd:    "scip-typescript",
+		},
+		{
+			name:       "Rust (fixed output)",
+			lang:       project.LangRust,
+			outputPath: "/tmp/index.scip",
+			wantCmd:    "rust-analyzer",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := project.GetIndexerConfig(tt.lang)
+			if config == nil {
+				t.Skipf("no config for %s", tt.lang)
+			}
+
+			cmd := config.BuildCommand(tt.outputPath)
+			if cmd == nil {
+				t.Fatal("expected non-nil command")
+			}
+
+			// Check command name - it may be the full path or just the command name
+			if len(cmd.Args) == 0 {
+				t.Fatal("expected non-empty Args")
+			}
+			cmdName := cmd.Args[0]
+			// The command might be the full path (e.g., /Users/.../scip-go) or just the name
+			if !strings.HasSuffix(cmdName, tt.wantCmd) && cmdName != tt.wantCmd {
+				t.Errorf("expected command ending with %s, got %s", tt.wantCmd, cmdName)
+			}
+		})
+	}
+}
+
+func TestRunIndexer_FixedOutputPath(t *testing.T) {
+	// Test that RunIndexer handles fixed output indexers (like rust-analyzer)
+	// by moving the file from the fixed location to the configured path
+	tmpDir, err := os.MkdirTemp("", "extractor-fixedoutput-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create a mock "fixed output" file at index.scip (where rust-analyzer outputs)
+	fixedOutputPath := filepath.Join(tmpDir, "index.scip")
+	if err := os.WriteFile(fixedOutputPath, []byte("mock scip index"), 0644); err != nil {
+		t.Fatalf("failed to create mock fixed output: %v", err)
+	}
+
+	// Configure extractor to use a different output path
+	configuredOutput := filepath.Join(tmpDir, ".scip", "index.scip")
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	ext := NewSCIPExtractor(tmpDir, configuredOutput, logger)
+
+	// Create a mock IndexerConfig that simulates a fixed-output indexer
+	// We can't actually run rust-analyzer, so we'll test the file move logic directly
+	config := &project.IndexerConfig{
+		Cmd:         "true", // Unix true command always succeeds
+		FixedOutput: "index.scip",
+	}
+
+	// Ensure output directory exists
+	if err := os.MkdirAll(filepath.Dir(configuredOutput), 0755); err != nil {
+		t.Fatalf("failed to create output dir: %v", err)
+	}
+
+	// Run the indexer - it will run "true" (which does nothing) and then
+	// should move the fixed output file
+	err = ext.RunIndexer(config)
+	if err != nil {
+		t.Fatalf("RunIndexer failed: %v", err)
+	}
+
+	// Verify the file was moved
+	if _, err := os.Stat(configuredOutput); os.IsNotExist(err) {
+		t.Errorf("expected file to be moved to %s", configuredOutput)
+	}
+
+	// Verify original location no longer has the file
+	if _, err := os.Stat(fixedOutputPath); !os.IsNotExist(err) {
+		t.Errorf("expected file to be removed from %s", fixedOutputPath)
+	}
+}
+
+func TestRunIndexer_FixedOutputSamePath(t *testing.T) {
+	// Test that when fixed output path matches configured path, no move is needed
+	tmpDir, err := os.MkdirTemp("", "extractor-samepath-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Use the fixed output location as the configured output
+	fixedOutputPath := filepath.Join(tmpDir, "index.scip")
+	if err := os.WriteFile(fixedOutputPath, []byte("mock scip index"), 0644); err != nil {
+		t.Fatalf("failed to create mock fixed output: %v", err)
+	}
+
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	ext := NewSCIPExtractor(tmpDir, fixedOutputPath, logger)
+
+	config := &project.IndexerConfig{
+		Cmd:         "true",
+		FixedOutput: "index.scip",
+	}
+
+	err = ext.RunIndexer(config)
+	if err != nil {
+		t.Fatalf("RunIndexer failed: %v", err)
+	}
+
+	// File should still exist at the same location
+	if _, err := os.Stat(fixedOutputPath); os.IsNotExist(err) {
+		t.Errorf("expected file to remain at %s", fixedOutputPath)
+	}
+}
+
+func TestRunIndexer_CommandFailure(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "extractor-cmdfail-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	ext := NewSCIPExtractor(tmpDir, filepath.Join(tmpDir, ".scip", "index.scip"), logger)
+
+	config := &project.IndexerConfig{
+		Cmd:        "false", // Unix false command always fails
+		OutputFlag: "--output",
+	}
+
+	err = ext.RunIndexer(config)
+	if err == nil {
+		t.Fatal("expected RunIndexer to fail for 'false' command")
+	}
+
+	if !strings.Contains(err.Error(), "indexer failed") {
+		t.Errorf("expected 'indexer failed' in error, got: %v", err)
+	}
+}
+
+func TestRunIndexer_OutputDirectoryCreationFailure(t *testing.T) {
+	// Test error handling when output directory can't be created
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+
+	// Use a path that can't be created (nested under a file)
+	tmpDir, err := os.MkdirTemp("", "extractor-dirfail-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create a file where we want to create a directory
+	blockingFile := filepath.Join(tmpDir, "blocker")
+	if err := os.WriteFile(blockingFile, []byte("I'm a file"), 0644); err != nil {
+		t.Fatalf("failed to create blocking file: %v", err)
+	}
+
+	// Try to use a path nested under the file
+	invalidOutput := filepath.Join(blockingFile, "nested", "index.scip")
+	ext := NewSCIPExtractor(tmpDir, invalidOutput, logger)
+
+	config := &project.IndexerConfig{
+		Cmd:        "true",
+		OutputFlag: "--output",
+	}
+
+	err = ext.RunIndexer(config)
+	if err == nil {
+		t.Fatal("expected RunIndexer to fail when directory can't be created")
+	}
+
+	if !strings.Contains(err.Error(), "failed to create index directory") {
+		t.Errorf("expected 'failed to create index directory' in error, got: %v", err)
 	}
 }

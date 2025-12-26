@@ -273,9 +273,9 @@ func runIndex(cmd *cobra.Command, args []string) {
 		os.Exit(0)
 	}
 
-	// Try incremental indexing for Go projects (unless --force)
-	if !indexForce && lang == project.LangGo {
-		if tryIncrementalIndex(repoRoot, ckbDir) {
+	// Try incremental indexing for supported languages (unless --force)
+	if !indexForce && project.SupportsIncrementalIndexing(lang) {
+		if tryIncrementalIndex(repoRoot, ckbDir, lang) {
 			// Incremental succeeded, we're done
 			return
 		}
@@ -347,9 +347,9 @@ func runIndex(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(os.Stderr, "Warning: Could not save index metadata: %v\n", saveErr)
 	}
 
-	// Populate incremental tracking tables (for Go projects)
-	if lang == project.LangGo {
-		populateIncrementalTracking(repoRoot)
+	// Populate incremental tracking tables for supported languages
+	if project.SupportsIncrementalIndexing(lang) {
+		populateIncrementalTracking(repoRoot, lang)
 	}
 
 	// Success message
@@ -646,10 +646,10 @@ func getSourceExtensions(lang project.Language) []string {
 	}
 }
 
-// tryIncrementalIndex attempts incremental indexing for Go projects.
+// tryIncrementalIndex attempts incremental indexing for supported languages.
 // Returns true if incremental succeeded (caller should return early).
 // Returns false if full reindex is needed.
-func tryIncrementalIndex(repoRoot, ckbDir string) bool {
+func tryIncrementalIndex(repoRoot, ckbDir string, lang project.Language) bool {
 	dbPath := filepath.Join(ckbDir, "ckb.db")
 
 	// Check if database exists
@@ -703,10 +703,23 @@ func tryIncrementalIndex(repoRoot, ckbDir string) bool {
 	}
 	defer lock.Release()
 
+	// Check if incremental is available for this language
+	canUse, reason := indexer.CanUseIncremental(lang)
+	if !canUse {
+		fmt.Printf("Incremental not available: %s\n", reason)
+		return false
+	}
+
 	// Try incremental update
 	ctx := context.Background()
-	stats, err := indexer.IndexIncremental(ctx, "")
+	stats, err := indexer.IndexIncrementalWithLang(ctx, "", lang)
 	if err != nil {
+		// Check for specific errors that should fall back to full reindex
+		if strings.Contains(err.Error(), "not supported") ||
+			strings.Contains(err.Error(), "not installed") {
+			fmt.Printf("Incremental not available: %v\n", err)
+			return false
+		}
 		fmt.Printf("Incremental failed: %v\n", err)
 		fmt.Println("Falling back to full reindex...")
 		return false
@@ -723,7 +736,7 @@ func tryIncrementalIndex(repoRoot, ckbDir string) bool {
 
 // populateIncrementalTracking sets up tracking tables after a full index.
 // This enables subsequent incremental updates.
-func populateIncrementalTracking(repoRoot string) {
+func populateIncrementalTracking(repoRoot string, lang project.Language) {
 	// Create logger (quiet for CLI - only errors)
 	logger := logging.NewLogger(logging.Config{
 		Format: logging.HumanFormat,
@@ -804,9 +817,9 @@ func runIndexWatchLoop(repoRoot, ckbDir string, lang project.Language) {
 
 			fmt.Printf("\nChanges detected (commit %s -> %s)\n", shortHash(lastCommit), shortHash(currentCommit))
 
-			// Try incremental update (for Go only currently)
-			if lang == project.LangGo {
-				if tryIncrementalIndex(repoRoot, ckbDir) {
+			// Try incremental update for supported languages
+			if project.SupportsIncrementalIndexing(lang) {
+				if tryIncrementalIndex(repoRoot, ckbDir, lang) {
 					lastCommit = currentCommit
 					fmt.Println("Watching for changes...")
 					continue

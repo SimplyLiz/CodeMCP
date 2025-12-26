@@ -27,6 +27,9 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
+      - name: Install scip-go
+        run: go install github.com/sourcegraph/scip-go/cmd/scip-go@latest
+
       - name: Run tests with coverage
         run: |
           go test -v -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./... 2>&1 | tee test-output.txt
