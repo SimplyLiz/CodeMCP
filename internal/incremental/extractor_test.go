@@ -3,6 +3,7 @@ package incremental
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"ckb/internal/backends/scip"
@@ -808,5 +809,149 @@ func TestIndexerConfigBuildCommand(t *testing.T) {
 				t.Errorf("expected command %s, got %v", tt.wantCmd, cmd.Args)
 			}
 		})
+	}
+}
+
+func TestRunIndexer_FixedOutputPath(t *testing.T) {
+	// Test that RunIndexer handles fixed output indexers (like rust-analyzer)
+	// by moving the file from the fixed location to the configured path
+	tmpDir, err := os.MkdirTemp("", "extractor-fixedoutput-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create a mock "fixed output" file at index.scip (where rust-analyzer outputs)
+	fixedOutputPath := filepath.Join(tmpDir, "index.scip")
+	if err := os.WriteFile(fixedOutputPath, []byte("mock scip index"), 0644); err != nil {
+		t.Fatalf("failed to create mock fixed output: %v", err)
+	}
+
+	// Configure extractor to use a different output path
+	configuredOutput := filepath.Join(tmpDir, ".scip", "index.scip")
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	ext := NewSCIPExtractor(tmpDir, configuredOutput, logger)
+
+	// Create a mock IndexerConfig that simulates a fixed-output indexer
+	// We can't actually run rust-analyzer, so we'll test the file move logic directly
+	config := &project.IndexerConfig{
+		Cmd:         "true", // Unix true command always succeeds
+		FixedOutput: "index.scip",
+	}
+
+	// Ensure output directory exists
+	if err := os.MkdirAll(filepath.Dir(configuredOutput), 0755); err != nil {
+		t.Fatalf("failed to create output dir: %v", err)
+	}
+
+	// Run the indexer - it will run "true" (which does nothing) and then
+	// should move the fixed output file
+	err = ext.RunIndexer(config)
+	if err != nil {
+		t.Fatalf("RunIndexer failed: %v", err)
+	}
+
+	// Verify the file was moved
+	if _, err := os.Stat(configuredOutput); os.IsNotExist(err) {
+		t.Errorf("expected file to be moved to %s", configuredOutput)
+	}
+
+	// Verify original location no longer has the file
+	if _, err := os.Stat(fixedOutputPath); !os.IsNotExist(err) {
+		t.Errorf("expected file to be removed from %s", fixedOutputPath)
+	}
+}
+
+func TestRunIndexer_FixedOutputSamePath(t *testing.T) {
+	// Test that when fixed output path matches configured path, no move is needed
+	tmpDir, err := os.MkdirTemp("", "extractor-samepath-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Use the fixed output location as the configured output
+	fixedOutputPath := filepath.Join(tmpDir, "index.scip")
+	if err := os.WriteFile(fixedOutputPath, []byte("mock scip index"), 0644); err != nil {
+		t.Fatalf("failed to create mock fixed output: %v", err)
+	}
+
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	ext := NewSCIPExtractor(tmpDir, fixedOutputPath, logger)
+
+	config := &project.IndexerConfig{
+		Cmd:         "true",
+		FixedOutput: "index.scip",
+	}
+
+	err = ext.RunIndexer(config)
+	if err != nil {
+		t.Fatalf("RunIndexer failed: %v", err)
+	}
+
+	// File should still exist at the same location
+	if _, err := os.Stat(fixedOutputPath); os.IsNotExist(err) {
+		t.Errorf("expected file to remain at %s", fixedOutputPath)
+	}
+}
+
+func TestRunIndexer_CommandFailure(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "extractor-cmdfail-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	ext := NewSCIPExtractor(tmpDir, filepath.Join(tmpDir, ".scip", "index.scip"), logger)
+
+	config := &project.IndexerConfig{
+		Cmd:        "false", // Unix false command always fails
+		OutputFlag: "--output",
+	}
+
+	err = ext.RunIndexer(config)
+	if err == nil {
+		t.Fatal("expected RunIndexer to fail for 'false' command")
+	}
+
+	if !strings.Contains(err.Error(), "indexer failed") {
+		t.Errorf("expected 'indexer failed' in error, got: %v", err)
+	}
+}
+
+func TestRunIndexer_OutputDirectoryCreationFailure(t *testing.T) {
+	// Test error handling when output directory can't be created
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+
+	// Use a path that can't be created (nested under a file)
+	tmpDir, err := os.MkdirTemp("", "extractor-dirfail-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create a file where we want to create a directory
+	blockingFile := filepath.Join(tmpDir, "blocker")
+	if err := os.WriteFile(blockingFile, []byte("I'm a file"), 0644); err != nil {
+		t.Fatalf("failed to create blocking file: %v", err)
+	}
+
+	// Try to use a path nested under the file
+	invalidOutput := filepath.Join(blockingFile, "nested", "index.scip")
+	ext := NewSCIPExtractor(tmpDir, invalidOutput, logger)
+
+	config := &project.IndexerConfig{
+		Cmd:        "true",
+		OutputFlag: "--output",
+	}
+
+	err = ext.RunIndexer(config)
+	if err == nil {
+		t.Fatal("expected RunIndexer to fail when directory can't be created")
+	}
+
+	if !strings.Contains(err.Error(), "failed to create index directory") {
+		t.Errorf("expected 'failed to create index directory' in error, got: %v", err)
 	}
 }

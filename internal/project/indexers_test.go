@@ -255,3 +255,101 @@ func TestIndexerConfig_HasFixedOutput(t *testing.T) {
 		})
 	}
 }
+
+func TestIndexerConfig_IsInstalled(t *testing.T) {
+	tests := []struct {
+		name   string
+		config IndexerConfig
+		// We can't guarantee which commands exist, so we just test it doesn't panic
+		// and returns a boolean
+	}{
+		{
+			name: "simple command",
+			config: IndexerConfig{
+				Cmd: "ls", // Should exist on all Unix systems
+			},
+		},
+		{
+			name: "multi-part command (first part exists)",
+			config: IndexerConfig{
+				Cmd: "ls -la", // ls exists, but treated as multi-part
+			},
+		},
+		{
+			name: "non-existent command",
+			config: IndexerConfig{
+				Cmd: "definitely-not-a-real-command-12345",
+			},
+		},
+		{
+			name: "multi-part non-existent",
+			config: IndexerConfig{
+				Cmd: "not-real with args",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Should not panic
+			result := tt.config.IsInstalled()
+			// Just verify it returns a boolean (no panic)
+			_ = result
+		})
+	}
+
+	// Test specific known behaviors
+	t.Run("ls command exists", func(t *testing.T) {
+		config := IndexerConfig{Cmd: "ls"}
+		if !config.IsInstalled() {
+			t.Skip("ls not found, unusual system")
+		}
+	})
+
+	t.Run("multi-part uses first token", func(t *testing.T) {
+		// "ls -la" should check for "ls" which exists
+		config := IndexerConfig{Cmd: "ls -la"}
+		if !config.IsInstalled() {
+			t.Skip("ls not found, unusual system")
+		}
+	})
+
+	t.Run("non-existent returns false", func(t *testing.T) {
+		config := IndexerConfig{Cmd: "ckb-definitely-not-installed-xyz"}
+		if config.IsInstalled() {
+			t.Error("expected non-existent command to return false")
+		}
+	})
+}
+
+func TestIndexerConfig_BuildCommand_EmptyOutput(t *testing.T) {
+	// Test with empty output path
+	config := IndexerConfig{
+		Cmd:        "scip-go",
+		OutputFlag: "--output",
+	}
+
+	cmd := config.BuildCommand("")
+	// Should not include --output flag when outputPath is empty
+	for i, arg := range cmd.Args {
+		if arg == "--output" {
+			t.Errorf("expected no --output flag when outputPath is empty, found at index %d", i)
+		}
+	}
+}
+
+func TestIndexerConfig_BuildCommand_NoOutputFlag(t *testing.T) {
+	// Test with no output flag (fixed output indexer style)
+	config := IndexerConfig{
+		Cmd:  "rust-analyzer",
+		Args: []string{"scip", "."},
+		// No OutputFlag
+	}
+
+	cmd := config.BuildCommand("/tmp/index.scip")
+	// Args should just be the base args, no output flag added
+	expectedArgs := []string{"rust-analyzer", "scip", "."}
+	if len(cmd.Args) != len(expectedArgs) {
+		t.Errorf("expected %d args, got %d: %v", len(expectedArgs), len(cmd.Args), cmd.Args)
+	}
+}
