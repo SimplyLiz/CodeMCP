@@ -295,7 +295,7 @@ func TestNewSCIPSymbolIndex(t *testing.T) {
 		idx := &scip.SCIPIndex{}
 		result := NewSCIPSymbolIndex(idx)
 		if result == nil {
-			t.Error("expected non-nil wrapper for valid index")
+			t.Fatal("expected non-nil wrapper for valid index")
 		}
 		if result.index != idx {
 			t.Error("wrapper should contain the same index")

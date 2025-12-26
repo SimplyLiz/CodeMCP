@@ -220,10 +220,10 @@ func TestComputeTelemetryPeriodFilter(t *testing.T) {
 		period   string
 		expected string // Just check format, not exact date
 	}{
-		{"7d", "20"},     // Should start with year prefix
-		{"30d", "20"},    // Should start with year prefix
-		{"90d", "20"},    // Should start with year prefix
-		{"all", ""},      // Empty for all
+		{"7d", "20"},      // Should start with year prefix
+		{"30d", "20"},     // Should start with year prefix
+		{"90d", "20"},     // Should start with year prefix
+		{"all", ""},       // Empty for all
 		{"invalid", "20"}, // Falls back to 90d
 	}
 
@@ -266,7 +266,7 @@ func TestComputeUsageTrend(t *testing.T) {
 		{
 			name: "increasing trend",
 			usages: []telemetry.ObservedUsage{
-				{CallCount: 200, IngestedAt: now},              // Recent (high)
+				{CallCount: 200, IngestedAt: now},                      // Recent (high)
 				{CallCount: 100, IngestedAt: now.Add(-24 * time.Hour)}, // Older (low)
 			},
 			want: "increasing",
@@ -274,7 +274,7 @@ func TestComputeUsageTrend(t *testing.T) {
 		{
 			name: "decreasing trend",
 			usages: []telemetry.ObservedUsage{
-				{CallCount: 50, IngestedAt: now},               // Recent (low)
+				{CallCount: 50, IngestedAt: now},                       // Recent (low)
 				{CallCount: 200, IngestedAt: now.Add(-24 * time.Hour)}, // Older (high)
 			},
 			want: "decreasing",
@@ -309,11 +309,11 @@ func TestComputeUsageTrend(t *testing.T) {
 
 func TestComputeBlendedConfidenceScore(t *testing.T) {
 	tests := []struct {
-		name           string
-		static         float64
-		observed       float64
-		wantMin        float64
-		wantMax        float64
+		name     string
+		static   float64
+		observed float64
+		wantMin  float64
+		wantMax  float64
 	}{
 		{
 			name:     "static higher",
