@@ -1,0 +1,145 @@
+{
+  "symbols": [
+    {
+      "file": "src/pkg/model.ts",
+      "kind": "class",
+      "line": 0,
+      "moduleId": "src/pkg",
+      "name": "Config"
+    },
+    {
+      "file": "src/pkg/service.ts",
+      "kind": "class",
+      "line": 0,
+      "moduleId": "src/pkg",
+      "name": "DefaultService#model"
+    },
+    {
+      "file": "src/pkg/model.ts",
+      "kind": "class",
+      "line": 0,
+      "moduleId": "src/pkg",
+      "name": "Model"
+    },
+    {
+      "file": "src/pkg/model.ts",
+      "kind": "class",
+      "line": 0,
+      "moduleId": "src/pkg",
+      "name": "Model#config"
+    },
+    {
+      "file": "src/pkg/model.ts",
+      "kind": "class",
+      "line": 0,
+      "moduleId": "src/pkg",
+      "name": "Model#name"
+    },
+    {
+      "file": "src/pkg/service.ts",
+      "kind": "function",
+      "line": 0,
+      "moduleId": "src/pkg",
+      "name": "DefaultService#`\u003cconstructor\u003e`"
+    },
+    {
+      "file": "src/pkg/service.ts",
+      "kind": "function",
+      "line": 0,
+      "moduleId": "src/pkg",
+      "name": "DefaultService#`\u003cconstructor\u003e`().(model)"
+    },
+    {
+      "file": "src/pkg/model.ts",
+      "kind": "function",
+      "line": 0,
+      "moduleId": "src/pkg",
+      "name": "Model#`\u003cconstructor\u003e`"
+    },
+    {
+      "file": "src/pkg/model.ts",
+      "kind": "function",
+      "line": 0,
+      "moduleId": "src/pkg",
+      "name": "Model#`\u003cconstructor\u003e`().(name)"
+    },
+    {
+      "file": "src/pkg/model.ts",
+      "kind": "function",
+      "line": 0,
+      "moduleId": "src/pkg",
+      "name": "Model#clone"
+    },
+    {
+      "file": "src/pkg/model.ts",
+      "kind": "function",
+      "line": 0,
+      "moduleId": "src/pkg",
+      "name": "Model#setConfig"
+    },
+    {
+      "file": "src/pkg/model.ts",
+      "kind": "function",
+      "line": 0,
+      "moduleId": "src/pkg",
+      "name": "Model#setConfig().(cfg)"
+    },
+    {
+      "file": "src/pkg/model.ts",
+      "kind": "function",
+      "line": 0,
+      "moduleId": "src/pkg",
+      "name": "Model#transform"
+    },
+    {
+      "file": "src/pkg/service.ts",
+      "kind": "function",
+      "line": 0,
+      "moduleId": "src/pkg",
+      "name": "newDefaultService"
+    },
+    {
+      "file": "src/pkg/service.ts",
+      "kind": "function",
+      "line": 0,
+      "moduleId": "src/pkg",
+      "name": "newDefaultService().(model)"
+    },
+    {
+      "file": "src/pkg/model.ts",
+      "kind": "function",
+      "line": 0,
+      "moduleId": "src/pkg",
+      "name": "newModel"
+    },
+    {
+      "file": "src/pkg/model.ts",
+      "kind": "function",
+      "line": 0,
+      "moduleId": "src/pkg",
+      "name": "newModel().(name)"
+    },
+    {
+      "file": "src/pkg/model.ts",
+      "kind": "property",
+      "line": 0,
+      "moduleId": "src/pkg",
+      "name": ""
+    },
+    {
+      "file": "src/main.ts",
+      "kind": "unknown",
+      "line": 0,
+      "moduleId": "src",
+      "name": ""
+    },
+    {
+      "file": "src/pkg/model.ts",
+      "kind": "unknown",
+      "line": 0,
+      "moduleId": "src/pkg",
+      "name": ""
+    }
+  ],
+  "total": 20
+}

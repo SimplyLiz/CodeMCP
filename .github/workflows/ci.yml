@@ -50,6 +50,30 @@ jobs:
       - name: Run tests
         run: go test -v -race ./...
 
+  golden:
+    name: Golden Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Run golden tests
+        run: go test ./internal/query/... -run TestGolden -v
+
+      - name: Verify goldens are committed
+        run: |
+          go test ./internal/query/... -run TestGolden -update
+          if ! git diff --exit-code testdata/fixtures/*/expected/; then
+            echo "::error::Golden files are out of date! Run: go test ./internal/query/... -run TestGolden -update"
+            git diff testdata/fixtures/*/expected/
+            exit 1
+          fi
+
   tidycheck:
     name: Go Mod Tidy
     runs-on: ubuntu-latest

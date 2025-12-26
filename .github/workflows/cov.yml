@@ -20,6 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2  # Required for Codecov to determine PR base SHA
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -59,7 +61,8 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           files: coverage.out
-          fail_ci_if_error: false
+          flags: unit
+          fail_ci_if_error: true
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 

@@ -1,0 +1,11 @@
+{
+  "deleted": false,
+  "redirected": false,
+  "symbol": {
+    "file": "src/internal/util.ts",
+    "kind": "function",
+    "line": 39,
+    "moduleId": "",
+    "name": "FormatOutput"
+  }
+}
