@@ -264,6 +264,31 @@ curl -X POST http://localhost:9120/api/v1/refresh -d '{"repo": "/path/to/repo"}'
 
 See [[Index-Management]] in the wiki for detailed documentation.
 
+#### Multi-Language Incremental Indexing
+Incremental indexing now supports multiple languages via a unified indexer registry:
+
+**Supported languages:**
+- Go (scip-go)
+- TypeScript/JavaScript (scip-typescript)
+- Python (scip-python)
+- Dart (scip_dart)
+- Rust (rust-analyzer)
+
+**Features:**
+- Automatic indexer detection and path resolution (including `~/go/bin`)
+- Graceful degradation with install hints when indexer is missing
+- Language-specific `SupportsIncremental` flag for safe fallback
+- Unified `IndexIncrementalWithLang(ctx, since, lang)` API
+
+**Usage:**
+```bash
+# Auto-detects language and uses incremental if available
+ckb index
+
+# Incremental not available message includes install command
+Incremental not available: scip-python not installed (run: pip install scip-python)
+```
+
 ## [7.4.0]
 
 ### Added
