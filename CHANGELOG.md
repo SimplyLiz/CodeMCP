@@ -2,6 +2,65 @@
 
 All notable changes to CKB will be documented in this file.
 
+## [8.1.0] - Unreleased
+
+### Added
+
+#### Coverage Configuration Options
+Coverage file detection is now configurable via `.ckb/config.json`:
+
+```json
+{
+  "coverage": {
+    "paths": ["coverage/custom-lcov.info"],
+    "autoDetect": true,
+    "maxAge": "168h"
+  }
+}
+```
+
+- `paths`: Custom paths to check for coverage files
+- `autoDetect`: Use language-specific auto-detection (default: true)
+- `maxAge`: Max age before marking as stale (default: 7 days)
+
+#### Orphaned Index Detection
+`ckb doctor` now includes an `orphaned-indexes` check that scans for indexes pointing to repos that no longer exist:
+
+```
+$ ckb doctor
+
+✓ orphaned-indexes: Index cache: 234 MB (12 repos), 2 orphaned
+  → ckb cache clean --orphaned
+```
+
+#### Test Mapping (`ckb affected-tests`)
+New command to find tests affected by current changes:
+
+```bash
+$ ckb affected-tests
+
+Affected Tests
+──────────────────────────────────────────────────────────
+
+Found 8 test files:
+  • 5 direct (test references changed code)
+  • 3 transitive (test uses affected code)
+
+Run command:
+  go test ./internal/query/... ./internal/diff/...
+```
+
+**Features:**
+- Maps changed symbols to affected test files via SCIP
+- Finds corresponding test files by naming convention (e.g., `foo.go` → `foo_test.go`)
+- Generates language-appropriate run commands
+- `--format=list` for CI integration
+
+#### --include-tests Flag Wiring
+The `--include-tests` flag now works end-to-end in `ckb impact diff`:
+- Properly sets `IsTest` flag on references based on file path
+- Filters test files from changed symbols when `--include-tests=false`
+
 ## [7.6.0]
 
 ### Added
