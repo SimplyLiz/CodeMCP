@@ -2,6 +2,57 @@
 
 All notable changes to CKB will be documented in this file.
 
+## [7.6.0]
+
+### Added
+
+#### Real Transitive Impact Analysis
+The `analyzeImpact` tool now provides real transitive caller analysis using call graph traversal, replacing the previous stub implementation.
+
+**What's New:**
+- **Transitive callers**: See not just direct callers, but callers-of-callers up to depth 4
+- **Blast radius summary**: Quick metrics showing module count, file count, unique callers, and risk level
+- **Distance tracking**: Each transitive caller includes its distance from the target symbol
+- **Confidence decay**: Confidence decreases with depth (0.85 → 0.75 → 0.65 for depths 2/3/4)
+
+**Example Output:**
+```json
+{
+  "blastRadius": {
+    "moduleCount": 4,
+    "fileCount": 12,
+    "uniqueCallerCount": 18,
+    "riskLevel": "high"
+  },
+  "transitiveImpact": [
+    { "kind": "transitive_caller", "symbolId": "...", "distance": 2, "confidence": 0.85 },
+    { "kind": "transitive_caller", "symbolId": "...", "distance": 3, "confidence": 0.75 }
+  ]
+}
+```
+
+**Blast Radius Thresholds:**
+| Level | Criteria |
+|-------|----------|
+| Low | ≤2 modules AND ≤5 callers |
+| High | >5 modules OR >20 callers |
+| Medium | Everything in between |
+
+**Usage:**
+```bash
+# CLI
+ckb impact <symbol-id> --depth 3
+
+# MCP
+analyzeImpact({ symbolId: "...", depth: 3 })
+```
+
+**Files Changed:**
+- `internal/impact/types.go` — Added `BlastRadius` struct with classification
+- `internal/impact/analyzer.go` — `TransitiveCallerProvider` interface, transitive analysis
+- `internal/query/impact.go` — `scipCallerProvider` using SCIP call graph
+- `internal/mcp/tool_impls.go` — Added `blastRadius` to MCP output
+
 ## [7.5.0]
 
 ### Added
