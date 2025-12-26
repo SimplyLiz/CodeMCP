@@ -1,3 +1,9 @@
+ignore:
+  - "internal/testutil/**"      # Test infrastructure, not production code
+  - "testdata/**"               # Test fixtures
+  - "internal/mcp/testdata/**"  # MCP test fixtures
+  - "internal/eval/fixtures/**" # Eval test fixtures
+
 coverage:
   precision: 1
   round: down
