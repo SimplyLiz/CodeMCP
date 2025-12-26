@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -54,7 +55,8 @@ Examples:
   ckb impact diff --staged           # Analyze only staged changes
   ckb impact diff --base=main        # Compare against main branch
   ckb impact diff --depth=3          # Deeper transitive analysis
-  ckb impact diff --strict           # Fail if index is stale`,
+  ckb impact diff --strict           # Fail if index is stale
+  ckb impact diff --format=markdown  # Output as markdown for PR comments`,
 	Run: runImpactDiff,
 }
 
@@ -69,7 +71,7 @@ func init() {
 	impactDiffCmd.Flags().IntVar(&impactDepth, "depth", 2, "Maximum depth for transitive impact (1-4)")
 	impactDiffCmd.Flags().BoolVar(&impactIncludeTests, "include-tests", false, "Include test files in analysis")
 	impactDiffCmd.Flags().BoolVar(&impactDiffStrict, "strict", false, "Fail if SCIP index is stale")
-	impactDiffCmd.Flags().StringVar(&impactFormat, "format", "json", "Output format (json, human)")
+	impactDiffCmd.Flags().StringVar(&impactFormat, "format", "json", "Output format (json, human, markdown)")
 
 	impactCmd.AddCommand(impactDiffCmd)
 	rootCmd.AddCommand(impactCmd)
@@ -290,10 +292,15 @@ func runImpactDiff(cmd *cobra.Command, args []string) {
 	cliResponse := convertChangeSetResponse(response)
 
 	// Format and output
-	output, err := FormatResponse(cliResponse, OutputFormat(impactFormat))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error formatting output: %v\n", err)
-		os.Exit(1)
+	var output string
+	if impactFormat == "markdown" {
+		output = formatImpactMarkdown(cliResponse)
+	} else {
+		output, err = FormatResponse(cliResponse, OutputFormat(impactFormat))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error formatting output: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	fmt.Println(output)
@@ -488,4 +495,124 @@ func convertChangeSetResponse(resp *query.AnalyzeChangeSetResponse) *ChangeSetRe
 	}
 
 	return result
+}
+
+// formatImpactMarkdown generates a markdown report for PR comments
+func formatImpactMarkdown(resp *ChangeSetResponseCLI) string {
+	var b strings.Builder
+
+	// Header with risk badge
+	riskEmoji := map[string]string{
+		"critical": "🔴",
+		"high":     "🟠",
+		"medium":   "🟡",
+		"low":      "🟢",
+	}
+	risk := "unknown"
+	emoji := "⚪"
+	if resp.Summary != nil {
+		risk = resp.Summary.EstimatedRisk
+		if e, ok := riskEmoji[risk]; ok {
+			emoji = e
+		}
+	}
+
+	b.WriteString(fmt.Sprintf("## %s Change Impact Analysis\n\n", emoji))
+
+	// Summary table
+	if resp.Summary != nil {
+		s := resp.Summary
+		b.WriteString("| Metric | Value |\n")
+		b.WriteString("|:-------|------:|\n")
+		b.WriteString(fmt.Sprintf("| **Risk Level** | **%s** %s |\n", strings.ToUpper(risk), emoji))
+		b.WriteString(fmt.Sprintf("| Files Changed | %d |\n", s.FilesChanged))
+		b.WriteString(fmt.Sprintf("| Symbols Changed | %d |\n", s.SymbolsChanged))
+		b.WriteString(fmt.Sprintf("| Directly Affected | %d |\n", s.DirectlyAffected))
+		b.WriteString(fmt.Sprintf("| Transitively Affected | %d |\n", s.TransitivelyAffected))
+		b.WriteString("\n")
+	}
+
+	// Blast radius
+	if resp.BlastRadius != nil {
+		br := resp.BlastRadius
+		b.WriteString(fmt.Sprintf("**Blast Radius:** %d modules, %d files, %d unique callers\n\n",
+			br.ModuleCount, br.FileCount, br.UniqueCallerCount))
+	}
+
+	// Changed symbols
+	if len(resp.ChangedSymbols) > 0 {
+		b.WriteString("<details>\n")
+		b.WriteString(fmt.Sprintf("<summary>📝 Changed Symbols (%d)</summary>\n\n", len(resp.ChangedSymbols)))
+		b.WriteString("| Symbol | File | Type | Confidence |\n")
+		b.WriteString("|:-------|:-----|:-----|----------:|\n")
+		for i, sym := range resp.ChangedSymbols {
+			if i >= 15 {
+				b.WriteString(fmt.Sprintf("| … | +%d more | | |\n", len(resp.ChangedSymbols)-15))
+				break
+			}
+			b.WriteString(fmt.Sprintf("| `%s` | `%s` | %s | %.0f%% |\n",
+				sym.Name, sym.File, sym.ChangeType, sym.Confidence*100))
+		}
+		b.WriteString("\n</details>\n\n")
+	}
+
+	// Affected symbols
+	if len(resp.AffectedSymbols) > 0 {
+		b.WriteString("<details>\n")
+		b.WriteString(fmt.Sprintf("<summary>🎯 Affected Downstream (%d)</summary>\n\n", len(resp.AffectedSymbols)))
+		b.WriteString("| Symbol | Module | Distance | Kind |\n")
+		b.WriteString("|:-------|:-------|:--------:|:-----|\n")
+		for i, sym := range resp.AffectedSymbols {
+			if i >= 20 {
+				b.WriteString(fmt.Sprintf("| … | +%d more | | |\n", len(resp.AffectedSymbols)-20))
+				break
+			}
+			b.WriteString(fmt.Sprintf("| `%s` | `%s` | %d | %s |\n",
+				sym.Name, sym.ModuleID, sym.Distance, sym.Kind))
+		}
+		b.WriteString("\n</details>\n\n")
+	}
+
+	// Modules affected
+	if len(resp.ModulesAffected) > 0 {
+		b.WriteString("<details>\n")
+		b.WriteString(fmt.Sprintf("<summary>📦 Modules Affected (%d)</summary>\n\n", len(resp.ModulesAffected)))
+		b.WriteString("| Module | Impact Count | Direct |\n")
+		b.WriteString("|:-------|-------------:|-------:|\n")
+		for _, mod := range resp.ModulesAffected {
+			b.WriteString(fmt.Sprintf("| `%s` | %d | %d |\n",
+				mod.ModuleID, mod.ImpactCount, mod.DirectCount))
+		}
+		b.WriteString("\n</details>\n\n")
+	}
+
+	// Recommendations
+	if len(resp.Recommendations) > 0 {
+		b.WriteString("### Recommendations\n\n")
+		for _, rec := range resp.Recommendations {
+			icon := "ℹ️"
+			if rec.Severity == "warning" {
+				icon = "⚠️"
+			} else if rec.Severity == "error" {
+				icon = "🔴"
+			}
+			b.WriteString(fmt.Sprintf("- %s **%s**: %s\n", icon, rec.Type, rec.Message))
+			if rec.Action != "" {
+				b.WriteString(fmt.Sprintf("  - *Action:* %s\n", rec.Action))
+			}
+		}
+		b.WriteString("\n")
+	}
+
+	// Index staleness warning
+	if resp.IndexStaleness != nil && resp.IndexStaleness.IsStale {
+		b.WriteString(fmt.Sprintf("> ⚠️ **Index is %d commit(s) behind HEAD.** Results may be incomplete.\n\n",
+			resp.IndexStaleness.CommitsBehind))
+	}
+
+	// Footer
+	b.WriteString("---\n")
+	b.WriteString("<sub>Generated by <a href=\"https://github.com/SimplyLiz/CodeMCP\">CKB</a></sub>\n")
+
+	return b.String()
 }

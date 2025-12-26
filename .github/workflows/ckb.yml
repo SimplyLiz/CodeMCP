@@ -143,7 +143,9 @@ jobs:
       - name: Impact Analysis
         id: impact
         run: |
+          # Generate both JSON (for metrics) and Markdown (for comment)
           ./ckb impact diff --base=origin/${{ github.base_ref }} --depth=2 --format=json > impact.json 2>/dev/null || echo '{"summary":{}}' > impact.json
+          ./ckb impact diff --base=origin/${{ github.base_ref }} --depth=2 --format=markdown > impact.md 2>/dev/null || echo "## ⚪ Change Impact Analysis\n\nNo impact data available." > impact.md
 
           # Extract key metrics
           echo "symbols_changed=$(jq '.summary.symbolsChanged // 0' impact.json)" >> $GITHUB_OUTPUT
@@ -165,6 +167,12 @@ jobs:
           elif [ "$RISK" = "high" ]; then
             echo "::warning::HIGH RISK: This change affects many downstream symbols"
           fi
+
+      - name: Post Impact Comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: ckb-impact
+          path: impact.md
 
       - name: Complexity
         id: complexity
