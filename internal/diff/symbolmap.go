@@ -28,21 +28,21 @@ type DocumentInfo struct {
 
 // OccurrenceInfo contains occurrence data
 type OccurrenceInfo struct {
-	StartLine   int
-	EndLine     int
-	StartCol    int
-	EndCol      int
-	Symbol      string
+	StartLine    int
+	EndLine      int
+	StartCol     int
+	EndCol       int
+	Symbol       string
 	IsDefinition bool
 }
 
 // SymbolDefInfo contains symbol definition data
 type SymbolDefInfo struct {
-	Symbol      string
-	Name        string
-	Kind        string
-	StartLine   int
-	EndLine     int
+	Symbol    string
+	Name      string
+	Kind      string
+	StartLine int
+	EndLine   int
 }
 
 // SymbolInfo contains symbol metadata
@@ -154,8 +154,8 @@ func (m *DiffSymbolMapper) mapFileToSymbols(file *impact.ChangedFile) ([]impact.
 	}
 
 	// Find symbols that overlap with changed lines
-	symbolLines := make(map[string][]int)      // symbol -> lines
-	symbolHunks := make(map[string]int)        // symbol -> first hunk index
+	symbolLines := make(map[string][]int) // symbol -> lines
+	symbolHunks := make(map[string]int)   // symbol -> first hunk index
 	symbolConfidence := make(map[string]float64)
 
 	// First pass: find definitions that span changed lines

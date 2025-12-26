@@ -424,7 +424,7 @@ func (e *Engine) checkOrphanedIndexes(ctx context.Context) DoctorCheck {
 	}
 
 	cacheDir := filepath.Join(homeDir, ".ckb", "cache", "indexes")
-	if _, err := os.Stat(cacheDir); os.IsNotExist(err) {
+	if _, statErr := os.Stat(cacheDir); os.IsNotExist(statErr) {
 		check.Status = "pass"
 		check.Message = "No index cache directory"
 		return check

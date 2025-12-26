@@ -72,11 +72,11 @@ type TestMapper interface {
 
 // AffectedTest represents a test that may be affected by changes
 type AffectedTest struct {
-	Name     string  // Test function name (e.g., "TestAuthenticate")
-	Path     string  // Test file path
-	Package  string  // Package path
-	Reason   string  // Why this test was selected
-	Priority int     // Run order priority (lower = run first)
+	Name       string  // Test function name (e.g., "TestAuthenticate")
+	Path       string  // Test file path
+	Package    string  // Package path
+	Reason     string  // Why this test was selected
+	Priority   int     // Run order priority (lower = run first)
 	Confidence float64 // How confident we are this test is affected (0.0-1.0)
 }
 
@@ -89,22 +89,22 @@ type ImpactAggregator interface {
 
 // AggregatedImpactResult is the result of analyzing multiple changed symbols
 type AggregatedImpactResult struct {
-	Summary           ChangeSummary        // High-level summary
-	ChangedSymbols    []ChangedSymbol      // Symbols that were changed
-	AffectedSymbols   []ImpactItem         // Deduplicated affected symbols
-	ModulesAffected   []ModuleSummary      // Impact grouped by module
-	BlastRadius       *BlastRadius         // Combined blast radius
-	RiskScore         *RiskScore           // Aggregated risk score
-	Recommendations   []Recommendation     // Suggested actions
+	Summary         ChangeSummary    // High-level summary
+	ChangedSymbols  []ChangedSymbol  // Symbols that were changed
+	AffectedSymbols []ImpactItem     // Deduplicated affected symbols
+	ModulesAffected []ModuleSummary  // Impact grouped by module
+	BlastRadius     *BlastRadius     // Combined blast radius
+	RiskScore       *RiskScore       // Aggregated risk score
+	Recommendations []Recommendation // Suggested actions
 }
 
 // ChangeSummary provides a high-level overview of a change set
 type ChangeSummary struct {
-	FilesChanged          int    // Number of files changed
-	SymbolsChanged        int    // Number of symbols changed
-	DirectlyAffected      int    // Symbols directly affected
-	TransitivelyAffected  int    // Symbols transitively affected
-	EstimatedRisk         string // "low", "medium", "high", "critical"
+	FilesChanged         int    // Number of files changed
+	SymbolsChanged       int    // Number of symbols changed
+	DirectlyAffected     int    // Symbols directly affected
+	TransitivelyAffected int    // Symbols transitively affected
+	EstimatedRisk        string // "low", "medium", "high", "critical"
 }
 
 // Recommendation suggests an action based on impact analysis

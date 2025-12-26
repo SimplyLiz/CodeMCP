@@ -74,14 +74,14 @@ func runStatus(cmd *cobra.Command, args []string) {
 
 // StatusResponseCLI contains the complete system status for CLI output
 type StatusResponseCLI struct {
-	CkbVersion         string                  `json:"ckbVersion"`
-	Tier               *tier.TierInfo          `json:"tier"`
-	RepoState          *query.RepoState        `json:"repoState"`
-	IndexStatus        *IndexStatusCLI         `json:"indexStatus,omitempty"`
-	ChangeImpactStatus *ChangeImpactStatusCLI  `json:"changeImpactStatus,omitempty"`
-	Backends           []BackendStatusCLI      `json:"backends"`
-	Cache              CacheStatusCLI          `json:"cache"`
-	Healthy            bool                    `json:"healthy"`
+	CkbVersion         string                 `json:"ckbVersion"`
+	Tier               *tier.TierInfo         `json:"tier"`
+	RepoState          *query.RepoState       `json:"repoState"`
+	IndexStatus        *IndexStatusCLI        `json:"indexStatus,omitempty"`
+	ChangeImpactStatus *ChangeImpactStatusCLI `json:"changeImpactStatus,omitempty"`
+	Backends           []BackendStatusCLI     `json:"backends"`
+	Cache              CacheStatusCLI         `json:"cache"`
+	Healthy            bool                   `json:"healthy"`
 }
 
 // ChangeImpactStatusCLI describes the availability of change impact analysis features
@@ -93,12 +93,12 @@ type ChangeImpactStatusCLI struct {
 
 // CoverageStatusCLI describes coverage file status
 type CoverageStatusCLI struct {
-	Found      bool      `json:"found"`
-	Path       string    `json:"path,omitempty"`
-	Age        string    `json:"age,omitempty"`
-	ModTime    time.Time `json:"modTime,omitempty"`
-	Stale      bool      `json:"stale,omitempty"`
-	GenerateCmd string   `json:"generateCmd,omitempty"`
+	Found       bool      `json:"found"`
+	Path        string    `json:"path,omitempty"`
+	Age         string    `json:"age,omitempty"`
+	ModTime     time.Time `json:"modTime,omitempty"`
+	Stale       bool      `json:"stale,omitempty"`
+	GenerateCmd string    `json:"generateCmd,omitempty"`
 }
 
 // CodeownersStatusCLI describes CODEOWNERS file status

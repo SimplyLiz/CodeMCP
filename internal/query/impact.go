@@ -824,28 +824,28 @@ func (e *Engine) getDocsToUpdate(symbolID string, limit int) []DocToUpdate {
 
 // AnalyzeChangeSetOptions contains options for AnalyzeChangeSet.
 type AnalyzeChangeSetOptions struct {
-	DiffContent  string // Raw git diff content (if empty, uses git to get current diff)
-	Staged       bool   // If true, analyze only staged changes (--cached)
-	BaseBranch   string // Base branch for comparison (default: HEAD)
-	TransitiveDepth int // Max depth for transitive impact (default: 2)
-	IncludeTests bool   // Include test files in analysis
-	Strict       bool   // Fail if index is stale
+	DiffContent     string // Raw git diff content (if empty, uses git to get current diff)
+	Staged          bool   // If true, analyze only staged changes (--cached)
+	BaseBranch      string // Base branch for comparison (default: HEAD)
+	TransitiveDepth int    // Max depth for transitive impact (default: 2)
+	IncludeTests    bool   // Include test files in analysis
+	Strict          bool   // Fail if index is stale
 }
 
 // AnalyzeChangeSetResponse is the response for AnalyzeChangeSet.
 type AnalyzeChangeSetResponse struct {
-	Summary           *ChangeSummary        `json:"summary"`
-	ChangedSymbols    []ChangedSymbolInfo   `json:"changedSymbols"`
-	AffectedSymbols   []ImpactItem          `json:"affectedSymbols"`
-	ModulesAffected   []ModuleImpact        `json:"modulesAffected"`
-	BlastRadius       *BlastRadiusSummary   `json:"blastRadius,omitempty"`
-	RiskScore         *RiskScore            `json:"riskScore"`
-	Recommendations   []Recommendation      `json:"recommendations,omitempty"`
-	IndexStaleness    *IndexStalenessInfo   `json:"indexStaleness,omitempty"`
-	Truncated         bool                  `json:"truncated,omitempty"`
-	TruncationInfo    *TruncationInfo       `json:"truncationInfo,omitempty"`
-	Provenance        *Provenance           `json:"provenance"`
-	Drilldowns        []output.Drilldown    `json:"drilldowns,omitempty"`
+	Summary         *ChangeSummary      `json:"summary"`
+	ChangedSymbols  []ChangedSymbolInfo `json:"changedSymbols"`
+	AffectedSymbols []ImpactItem        `json:"affectedSymbols"`
+	ModulesAffected []ModuleImpact      `json:"modulesAffected"`
+	BlastRadius     *BlastRadiusSummary `json:"blastRadius,omitempty"`
+	RiskScore       *RiskScore          `json:"riskScore"`
+	Recommendations []Recommendation    `json:"recommendations,omitempty"`
+	IndexStaleness  *IndexStalenessInfo `json:"indexStaleness,omitempty"`
+	Truncated       bool                `json:"truncated,omitempty"`
+	TruncationInfo  *TruncationInfo     `json:"truncationInfo,omitempty"`
+	Provenance      *Provenance         `json:"provenance"`
+	Drilldowns      []output.Drilldown  `json:"drilldowns,omitempty"`
 }
 
 // ChangeSummary provides a high-level overview of a change set.
@@ -934,10 +934,10 @@ func (e *Engine) AnalyzeChangeSet(ctx context.Context, opts AnalyzeChangeSetOpti
 	// Get diff content
 	diffContent := opts.DiffContent
 	if diffContent == "" {
-		var err error
-		diffContent, err = e.getGitDiff(opts.Staged, opts.BaseBranch)
-		if err != nil {
-			return nil, e.wrapError(err, errors.InternalError)
+		var diffErr error
+		diffContent, diffErr = e.getGitDiff(opts.Staged, opts.BaseBranch)
+		if diffErr != nil {
+			return nil, e.wrapError(diffErr, errors.InternalError)
 		}
 	}
 
@@ -1172,17 +1172,17 @@ func (e *Engine) AnalyzeChangeSet(ctx context.Context, opts AnalyzeChangeSetOpti
 	}
 
 	return &AnalyzeChangeSetResponse{
-		Summary:          summary,
-		ChangedSymbols:   changedSymbolInfos,
-		AffectedSymbols:  allAffected,
-		ModulesAffected:  modulesAffected,
-		BlastRadius:      blastRadius,
-		RiskScore:        riskScore,
-		Recommendations:  recommendations,
-		IndexStaleness:   indexStaleness,
-		Truncated:        truncationInfo != nil,
-		TruncationInfo:   truncationInfo,
-		Provenance:       provenance,
+		Summary:         summary,
+		ChangedSymbols:  changedSymbolInfos,
+		AffectedSymbols: allAffected,
+		ModulesAffected: modulesAffected,
+		BlastRadius:     blastRadius,
+		RiskScore:       riskScore,
+		Recommendations: recommendations,
+		IndexStaleness:  indexStaleness,
+		Truncated:       truncationInfo != nil,
+		TruncationInfo:  truncationInfo,
+		Provenance:      provenance,
 	}, nil
 }
 
@@ -1330,21 +1330,21 @@ type GetAffectedTestsOptions struct {
 
 // AffectedTestsResponse contains the list of tests affected by changes.
 type AffectedTestsResponse struct {
-	Tests         []AffectedTest    `json:"tests"`
-	Summary       *TestSummary      `json:"summary"`
-	CoverageUsed  bool              `json:"coverageUsed"`
-	Confidence    float64           `json:"confidence"`
-	RunCommand    string            `json:"runCommand,omitempty"`
-	Provenance    *Provenance       `json:"provenance,omitempty"`
+	Tests        []AffectedTest `json:"tests"`
+	Summary      *TestSummary   `json:"summary"`
+	CoverageUsed bool           `json:"coverageUsed"`
+	Confidence   float64        `json:"confidence"`
+	RunCommand   string         `json:"runCommand,omitempty"`
+	Provenance   *Provenance    `json:"provenance,omitempty"`
 }
 
 // AffectedTest describes a test that should be run.
 type AffectedTest struct {
-	FilePath      string   `json:"filePath"`
-	TestNames     []string `json:"testNames,omitempty"` // Specific test functions if known
-	Reason        string   `json:"reason"`              // "direct", "transitive", "coverage"
-	AffectedBy    []string `json:"affectedBy,omitempty"` // Symbol IDs that caused this test to be selected
-	Confidence    float64  `json:"confidence"`
+	FilePath   string   `json:"filePath"`
+	TestNames  []string `json:"testNames,omitempty"`  // Specific test functions if known
+	Reason     string   `json:"reason"`               // "direct", "transitive", "coverage"
+	AffectedBy []string `json:"affectedBy,omitempty"` // Symbol IDs that caused this test to be selected
+	Confidence float64  `json:"confidence"`
 }
 
 // TestSummary provides an overview of affected tests.

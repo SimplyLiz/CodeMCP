@@ -16,9 +16,9 @@ var (
 	impactIncludeTests bool
 	impactFormat       string
 	// Diff subcommand flags
-	impactDiffStaged    bool
-	impactDiffBase      string
-	impactDiffStrict    bool
+	impactDiffStaged bool
+	impactDiffBase   string
+	impactDiffStrict bool
 )
 
 var impactCmd = &cobra.Command{
@@ -315,15 +315,15 @@ func runImpactDiff(cmd *cobra.Command, args []string) {
 
 // ChangeSetResponseCLI contains change set analysis results for CLI output
 type ChangeSetResponseCLI struct {
-	Summary          *ChangeSummaryCLI       `json:"summary"`
-	ChangedSymbols   []ChangedSymbolCLI      `json:"changedSymbols"`
-	AffectedSymbols  []ImpactItemCLI         `json:"affectedSymbols"`
-	ModulesAffected  []ModuleImpactCLI       `json:"modulesAffected"`
-	BlastRadius      *BlastRadiusCLI         `json:"blastRadius,omitempty"`
-	RiskScore        *RiskScoreCLI           `json:"riskScore,omitempty"`
-	Recommendations  []RecommendationCLI     `json:"recommendations,omitempty"`
-	IndexStaleness   *IndexStalenessCLI      `json:"indexStaleness,omitempty"`
-	Provenance       *ProvenanceCLI          `json:"provenance,omitempty"`
+	Summary         *ChangeSummaryCLI   `json:"summary"`
+	ChangedSymbols  []ChangedSymbolCLI  `json:"changedSymbols"`
+	AffectedSymbols []ImpactItemCLI     `json:"affectedSymbols"`
+	ModulesAffected []ModuleImpactCLI   `json:"modulesAffected"`
+	BlastRadius     *BlastRadiusCLI     `json:"blastRadius,omitempty"`
+	RiskScore       *RiskScoreCLI       `json:"riskScore,omitempty"`
+	Recommendations []RecommendationCLI `json:"recommendations,omitempty"`
+	IndexStaleness  *IndexStalenessCLI  `json:"indexStaleness,omitempty"`
+	Provenance      *ProvenanceCLI      `json:"provenance,omitempty"`
 }
 
 // ChangeSummaryCLI provides a high-level overview of changes
