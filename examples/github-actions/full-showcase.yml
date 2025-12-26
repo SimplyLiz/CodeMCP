@@ -16,10 +16,12 @@
 #   • Contract Detection  — Flag API/proto/GraphQL boundary changes
 #   • Dead Code           — Identify unused code (static + telemetry)
 #   • Affected Tests      — Detect which tests are impacted by changes
+#   • Hotspot Monitor     — Warn when modifying high-churn volatile files
 #   • Ownership Drift     — CODEOWNERS vs actual contributors
 #   • Suggested Reviewers — Based on real code ownership
 #   • Eval Suite          — Regression testing for search quality
 #   • Language Quality    — Per-language indexer quality via doctor
+#   • Incremental Index   — Fast PR analysis with cached incremental indexing
 #
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -105,7 +107,16 @@ jobs:
           START=$(date +%s)
           ./ckb init
 
-          if ! ./ckb index 2>&1 | tee /tmp/index.log; then
+          # Use incremental indexing for PRs (fast), full index for scheduled runs
+          INDEX_ARGS=""
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.force }}" = "true" ]; then
+            INDEX_ARGS="--force"
+            echo "mode=full" >> $GITHUB_OUTPUT
+          else
+            echo "mode=incremental" >> $GITHUB_OUTPUT
+          fi
+
+          if ! ./ckb index $INDEX_ARGS 2>&1 | tee /tmp/index.log; then
             if grep -q "Indexer not found" /tmp/index.log; then
               echo "::error::SCIP indexer not installed"
               echo ""
@@ -320,6 +331,35 @@ jobs:
         run: |
           ./ckb ownership drift --threshold=0.3 --limit=10 --format=json > drift.json 2>/dev/null || echo '{"driftedFiles":[]}' > drift.json
 
+      - name: Hotspots
+        id: hotspots
+        run: |
+          # Get current hotspots
+          ./ckb hotspots --limit=50 --format=json > hotspots.json 2>/dev/null || echo '{"hotspots":[]}' > hotspots.json
+
+          # Check which changed files are hotspots
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD 2>/dev/null || echo "")
+          TOUCHED_HOTSPOTS=0
+          echo '[]' > touched-hotspots.json
+
+          for f in $CHANGED_FILES; do
+            SCORE=$(jq -r --arg f "$f" '.hotspots[] | select(.filePath == $f) | .ranking.score // empty' hotspots.json 2>/dev/null || true)
+            if [ -n "$SCORE" ]; then
+              TOUCHED_HOTSPOTS=$((TOUCHED_HOTSPOTS + 1))
+              jq -n --arg f "$f" --arg s "$SCORE" '{file: $f, score: ($s | tonumber)}' >> touched-hotspots.json.tmp
+              echo "::warning file=$f::Hotspot file modified (score: $SCORE)"
+            fi
+          done
+
+          # Combine into array
+          if [ -f touched-hotspots.json.tmp ]; then
+            jq -s '.' touched-hotspots.json.tmp > touched-hotspots.json
+            rm -f touched-hotspots.json.tmp
+          fi
+
+          echo "count=$TOUCHED_HOTSPOTS" >> $GITHUB_OUTPUT
+          echo "total=$(jq '.hotspots | length' hotspots.json)" >> $GITHUB_OUTPUT
+
       - name: Languages
         id: languages
         run: |
@@ -408,6 +448,8 @@ jobs:
             const docsCov = read('docs-coverage.json', { coverage: 0 });
             const docsStale = read('docs-stale.json', { totalStale: 0, reports: [] });
             const drift = read('drift.json', []);
+            const touchedHotspots = read('touched-hotspots.json', []);
+            const allHotspots = read('hotspots.json', { hotspots: [] });
             const languages = read('languages.json', { languages: [], overallQuality: 1 });
             const evalResults = read('eval.json', { passed: 0, total: 0, results: [], skipped: true });
             const affectedTests = read('affected-tests.json', { tests: [], strategy: 'none' });
@@ -417,7 +459,10 @@ jobs:
             const risk = pr.riskAssessment || {};
             const reviewers = pr.suggestedReviewers || [];
             const modules = pr.modulesAffected || [];
-            const hotspots = (pr.changedFiles || []).filter(f => f.isHotspot);
+            // Use explicit hotspot analysis from touchedHotspots, fallback to pr.changedFiles
+            const hotspots = touchedHotspots.length > 0
+              ? touchedHotspots.map(h => ({ path: h.file, hotspotScore: h.score }))
+              : (pr.changedFiles || []).filter(f => f.isHotspot);
             const breakingChanges = Array.isArray(contracts.breaking) ? contracts.breaking : [];
             const blastSymbols = blast.affectedSymbols || [];
             const blastTests = blast.affectedTests || [];
