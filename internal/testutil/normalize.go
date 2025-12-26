@@ -79,8 +79,11 @@ func (n *DefaultNormalizer) normalizeSlice(s []any, fixtureRoot string) []any {
 	if len(result) > 0 {
 		if _, ok := result[0].(map[string]any); ok {
 			sort.SliceStable(result, func(i, j int) bool {
-				mi := result[i].(map[string]any)
-				mj := result[j].(map[string]any)
+				mi, oki := result[i].(map[string]any)
+				mj, okj := result[j].(map[string]any)
+				if !oki || !okj {
+					return false
+				}
 				return n.compareMapKeys(mi, mj)
 			})
 		}

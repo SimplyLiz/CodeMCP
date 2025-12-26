@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -556,6 +557,13 @@ func indexLast(s, substr string) int {
 	return -1
 }
 
+// roundFloat rounds a float to the specified number of decimal places.
+// This helps avoid floating point precision issues in golden comparisons.
+func roundFloat(val float64, precision int) float64 {
+	ratio := math.Pow(10, float64(precision))
+	return math.Round(val*ratio) / ratio
+}
+
 // normalizeExplainSymbol normalizes ExplainSymbolResponse for golden comparison.
 func normalizeExplainSymbol(resp *ExplainSymbolResponse) map[string]any {
 	facts := map[string]any{
@@ -678,7 +686,7 @@ func normalizeAnalyzeImpact(resp *AnalyzeImpactResponse) map[string]any {
 	// Normalize risk score
 	if resp.RiskScore != nil {
 		result["riskScore"] = map[string]any{
-			"score":       resp.RiskScore.Score,
+			"score":       roundFloat(resp.RiskScore.Score, 2),
 			"level":       resp.RiskScore.Level,
 			"explanation": resp.RiskScore.Explanation,
 		}
