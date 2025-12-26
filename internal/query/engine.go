@@ -639,6 +639,8 @@ func (e *Engine) GetReferenceCount(symbolId string) (int, error) {
 // validateQueryOptions validates query options and returns appropriate defaults.
 // This function demonstrates complex validation logic for the CI demo.
 // Cyclomatic complexity: ~20 (intentionally complex for demo purposes)
+//
+//nolint:unused // Demo function to trigger complexity widget in CI
 func validateQueryOptions(opts map[string]interface{}) (map[string]interface{}, error) {
 	result := make(map[string]interface{})
 
