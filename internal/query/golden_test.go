@@ -211,6 +211,56 @@ func TestGolden_FindReferences(t *testing.T) {
 	})
 }
 
+// TestGolden_GetSymbol tests GetSymbol against golden files.
+func TestGolden_GetSymbol(t *testing.T) {
+	testutil.ForEachLanguage(t, func(t *testing.T, fixture *testutil.FixtureContext) {
+		engine, cleanup := setupGoldenEngine(t, fixture)
+		defer cleanup()
+
+		ctx := context.Background()
+
+		// Test cases for different symbol types
+		// Use specific names to avoid non-deterministic results
+		testCases := []struct {
+			searchQuery string
+			goldenName  string
+		}{
+			{"NewHandler", "symbol_NewHandler"},         // Factory function
+			{"DefaultService", "symbol_DefaultService"}, // Implementation class
+			{"FormatOutput", "symbol_FormatOutput"},     // Internal function
+			{"Model", "symbol_Model"},                   // Data structure
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.goldenName, func(t *testing.T) {
+				// First find the symbol
+				searchResp, err := engine.SearchSymbols(ctx, SearchSymbolsOptions{
+					Query: tc.searchQuery,
+					Limit: 1,
+				})
+				if err != nil {
+					t.Fatalf("SearchSymbols failed: %v", err)
+				}
+				if len(searchResp.Symbols) == 0 {
+					t.Skipf("No %s symbol found", tc.searchQuery)
+				}
+
+				symbolID := searchResp.Symbols[0].StableId
+
+				resp, err := engine.GetSymbol(ctx, GetSymbolOptions{
+					SymbolId: symbolID,
+				})
+				if err != nil {
+					t.Fatalf("GetSymbol failed: %v", err)
+				}
+
+				result := normalizeGetSymbol(resp)
+				testutil.CompareGolden(t, fixture, tc.goldenName, result)
+			})
+		}
+	})
+}
+
 // TestGolden_ExplainSymbol tests ExplainSymbol against golden files.
 func TestGolden_ExplainSymbol(t *testing.T) {
 	testutil.ForEachLanguage(t, func(t *testing.T, fixture *testutil.FixtureContext) {
@@ -321,6 +371,55 @@ func TestGolden_TraceUsage(t *testing.T) {
 	})
 }
 
+// TestGolden_AnalyzeImpact tests AnalyzeImpact against golden files.
+func TestGolden_AnalyzeImpact(t *testing.T) {
+	testutil.ForEachLanguage(t, func(t *testing.T, fixture *testutil.FixtureContext) {
+		engine, cleanup := setupGoldenEngine(t, fixture)
+		defer cleanup()
+
+		ctx := context.Background()
+
+		// Test impact analysis on different symbol types
+		testCases := []struct {
+			searchQuery string
+			goldenName  string
+			depth       int
+		}{
+			{"FormatOutput", "impact_FormatOutput", 2}, // Internal utility
+			{"Handler", "impact_Handler", 2},           // High-level type
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.goldenName, func(t *testing.T) {
+				// First find the symbol
+				searchResp, err := engine.SearchSymbols(ctx, SearchSymbolsOptions{
+					Query: tc.searchQuery,
+					Limit: 1,
+				})
+				if err != nil {
+					t.Fatalf("SearchSymbols failed: %v", err)
+				}
+				if len(searchResp.Symbols) == 0 {
+					t.Skipf("No %s symbol found", tc.searchQuery)
+				}
+
+				symbolID := searchResp.Symbols[0].StableId
+
+				resp, err := engine.AnalyzeImpact(ctx, AnalyzeImpactOptions{
+					SymbolId: symbolID,
+					Depth:    tc.depth,
+				})
+				if err != nil {
+					t.Fatalf("AnalyzeImpact failed: %v", err)
+				}
+
+				result := normalizeAnalyzeImpact(resp)
+				testutil.CompareGolden(t, fixture, tc.goldenName, result)
+			})
+		}
+	})
+}
+
 // normalizeSearchResults normalizes SearchSymbolsResponse for golden comparison.
 func normalizeSearchResults(resp *SearchSymbolsResponse) map[string]any {
 	results := make([]map[string]any, 0, len(resp.Symbols))
@@ -402,6 +501,32 @@ func normalizeReferences(resp *FindReferencesResponse) map[string]any {
 		"references": refs,
 		"total":      resp.TotalCount,
 	}
+}
+
+// normalizeGetSymbol normalizes GetSymbolResponse for golden comparison.
+func normalizeGetSymbol(resp *GetSymbolResponse) map[string]any {
+	result := map[string]any{
+		"redirected": resp.Redirected,
+		"deleted":    resp.Deleted,
+	}
+
+	if resp.Symbol != nil {
+		file := ""
+		line := 0
+		if resp.Symbol.Location != nil {
+			file = resp.Symbol.Location.FileId
+			line = resp.Symbol.Location.StartLine
+		}
+		result["symbol"] = map[string]any{
+			"name":     resp.Symbol.Name,
+			"kind":     resp.Symbol.Kind,
+			"moduleId": resp.Symbol.ModuleId,
+			"file":     normalizeFilePath(file),
+			"line":     line,
+		}
+	}
+
+	return result
 }
 
 // normalizeFilePath strips absolute path prefixes for stable comparison.
@@ -522,6 +647,80 @@ func normalizeTraceUsage(resp *TraceUsageResponse) map[string]any {
 		"paths":           paths,
 		"totalPathsFound": resp.TotalPathsFound,
 	}
+}
+
+// normalizeAnalyzeImpact normalizes AnalyzeImpactResponse for golden comparison.
+func normalizeAnalyzeImpact(resp *AnalyzeImpactResponse) map[string]any {
+	result := map[string]any{}
+
+	// Normalize symbol info
+	if resp.Symbol != nil {
+		file := ""
+		if resp.Symbol.Location != nil {
+			file = resp.Symbol.Location.FileId
+		}
+		result["symbol"] = map[string]any{
+			"name": resp.Symbol.Name,
+			"kind": resp.Symbol.Kind,
+			"file": normalizeFilePath(file),
+		}
+	}
+
+	// Normalize visibility
+	if resp.Visibility != nil {
+		result["visibility"] = map[string]any{
+			"visibility": resp.Visibility.Visibility,
+			"confidence": resp.Visibility.Confidence,
+			"source":     resp.Visibility.Source,
+		}
+	}
+
+	// Normalize risk score
+	if resp.RiskScore != nil {
+		result["riskScore"] = map[string]any{
+			"score":       resp.RiskScore.Score,
+			"level":       resp.RiskScore.Level,
+			"explanation": resp.RiskScore.Explanation,
+		}
+	}
+
+	// Normalize blast radius
+	if resp.BlastRadius != nil {
+		result["blastRadius"] = map[string]any{
+			"moduleCount":       resp.BlastRadius.ModuleCount,
+			"fileCount":         resp.BlastRadius.FileCount,
+			"uniqueCallerCount": resp.BlastRadius.UniqueCallerCount,
+			"riskLevel":         resp.BlastRadius.RiskLevel,
+		}
+	}
+
+	// Normalize direct impact
+	directImpact := make([]map[string]any, 0, len(resp.DirectImpact))
+	for _, item := range resp.DirectImpact {
+		file := ""
+		if item.Location != nil {
+			file = item.Location.FileId
+		}
+		directImpact = append(directImpact, map[string]any{
+			"name": item.Name,
+			"kind": item.Kind,
+			"file": normalizeFilePath(file),
+		})
+	}
+	result["directImpact"] = directImpact
+
+	// Normalize modules affected
+	modulesAffected := make([]map[string]any, 0, len(resp.ModulesAffected))
+	for _, m := range resp.ModulesAffected {
+		modulesAffected = append(modulesAffected, map[string]any{
+			"moduleId":    m.ModuleId,
+			"name":        m.Name,
+			"impactCount": m.ImpactCount,
+		})
+	}
+	result["modulesAffected"] = modulesAffected
+
+	return result
 }
 
 // TestGolden_SCIPBackendDirect tests SCIP backend methods directly.
