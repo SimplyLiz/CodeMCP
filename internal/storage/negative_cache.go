@@ -114,14 +114,14 @@ func (m *NegativeCacheManager) CacheError(key string, errorType NegativeCacheErr
 		return fmt.Errorf("failed to cache error: %w", err)
 	}
 
-	// Check if warmup should be triggered
+	// Log warmup-eligible errors for observability
+	// Note: Preemptive warmup was considered but not implemented.
+	// SQLite + incremental indexing makes cold-cache scenarios fast enough.
 	if ShouldTriggerWarmup(errorType) {
-		m.cache.db.logger.Info("Warmup triggered by negative cache", map[string]interface{}{
+		m.cache.db.logger.Info("Warmup-eligible error cached", map[string]interface{}{
 			"error_type": errorType,
 			"key":        key,
 		})
-		// TODO: Trigger warmup action (implement in later phase)
-		// For now, just log the event
 	}
 
 	return nil
