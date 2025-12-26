@@ -408,7 +408,11 @@ func normalizeReferences(resp *FindReferencesResponse) map[string]any {
 func normalizeFilePath(path string) string {
 	// Get just the relative part after the fixture root
 	// This handles paths like /tmp/.../testdata/fixtures/go/pkg/handler.go
-	parts := []string{"pkg/", "internal/", "main.go"}
+	// and /tmp/.../testdata/fixtures/typescript/src/pkg/handler.ts
+	parts := []string{
+		"src/pkg/", "src/internal/", "src/main.ts", // TypeScript (has src/ prefix)
+		"pkg/", "internal/", "main.go", // Go (no src/ prefix)
+	}
 	for _, p := range parts {
 		if idx := indexLast(path, p); idx != -1 {
 			return path[idx:]
