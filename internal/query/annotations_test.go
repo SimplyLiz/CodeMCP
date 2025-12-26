@@ -89,7 +89,7 @@ func TestAnnotateModule(t *testing.T) {
 		// Update with empty responsibility should keep original
 		input2 := &AnnotateModuleInput{
 			ModuleId:       "internal/merge",
-			Responsibility: "", // empty - should keep original
+			Responsibility: "",  // empty - should keep original
 			Capabilities:   nil, // nil - should keep original
 		}
 		_, err = engine.AnnotateModule(input2)

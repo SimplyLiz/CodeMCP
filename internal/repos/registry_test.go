@@ -389,7 +389,7 @@ func TestAcquireLock(t *testing.T) {
 		if err != nil {
 			t.Fatalf("acquireLock failed: %v", err)
 		}
-		defer lock.Release()
+		defer func() { _ = lock.Release() }()
 
 		// Verify directory was created
 		dir := filepath.Dir(lockPath)
@@ -406,7 +406,7 @@ func TestAcquireLock(t *testing.T) {
 		if err != nil {
 			t.Fatalf("acquireLock failed: %v", err)
 		}
-		defer lock.Release()
+		defer func() { _ = lock.Release() }()
 
 		if _, err := os.Stat(lockPath); os.IsNotExist(err) {
 			t.Error("lock file should exist")

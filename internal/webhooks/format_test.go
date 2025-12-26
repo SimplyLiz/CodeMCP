@@ -158,7 +158,10 @@ func TestFormatSlack(t *testing.T) {
 				t.Fatal("Expected attachments array")
 			}
 
-			attachment := attachments[0].(map[string]interface{})
+			attachment, ok := attachments[0].(map[string]interface{})
+			if !ok {
+				t.Fatal("attachment should be a map")
+			}
 
 			// Verify color
 			if attachment["color"] != tt.expectedColor {
@@ -364,7 +367,10 @@ func TestFormatDiscord(t *testing.T) {
 				t.Fatal("Expected embeds array")
 			}
 
-			embed := embeds[0].(map[string]interface{})
+			embed, ok := embeds[0].(map[string]interface{})
+			if !ok {
+				t.Fatal("embed should be a map")
+			}
 
 			// Verify color (JSON numbers are float64)
 			colorVal, ok := embed["color"].(float64)
@@ -544,10 +550,16 @@ func TestFormatWithTimestamps(t *testing.T) {
 			t.Fatalf("Failed to parse: %v", err)
 		}
 
-		attachments := result["attachments"].([]interface{})
-		attachment := attachments[0].(map[string]interface{})
+		attachments, ok := result["attachments"].([]interface{})
+		if !ok || len(attachments) == 0 {
+			t.Fatal("Expected attachments array")
+		}
+		attachment, ok := attachments[0].(map[string]interface{})
+		if !ok {
+			t.Fatal("attachment should be a map")
+		}
 
-		_, ok := attachment["ts"].(float64)
+		_, ok = attachment["ts"].(float64)
 		if !ok {
 			t.Error("Slack ts should be a Unix timestamp (number)")
 		}
@@ -564,8 +576,14 @@ func TestFormatWithTimestamps(t *testing.T) {
 			t.Fatalf("Failed to parse: %v", err)
 		}
 
-		embeds := result["embeds"].([]interface{})
-		embed := embeds[0].(map[string]interface{})
+		embeds, ok := result["embeds"].([]interface{})
+		if !ok || len(embeds) == 0 {
+			t.Fatal("Expected embeds array")
+		}
+		embed, ok := embeds[0].(map[string]interface{})
+		if !ok {
+			t.Fatal("embed should be a map")
+		}
 
 		ts, ok := embed["timestamp"].(string)
 		if !ok {

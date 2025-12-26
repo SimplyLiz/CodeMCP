@@ -1030,7 +1030,10 @@ func TestFallback_PartialResults_PreferFirst(t *testing.T) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
-	searchResult := result.Data.(*SearchResult)
+	searchResult, ok := result.Data.(*SearchResult)
+	if !ok {
+		t.Fatalf("Expected SearchResult, got %T", result.Data)
+	}
 	// In prefer-first mode, should only have SCIP results
 	if len(searchResult.Symbols) != 1 {
 		t.Errorf("Expected 1 symbol in prefer-first mode, got %d", len(searchResult.Symbols))
@@ -1174,7 +1177,10 @@ func TestFallback_EmptyResult_TriggersFallback(t *testing.T) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
-	searchResult := result.Data.(*SearchResult)
+	searchResult, ok := result.Data.(*SearchResult)
+	if !ok {
+		t.Fatalf("Expected SearchResult, got %T", result.Data)
+	}
 	// In union mode, we should get LSP's result even though SCIP returned empty
 	if len(searchResult.Symbols) < 1 {
 		t.Error("Expected at least one symbol from union of empty SCIP + LSP")
