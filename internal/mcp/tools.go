@@ -193,6 +193,44 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 			},
 		},
 		{
+			Name:        "analyzeChange",
+			Description: "Analyze the impact of a set of code changes from git diff. Answers: What might break? Which tests should run? Who needs to review?",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"diffContent": map[string]interface{}{
+						"type":        "string",
+						"description": "Raw git diff content. If empty, uses current working tree diff",
+					},
+					"staged": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "If true and no diffContent provided, analyze only staged changes (--cached)",
+					},
+					"baseBranch": map[string]interface{}{
+						"type":        "string",
+						"default":     "HEAD",
+						"description": "Base branch for comparison when using git diff",
+					},
+					"depth": map[string]interface{}{
+						"type":        "number",
+						"default":     2,
+						"description": "Maximum depth for transitive impact analysis (1-4)",
+					},
+					"includeTests": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Include test files in the analysis",
+					},
+					"strict": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Fail if SCIP index is stale",
+					},
+				},
+			},
+		},
+		{
 			Name:        "explainSymbol",
 			Description: "Get an AI-friendly explanation of a symbol including usage, history, and summary",
 			InputSchema: map[string]interface{}{
@@ -1746,6 +1784,7 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["findReferences"] = s.toolFindReferences
 	s.tools["getArchitecture"] = s.toolGetArchitecture
 	s.tools["analyzeImpact"] = s.toolAnalyzeImpact
+	s.tools["analyzeChange"] = s.toolAnalyzeChange
 	s.tools["explainSymbol"] = s.toolExplainSymbol
 	s.tools["justifySymbol"] = s.toolJustifySymbol
 	s.tools["getCallGraph"] = s.toolGetCallGraph
