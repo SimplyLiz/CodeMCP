@@ -50,6 +50,7 @@ func (e *Engine) Doctor(ctx context.Context, checkName string) (*DoctorResponse,
 		checks = append(checks, e.checkLsp(ctx))
 		checks = append(checks, e.checkConfig(ctx))
 		checks = append(checks, e.checkStorage(ctx))
+		checks = append(checks, e.checkOptionalTools(ctx))
 	} else {
 		switch checkName {
 		case "git":
@@ -62,6 +63,8 @@ func (e *Engine) Doctor(ctx context.Context, checkName string) (*DoctorResponse,
 			checks = append(checks, e.checkConfig(ctx))
 		case "storage":
 			checks = append(checks, e.checkStorage(ctx))
+		case "optional":
+			checks = append(checks, e.checkOptionalTools(ctx))
 		default:
 			checks = append(checks, DoctorCheck{
 				Name:    checkName,
@@ -401,6 +404,84 @@ func (e *Engine) detectSCIPCommand() string {
 func (e *Engine) hasFile(name string) bool {
 	_, err := os.Stat(filepath.Join(e.repoRoot, name))
 	return err == nil
+}
+
+// checkOptionalTools verifies optional tools that enhance CKB functionality.
+func (e *Engine) checkOptionalTools(ctx context.Context) DoctorCheck {
+	check := DoctorCheck{
+		Name: "optional-tools",
+	}
+
+	var available, missing []string
+	var fixes []FixAction
+
+	// Check gh CLI (for GitHub integration)
+	if ghPath, err := exec.LookPath("gh"); err == nil {
+		// Get version
+		cmd := exec.Command(ghPath, "--version")
+		if output, err := cmd.Output(); err == nil {
+			lines := strings.Split(string(output), "\n")
+			if len(lines) > 0 {
+				available = append(available, fmt.Sprintf("gh (%s)", strings.TrimPrefix(strings.Fields(lines[0])[2], "v")))
+			} else {
+				available = append(available, "gh")
+			}
+		} else {
+			available = append(available, "gh")
+		}
+	} else {
+		missing = append(missing, "gh")
+		fixes = append(fixes, FixAction{
+			Type:        "run-command",
+			Command:     "brew install gh",
+			Safe:        true,
+			Description: "Install GitHub CLI for PR analysis and reviewer suggestions",
+		})
+	}
+
+	// Check git version
+	if gitPath, err := exec.LookPath("git"); err == nil {
+		cmd := exec.Command(gitPath, "--version")
+		if output, err := cmd.Output(); err == nil {
+			version := strings.TrimPrefix(strings.TrimSpace(string(output)), "git version ")
+			available = append(available, fmt.Sprintf("git (%s)", version))
+		}
+	}
+
+	// Check go-diff (bundled, always available)
+	available = append(available, "go-diff (bundled)")
+
+	// Check index cache directory
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		cacheDir := filepath.Join(homeDir, ".ckb", "cache")
+		if _, err := os.Stat(cacheDir); os.IsNotExist(err) {
+			// Try to create it
+			if err := os.MkdirAll(cacheDir, 0755); err != nil {
+				missing = append(missing, "cache directory")
+				fixes = append(fixes, FixAction{
+					Type:        "run-command",
+					Command:     fmt.Sprintf("mkdir -p %s", cacheDir),
+					Safe:        true,
+					Description: "Create CKB cache directory",
+				})
+			}
+		}
+	}
+
+	// Build result
+	if len(missing) == 0 {
+		check.Status = "pass"
+		check.Message = fmt.Sprintf("Optional tools: %s", strings.Join(available, ", "))
+	} else {
+		check.Status = "info"
+		check.Message = fmt.Sprintf("Available: %s | Missing (optional): %s",
+			strings.Join(available, ", "),
+			strings.Join(missing, ", "))
+		check.SuggestedFixes = fixes
+	}
+
+	return check
 }
 
 // GenerateFixScript generates a shell script for all suggested fixes.
