@@ -1,0 +1,152 @@
+// Package project provides language and indexer detection for repositories.
+package project
+
+import (
+	"os/exec"
+	"strings"
+)
+
+// IndexerConfig defines how to run a SCIP indexer for a language.
+type IndexerConfig struct {
+	// Cmd is the base command (e.g., "scip-go", "scip-typescript")
+	Cmd string
+
+	// Args are additional arguments before the output flag
+	Args []string
+
+	// OutputFlag is the flag for specifying output path (e.g., "--output")
+	// Empty if the indexer uses a fixed output path
+	OutputFlag string
+
+	// FixedOutput is the fixed output filename for indexers that ignore --output
+	// (e.g., rust-analyzer always outputs "index.scip")
+	FixedOutput string
+
+	// SupportsIncremental indicates if this indexer works with incremental mode
+	SupportsIncremental bool
+}
+
+// Indexers maps languages to their SCIP indexer configurations.
+// Only languages with SupportsIncremental=true can use incremental indexing.
+var Indexers = map[Language]IndexerConfig{
+	LangGo: {
+		Cmd:                 "scip-go",
+		OutputFlag:          "--output",
+		SupportsIncremental: true,
+	},
+	LangTypeScript: {
+		Cmd:                 "scip-typescript",
+		Args:                []string{"index", "--infer-tsconfig"},
+		OutputFlag:          "--output",
+		SupportsIncremental: true,
+	},
+	LangJavaScript: {
+		Cmd:                 "scip-typescript",
+		Args:                []string{"index", "--infer-tsconfig"},
+		OutputFlag:          "--output",
+		SupportsIncremental: true,
+	},
+	LangPython: {
+		Cmd:                 "scip-python",
+		Args:                []string{"index", "."},
+		OutputFlag:          "--output",
+		SupportsIncremental: true,
+	},
+	LangDart: {
+		Cmd:                 "dart",
+		Args:                []string{"pub", "global", "run", "scip_dart", "./"},
+		OutputFlag:          "--output",
+		SupportsIncremental: true,
+	},
+	LangRust: {
+		Cmd:                 "rust-analyzer",
+		Args:                []string{"scip", "."},
+		FixedOutput:         "index.scip",
+		SupportsIncremental: true,
+	},
+	LangJava: {
+		Cmd:                 "scip-java",
+		Args:                []string{"index"},
+		OutputFlag:          "--output",
+		SupportsIncremental: false, // Build system complexity
+	},
+	LangKotlin: {
+		Cmd:                 "scip-java",
+		Args:                []string{"index"},
+		OutputFlag:          "--output",
+		SupportsIncremental: false, // Build system complexity
+	},
+	LangCpp: {
+		Cmd:                 "scip-clang",
+		OutputFlag:          "--output",
+		SupportsIncremental: false, // Requires compile_commands.json
+	},
+	LangRuby: {
+		Cmd:                 "scip-ruby",
+		Args:                []string{"."},
+		OutputFlag:          "--output",
+		SupportsIncremental: false, // Lower priority
+	},
+	LangCSharp: {
+		Cmd:                 "scip-dotnet",
+		Args:                []string{"index"},
+		OutputFlag:          "--output",
+		SupportsIncremental: false, // Lower priority
+	},
+	LangPHP: {
+		Cmd:                 "vendor/bin/scip-php",
+		OutputFlag:          "--output",
+		SupportsIncremental: false, // Lower priority
+	},
+}
+
+// GetIndexerConfig returns the indexer configuration for a language.
+// Returns nil if no indexer is configured for the language.
+func GetIndexerConfig(lang Language) *IndexerConfig {
+	config, ok := Indexers[lang]
+	if !ok {
+		return nil
+	}
+	return &config
+}
+
+// SupportsIncrementalIndexing returns true if the language supports incremental indexing.
+func SupportsIncrementalIndexing(lang Language) bool {
+	config := GetIndexerConfig(lang)
+	if config == nil {
+		return false
+	}
+	return config.SupportsIncremental
+}
+
+// BuildCommand creates an exec.Cmd for running the indexer with the given output path.
+func (c *IndexerConfig) BuildCommand(outputPath string) *exec.Cmd {
+	args := make([]string, 0, len(c.Args)+2)
+	args = append(args, c.Args...)
+
+	// Add output flag if supported (not for fixed output indexers)
+	if c.OutputFlag != "" && outputPath != "" {
+		args = append(args, c.OutputFlag, outputPath)
+	}
+
+	return exec.Command(c.Cmd, args...)
+}
+
+// IsInstalled checks if the indexer command is available in PATH.
+func (c *IndexerConfig) IsInstalled() bool {
+	// For multi-part commands like "dart pub global run scip_dart",
+	// we just check if the base command exists
+	cmd := c.Cmd
+	if strings.Contains(cmd, " ") {
+		parts := strings.Fields(cmd)
+		cmd = parts[0]
+	}
+
+	_, err := exec.LookPath(cmd)
+	return err == nil
+}
+
+// HasFixedOutput returns true if the indexer outputs to a fixed path.
+func (c *IndexerConfig) HasFixedOutput() bool {
+	return c.FixedOutput != ""
+}

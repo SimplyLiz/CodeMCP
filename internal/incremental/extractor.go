@@ -5,13 +5,13 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"ckb/internal/backends/scip"
 	"ckb/internal/logging"
+	"ckb/internal/project"
 )
 
 // SCIPExtractor extracts per-file data from SCIP index
@@ -96,19 +96,52 @@ func (e *SCIPExtractor) ExtractDeltas(changedFiles []ChangedFile) (*SymbolDelta,
 	return delta, nil
 }
 
-// RunSCIPGo executes the scip-go indexer with configured output path
-func (e *SCIPExtractor) RunSCIPGo() error {
+// RunIndexer executes the SCIP indexer for the given language configuration.
+// It handles output path configuration and fixed-output indexers (like rust-analyzer).
+func (e *SCIPExtractor) RunIndexer(config *project.IndexerConfig) error {
 	// Ensure output directory exists
 	outputDir := filepath.Dir(e.indexPath)
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("failed to create index directory %s: %w", outputDir, err)
 	}
 
-	cmd := exec.Command("scip-go", "--output", e.indexPath)
+	// Build command with output path
+	cmd := config.BuildCommand(e.indexPath)
 	cmd.Dir = e.repoRoot
 	cmd.Stdout = os.Stderr // Show indexer output
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("indexer failed: %w", err)
+	}
+
+	// Handle indexers with fixed output paths (e.g., rust-analyzer)
+	if config.HasFixedOutput() {
+		fixedPath := filepath.Join(e.repoRoot, config.FixedOutput)
+		if fixedPath != e.indexPath {
+			if err := os.Rename(fixedPath, e.indexPath); err != nil {
+				return fmt.Errorf("failed to move index from %s to %s: %w",
+					fixedPath, e.indexPath, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// RunSCIPGo executes the scip-go indexer with configured output path.
+// Deprecated: Use RunIndexer with the appropriate IndexerConfig instead.
+func (e *SCIPExtractor) RunSCIPGo() error {
+	config := project.GetIndexerConfig(project.LangGo)
+	if config == nil {
+		return fmt.Errorf("no indexer configuration for Go")
+	}
+	return e.RunIndexer(config)
+}
+
+// IsIndexerInstalled checks if the indexer for the given config is available.
+func (e *SCIPExtractor) IsIndexerInstalled(config *project.IndexerConfig) bool {
+	return config.IsInstalled()
 }
 
 // LoadIndex loads the SCIP index from disk

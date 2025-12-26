@@ -7,6 +7,7 @@ import (
 
 	"ckb/internal/backends/scip"
 	"ckb/internal/logging"
+	"ckb/internal/project"
 )
 
 func TestIsLocalSymbol(t *testing.T) {
@@ -619,5 +620,193 @@ func TestExtractFileDelta_CallEdges(t *testing.T) {
 	// CallerID should be resolved to main.main since the call is on line 8, within main (lines 6-end)
 	if edge.CallerID != "scip-go gomod example 1.0 main.main()." {
 		t.Errorf("expected caller 'main.main', got %q", edge.CallerID)
+	}
+}
+
+// Multi-language support tests (v7.6)
+
+func TestIsIndexerInstalled(t *testing.T) {
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	ext := NewSCIPExtractor("/repo", ".scip/index.scip", logger)
+
+	tests := []struct {
+		name   string
+		lang   project.Language
+		exists bool // Whether the test expects the indexer to exist (may vary by environment)
+	}{
+		// These tests check that IsIndexerInstalled doesn't panic
+		// Actual availability depends on the test environment
+		{"Go", project.LangGo, false}, // scip-go typically not in test env
+		{"TypeScript", project.LangTypeScript, false},
+		{"Python", project.LangPython, false},
+		{"Dart", project.LangDart, false},
+		{"Rust", project.LangRust, false},
+		{"Java", project.LangJava, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := project.GetIndexerConfig(tt.lang)
+			if config == nil {
+				t.Skipf("no indexer config for %s", tt.lang)
+			}
+
+			// Should not panic
+			_ = ext.IsIndexerInstalled(config)
+		})
+	}
+}
+
+func TestRunIndexer_CreatesOutputDirectory(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "extractor-runindexer-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Use a nested output path that doesn't exist
+	outputPath := filepath.Join(tmpDir, "nested", "deep", "index.scip")
+
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	ext := NewSCIPExtractor(tmpDir, outputPath, logger)
+
+	config := project.GetIndexerConfig(project.LangGo)
+	if config == nil {
+		t.Skip("no Go indexer config")
+	}
+
+	// RunIndexer should create the output directory
+	// (It will fail because scip-go isn't installed, but the directory should be created first)
+	_ = ext.RunIndexer(config)
+
+	// Check that the directory was created
+	outputDir := filepath.Dir(outputPath)
+	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
+		t.Errorf("expected output directory %s to be created", outputDir)
+	}
+}
+
+func TestRunSCIPGo_Deprecated(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "extractor-runscipgo-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	ext := NewSCIPExtractor(tmpDir, ".scip/index.scip", logger)
+
+	// RunSCIPGo should call RunIndexer internally
+	// It will fail because scip-go isn't installed, but it shouldn't panic
+	err = ext.RunSCIPGo()
+
+	// We expect an error (indexer not found or similar)
+	if err == nil {
+		t.Skip("scip-go is installed, test passes")
+	}
+
+	// Error should be about the indexer failing, not a nil pointer or similar
+	if err.Error() == "" {
+		t.Error("expected non-empty error message")
+	}
+}
+
+func TestGetIndexerConfigForAllLanguages(t *testing.T) {
+	// Verify that GetIndexerConfig returns correct configs for supported languages
+	supportedLangs := []project.Language{
+		project.LangGo,
+		project.LangTypeScript,
+		project.LangJavaScript,
+		project.LangPython,
+		project.LangDart,
+		project.LangRust,
+	}
+
+	for _, lang := range supportedLangs {
+		t.Run(string(lang), func(t *testing.T) {
+			config := project.GetIndexerConfig(lang)
+			if config == nil {
+				t.Errorf("expected non-nil config for %s", lang)
+				return
+			}
+
+			if config.Cmd == "" {
+				t.Errorf("expected non-empty Cmd for %s", lang)
+			}
+
+			if !config.SupportsIncremental {
+				t.Errorf("expected SupportsIncremental=true for %s", lang)
+			}
+		})
+	}
+
+	// Verify unsupported languages
+	unsupportedLangs := []project.Language{
+		project.LangJava,
+		project.LangKotlin,
+		project.LangCpp,
+		project.LangRuby,
+		project.LangCSharp,
+		project.LangPHP,
+	}
+
+	for _, lang := range unsupportedLangs {
+		t.Run(string(lang)+"_no_incremental", func(t *testing.T) {
+			config := project.GetIndexerConfig(lang)
+			if config == nil {
+				t.Skipf("no config for %s", lang)
+			}
+
+			if config.SupportsIncremental {
+				t.Errorf("expected SupportsIncremental=false for %s", lang)
+			}
+		})
+	}
+}
+
+func TestIndexerConfigBuildCommand(t *testing.T) {
+	tests := []struct {
+		name       string
+		lang       project.Language
+		outputPath string
+		wantCmd    string
+	}{
+		{
+			name:       "Go with output",
+			lang:       project.LangGo,
+			outputPath: "/tmp/index.scip",
+			wantCmd:    "scip-go",
+		},
+		{
+			name:       "TypeScript with output",
+			lang:       project.LangTypeScript,
+			outputPath: "/tmp/index.scip",
+			wantCmd:    "scip-typescript",
+		},
+		{
+			name:       "Rust (fixed output)",
+			lang:       project.LangRust,
+			outputPath: "/tmp/index.scip",
+			wantCmd:    "rust-analyzer",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := project.GetIndexerConfig(tt.lang)
+			if config == nil {
+				t.Skipf("no config for %s", tt.lang)
+			}
+
+			cmd := config.BuildCommand(tt.outputPath)
+			if cmd == nil {
+				t.Fatal("expected non-nil command")
+			}
+
+			// Check command name
+			if len(cmd.Args) == 0 || cmd.Args[0] != tt.wantCmd {
+				t.Errorf("expected command %s, got %v", tt.wantCmd, cmd.Args)
+			}
+		})
 	}
 }
