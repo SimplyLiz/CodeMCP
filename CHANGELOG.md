@@ -2,6 +2,60 @@
 
 All notable changes to CKB will be documented in this file.
 
+## [7.6.0]
+
+### Added
+
+#### Refresh Source Visibility
+The `getStatus` MCP response now includes `lastRefresh` showing what triggered the most recent index refresh:
+
+```json
+{
+  "lastRefresh": {
+    "at": "2024-12-25T10:00:00Z",
+    "trigger": "head-changed",
+    "triggerInfo": "branch or commit changed",
+    "durationMs": 1200
+  }
+}
+```
+
+**Trigger types:**
+- `head-changed` — Branch switch or new commit detected
+- `index-changed` — Staged files modified
+- `manual` — CLI `ckb index` command
+- `scheduled` — Daemon scheduler
+- `webhook` — External webhook trigger
+- `stale` — Generic staleness detection
+
+This helps users understand why and when the index was refreshed.
+
+#### Daemon Branch Switching Detection
+The daemon now automatically watches all registered repos for git changes:
+
+- On startup, loads repo registry and registers valid repos with file watcher
+- Polls `.git/HEAD` every 2s to detect branch switches and new commits
+- Polls `.git/index` to detect staged file changes
+- Triggers reindex within ~7s of a branch switch (2s poll + 5s debounce)
+
+```bash
+# Register a repo
+ckb repo add myproject /path/to/project
+
+# Start daemon - repos are now watched automatically
+ckb daemon start
+
+# Switch branches → daemon detects and reindexes
+```
+
+### Changed
+
+- Default MCP watch interval reduced from 30s to 10s for faster staleness detection
+
+### Fixed
+
+- Daemon file watcher now actually registers repos (was creating watcher but never using it)
+
 ## [7.5.0]
 
 ### Added
