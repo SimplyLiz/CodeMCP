@@ -2,7 +2,9 @@
 package project
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -129,10 +131,37 @@ func (c *IndexerConfig) BuildCommand(outputPath string) *exec.Cmd {
 		args = append(args, c.OutputFlag, outputPath)
 	}
 
-	return exec.Command(c.Cmd, args...)
+	// Resolve the command path (check PATH and ~/go/bin)
+	cmdPath := c.resolveCmdPath()
+	return exec.Command(cmdPath, args...)
 }
 
-// IsInstalled checks if the indexer command is available in PATH.
+// resolveCmdPath finds the full path to the indexer command.
+func (c *IndexerConfig) resolveCmdPath() string {
+	cmd := c.Cmd
+	if strings.Contains(cmd, " ") {
+		parts := strings.Fields(cmd)
+		cmd = parts[0]
+	}
+
+	// Check standard PATH first
+	if path, err := exec.LookPath(cmd); err == nil {
+		return path
+	}
+
+	// Check ~/go/bin for Go-installed tools
+	if home, err := os.UserHomeDir(); err == nil {
+		goBinPath := filepath.Join(home, "go", "bin", cmd)
+		if _, err := os.Stat(goBinPath); err == nil {
+			return goBinPath
+		}
+	}
+
+	// Return original command and let it fail with a clear error
+	return c.Cmd
+}
+
+// IsInstalled checks if the indexer command is available in PATH or common locations.
 func (c *IndexerConfig) IsInstalled() bool {
 	// For multi-part commands like "dart pub global run scip_dart",
 	// we just check if the base command exists
@@ -142,8 +171,20 @@ func (c *IndexerConfig) IsInstalled() bool {
 		cmd = parts[0]
 	}
 
-	_, err := exec.LookPath(cmd)
-	return err == nil
+	// Check standard PATH first
+	if _, err := exec.LookPath(cmd); err == nil {
+		return true
+	}
+
+	// Check ~/go/bin for Go-installed tools (scip-go, etc.)
+	if home, err := os.UserHomeDir(); err == nil {
+		goBinPath := filepath.Join(home, "go", "bin", cmd)
+		if _, err := os.Stat(goBinPath); err == nil {
+			return true
+		}
+	}
+
+	return false
 }
 
 // HasFixedOutput returns true if the indexer outputs to a fixed path.

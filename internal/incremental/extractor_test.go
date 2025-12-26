@@ -804,9 +804,14 @@ func TestIndexerConfigBuildCommand(t *testing.T) {
 				t.Fatal("expected non-nil command")
 			}
 
-			// Check command name
-			if len(cmd.Args) == 0 || cmd.Args[0] != tt.wantCmd {
-				t.Errorf("expected command %s, got %v", tt.wantCmd, cmd.Args)
+			// Check command name - it may be the full path or just the command name
+			if len(cmd.Args) == 0 {
+				t.Fatal("expected non-empty Args")
+			}
+			cmdName := cmd.Args[0]
+			// The command might be the full path (e.g., /Users/.../scip-go) or just the name
+			if !strings.HasSuffix(cmdName, tt.wantCmd) && cmdName != tt.wantCmd {
+				t.Errorf("expected command ending with %s, got %s", tt.wantCmd, cmdName)
 			}
 		})
 	}
