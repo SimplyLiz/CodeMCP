@@ -72,6 +72,8 @@ func formatHuman(resp interface{}) (string, error) {
 		return formatTraceHuman(v)
 	case *JobsListResponseCLI:
 		return formatJobsListHuman(v)
+	case *DeadCodeResponseCLI:
+		return formatDeadCodeHuman(v), nil
 	default:
 		// For types without human formatters, output JSON with a note
 		json, err := formatJSON(resp)

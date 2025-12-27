@@ -81,6 +81,7 @@ var Presets = map[string][]string{
 		"justifySymbol",
 		"analyzeCoupling",
 		"findDeadCodeCandidates",
+		"findDeadCode", // v7.6: Static dead code detection (no telemetry needed)
 		"auditRisk",
 		"explainOrigin",
 	},
