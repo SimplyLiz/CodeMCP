@@ -81,6 +81,7 @@ var Presets = map[string][]string{
 		"justifySymbol",
 		"analyzeCoupling",
 		"findDeadCodeCandidates",
+		"compareAPI", // v7.6: Breaking change detection
 		"auditRisk",
 		"explainOrigin",
 	},
