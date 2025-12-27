@@ -1507,6 +1507,50 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		// v7.6 Static Dead Code Detection (SCIP-based, no telemetry required)
+		{
+			Name:        "findDeadCode",
+			Description: "Find dead code using static analysis of the SCIP index. Detects: symbols with zero references, self-only references, test-only references, and over-exported symbols. Works without telemetry.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"scope": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Limit analysis to specific packages/paths (e.g., ['internal/legacy', 'pkg/utils'])",
+					},
+					"includeUnexported": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Include unexported (private) symbols in analysis",
+					},
+					"minConfidence": map[string]interface{}{
+						"type":        "number",
+						"default":     0.7,
+						"description": "Minimum confidence threshold (0-1). Higher = fewer false positives",
+					},
+					"excludePatterns": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Glob patterns to exclude (e.g., ['*_generated.go', 'mocks/*'])",
+					},
+					"includeTestOnly": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Report symbols only used by tests as dead code",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"default":     100,
+						"description": "Maximum results to return",
+					},
+				},
+			},
+		},
 		// v6.5 Developer Intelligence tools
 		{
 			Name:        "explainOrigin",
@@ -1848,6 +1892,8 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["getTelemetryStatus"] = s.toolGetTelemetryStatus
 	s.tools["getObservedUsage"] = s.toolGetObservedUsage
 	s.tools["findDeadCodeCandidates"] = s.toolFindDeadCodeCandidates
+	// v7.6 Static Dead Code Detection
+	s.tools["findDeadCode"] = s.toolFindDeadCode
 	// v6.5 Developer Intelligence tools
 	s.tools["explainOrigin"] = s.toolExplainOrigin
 	s.tools["analyzeCoupling"] = s.toolAnalyzeCoupling

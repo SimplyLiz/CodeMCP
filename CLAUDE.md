@@ -106,6 +106,8 @@ claude mcp add ckb -- npx @tastehub/ckb mcp
 
 **Intelligence (v6.5):** `explainOrigin`, `analyzeCoupling`, `exportForLLM`, `auditRisk`
 
+**Code Analysis (v7.6):** `findDeadCode` (static dead code detection), `getAffectedTests`, `compareAPI`
+
 ## Architecture Overview
 
 CKB is a code intelligence orchestration layer with three interfaces (CLI, HTTP API, MCP) that all flow through a central query engine.
