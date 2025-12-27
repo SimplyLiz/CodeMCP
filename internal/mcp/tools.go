@@ -1581,6 +1581,38 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		// v7.6 Breaking Change Detection Tool
+		{
+			Name:        "compareAPI",
+			Description: "Compare API surfaces between two git refs to detect breaking changes. Finds removed symbols, signature changes, visibility changes, and renames. Useful for release planning and API compatibility checks.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"baseRef": map[string]interface{}{
+						"type":        "string",
+						"default":     "HEAD~1",
+						"description": "Base git ref for comparison (e.g., 'v1.0.0', 'main')",
+					},
+					"targetRef": map[string]interface{}{
+						"type":        "string",
+						"default":     "HEAD",
+						"description": "Target git ref for comparison (e.g., 'HEAD', 'v2.0.0')",
+					},
+					"scope": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Limit analysis to specific packages/paths",
+					},
+					"includeMinor": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Include non-breaking changes (additions) in output",
+					},
+				},
+			},
+		},
 		// v6.5 Developer Intelligence tools
 		{
 			Name:        "explainOrigin",
@@ -1926,6 +1958,8 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["findDeadCode"] = s.toolFindDeadCode
 	// v7.6 Affected Tests
 	s.tools["getAffectedTests"] = s.toolGetAffectedTests
+	// v7.6 Breaking Change Detection
+	s.tools["compareAPI"] = s.toolCompareAPI
 	// v6.5 Developer Intelligence tools
 	s.tools["explainOrigin"] = s.toolExplainOrigin
 	s.tools["analyzeCoupling"] = s.toolAnalyzeCoupling
