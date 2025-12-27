@@ -1551,6 +1551,36 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		// v7.6 Affected Tests Tool
+		{
+			Name:        "getAffectedTests",
+			Description: "Find tests affected by current code changes. Uses SCIP symbol analysis and heuristics to trace from changed code to test files. Useful for targeted test runs in CI or local development.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"staged": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Only analyze staged changes (git add)",
+					},
+					"baseBranch": map[string]interface{}{
+						"type":        "string",
+						"default":     "HEAD",
+						"description": "Base branch/commit to compare against",
+					},
+					"depth": map[string]interface{}{
+						"type":        "integer",
+						"default":     1,
+						"description": "Maximum depth for transitive impact analysis (1-3)",
+					},
+					"useCoverage": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Use coverage data if available for more accurate mapping",
+					},
+				},
+			},
+		},
 		// v6.5 Developer Intelligence tools
 		{
 			Name:        "explainOrigin",
@@ -1894,6 +1924,8 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["findDeadCodeCandidates"] = s.toolFindDeadCodeCandidates
 	// v7.6 Static Dead Code Detection
 	s.tools["findDeadCode"] = s.toolFindDeadCode
+	// v7.6 Affected Tests
+	s.tools["getAffectedTests"] = s.toolGetAffectedTests
 	// v6.5 Developer Intelligence tools
 	s.tools["explainOrigin"] = s.toolExplainOrigin
 	s.tools["analyzeCoupling"] = s.toolAnalyzeCoupling
