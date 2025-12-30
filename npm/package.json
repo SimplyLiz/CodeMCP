@@ -50,7 +50,7 @@
   ],
   "optionalDependencies": {
     "@tastehub/ckb-darwin-arm64": "7.4.0",
-    "@tastehub/ckb-darwin-x64": "7.4.0",
+    "@tastehub/ckb-darwin-x64": "7.5.0",
     "@tastehub/ckb-linux-x64": "7.4.0",
     "@tastehub/ckb-linux-arm64": "7.4.0",
     "@tastehub/ckb-win32-x64": "7.4.0"
