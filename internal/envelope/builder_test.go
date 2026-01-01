@@ -8,10 +8,10 @@ import (
 
 func TestGenerateConfidenceFactors(t *testing.T) {
 	tests := []struct {
-		name     string
-		prov     *query.Provenance
-		wantLen  int
-		checkFn  func(t *testing.T, factors []ConfidenceFactor)
+		name    string
+		prov    *query.Provenance
+		wantLen int
+		checkFn func(t *testing.T, factors []ConfidenceFactor)
 	}{
 		{
 			name: "scip available and used",
