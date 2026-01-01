@@ -106,6 +106,8 @@ claude mcp add ckb -- npx @tastehub/ckb mcp
 
 **Intelligence (v6.5):** `explainOrigin`, `analyzeCoupling`, `exportForLLM`, `auditRisk`
 
+**Code Analysis (v7.6):** `findDeadCode` (static dead code detection), `getAffectedTests`, `compareAPI`
+
 ## Architecture Overview
 
 CKB is a code intelligence orchestration layer with three interfaces (CLI, HTTP API, MCP) that all flow through a central query engine.
@@ -177,3 +179,32 @@ CKB works at different quality levels depending on available tooling:
 - **Minimal tier** (heuristics): Git-based features work for all languages
 
 Run `ckb index` to auto-detect and run the appropriate SCIP indexer.
+
+### Keeping Your Index Fresh (v7.5+)
+
+CKB offers multiple ways to keep your index up-to-date:
+
+```bash
+# Manual (default)
+ckb index                    # Run when needed
+
+# Watch mode (CLI)
+ckb index --watch            # Watch and auto-reindex
+ckb index --watch --watch-interval 1m
+
+# MCP watch mode
+ckb mcp --watch              # Auto-reindex during IDE session
+ckb mcp --watch --watch-interval 15s
+
+# Background daemon
+ckb daemon start             # Watches all registered repos
+
+# Trigger from CI (v7.5+)
+curl -X POST http://localhost:9120/api/v1/refresh
+curl -X POST http://localhost:9120/api/v1/refresh -d '{"full":true}'
+
+# Check freshness
+ckb status                   # Shows commits behind, index age
+```
+
+The `getStatus` MCP tool now includes index freshness info (`index.fresh`, `index.commitsBehind`, `index.indexAge`).

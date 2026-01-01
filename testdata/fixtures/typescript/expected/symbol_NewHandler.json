@@ -1,0 +1,11 @@
+{
+  "deleted": false,
+  "redirected": false,
+  "symbol": {
+    "file": "src/pkg/handler.ts",
+    "kind": "function",
+    "line": 43,
+    "moduleId": "",
+    "name": "newHandler"
+  }
+}

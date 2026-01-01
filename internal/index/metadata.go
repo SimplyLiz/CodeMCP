@@ -21,16 +21,37 @@ const (
 	metadataFile = "index-meta.json"
 )
 
+// RefreshTrigger describes what caused an index refresh.
+type RefreshTrigger string
+
+const (
+	TriggerManual    RefreshTrigger = "manual"
+	TriggerHEAD      RefreshTrigger = "head-changed"
+	TriggerIndex     RefreshTrigger = "index-changed"
+	TriggerScheduled RefreshTrigger = "scheduled"
+	TriggerWebhook   RefreshTrigger = "webhook"
+	TriggerStale     RefreshTrigger = "stale"
+)
+
+// LastRefresh describes the most recent index refresh.
+type LastRefresh struct {
+	At          time.Time      `json:"at"`
+	Trigger     RefreshTrigger `json:"trigger"`
+	TriggerInfo string         `json:"triggerInfo,omitempty"` // e.g., "main → feature/auth"
+	DurationMs  int64          `json:"durationMs"`
+}
+
 // IndexMeta contains metadata about the SCIP index.
 type IndexMeta struct {
-	Version     int       `json:"version"`
-	CreatedAt   time.Time `json:"createdAt"`
-	CommitHash  string    `json:"commitHash"`
-	RepoStateID string    `json:"repoStateId"`
-	FileCount   int       `json:"fileCount"`
-	Duration    string    `json:"duration"`
-	Indexer     string    `json:"indexer"`
-	IndexerArgs []string  `json:"indexerArgs,omitempty"`
+	Version     int          `json:"version"`
+	CreatedAt   time.Time    `json:"createdAt"`
+	CommitHash  string       `json:"commitHash"`
+	RepoStateID string       `json:"repoStateId"`
+	FileCount   int          `json:"fileCount"`
+	Duration    string       `json:"duration"`
+	Indexer     string       `json:"indexer"`
+	IndexerArgs []string     `json:"indexerArgs,omitempty"`
+	LastRefresh *LastRefresh `json:"lastRefresh,omitempty"`
 }
 
 // FreshnessResult describes index freshness status.
@@ -186,6 +207,34 @@ func countCommitsBehind(repoRoot, fromCommit, toCommit string) int {
 	var count int
 	fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &count)
 	return count
+}
+
+// Staleness provides a summary of index freshness for display.
+type Staleness struct {
+	IsStale       bool   `json:"isStale"`
+	CommitsBehind int    `json:"commitsBehind"`
+	IndexAge      string `json:"indexAge"`
+	Reason        string `json:"reason,omitempty"`
+}
+
+// GetStaleness returns a staleness summary for the index.
+func (m *IndexMeta) GetStaleness(repoRoot string) Staleness {
+	if m == nil {
+		return Staleness{
+			IsStale: true,
+			Reason:  "no index metadata found",
+		}
+	}
+
+	freshness := m.CheckFreshness(repoRoot)
+	age := time.Since(m.CreatedAt)
+
+	return Staleness{
+		IsStale:       !freshness.Fresh,
+		CommitsBehind: freshness.CommitsBehind,
+		IndexAge:      humanDuration(age),
+		Reason:        freshness.Reason,
+	}
 }
 
 // humanDuration formats a duration in human-readable form.

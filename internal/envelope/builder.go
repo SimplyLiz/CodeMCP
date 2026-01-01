@@ -175,6 +175,54 @@ func (b *Builder) CrossRepo() *Builder {
 	return b
 }
 
+// WithConfidenceFactors adds detailed confidence factors to explain the score.
+// v8.0: Added for confidence transparency.
+func (b *Builder) WithConfidenceFactors(factors []ConfidenceFactor) *Builder {
+	if len(factors) == 0 {
+		return b
+	}
+
+	if b.resp.Meta == nil {
+		b.resp.Meta = &Meta{}
+	}
+	if b.resp.Meta.Confidence == nil {
+		b.resp.Meta.Confidence = &Confidence{}
+	}
+
+	b.resp.Meta.Confidence.Factors = factors
+	return b
+}
+
+// WithCache adds cache hit/miss information.
+// v8.0: Added for cache transparency.
+func (b *Builder) WithCache(hit bool, age string, stale bool) *Builder {
+	if b.resp.Meta == nil {
+		b.resp.Meta = &Meta{}
+	}
+
+	b.resp.Meta.Cache = &CacheInfo{
+		Hit:   hit,
+		Age:   age,
+		Stale: stale,
+	}
+	return b
+}
+
+// WithCacheInfo adds detailed cache information.
+// v8.0: Added for cache transparency.
+func (b *Builder) WithCacheInfo(cache *CacheInfo) *Builder {
+	if cache == nil {
+		return b
+	}
+
+	if b.resp.Meta == nil {
+		b.resp.Meta = &Meta{}
+	}
+
+	b.resp.Meta.Cache = cache
+	return b
+}
+
 // Build returns the completed response envelope.
 func (b *Builder) Build() *Response {
 	return b.resp

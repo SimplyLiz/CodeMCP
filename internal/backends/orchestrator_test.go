@@ -763,3 +763,436 @@ func TestBuildContributionsItemCount(t *testing.T) {
 		})
 	}
 }
+
+// =============================================================================
+// Backend Fallback Integration Tests
+// =============================================================================
+// These tests verify the orchestrator's parallel query behavior with multiple backends.
+// In prefer-first mode: only primary backend is queried (no fallback on failure)
+// In union mode: all backends are queried in parallel, results merged
+
+func TestFallback_UnionMode_SCIPFails_LSPSucceeds(t *testing.T) {
+	// Scenario: Union mode - SCIP fails, LSP succeeds
+	// Expected: Should return LSP results (both queried in parallel)
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	policy := DefaultQueryPolicy()
+	policy.MergeMode = MergeModeUnion
+
+	orch := NewOrchestrator(policy, logger)
+
+	// Primary backend fails
+	scipBackend := newMockBackend(BackendSCIP)
+	scipBackend.priority = 1
+	scipBackend.err = fmt.Errorf("SCIP index not found")
+
+	// Secondary backend succeeds
+	lspBackend := newMockBackend(BackendLSP)
+	lspBackend.priority = 2
+	lspBackend.searchResult = &SearchResult{
+		Symbols: []SymbolResult{
+			{StableID: "lsp:sym:1", Name: "FallbackFunc", Kind: "function"},
+		},
+		TotalMatches: 1,
+		Completeness: CompletenessInfo{
+			Score: 0.8,
+		},
+	}
+
+	orch.RegisterBackend(scipBackend)
+	orch.RegisterBackend(lspBackend)
+
+	result, err := orch.Query(context.Background(), QueryRequest{
+		Type:  QueryTypeSearch,
+		Query: "Fallback",
+	})
+
+	if err != nil {
+		t.Fatalf("Expected query to succeed with LSP, got error: %v", err)
+	}
+
+	// Verify we got LSP results
+	searchResult, ok := result.Data.(*SearchResult)
+	if !ok {
+		t.Fatalf("Expected SearchResult, got %T", result.Data)
+	}
+	if len(searchResult.Symbols) != 1 {
+		t.Errorf("Expected 1 symbol from LSP, got %d", len(searchResult.Symbols))
+	}
+	if searchResult.Symbols[0].Name != "FallbackFunc" {
+		t.Errorf("Expected FallbackFunc, got %s", searchResult.Symbols[0].Name)
+	}
+
+	// Verify contributions track both backends
+	scipContrib := findContribution(result.Contributions, BackendSCIP)
+	lspContrib := findContribution(result.Contributions, BackendLSP)
+
+	if scipContrib == nil {
+		t.Error("Expected SCIP in contributions")
+	} else {
+		if scipContrib.WasUsed {
+			t.Error("SCIP contribution should not be marked as used (it failed)")
+		}
+		if scipContrib.Error == "" {
+			t.Error("SCIP contribution should have error message")
+		}
+	}
+
+	if lspContrib == nil {
+		t.Error("Expected LSP in contributions")
+	} else {
+		if !lspContrib.WasUsed {
+			t.Error("LSP contribution should be marked as used")
+		}
+		if lspContrib.ItemCount != 1 {
+			t.Errorf("Expected LSP item count of 1, got %d", lspContrib.ItemCount)
+		}
+	}
+}
+
+func TestFallback_PreferFirst_PrimaryFails_NoFallback(t *testing.T) {
+	// Scenario: Prefer-first mode - only primary is queried, no fallback on failure
+	// Expected: Query fails since primary failed and no fallback is attempted
+	orch := createTestOrchestrator(t)
+
+	scipBackend := newMockBackend(BackendSCIP)
+	scipBackend.priority = 1
+	scipBackend.err = fmt.Errorf("SCIP index not found")
+
+	// LSP is registered but won't be queried in prefer-first mode
+	lspBackend := newMockBackend(BackendLSP)
+	lspBackend.priority = 2
+	lspBackend.searchResult = &SearchResult{
+		Symbols: []SymbolResult{
+			{StableID: "lsp:sym:1", Name: "FallbackFunc", Kind: "function"},
+		},
+		TotalMatches: 1,
+	}
+
+	orch.RegisterBackend(scipBackend)
+	orch.RegisterBackend(lspBackend)
+
+	_, err := orch.Query(context.Background(), QueryRequest{
+		Type:  QueryTypeSearch,
+		Query: "Fallback",
+	})
+
+	// In prefer-first mode, only primary is queried - if it fails, the query fails
+	if err == nil {
+		t.Error("Expected error in prefer-first mode when primary fails")
+	}
+}
+
+func TestFallback_UnionMode_SCIPTimeout_LSPSucceeds(t *testing.T) {
+	// Scenario: Union mode - SCIP times out, LSP responds in time
+	// Expected: Should return LSP results (both queried in parallel)
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	policy := DefaultQueryPolicy()
+	policy.MergeMode = MergeModeUnion
+
+	orch := NewOrchestrator(policy, logger)
+
+	// SCIP backend with long delay (will be canceled by context)
+	scipBackend := newMockBackend(BackendSCIP)
+	scipBackend.priority = 1
+	scipBackend.delay = 500 * time.Millisecond
+
+	// LSP backend responds quickly
+	lspBackend := newMockBackend(BackendLSP)
+	lspBackend.priority = 2
+	lspBackend.delay = 10 * time.Millisecond
+	lspBackend.searchResult = &SearchResult{
+		Symbols: []SymbolResult{
+			{StableID: "lsp:sym:fast", Name: "FastResponse", Kind: "function"},
+		},
+		TotalMatches: 1,
+		Completeness: CompletenessInfo{Score: 0.7},
+	}
+
+	orch.RegisterBackend(scipBackend)
+	orch.RegisterBackend(lspBackend)
+
+	// Use context with timeout shorter than SCIP delay but longer than LSP
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	result, err := orch.Query(ctx, QueryRequest{
+		Type:  QueryTypeSearch,
+		Query: "Fast",
+	})
+
+	// Both backends were queried in parallel, SCIP was canceled, LSP succeeded
+	if err != nil {
+		t.Fatalf("Expected LSP to succeed within timeout, got error: %v", err)
+	}
+
+	searchResult, ok := result.Data.(*SearchResult)
+	if !ok {
+		t.Fatalf("Expected SearchResult, got %T", result.Data)
+	}
+	if len(searchResult.Symbols) == 0 {
+		t.Error("Expected at least one symbol from LSP")
+	}
+}
+
+func TestFallback_UnionMode_MultipleBackends_PartialFailure(t *testing.T) {
+	// Scenario: Union mode - SCIP fails, LSP fails, Git heuristics succeeds
+	// Expected: Should return heuristic results (all queried in parallel)
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	policy := DefaultQueryPolicy()
+	policy.MergeMode = MergeModeUnion
+
+	orch := NewOrchestrator(policy, logger)
+
+	// SCIP fails
+	scipBackend := newMockBackend(BackendSCIP)
+	scipBackend.priority = 1
+	scipBackend.err = fmt.Errorf("SCIP unavailable")
+
+	// LSP also fails
+	lspBackend := newMockBackend(BackendLSP)
+	lspBackend.priority = 2
+	lspBackend.err = fmt.Errorf("LSP connection refused")
+
+	// Git heuristics succeeds
+	gitBackend := newMockBackend(BackendGit)
+	gitBackend.priority = 3
+	gitBackend.searchResult = &SearchResult{
+		Symbols: []SymbolResult{
+			{StableID: "git:heuristic:1", Name: "HeuristicMatch", Kind: "unknown"},
+		},
+		TotalMatches: 1,
+		Completeness: CompletenessInfo{
+			Score: 0.3, // Lower confidence from heuristics
+		},
+	}
+
+	orch.RegisterBackend(scipBackend)
+	orch.RegisterBackend(lspBackend)
+	orch.RegisterBackend(gitBackend)
+
+	result, err := orch.Query(context.Background(), QueryRequest{
+		Type:  QueryTypeSearch,
+		Query: "Heuristic",
+	})
+
+	if err != nil {
+		t.Fatalf("Expected query to succeed with Git, got error: %v", err)
+	}
+
+	searchResult, ok := result.Data.(*SearchResult)
+	if !ok {
+		t.Fatalf("Expected SearchResult, got %T", result.Data)
+	}
+	if len(searchResult.Symbols) != 1 || searchResult.Symbols[0].Name != "HeuristicMatch" {
+		t.Error("Expected heuristic result from Git backend")
+	}
+
+	// All three backends should be in contributions
+	if len(result.Contributions) < 3 {
+		t.Errorf("Expected 3 contributions, got %d", len(result.Contributions))
+	}
+}
+
+func TestFallback_PartialResults_PreferFirst(t *testing.T) {
+	// Scenario: Both backends succeed, prefer-first mode
+	// Expected: Should return SCIP results, LSP ignored
+	orch := createTestOrchestrator(t)
+
+	scipBackend := newMockBackend(BackendSCIP)
+	scipBackend.priority = 1
+	scipBackend.searchResult = &SearchResult{
+		Symbols: []SymbolResult{
+			{StableID: "scip:sym:1", Name: "SCIPResult", Kind: "function"},
+		},
+		TotalMatches: 1,
+		Completeness: CompletenessInfo{Score: 1.0},
+	}
+
+	lspBackend := newMockBackend(BackendLSP)
+	lspBackend.priority = 2
+	lspBackend.searchResult = &SearchResult{
+		Symbols: []SymbolResult{
+			{StableID: "lsp:sym:1", Name: "LSPResult", Kind: "function"},
+		},
+		TotalMatches: 1,
+		Completeness: CompletenessInfo{Score: 0.8},
+	}
+
+	orch.RegisterBackend(scipBackend)
+	orch.RegisterBackend(lspBackend)
+
+	result, err := orch.Query(context.Background(), QueryRequest{
+		Type:  QueryTypeSearch,
+		Query: "Result",
+	})
+
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	searchResult, ok := result.Data.(*SearchResult)
+	if !ok {
+		t.Fatalf("Expected SearchResult, got %T", result.Data)
+	}
+	// In prefer-first mode, should only have SCIP results
+	if len(searchResult.Symbols) != 1 {
+		t.Errorf("Expected 1 symbol in prefer-first mode, got %d", len(searchResult.Symbols))
+	}
+	if searchResult.Symbols[0].Name != "SCIPResult" {
+		t.Errorf("Expected SCIPResult in prefer-first mode, got %s", searchResult.Symbols[0].Name)
+	}
+}
+
+func TestFallback_UnionMode_GetSymbol_PrimaryFails(t *testing.T) {
+	// Scenario: Union mode - GetSymbol on SCIP fails, LSP succeeds
+	// Expected: Should return LSP symbol info (both queried in parallel)
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	policy := DefaultQueryPolicy()
+	policy.MergeMode = MergeModeUnion
+
+	orch := NewOrchestrator(policy, logger)
+
+	scipBackend := newMockBackend(BackendSCIP)
+	scipBackend.priority = 1
+	scipBackend.err = fmt.Errorf("symbol not indexed")
+
+	lspBackend := newMockBackend(BackendLSP)
+	lspBackend.priority = 2
+	lspBackend.symbolResult = &SymbolResult{
+		StableID: "lsp:sym:fallback",
+		Name:     "FallbackSymbol",
+		Kind:     "variable",
+		Completeness: CompletenessInfo{
+			Score: 0.7,
+		},
+	}
+
+	orch.RegisterBackend(scipBackend)
+	orch.RegisterBackend(lspBackend)
+
+	result, err := orch.Query(context.Background(), QueryRequest{
+		Type:     QueryTypeSymbol,
+		SymbolID: "ckb:test:sym:xyz",
+	})
+
+	if err != nil {
+		t.Fatalf("Expected GetSymbol to succeed with LSP, got error: %v", err)
+	}
+
+	symbolResult, ok := result.Data.(*SymbolResult)
+	if !ok {
+		t.Fatalf("Expected SymbolResult, got %T", result.Data)
+	}
+	if symbolResult.Name != "FallbackSymbol" {
+		t.Errorf("Expected FallbackSymbol from LSP, got %s", symbolResult.Name)
+	}
+}
+
+func TestFallback_UnionMode_FindReferences_PrimaryFails(t *testing.T) {
+	// Scenario: Union mode - FindReferences on SCIP fails, LSP succeeds
+	// Expected: Should return LSP references (both queried in parallel)
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	policy := DefaultQueryPolicy()
+	policy.MergeMode = MergeModeUnion
+
+	orch := NewOrchestrator(policy, logger)
+
+	scipBackend := newMockBackend(BackendSCIP)
+	scipBackend.priority = 1
+	scipBackend.err = fmt.Errorf("references not available")
+
+	lspBackend := newMockBackend(BackendLSP)
+	lspBackend.priority = 2
+	lspBackend.referencesResult = &ReferencesResult{
+		References: []Reference{
+			{Location: Location{Path: "fallback.go", Line: 42}, Kind: "call"},
+			{Location: Location{Path: "fallback.go", Line: 99}, Kind: "read"},
+		},
+		TotalReferences: 2,
+		Completeness: CompletenessInfo{
+			Score: 0.6,
+		},
+	}
+
+	orch.RegisterBackend(scipBackend)
+	orch.RegisterBackend(lspBackend)
+
+	result, err := orch.Query(context.Background(), QueryRequest{
+		Type:     QueryTypeReferences,
+		SymbolID: "ckb:test:sym:ref",
+	})
+
+	if err != nil {
+		t.Fatalf("Expected FindReferences to succeed with LSP, got error: %v", err)
+	}
+
+	refResult, ok := result.Data.(*ReferencesResult)
+	if !ok {
+		t.Fatalf("Expected ReferencesResult, got %T", result.Data)
+	}
+	if len(refResult.References) != 2 {
+		t.Errorf("Expected 2 references from LSP, got %d", len(refResult.References))
+	}
+	if refResult.References[0].Location.Path != "fallback.go" {
+		t.Errorf("Expected fallback.go, got %s", refResult.References[0].Location.Path)
+	}
+}
+
+func TestFallback_EmptyResult_TriggersFallback(t *testing.T) {
+	// Scenario: SCIP returns empty result (not error), should still try LSP
+	// Expected: In union mode, both are queried; in prefer-first, empty from primary is accepted
+	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	policy := DefaultQueryPolicy()
+	policy.MergeMode = MergeModeUnion
+
+	orch := NewOrchestrator(policy, logger)
+
+	scipBackend := newMockBackend(BackendSCIP)
+	scipBackend.priority = 1
+	scipBackend.searchResult = &SearchResult{
+		Symbols:      []SymbolResult{}, // Empty but not error
+		TotalMatches: 0,
+		Completeness: CompletenessInfo{Score: 1.0},
+	}
+
+	lspBackend := newMockBackend(BackendLSP)
+	lspBackend.priority = 2
+	lspBackend.searchResult = &SearchResult{
+		Symbols: []SymbolResult{
+			{StableID: "lsp:sym:found", Name: "FoundByLSP", Kind: "function"},
+		},
+		TotalMatches: 1,
+		Completeness: CompletenessInfo{Score: 0.8},
+	}
+
+	orch.RegisterBackend(scipBackend)
+	orch.RegisterBackend(lspBackend)
+
+	result, err := orch.Query(context.Background(), QueryRequest{
+		Type:  QueryTypeSearch,
+		Query: "Found",
+	})
+
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	searchResult, ok := result.Data.(*SearchResult)
+	if !ok {
+		t.Fatalf("Expected SearchResult, got %T", result.Data)
+	}
+	// In union mode, we should get LSP's result even though SCIP returned empty
+	if len(searchResult.Symbols) < 1 {
+		t.Error("Expected at least one symbol from union of empty SCIP + LSP")
+	}
+}
+
+// Helper function to find a contribution by backend ID
+func findContribution(contributions []BackendContribution, backendID BackendID) *BackendContribution {
+	for i := range contributions {
+		if contributions[i].BackendID == backendID {
+			return &contributions[i]
+		}
+	}
+	return nil
+}

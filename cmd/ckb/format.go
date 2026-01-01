@@ -72,6 +72,10 @@ func formatHuman(resp interface{}) (string, error) {
 		return formatTraceHuman(v)
 	case *JobsListResponseCLI:
 		return formatJobsListHuman(v)
+	case *DeadCodeResponseCLI:
+		return formatDeadCodeHuman(v), nil
+	case *BreakingResponseCLI:
+		return formatBreakingHuman(v), nil
 	default:
 		// For types without human formatters, output JSON with a note
 		json, err := formatJSON(resp)
@@ -240,6 +244,40 @@ func formatStatusHuman(resp *StatusResponseCLI) (string, error) {
 		} else {
 			b.WriteString(fmt.Sprintf("  ⚠ %s\n", resp.IndexStatus.Reason))
 			b.WriteString("  Run 'ckb index' to refresh.\n")
+		}
+	}
+
+	// Change Impact Analysis section
+	if resp.ChangeImpactStatus != nil {
+		b.WriteString("\nChange Impact Analysis:\n")
+
+		// Coverage status
+		if resp.ChangeImpactStatus.Coverage != nil {
+			cov := resp.ChangeImpactStatus.Coverage
+			if cov.Found {
+				staleMarker := ""
+				if cov.Stale {
+					staleMarker = " ⚠ stale"
+				}
+				b.WriteString(fmt.Sprintf("  Coverage:   ✓ Found %s (%s)%s\n", cov.Path, cov.Age, staleMarker))
+			} else {
+				b.WriteString("  Coverage:   ⚠ Not found (test mapping will use heuristics)\n")
+				if cov.GenerateCmd != "" {
+					b.WriteString(fmt.Sprintf("              Generate: %s\n", cov.GenerateCmd))
+				}
+			}
+		}
+
+		// CODEOWNERS status
+		if resp.ChangeImpactStatus.Codeowners != nil {
+			co := resp.ChangeImpactStatus.Codeowners
+			if co.Found {
+				b.WriteString(fmt.Sprintf("  CODEOWNERS: ✓ Found %s (%d teams, %d patterns)\n",
+					co.Path, co.TeamCount, co.PatternCount))
+			} else {
+				b.WriteString("  CODEOWNERS: ⚠ Not found (reviewer suggestions unavailable)\n")
+				b.WriteString("              Create: .github/CODEOWNERS\n")
+			}
 		}
 	}
 

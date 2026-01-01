@@ -193,6 +193,44 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 			},
 		},
 		{
+			Name:        "analyzeChange",
+			Description: "Analyze the impact of a set of code changes from git diff. Answers: What might break? Which tests should run? Who needs to review?",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"diffContent": map[string]interface{}{
+						"type":        "string",
+						"description": "Raw git diff content. If empty, uses current working tree diff",
+					},
+					"staged": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "If true and no diffContent provided, analyze only staged changes (--cached)",
+					},
+					"baseBranch": map[string]interface{}{
+						"type":        "string",
+						"default":     "HEAD",
+						"description": "Base branch for comparison when using git diff",
+					},
+					"depth": map[string]interface{}{
+						"type":        "number",
+						"default":     2,
+						"description": "Maximum depth for transitive impact analysis (1-4)",
+					},
+					"includeTests": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Include test files in the analysis",
+					},
+					"strict": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Fail if SCIP index is stale",
+					},
+				},
+			},
+		},
+		{
 			Name:        "explainSymbol",
 			Description: "Get an AI-friendly explanation of a symbol including usage, history, and summary",
 			InputSchema: map[string]interface{}{
@@ -1469,6 +1507,112 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		// v7.6 Static Dead Code Detection (SCIP-based, no telemetry required)
+		{
+			Name:        "findDeadCode",
+			Description: "Find dead code using static analysis of the SCIP index. Detects: symbols with zero references, self-only references, test-only references, and over-exported symbols. Works without telemetry.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"scope": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Limit analysis to specific packages/paths (e.g., ['internal/legacy', 'pkg/utils'])",
+					},
+					"includeUnexported": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Include unexported (private) symbols in analysis",
+					},
+					"minConfidence": map[string]interface{}{
+						"type":        "number",
+						"default":     0.7,
+						"description": "Minimum confidence threshold (0-1). Higher = fewer false positives",
+					},
+					"excludePatterns": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Glob patterns to exclude (e.g., ['*_generated.go', 'mocks/*'])",
+					},
+					"includeTestOnly": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Report symbols only used by tests as dead code",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"default":     100,
+						"description": "Maximum results to return",
+					},
+				},
+			},
+		},
+		// v7.6 Affected Tests Tool
+		{
+			Name:        "getAffectedTests",
+			Description: "Find tests affected by current code changes. Uses SCIP symbol analysis and heuristics to trace from changed code to test files. Useful for targeted test runs in CI or local development.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"staged": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Only analyze staged changes (git add)",
+					},
+					"baseBranch": map[string]interface{}{
+						"type":        "string",
+						"default":     "HEAD",
+						"description": "Base branch/commit to compare against",
+					},
+					"depth": map[string]interface{}{
+						"type":        "integer",
+						"default":     1,
+						"description": "Maximum depth for transitive impact analysis (1-3)",
+					},
+					"useCoverage": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Use coverage data if available for more accurate mapping",
+					},
+				},
+			},
+		},
+		// v7.6 Breaking Change Detection Tool
+		{
+			Name:        "compareAPI",
+			Description: "Compare API surfaces between two git refs to detect breaking changes. Finds removed symbols, signature changes, visibility changes, and renames. Useful for release planning and API compatibility checks.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"baseRef": map[string]interface{}{
+						"type":        "string",
+						"default":     "HEAD~1",
+						"description": "Base git ref for comparison (e.g., 'v1.0.0', 'main')",
+					},
+					"targetRef": map[string]interface{}{
+						"type":        "string",
+						"default":     "HEAD",
+						"description": "Target git ref for comparison (e.g., 'HEAD', 'v2.0.0')",
+					},
+					"scope": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Limit analysis to specific packages/paths",
+					},
+					"includeMinor": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Include non-breaking changes (additions) in output",
+					},
+				},
+			},
+		},
 		// v6.5 Developer Intelligence tools
 		{
 			Name:        "explainOrigin",
@@ -1732,6 +1876,27 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				"properties": map[string]interface{}{},
 			},
 		},
+		// v8.0 Foundation tools
+		{
+			Name:        "reindex",
+			Description: "Trigger a refresh of the SCIP index without restarting CKB. Use when index is stale or after significant code changes.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"scope": map[string]interface{}{
+						"type":        "string",
+						"description": "Reindex scope: 'full' for complete reindex, 'incremental' for changed files only",
+						"enum":        []string{"full", "incremental"},
+						"default":     "full",
+					},
+					"async": map[string]interface{}{
+						"type":        "boolean",
+						"description": "If true, return immediately and run reindex in background",
+						"default":     false,
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -1746,6 +1911,7 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["findReferences"] = s.toolFindReferences
 	s.tools["getArchitecture"] = s.toolGetArchitecture
 	s.tools["analyzeImpact"] = s.toolAnalyzeImpact
+	s.tools["analyzeChange"] = s.toolAnalyzeChange
 	s.tools["explainSymbol"] = s.toolExplainSymbol
 	s.tools["justifySymbol"] = s.toolJustifySymbol
 	s.tools["getCallGraph"] = s.toolGetCallGraph
@@ -1809,6 +1975,12 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["getTelemetryStatus"] = s.toolGetTelemetryStatus
 	s.tools["getObservedUsage"] = s.toolGetObservedUsage
 	s.tools["findDeadCodeCandidates"] = s.toolFindDeadCodeCandidates
+	// v7.6 Static Dead Code Detection
+	s.tools["findDeadCode"] = s.toolFindDeadCode
+	// v7.6 Affected Tests
+	s.tools["getAffectedTests"] = s.toolGetAffectedTests
+	// v7.6 Breaking Change Detection
+	s.tools["compareAPI"] = s.toolCompareAPI
 	// v6.5 Developer Intelligence tools
 	s.tools["explainOrigin"] = s.toolExplainOrigin
 	s.tools["analyzeCoupling"] = s.toolAnalyzeCoupling
@@ -1825,4 +1997,6 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["listRepos"] = s.toolListRepos
 	s.tools["switchRepo"] = s.toolSwitchRepo
 	s.tools["getActiveRepo"] = s.toolGetActiveRepo
+	// v8.0 Foundation tools
+	s.tools["reindex"] = s.toolReindex
 }
