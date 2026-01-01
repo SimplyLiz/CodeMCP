@@ -1876,6 +1876,27 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				"properties": map[string]interface{}{},
 			},
 		},
+		// v8.0 Foundation tools
+		{
+			Name:        "reindex",
+			Description: "Trigger a refresh of the SCIP index without restarting CKB. Use when index is stale or after significant code changes.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"scope": map[string]interface{}{
+						"type":        "string",
+						"description": "Reindex scope: 'full' for complete reindex, 'incremental' for changed files only",
+						"enum":        []string{"full", "incremental"},
+						"default":     "full",
+					},
+					"async": map[string]interface{}{
+						"type":        "boolean",
+						"description": "If true, return immediately and run reindex in background",
+						"default":     false,
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -1976,4 +1997,6 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["listRepos"] = s.toolListRepos
 	s.tools["switchRepo"] = s.toolSwitchRepo
 	s.tools["getActiveRepo"] = s.toolGetActiveRepo
+	// v8.0 Foundation tools
+	s.tools["reindex"] = s.toolReindex
 }
