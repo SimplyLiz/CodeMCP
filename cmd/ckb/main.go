@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"os"
-	"sync"
-	"time"
 
 	"ckb/internal/logging"
 	"ckb/internal/update"
@@ -16,23 +14,11 @@ func main() {
 		Level:  "info",
 	})
 
-	// Update check with deferred notification pattern:
-	// 1. Show cached notification immediately (non-blocking)
-	// 2. Start background refresh for next run
-	// Skip for mcp/serve commands to avoid breaking protocol
-	var refreshWg sync.WaitGroup
+	// Start async update check (skip for mcp command to avoid breaking protocol)
+	var updateCh <-chan *update.UpdateInfo
 	if !isMCPCommand() {
 		checker := update.NewChecker()
-		// Show cached update notification (instant, no HTTP)
-		if info := checker.CheckCached(); info != nil {
-			_, _ = os.Stderr.WriteString(info.FormatUpdateMessage())
-		}
-		// Refresh cache in background for next run
-		refreshWg.Add(1)
-		go func() {
-			defer refreshWg.Done()
-			checker.RefreshCache(context.Background())
-		}()
+		updateCh = checker.CheckAsync(context.Background())
 	}
 
 	if err := rootCmd.Execute(); err != nil {
@@ -42,24 +28,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Wait briefly for cache refresh to complete (max 500ms)
-	// This ensures the cache gets populated for next run
-	waitWithTimeout(&refreshWg, 500*time.Millisecond)
-}
-
-// waitWithTimeout waits for a WaitGroup with a maximum timeout
-func waitWithTimeout(wg *sync.WaitGroup, timeout time.Duration) {
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		// Completed before timeout
-	case <-time.After(timeout):
-		// Timeout reached, exit anyway
+	// Print update notification if available
+	if updateCh != nil {
+		select {
+		case info := <-updateCh:
+			if info != nil {
+				_, _ = os.Stderr.WriteString(info.FormatUpdateMessage())
+			}
+		default:
+			// Don't block if check hasn't completed yet
+		}
 	}
 }
 

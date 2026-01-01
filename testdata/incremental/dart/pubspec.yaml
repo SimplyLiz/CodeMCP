@@ -1,6 +1,0 @@
-name: incremental_test
-description: Test fixture for incremental indexing
-version: 1.0.0
-
-environment:
-  sdk: '>=3.0.0 <4.0.0'

@@ -17,20 +17,11 @@ const (
 	TierSpeculative ConfidenceTier = "speculative"
 )
 
-// ConfidenceFactor describes a factor that contributed to the confidence score.
-// v8.0: Added to explain confidence scores with transparency.
-type ConfidenceFactor struct {
-	Factor string  `json:"factor"` // git_backend, index_age, match_type, etc.
-	Status string  `json:"status"` // available, unavailable, stale, exact, fuzzy
-	Impact float64 `json:"impact"` // +/- contribution to score (-1.0 to 1.0)
-}
-
 // Confidence describes result quality.
 type Confidence struct {
-	Score   float64            `json:"score"`             // 0.0 - 1.0
-	Tier    ConfidenceTier     `json:"tier"`              // high, medium, low, speculative
-	Reasons []string           `json:"reasons,omitempty"` // why this tier
-	Factors []ConfidenceFactor `json:"factors,omitempty"` // v8.0: detailed factors
+	Score   float64        `json:"score"`             // 0.0 - 1.0
+	Tier    ConfidenceTier `json:"tier"`              // high, medium, low, speculative
+	Reasons []string       `json:"reasons,omitempty"` // why this tier
 }
 
 // Provenance describes which backends contributed to the result.
@@ -58,22 +49,12 @@ type Truncation struct {
 	Reason      string `json:"reason,omitempty"` // "max-symbols", "max-modules", etc.
 }
 
-// CacheInfo describes cache hit/miss status for transparency.
-// v8.0: Added for cache transparency.
-type CacheInfo struct {
-	Hit   bool   `json:"hit"`             // true if served from cache
-	Age   string `json:"age,omitempty"`   // if hit, how old (e.g., "2m30s")
-	Key   string `json:"key,omitempty"`   // cache key for debugging
-	Stale bool   `json:"stale,omitempty"` // served stale while refreshing
-}
-
 // Meta holds response metadata.
 type Meta struct {
 	Confidence *Confidence `json:"confidence,omitempty"`
 	Provenance *Provenance `json:"provenance,omitempty"`
 	Freshness  *Freshness  `json:"freshness,omitempty"`
 	Truncation *Truncation `json:"truncation,omitempty"`
-	Cache      *CacheInfo  `json:"cache,omitempty"` // v8.0: cache transparency
 }
 
 // SuggestedCall represents a recommended follow-up tool call.

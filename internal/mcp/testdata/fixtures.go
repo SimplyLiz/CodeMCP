@@ -332,197 +332,65 @@ func GenerateEntrypoints(n int) []EntrypointFixture {
 	return entrypoints
 }
 
-// ChangedSymbolFixture represents a symbol changed in a diff.
-type ChangedSymbolFixture struct {
-	SymbolID   string
-	Name       string
-	File       string
-	ChangeType string
-	Lines      []int
-	Confidence float64
-}
-
-// AffectedTestFixture represents an affected test file.
-type AffectedTestFixture struct {
-	FilePath   string
-	Reason     string
-	AffectedBy []string
-	Confidence float64
-}
-
-// ChangeSetFixture represents a change set analysis result.
-type ChangeSetFixture struct {
-	ChangedSymbols  []ChangedSymbolFixture
-	AffectedSymbols []ImpactNodeFixture
-	ModulesAffected []ModuleFixture
-	RiskLevel       string
-	RiskScore       float64
-}
-
-// AffectedTestsFixture represents an affected tests response.
-type AffectedTestsFixture struct {
-	Tests      []AffectedTestFixture
-	TotalFiles int
-	RunCommand string
-	Confidence float64
-}
-
-// GenerateChangedSymbols creates n synthetic changed symbols for change set analysis.
-func GenerateChangedSymbols(n int) []ChangedSymbolFixture {
-	symbols := make([]ChangedSymbolFixture, n)
-	changeTypes := []string{"modified", "added", "deleted"}
-
-	for i := 0; i < n; i++ {
-		symbols[i] = ChangedSymbolFixture{
-			SymbolID:   fmt.Sprintf("ckb:test:sym:%08x", i),
-			Name:       fmt.Sprintf("ChangedSymbol%d", i),
-			File:       fmt.Sprintf("internal/module%d/file%d.go", i/10, i%10),
-			ChangeType: changeTypes[i%len(changeTypes)],
-			Lines:      []int{(i % 100) + 1, (i % 100) + 10},
-			Confidence: 0.8 + float64(i%3)*0.1,
-		}
-	}
-	return symbols
-}
-
-// GenerateAffectedTests creates n synthetic affected test files.
-func GenerateAffectedTests(n int) []AffectedTestFixture {
-	tests := make([]AffectedTestFixture, n)
-	reasons := []string{"direct", "transitive", "coverage"}
-
-	for i := 0; i < n; i++ {
-		affectedBy := make([]string, (i%3)+1)
-		for j := range affectedBy {
-			affectedBy[j] = fmt.Sprintf("ckb:test:sym:%08x", i*5+j)
-		}
-
-		tests[i] = AffectedTestFixture{
-			FilePath:   fmt.Sprintf("internal/module%d/file%d_test.go", i/10, i%10),
-			Reason:     reasons[i%len(reasons)],
-			AffectedBy: affectedBy,
-			Confidence: 0.7 + float64(i%4)*0.1,
-		}
-	}
-	return tests
-}
-
-// GenerateChangeSet creates a synthetic change set analysis.
-func GenerateChangeSet(changedCount, affectedCount int) ChangeSetFixture {
-	riskLevels := []string{"low", "medium", "high", "critical"}
-	riskIdx := 0
-	if changedCount > 50 {
-		riskIdx = 3
-	} else if changedCount > 20 {
-		riskIdx = 2
-	} else if changedCount > 10 {
-		riskIdx = 1
-	}
-
-	return ChangeSetFixture{
-		ChangedSymbols:  GenerateChangedSymbols(changedCount),
-		AffectedSymbols: GenerateImpactNodes(affectedCount, 3),
-		ModulesAffected: GenerateModules(changedCount / 10),
-		RiskLevel:       riskLevels[riskIdx],
-		RiskScore:       float64(riskIdx) * 0.25,
-	}
-}
-
-// GenerateAffectedTestsFixture creates a synthetic affected tests result.
-func GenerateAffectedTestsFixture(n int) AffectedTestsFixture {
-	tests := GenerateAffectedTests(n)
-	return AffectedTestsFixture{
-		Tests:      tests,
-		TotalFiles: n,
-		RunCommand: fmt.Sprintf("go test ./internal/module0/... ./internal/module1/..."),
-		Confidence: 0.85,
-	}
-}
-
 // FixtureSet contains fixtures for a specific size tier.
 type FixtureSet struct {
-	Tier          string
-	Symbols       []SymbolFixture
-	References    []ReferenceFixture
-	Hotspots      []HotspotFixture
-	CallGraph     []CallGraphNodeFixture
-	ImpactNodes   []ImpactNodeFixture
-	Modules       []ModuleFixture
-	UsagePaths    []UsagePathFixture
-	DiffSummary   DiffSummaryFixture
-	Entrypoints   []EntrypointFixture
-	ChangeSet     ChangeSetFixture
-	AffectedTests AffectedTestsFixture
+	Tier        string
+	Symbols     []SymbolFixture
+	References  []ReferenceFixture
+	Hotspots    []HotspotFixture
+	CallGraph   []CallGraphNodeFixture
+	ImpactNodes []ImpactNodeFixture
+	Modules     []ModuleFixture
+	UsagePaths  []UsagePathFixture
+	DiffSummary DiffSummaryFixture
+	Entrypoints []EntrypointFixture
 }
 
 // SmallFixtures returns fixtures for small result sets.
 func SmallFixtures() *FixtureSet {
 	return &FixtureSet{
-		Tier:          TierSmall,
-		Symbols:       GenerateSymbols(20),
-		References:    GenerateReferences(50),
-		Hotspots:      GenerateHotspots(10),
-		CallGraph:     GenerateCallGraph("root", 2, 3),
-		ImpactNodes:   GenerateImpactNodes(10, 2),
-		Modules:       GenerateModules(5),
-		UsagePaths:    GenerateUsagePaths(5, 3),
-		DiffSummary:   GenerateDiffSummary(10),
-		Entrypoints:   GenerateEntrypoints(20),
-		ChangeSet:     GenerateChangeSet(10, 20),
-		AffectedTests: GenerateAffectedTestsFixture(5),
+		Tier:        TierSmall,
+		Symbols:     GenerateSymbols(20),
+		References:  GenerateReferences(50),
+		Hotspots:    GenerateHotspots(10),
+		CallGraph:   GenerateCallGraph("root", 2, 3),
+		ImpactNodes: GenerateImpactNodes(10, 2),
+		Modules:     GenerateModules(5),
+		UsagePaths:  GenerateUsagePaths(5, 3),
+		DiffSummary: GenerateDiffSummary(10),
+		Entrypoints: GenerateEntrypoints(20),
 	}
 }
 
 // MediumFixtures returns fixtures for medium result sets.
 func MediumFixtures() *FixtureSet {
 	return &FixtureSet{
-		Tier:          TierMedium,
-		Symbols:       GenerateSymbols(100),
-		References:    GenerateReferences(500),
-		Hotspots:      GenerateHotspots(50),
-		CallGraph:     GenerateCallGraph("root", 3, 4),
-		ImpactNodes:   GenerateImpactNodes(40, 3),
-		Modules:       GenerateModules(15),
-		UsagePaths:    GenerateUsagePaths(20, 4),
-		DiffSummary:   GenerateDiffSummary(50),
-		Entrypoints:   GenerateEntrypoints(50),
-		ChangeSet:     GenerateChangeSet(100, 200), // 100 changed symbols
-		AffectedTests: GenerateAffectedTestsFixture(20),
+		Tier:        TierMedium,
+		Symbols:     GenerateSymbols(100),
+		References:  GenerateReferences(500),
+		Hotspots:    GenerateHotspots(50),
+		CallGraph:   GenerateCallGraph("root", 3, 4),
+		ImpactNodes: GenerateImpactNodes(40, 3),
+		Modules:     GenerateModules(15),
+		UsagePaths:  GenerateUsagePaths(20, 4),
+		DiffSummary: GenerateDiffSummary(50),
+		Entrypoints: GenerateEntrypoints(50),
 	}
 }
 
 // LargeFixtures returns fixtures for large result sets (stress test).
 func LargeFixtures() *FixtureSet {
 	return &FixtureSet{
-		Tier:          TierLarge,
-		Symbols:       GenerateSymbols(500),
-		References:    GenerateReferences(5000),
-		Hotspots:      GenerateHotspots(200),
-		CallGraph:     GenerateCallGraph("root", 4, 5),
-		ImpactNodes:   GenerateImpactNodes(100, 4),
-		Modules:       GenerateModules(30),
-		UsagePaths:    GenerateUsagePaths(50, 5),
-		DiffSummary:   GenerateDiffSummary(100),
-		Entrypoints:   GenerateEntrypoints(100),
-		ChangeSet:     GenerateChangeSet(500, 1000),
-		AffectedTests: GenerateAffectedTestsFixture(50),
-	}
-}
-
-// ExtraLargeFixtures returns fixtures for extra large result sets (1000 symbols).
-func ExtraLargeFixtures() *FixtureSet {
-	return &FixtureSet{
-		Tier:          "xlarge",
-		Symbols:       GenerateSymbols(1000),
-		References:    GenerateReferences(10000),
-		Hotspots:      GenerateHotspots(500),
-		CallGraph:     GenerateCallGraph("root", 5, 6),
-		ImpactNodes:   GenerateImpactNodes(200, 5),
-		Modules:       GenerateModules(50),
-		UsagePaths:    GenerateUsagePaths(100, 6),
-		DiffSummary:   GenerateDiffSummary(200),
-		Entrypoints:   GenerateEntrypoints(200),
-		ChangeSet:     GenerateChangeSet(1000, 2000), // 1000 changed symbols
-		AffectedTests: GenerateAffectedTestsFixture(100),
+		Tier:        TierLarge,
+		Symbols:     GenerateSymbols(500),
+		References:  GenerateReferences(5000),
+		Hotspots:    GenerateHotspots(200),
+		CallGraph:   GenerateCallGraph("root", 4, 5),
+		ImpactNodes: GenerateImpactNodes(100, 4),
+		Modules:     GenerateModules(30),
+		UsagePaths:  GenerateUsagePaths(50, 5),
+		DiffSummary: GenerateDiffSummary(100),
+		Entrypoints: GenerateEntrypoints(100),
 	}
 }
 
@@ -758,95 +626,5 @@ func (f *FixtureSet) ToListEntrypointsJSON() string {
 	sb.WriteString(`],"total":`)
 	sb.WriteString(fmt.Sprintf("%d", len(f.Entrypoints)))
 	sb.WriteString(`,"truncated":false}}`)
-	return sb.String()
-}
-
-// ToAnalyzeChangeJSON converts change set to analyzeChange response JSON.
-func (f *FixtureSet) ToAnalyzeChangeJSON() string {
-	var sb strings.Builder
-	sb.WriteString(`{"schemaVersion":"1.0","data":{"summary":{`)
-	sb.WriteString(fmt.Sprintf(`"filesChanged":%d,`, len(f.ChangeSet.ChangedSymbols)/5))
-	sb.WriteString(fmt.Sprintf(`"symbolsChanged":%d,`, len(f.ChangeSet.ChangedSymbols)))
-	sb.WriteString(fmt.Sprintf(`"directlyAffected":%d,`, len(f.ChangeSet.AffectedSymbols)/2))
-	sb.WriteString(fmt.Sprintf(`"transitivelyAffected":%d,`, len(f.ChangeSet.AffectedSymbols)/2))
-	sb.WriteString(fmt.Sprintf(`"estimatedRisk":"%s"`, f.ChangeSet.RiskLevel))
-	sb.WriteString(`},"changedSymbols":[`)
-
-	for i, sym := range f.ChangeSet.ChangedSymbols {
-		if i > 0 {
-			sb.WriteString(",")
-		}
-		sb.WriteString(fmt.Sprintf(
-			`{"symbolId":"%s","name":"%s","file":"%s","changeType":"%s","lines":[%d,%d],"confidence":%.2f}`,
-			sym.SymbolID, sym.Name, sym.File, sym.ChangeType, sym.Lines[0], sym.Lines[1], sym.Confidence,
-		))
-	}
-
-	sb.WriteString(`],"affectedSymbols":[`)
-	for i, sym := range f.ChangeSet.AffectedSymbols {
-		if i > 0 {
-			sb.WriteString(",")
-		}
-		sb.WriteString(fmt.Sprintf(
-			`{"stableId":"%s","name":"%s","kind":"%s","distance":%d,"confidence":0.8}`,
-			sym.SymbolID, sym.Name, sym.Kind, sym.Depth,
-		))
-	}
-
-	sb.WriteString(`],"modulesAffected":[`)
-	for i, mod := range f.ChangeSet.ModulesAffected {
-		if i > 0 {
-			sb.WriteString(",")
-		}
-		sb.WriteString(fmt.Sprintf(
-			`{"moduleId":"%s","name":"%s","impactCount":%d}`,
-			mod.Path, mod.Name, mod.FileCount,
-		))
-	}
-
-	sb.WriteString(`],"riskScore":{"level":"`)
-	sb.WriteString(f.ChangeSet.RiskLevel)
-	sb.WriteString(fmt.Sprintf(`","score":%.2f}}}`, f.ChangeSet.RiskScore))
-	return sb.String()
-}
-
-// ToGetAffectedTestsJSON converts affected tests to getAffectedTests response JSON.
-func (f *FixtureSet) ToGetAffectedTestsJSON() string {
-	var sb strings.Builder
-	sb.WriteString(`{"schemaVersion":"1.0","data":{"tests":[`)
-
-	for i, test := range f.AffectedTests.Tests {
-		if i > 0 {
-			sb.WriteString(",")
-		}
-		sb.WriteString(fmt.Sprintf(
-			`{"filePath":"%s","reason":"%s","confidence":%.2f,"affectedBy":[`,
-			test.FilePath, test.Reason, test.Confidence,
-		))
-		for j, sym := range test.AffectedBy {
-			if j > 0 {
-				sb.WriteString(",")
-			}
-			sb.WriteString(fmt.Sprintf(`"%s"`, sym))
-		}
-		sb.WriteString(`]}`)
-	}
-
-	sb.WriteString(`],"summary":{`)
-	sb.WriteString(fmt.Sprintf(`"totalFiles":%d,`, f.AffectedTests.TotalFiles))
-	direct := 0
-	trans := 0
-	for _, t := range f.AffectedTests.Tests {
-		if t.Reason == "direct" {
-			direct++
-		} else {
-			trans++
-		}
-	}
-	sb.WriteString(fmt.Sprintf(`"directFiles":%d,`, direct))
-	sb.WriteString(fmt.Sprintf(`"transitiveFiles":%d`, trans))
-	sb.WriteString(`},"runCommand":"`)
-	sb.WriteString(f.AffectedTests.RunCommand)
-	sb.WriteString(fmt.Sprintf(`","confidence":%.2f}}`, f.AffectedTests.Confidence))
 	return sb.String()
 }

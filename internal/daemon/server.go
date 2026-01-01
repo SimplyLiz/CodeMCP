@@ -52,9 +52,6 @@ func (d *Daemon) apiRouter() http.Handler {
 	mux.HandleFunc("/api/v1/federations", d.handleFederationsList)
 	mux.HandleFunc("/api/v1/federations/", d.handleFederationsRoute)
 
-	// Refresh operations (v7.5+)
-	mux.HandleFunc("/api/v1/refresh", d.handleRefresh)
-
 	return mux
 }
 
@@ -242,78 +239,4 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%dm%ds", m, s)
 	}
 	return fmt.Sprintf("%ds", s)
-}
-
-// RefreshRequest represents a refresh API request
-type RefreshRequest struct {
-	Full bool   `json:"full"` // Force full reindex instead of incremental
-	Repo string `json:"repo"` // Repository path (optional, uses first watched repo if empty)
-}
-
-// RefreshResponse represents a refresh API response
-type RefreshResponse struct {
-	Status string `json:"status"` // "queued" or "error"
-	Repo   string `json:"repo"`
-	Type   string `json:"type"` // "incremental" or "full"
-	Error  string `json:"error,omitempty"`
-}
-
-// handleRefresh handles POST /api/v1/refresh
-func (d *Daemon) handleRefresh(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var req RefreshRequest
-	if r.Body != nil && r.ContentLength > 0 {
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			d.writeError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON body")
-			return
-		}
-	}
-
-	// Determine repository path
-	repoPath := req.Repo
-	if repoPath == "" {
-		// Use first watched repo
-		watchedRepos := d.watcher.WatchedRepos()
-		if len(watchedRepos) == 0 {
-			d.writeError(w, http.StatusBadRequest, "no_repo", "No repository specified and no watched repos")
-			return
-		}
-		repoPath = watchedRepos[0]
-	}
-
-	// Check if already pending
-	if d.refreshManager.HasPendingRefresh(repoPath) {
-		d.writeJSON(w, http.StatusAccepted, RefreshResponse{
-			Status: "already_queued",
-			Repo:   repoPath,
-			Type:   "incremental",
-		})
-		return
-	}
-
-	// Queue refresh in background
-	refreshType := "incremental"
-	if req.Full {
-		refreshType = "full"
-	}
-
-	d.wg.Add(1)
-	go func() {
-		defer d.wg.Done()
-		if req.Full {
-			d.refreshManager.RunFullReindex(d.ctx, repoPath)
-		} else {
-			d.refreshManager.RunIncrementalRefresh(d.ctx, repoPath)
-		}
-	}()
-
-	d.writeJSON(w, http.StatusAccepted, RefreshResponse{
-		Status: "queued",
-		Repo:   repoPath,
-		Type:   refreshType,
-	})
 }

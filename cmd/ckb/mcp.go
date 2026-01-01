@@ -47,35 +47,24 @@ not directly by users.`,
 }
 
 var (
-	mcpStdio         bool
-	mcpWatch         bool
-	mcpWatchInterval time.Duration
-	mcpRepo          string
-	mcpPreset        string
-	mcpListPresets   bool
+	mcpStdio  bool
+	mcpWatch  bool
+	mcpRepo   string
+	mcpPreset string
 )
 
-const defaultWatchInterval = 10 * time.Second
+const watchPollInterval = 30 * time.Second
 
 func init() {
 	rootCmd.AddCommand(mcpCmd)
 	mcpCmd.Flags().BoolVar(&mcpStdio, "stdio", true, "Use stdio for communication (default)")
 	mcpCmd.Flags().BoolVar(&mcpWatch, "watch", false, "Watch for changes and auto-reindex")
-	mcpCmd.Flags().DurationVar(&mcpWatchInterval, "watch-interval", defaultWatchInterval,
-		"Watch mode polling interval (min 5s, max 5m)")
 	mcpCmd.Flags().StringVar(&mcpRepo, "repo", "", "Repository path or registry name (auto-detected)")
 	mcpCmd.Flags().StringVar(&mcpPreset, "preset", mcp.DefaultPreset,
 		"Tool preset: core, review, refactor, federation, docs, ops, full")
-	mcpCmd.Flags().BoolVar(&mcpListPresets, "list-presets", false,
-		"List available presets with tool counts and token estimates")
 }
 
 func runMCP(cmd *cobra.Command, args []string) error {
-	// Handle --list-presets flag
-	if mcpListPresets {
-		return listPresets()
-	}
-
 	// Create logger for MCP server
 	// Use stderr for logs since stdout is used for MCP protocol
 	logger := logging.NewLogger(logging.Config{
@@ -88,6 +77,8 @@ func runMCP(cmd *cobra.Command, args []string) error {
 	if !mcp.IsValidPreset(mcpPreset) {
 		return fmt.Errorf("invalid preset: %s (valid: %v)", mcpPreset, mcp.ValidPresets())
 	}
+
+	fmt.Fprintf(os.Stderr, "CKB MCP Server v%s | preset=%s\n", version.Version, mcpPreset)
 
 	// Determine mode and repo
 	var server *mcp.MCPServer
@@ -174,32 +165,15 @@ func runMCP(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to set preset: %w", err)
 	}
 
-	// Log startup banner with token efficiency info
+	// Log preset statistics
 	preset, exposedCount, totalCount := server.GetPresetStats()
-	activeTokens := server.EstimateActiveTokens()
-	percentage := (exposedCount * 100) / totalCount
-
-	fmt.Fprintln(os.Stderr)
-	fmt.Fprintf(os.Stderr, "CKB MCP Server v%s\n", version.Version)
-	fmt.Fprintf(os.Stderr, "  Active tools: %d / %d (%d%%)\n", exposedCount, totalCount, percentage)
-	fmt.Fprintf(os.Stderr, "  Estimated context: %s\n", mcp.FormatTokens(activeTokens))
-	fmt.Fprintf(os.Stderr, "  Preset: %s\n", preset)
-	fmt.Fprintln(os.Stderr)
+	fmt.Fprintf(os.Stderr, "Tools: %d/%d (preset: %s)\n", exposedCount, totalCount, preset)
 
 	// Start watch mode if enabled
 	if mcpWatch {
-		// Validate and clamp watch interval
-		watchInterval := mcpWatchInterval
-		if watchInterval < 5*time.Second {
-			watchInterval = 5 * time.Second
-		}
-		if watchInterval > 5*time.Minute {
-			watchInterval = 5 * time.Minute
-		}
-
-		go runWatchLoop(repoRoot, watchInterval, logger)
+		go runWatchLoop(repoRoot, logger)
 		logger.Info("Watch mode enabled", map[string]interface{}{
-			"pollInterval": watchInterval.String(),
+			"pollInterval": watchPollInterval.String(),
 		})
 	}
 
@@ -232,9 +206,9 @@ func isRepoPath(s string) bool {
 }
 
 // runWatchLoop periodically checks index freshness and reindexes if stale
-func runWatchLoop(repoRoot string, interval time.Duration, logger *logging.Logger) {
+func runWatchLoop(repoRoot string, logger *logging.Logger) {
 	ckbDir := filepath.Join(repoRoot, ".ckb")
-	ticker := time.NewTicker(interval)
+	ticker := time.NewTicker(watchPollInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -249,23 +223,11 @@ func runWatchLoop(repoRoot string, interval time.Duration, logger *logging.Logge
 			continue
 		}
 
-		// Determine trigger type based on freshness reason
-		trigger := index.TriggerStale
-		triggerInfo := freshness.Reason
-		if freshness.CommitsBehind > 0 {
-			trigger = index.TriggerHEAD
-			// Try to get branch info for triggerInfo
-			if meta.CommitHash != "" && freshness.CurrentCommit != "" {
-				triggerInfo = fmt.Sprintf("%d commit(s) behind", freshness.CommitsBehind)
-			}
-		}
-
 		logger.Info("Index stale, triggering reindex", map[string]interface{}{
-			"trigger": string(trigger),
-			"reason":  freshness.Reason,
+			"reason": freshness.Reason,
 		})
 
-		if err := triggerReindex(repoRoot, ckbDir, trigger, triggerInfo, logger); err != nil {
+		if err := triggerReindex(repoRoot, ckbDir, logger); err != nil {
 			logger.Error("Reindex failed", map[string]interface{}{
 				"error": err.Error(),
 			})
@@ -274,7 +236,7 @@ func runWatchLoop(repoRoot string, interval time.Duration, logger *logging.Logge
 }
 
 // triggerReindex runs the SCIP indexer and updates metadata
-func triggerReindex(repoRoot, ckbDir string, trigger index.RefreshTrigger, triggerInfo string, logger *logging.Logger) error {
+func triggerReindex(repoRoot, ckbDir string, logger *logging.Logger) error {
 	// Load project config to get language and indexer
 	config, err := project.LoadConfig(repoRoot)
 	if err != nil {
@@ -319,19 +281,13 @@ func triggerReindex(repoRoot, ckbDir string, trigger index.RefreshTrigger, trigg
 
 	duration := time.Since(start)
 
-	// Update metadata with refresh trigger info
+	// Update metadata
 	newMeta := &index.IndexMeta{
 		CreatedAt:   time.Now(),
 		FileCount:   countSourceFiles(repoRoot, config.Language),
 		Duration:    duration.Round(time.Millisecond * 100).String(),
 		Indexer:     indexer.CheckCommand,
 		IndexerArgs: parts,
-		LastRefresh: &index.LastRefresh{
-			At:          time.Now(),
-			Trigger:     trigger,
-			TriggerInfo: triggerInfo,
-			DurationMs:  duration.Milliseconds(),
-		},
 	}
 
 	if rs, err := repostate.ComputeRepoState(repoRoot); err == nil {
@@ -346,52 +302,9 @@ func triggerReindex(repoRoot, ckbDir string, trigger index.RefreshTrigger, trigg
 	}
 
 	logger.Info("Reindex complete", map[string]interface{}{
-		"trigger":  string(trigger),
 		"duration": duration.String(),
 		"files":    newMeta.FileCount,
 	})
-
-	return nil
-}
-
-// listPresets prints available presets with tool counts and token estimates
-func listPresets() error {
-	// Create a minimal logger for server initialization
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Output: os.Stderr,
-	})
-
-	// Create server to get tool definitions
-	server := mcp.NewMCPServer(version.Version, nil, logger)
-	allTools := server.GetToolDefinitions()
-	presets := mcp.GetAllPresetInfo(allTools)
-
-	fmt.Println()
-	fmt.Println("Available presets:")
-	fmt.Println()
-
-	// Print table header
-	fmt.Printf("  %-12s %6s %14s  %s\n", "PRESET", "TOOLS", "TOKENS", "DESCRIPTION")
-	fmt.Printf("  %-12s %6s %14s  %s\n", "------", "-----", "------", "-----------")
-
-	for _, p := range presets {
-		suffix := ""
-		if p.IsDefault {
-			suffix = " (default)"
-		}
-		fmt.Printf("  %-12s %6d %14s  %s%s\n",
-			p.Name,
-			p.ToolCount,
-			mcp.FormatTokens(p.TokenCount),
-			p.Description,
-			suffix,
-		)
-	}
-
-	fmt.Println()
-	fmt.Printf("Use: ckb mcp --preset=<name>\n")
-	fmt.Println()
 
 	return nil
 }

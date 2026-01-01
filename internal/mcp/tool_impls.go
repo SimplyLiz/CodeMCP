@@ -9,14 +9,11 @@ import (
 
 	"ckb/internal/complexity"
 	"ckb/internal/envelope"
-	"ckb/internal/errors"
-	"ckb/internal/index"
 	"ckb/internal/jobs"
 	"ckb/internal/query"
 )
 
 // toolGetStatus implements the getStatus tool
-// v8.0: Enhanced with health tiers, remediation suggestions, and actionable fixes
 func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Response, error) {
 	s.logger.Debug("Executing getStatus", map[string]interface{}{
 		"params": params,
@@ -25,43 +22,18 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 	ctx := context.Background()
 	statusResp, err := s.engine().GetStatus(ctx)
 	if err != nil {
-		return nil, errors.NewOperationError("getStatus", err)
+		return nil, fmt.Errorf("failed to get status: %w", err)
 	}
 
-	// v8.0: Build enhanced backend info with health tiers and remediation
 	backends := make([]map[string]interface{}, 0, len(statusResp.Backends))
-	var suggestions []string
-	overallHealth := "available" // available, degraded, unavailable
-
 	for _, b := range statusResp.Backends {
-		backendInfo := map[string]interface{}{
+		backends = append(backends, map[string]interface{}{
 			"id":           b.Id,
 			"available":    b.Available,
 			"healthy":      b.Healthy,
 			"capabilities": b.Capabilities,
 			"details":      b.Details,
-		}
-
-		// v8.0: Add health tier and remediation
-		switch {
-		case b.Available && b.Healthy:
-			backendInfo["status"] = "available"
-		case b.Available && !b.Healthy:
-			backendInfo["status"] = "degraded"
-			backendInfo["reason"] = b.Warning
-			if overallHealth == "available" {
-				overallHealth = "degraded"
-			}
-		default:
-			backendInfo["status"] = "unavailable"
-			backendInfo["reason"] = b.Details
-			backendInfo["remediation"] = getBackendRemediation(b.Id)
-			if overallHealth != "unavailable" {
-				overallHealth = "degraded"
-			}
-		}
-
-		backends = append(backends, backendInfo)
+		})
 	}
 
 	status := "unhealthy"
@@ -69,58 +41,13 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 		status = "healthy"
 	}
 
-	// Get preset info with token estimates
+	// Get preset info
 	preset, exposedCount, totalCount := s.GetPresetStats()
-	activeTokens := s.EstimateActiveTokens()
-	fullTokens := s.EstimateFullTokens()
-	tokenSavings := 0
-	if fullTokens > 0 {
-		tokenSavings = ((fullTokens - activeTokens) * 100) / fullTokens
-	}
-
-	// Get index staleness info
-	indexInfo := s.getIndexStaleness()
-
-	// v8.0: Generate actionable suggestions based on status
-	if stale, ok := indexInfo["fresh"].(bool); ok && !stale {
-		if commitsBehind, ok := indexInfo["commitsBehind"].(int); ok && commitsBehind > 5 {
-			suggestions = append(suggestions, fmt.Sprintf("Index is %d commits behind. Run 'ckb index' to refresh", commitsBehind))
-		} else if reason, ok := indexInfo["reason"].(string); ok && reason != "" {
-			suggestions = append(suggestions, "Index is stale: "+reason+". Run 'ckb index' to refresh")
-		}
-	}
-
-	// Check for unavailable backends
-	for _, b := range backends {
-		if b["status"] == "unavailable" {
-			if id, ok := b["id"].(string); ok {
-				switch id {
-				case "scip":
-					suggestions = append(suggestions, "Run 'ckb index' to create SCIP index")
-				case "git":
-					suggestions = append(suggestions, "Initialize git with 'git init' or check CKB is pointed at a git repository")
-				}
-			}
-		}
-	}
-
-	// Check if all backends unavailable
-	allUnavailable := true
-	for _, b := range backends {
-		if b["status"] != "unavailable" {
-			allUnavailable = false
-			break
-		}
-	}
-	if allUnavailable && len(backends) > 0 {
-		overallHealth = "unavailable"
-	}
 
 	data := map[string]interface{}{
-		"status":        status,
-		"healthy":       statusResp.Healthy,
-		"overallHealth": overallHealth, // v8.0: available, degraded, unavailable
-		"backends":      backends,
+		"status":   status,
+		"healthy":  statusResp.Healthy,
+		"backends": backends,
 		"cache": map[string]interface{}{
 			"sizeBytes":     statusResp.Cache.SizeBytes,
 			"queriesCached": statusResp.Cache.QueriesCached,
@@ -133,55 +60,14 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 			"headCommit":  statusResp.RepoState.HeadCommit,
 		},
 		"preset": map[string]interface{}{
-			"active":              preset,
-			"exposed":             exposedCount,
-			"total":               totalCount,
-			"expanded":            s.IsExpanded(),
-			"estimatedTokens":     activeTokens,
-			"fullPresetTokens":    fullTokens,
-			"tokenSavingsPercent": tokenSavings,
+			"active":   preset,
+			"exposed":  exposedCount,
+			"total":    totalCount,
+			"expanded": s.IsExpanded(),
 		},
-		"index":       indexInfo,
-		"lastRefresh": statusResp.LastRefresh,
-	}
-
-	// v8.0: Add suggestions if any
-	if len(suggestions) > 0 {
-		data["suggestions"] = suggestions
 	}
 
 	return OperationalResponse(data), nil
-}
-
-// getIndexStaleness returns index freshness information
-func (s *MCPServer) getIndexStaleness() map[string]interface{} {
-	repoRoot := s.engine().GetRepoRoot()
-	if repoRoot == "" {
-		return map[string]interface{}{
-			"exists": false,
-			"fresh":  false,
-			"reason": "no repository configured",
-		}
-	}
-
-	ckbDir := filepath.Join(repoRoot, ".ckb")
-	meta, err := index.LoadMeta(ckbDir)
-	if err != nil || meta == nil {
-		return map[string]interface{}{
-			"exists": false,
-			"fresh":  false,
-			"reason": "no index metadata found",
-		}
-	}
-
-	staleness := meta.GetStaleness(repoRoot)
-	return map[string]interface{}{
-		"exists":        true,
-		"fresh":         !staleness.IsStale,
-		"reason":        staleness.Reason,
-		"indexAge":      staleness.IndexAge,
-		"commitsBehind": staleness.CommitsBehind,
-	}
 }
 
 // toolDoctor implements the doctor tool
@@ -294,7 +180,7 @@ func (s *MCPServer) toolExpandToolset(params map[string]interface{}) (*envelope.
 func (s *MCPServer) toolGetSymbol(params map[string]interface{}) (*envelope.Response, error) {
 	symbolId, ok := params["symbolId"].(string)
 	if !ok {
-		return nil, errors.NewInvalidParameterError("symbolId", "")
+		return nil, fmt.Errorf("missing or invalid 'symbolId' parameter")
 	}
 
 	repoStateMode, _ := params["repoStateMode"].(string)
@@ -315,7 +201,7 @@ func (s *MCPServer) toolGetSymbol(params map[string]interface{}) (*envelope.Resp
 
 	symbolResp, err := s.engine().GetSymbol(ctx, opts)
 	if err != nil {
-		return nil, errors.NewOperationError("getSymbol", err)
+		return nil, fmt.Errorf("failed to get symbol: %w", err)
 	}
 
 	data := map[string]interface{}{}
@@ -375,7 +261,7 @@ func (s *MCPServer) toolSearchSymbols(params map[string]interface{}) (*envelope.
 
 	queryStr, ok := params["query"].(string)
 	if !ok {
-		return nil, errors.NewInvalidParameterError("query", "")
+		return nil, fmt.Errorf("missing or invalid 'query' parameter")
 	}
 
 	scope, _ := params["scope"].(string)
@@ -411,7 +297,7 @@ func (s *MCPServer) toolSearchSymbols(params map[string]interface{}) (*envelope.
 
 	searchResp, err := s.engine().SearchSymbols(ctx, opts)
 	if err != nil {
-		return nil, errors.NewOperationError("searchSymbols", err)
+		return nil, fmt.Errorf("search failed: %w", err)
 	}
 
 	symbols := make([]map[string]interface{}, 0, len(searchResp.Symbols))
@@ -484,7 +370,7 @@ func (s *MCPServer) toolFindReferences(params map[string]interface{}) (*envelope
 
 	symbolId, ok := params["symbolId"].(string)
 	if !ok {
-		return nil, errors.NewInvalidParameterError("symbolId", "")
+		return nil, fmt.Errorf("missing or invalid 'symbolId' parameter")
 	}
 
 	scope, _ := params["scope"].(string)
@@ -516,7 +402,7 @@ func (s *MCPServer) toolFindReferences(params map[string]interface{}) (*envelope
 
 	refsResp, err := s.engine().FindReferences(ctx, opts)
 	if err != nil {
-		return nil, errors.NewOperationError("findReferences", err)
+		return nil, fmt.Errorf("find references failed: %w", err)
 	}
 
 	refs := make([]map[string]interface{}, 0, len(refsResp.References))
@@ -658,7 +544,7 @@ func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (*envelope.
 
 	symbolId, ok := params["symbolId"].(string)
 	if !ok {
-		return nil, errors.NewInvalidParameterError("symbolId", "")
+		return nil, fmt.Errorf("missing or invalid 'symbolId' parameter")
 	}
 
 	depth := 2
@@ -693,7 +579,7 @@ func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (*envelope.
 
 	impactResp, err := s.engine().AnalyzeImpact(ctx, opts)
 	if err != nil {
-		return nil, errors.NewOperationError("analyzeImpact", err)
+		return nil, fmt.Errorf("impact analysis failed: %w", err)
 	}
 
 	directImpact := make([]map[string]interface{}, 0, len(impactResp.DirectImpact))
@@ -775,16 +661,6 @@ func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (*envelope.
 		data["observedUsage"] = observedUsage
 	}
 
-	// Add blast radius summary if available
-	if impactResp.BlastRadius != nil {
-		data["blastRadius"] = map[string]interface{}{
-			"moduleCount":       impactResp.BlastRadius.ModuleCount,
-			"fileCount":         impactResp.BlastRadius.FileCount,
-			"uniqueCallerCount": impactResp.BlastRadius.UniqueCallerCount,
-			"riskLevel":         impactResp.BlastRadius.RiskLevel,
-		}
-	}
-
 	// Record wide-result metrics
 	totalImpact := len(impactResp.DirectImpact) + len(impactResp.TransitiveImpact)
 	responseBytes := MeasureJSONSize(data)
@@ -804,97 +680,11 @@ func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (*envelope.
 		Build(), nil
 }
 
-// toolAnalyzeChange implements the analyzeChange tool
-func (s *MCPServer) toolAnalyzeChange(params map[string]interface{}) (*envelope.Response, error) {
-	timer := NewWideResultTimer()
-
-	// Extract parameters with defaults
-	diffContent := ""
-	if v, ok := params["diffContent"].(string); ok {
-		diffContent = v
-	}
-
-	staged := false
-	if v, ok := params["staged"].(bool); ok {
-		staged = v
-	}
-
-	baseBranch := "HEAD"
-	if v, ok := params["baseBranch"].(string); ok && v != "" {
-		baseBranch = v
-	}
-
-	depth := 2
-	if v, ok := params["depth"].(float64); ok {
-		depth = int(v)
-		if depth < 1 {
-			depth = 1
-		} else if depth > 4 {
-			depth = 4
-		}
-	}
-
-	includeTests := false
-	if v, ok := params["includeTests"].(bool); ok {
-		includeTests = v
-	}
-
-	strict := false
-	if v, ok := params["strict"].(bool); ok {
-		strict = v
-	}
-
-	s.logger.Debug("Executing analyzeChange", map[string]interface{}{
-		"staged":       staged,
-		"baseBranch":   baseBranch,
-		"depth":        depth,
-		"includeTests": includeTests,
-		"strict":       strict,
-		"hasDiff":      diffContent != "",
-	})
-
-	ctx := context.Background()
-	resp, err := s.engine().AnalyzeChangeSet(ctx, query.AnalyzeChangeSetOptions{
-		DiffContent:     diffContent,
-		Staged:          staged,
-		BaseBranch:      baseBranch,
-		TransitiveDepth: depth,
-		IncludeTests:    includeTests,
-		Strict:          strict,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("analyzeChange failed: %w", err)
-	}
-
-	// Record wide-result metrics
-	totalAffected := len(resp.AffectedSymbols)
-	data := resp
-	responseBytes := MeasureJSONSize(data)
-	truncatedCount := 0
-	if resp.Truncated && resp.TruncationInfo != nil {
-		truncatedCount = resp.TruncationInfo.OriginalCount - resp.TruncationInfo.ReturnedCount
-	}
-	RecordWideResult(WideResultMetrics{
-		ToolName:        "analyzeChange",
-		TotalResults:    totalAffected + truncatedCount,
-		ReturnedResults: totalAffected,
-		TruncatedCount:  truncatedCount,
-		ResponseBytes:   responseBytes,
-		EstimatedTokens: EstimateTokens(responseBytes),
-		ExecutionMs:     timer.ElapsedMs(),
-	})
-
-	return NewToolResponse().
-		Data(data).
-		WithProvenance(resp.Provenance).
-		Build(), nil
-}
-
 // toolExplainSymbol implements the explainSymbol tool
 func (s *MCPServer) toolExplainSymbol(params map[string]interface{}) (*envelope.Response, error) {
 	symbolId, ok := params["symbolId"].(string)
 	if !ok {
-		return nil, errors.NewInvalidParameterError("symbolId", "")
+		return nil, fmt.Errorf("missing or invalid 'symbolId' parameter")
 	}
 
 	s.logger.Debug("Executing explainSymbol", map[string]interface{}{
@@ -904,7 +694,7 @@ func (s *MCPServer) toolExplainSymbol(params map[string]interface{}) (*envelope.
 	ctx := context.Background()
 	resp, err := s.engine().ExplainSymbol(ctx, query.ExplainSymbolOptions{SymbolId: symbolId})
 	if err != nil {
-		return nil, errors.NewOperationError("explainSymbol", err)
+		return nil, fmt.Errorf("explainSymbol failed: %w", err)
 	}
 
 	return NewToolResponse().
@@ -917,7 +707,7 @@ func (s *MCPServer) toolExplainSymbol(params map[string]interface{}) (*envelope.
 func (s *MCPServer) toolJustifySymbol(params map[string]interface{}) (*envelope.Response, error) {
 	symbolId, ok := params["symbolId"].(string)
 	if !ok {
-		return nil, errors.NewInvalidParameterError("symbolId", "")
+		return nil, fmt.Errorf("missing or invalid 'symbolId' parameter")
 	}
 
 	s.logger.Debug("Executing justifySymbol", map[string]interface{}{
@@ -927,7 +717,7 @@ func (s *MCPServer) toolJustifySymbol(params map[string]interface{}) (*envelope.
 	ctx := context.Background()
 	resp, err := s.engine().JustifySymbol(ctx, query.JustifySymbolOptions{SymbolId: symbolId})
 	if err != nil {
-		return nil, errors.NewOperationError("justifySymbol", err)
+		return nil, fmt.Errorf("justifySymbol failed: %w", err)
 	}
 
 	return NewToolResponse().
@@ -942,7 +732,7 @@ func (s *MCPServer) toolGetCallGraph(params map[string]interface{}) (*envelope.R
 
 	symbolId, ok := params["symbolId"].(string)
 	if !ok {
-		return nil, errors.NewInvalidParameterError("symbolId", "")
+		return nil, fmt.Errorf("missing or invalid 'symbolId' parameter")
 	}
 
 	direction, _ := params["direction"].(string)
@@ -968,7 +758,7 @@ func (s *MCPServer) toolGetCallGraph(params map[string]interface{}) (*envelope.R
 		Depth:     depth,
 	})
 	if err != nil {
-		return nil, errors.NewOperationError("getCallGraph", err)
+		return nil, fmt.Errorf("getCallGraph failed: %w", err)
 	}
 
 	// Record wide-result metrics (nodes = callers + callees + root)
@@ -1005,7 +795,7 @@ func (s *MCPServer) toolGetModuleOverview(params map[string]interface{}) (*envel
 		Name: name,
 	})
 	if err != nil {
-		return nil, errors.NewOperationError("getModuleOverview", err)
+		return nil, fmt.Errorf("getModuleOverview failed: %w", err)
 	}
 
 	return NewToolResponse().
@@ -1018,7 +808,7 @@ func (s *MCPServer) toolGetModuleOverview(params map[string]interface{}) (*envel
 func (s *MCPServer) toolExplainFile(params map[string]interface{}) (*envelope.Response, error) {
 	filePath, ok := params["filePath"].(string)
 	if !ok {
-		return nil, errors.NewInvalidParameterError("filePath", "")
+		return nil, fmt.Errorf("missing or invalid 'filePath' parameter")
 	}
 
 	s.logger.Debug("Executing explainFile", map[string]interface{}{
@@ -1030,7 +820,7 @@ func (s *MCPServer) toolExplainFile(params map[string]interface{}) (*envelope.Re
 		FilePath: filePath,
 	})
 	if err != nil {
-		return nil, errors.NewOperationError("explainFile", err)
+		return nil, fmt.Errorf("explainFile failed: %w", err)
 	}
 
 	return NewToolResponse().

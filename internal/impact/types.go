@@ -57,31 +57,3 @@ type Reference struct {
 	FromModule string        // ModuleId of the referencing module
 	IsTest     bool          // Whether this reference is from a test
 }
-
-// BlastRadius summarizes the spread of impact across the codebase
-type BlastRadius struct {
-	ModuleCount       int    `json:"moduleCount"`       // Number of affected modules
-	FileCount         int    `json:"fileCount"`         // Number of affected files
-	UniqueCallerCount int    `json:"uniqueCallerCount"` // Number of unique callers
-	RiskLevel         string `json:"riskLevel"`         // "low", "medium", "high"
-}
-
-// Blast radius classification thresholds
-const (
-	BlastRadiusLowModuleThreshold    = 2
-	BlastRadiusMediumModuleThreshold = 5
-	BlastRadiusLowCallerThreshold    = 5
-	BlastRadiusMediumCallerThreshold = 20
-)
-
-// ClassifyBlastRadius determines the risk level based on module and caller counts
-func ClassifyBlastRadius(moduleCount, callerCount int) string {
-	// High if many modules OR many callers
-	if moduleCount > BlastRadiusMediumModuleThreshold || callerCount > BlastRadiusMediumCallerThreshold {
-		return "high"
-	}
-	if moduleCount > BlastRadiusLowModuleThreshold || callerCount > BlastRadiusLowCallerThreshold {
-		return "medium"
-	}
-	return "low"
-}

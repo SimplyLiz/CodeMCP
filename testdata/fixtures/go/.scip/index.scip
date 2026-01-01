@@ -1,511 +1,0 @@
-
-Q
-scip-go0.1.26:file:///Users/lisa/Work/Ideas/CodeMCP/testdata/fixtures/go È
-
-main.go4
-+scip-go gomod fixture 8366de42779a fixture/:
-1scip-go gomod fixture 8366de42779a `fixture/pkg`/?
-6scip-go gomod fixture 8366de42779a `fixture/internal`/;
-	2scip-go gomod fixture 8366de42779a fixture/main().
-local 0:
-1scip-go gomod fixture 8366de42779a `fixture/pkg`/F
-=scip-go gomod fixture 8366de42779a `fixture/pkg`/NewServer().
-local 0M
-Dscip-go gomod fixture 8366de42779a `fixture/pkg`/Server#RunServer().>
-5scip-go gomod fixture 8366de42779a fixture/Handler().?
-6scip-go gomod fixture 8366de42779a `fixture/internal`/N
-Escip-go gomod fixture 8366de42779a `fixture/internal`/FormatOutput().Ï
-2scip-go gomod fixture 8366de42779a fixture/main().```go
-func main()
-```main is the application entry point.
-Call chain: main -> RunServer -> handler.Handle -> service.Process -> internal.FormatOutput
-·
-5scip-go gomod fixture 8366de42779a fixture/Handler().```go
-func Handler() string
-```]Handler is a function that handles requests (disambiguation: same name as pkg.Handler type).
-»
-+scip-go gomod fixture 8366de42779a fixture/‹Package main is the entry point for the fixture application.
-This fixture tests code intelligence features across a realistic Go codebase.
-7
-local 02server:$"go*var server *fixture/pkg.Server"goû
-internal/util.go?
-6scip-go gomod fixture 8366de42779a `fixture/internal`/@
-7scip-go gomod github.com/golang/go/src go1.22.0 errors/A
-	8scip-go gomod github.com/golang/go/src go1.22.0 strings/M
-	Dscip-go gomod fixture 8366de42779a `fixture/internal`/ErrEmptyInput.@
-	7scip-go gomod github.com/golang/go/src go1.22.0 errors/F
-	=scip-go gomod github.com/golang/go/src go1.22.0 errors/New().N
-Escip-go gomod fixture 8366de42779a `fixture/internal`/FormatOutput().
-local 0A
-8scip-go gomod github.com/golang/go/src go1.22.0 strings/M
-'Dscip-go gomod github.com/golang/go/src go1.22.0 strings/TrimSpace().
-()local 0O
-Fscip-go gomod fixture 8366de42779a `fixture/internal`/ValidateInput().
-local 1
-	local 1M
-	Dscip-go gomod fixture 8366de42779a `fixture/internal`/ErrEmptyInput.
-local 1@
-	7scip-go gomod github.com/golang/go/src go1.22.0 errors/F
-=scip-go gomod github.com/golang/go/src go1.22.0 errors/New().O
-Fscip-go gomod fixture 8366de42779a `fixture/internal`/SanitizeInput().
-local 2A
-8scip-go gomod github.com/golang/go/src go1.22.0 strings/M
-Dscip-go gomod github.com/golang/go/src go1.22.0 strings/TrimSpace().A
-!8scip-go gomod github.com/golang/go/src go1.22.0 strings/K
-")Bscip-go gomod github.com/golang/go/src go1.22.0 strings/ToLower().
-*/local 2š
-Dscip-go gomod fixture 8366de42779a `fixture/internal`/ErrEmptyInput.!```go
-var ErrEmptyInput error
-```/ErrEmptyInput is returned when input is empty.
-ß
-Escip-go gomod fixture 8366de42779a `fixture/internal`/FormatOutput().,```go
-func FormatOutput(s string) string
-```hFormatOutput formats the output string.
-This is called from multiple places to test reverse references.
-¤
-Fscip-go gomod fixture 8366de42779a `fixture/internal`/ValidateInput().0```go
-func ValidateInput(input string) error
-```(ValidateInput checks if input is valid.
-¤
-Fscip-go gomod fixture 8366de42779a `fixture/internal`/SanitizeInput().1```go
-func SanitizeInput(input string) string
-```'SanitizeInput cleans the input string.
-ƒ
-6scip-go gomod fixture 8366de42779a `fixture/internal`/IPackage internal provides internal utilities (not exported from module).
- 
-local 02s:"go*var s string(
-local 12input:"go*var input string(
-local 22input:"go*var input string"goŠ
-pkg/handler.go:
-1scip-go gomod fixture 8366de42779a `fixture/pkg`/?
-6scip-go gomod fixture 8366de42779a `fixture/internal`/B
-9scip-go gomod fixture 8366de42779a `fixture/pkg`/Handler#J
-Ascip-go gomod fixture 8366de42779a `fixture/pkg`/Handler#service.B
-	9scip-go gomod fixture 8366de42779a `fixture/pkg`/Service#G
->scip-go gomod fixture 8366de42779a `fixture/pkg`/NewHandler().
-local 0B
-9scip-go gomod fixture 8366de42779a `fixture/pkg`/Service#B
-%9scip-go gomod fixture 8366de42779a `fixture/pkg`/Handler#B
-	9scip-go gomod fixture 8366de42779a `fixture/pkg`/Handler#J
-Ascip-go gomod fixture 8366de42779a `fixture/pkg`/Handler#service.
-local 0
-local 1B
-	9scip-go gomod fixture 8366de42779a `fixture/pkg`/Handler#K
-Bscip-go gomod fixture 8366de42779a `fixture/pkg`/Handler#Handle().
-local 2
-local 3
-local 1J
-Ascip-go gomod fixture 8366de42779a `fixture/pkg`/Handler#service.J
-Ascip-go gomod fixture 8366de42779a `fixture/pkg`/Service#Process.
-"local 2?
-6scip-go gomod fixture 8366de42779a `fixture/internal`/N
-Escip-go gomod fixture 8366de42779a `fixture/internal`/FormatOutput().
-$local 3
-local 4B
-	9scip-go gomod fixture 8366de42779a `fixture/pkg`/Handler#P
-Gscip-go gomod fixture 8366de42779a `fixture/pkg`/Handler#HandleBatch().
-$local 5
-local 6
-%local 5
-local 7
-local 8
-local 5
-	local 6
-
-local 7
-local 4K
-Bscip-go gomod fixture 8366de42779a `fixture/pkg`/Handler#Handle().
-local 8
-local 6é
-9scip-go gomod fixture 8366de42779a `fixture/pkg`/Handler#```go
-type Handler struct
-```cHandler is a type that handles HTTP requests (disambiguation: same name as main.Handler function).
-(```go
-struct {
-    service Service
-}
-```¬
->scip-go gomod fixture 8366de42779a `fixture/pkg`/NewHandler()./```go
-func NewHandler(svc Service) *Handler
-```9NewHandler creates a new Handler with the given service.
-³
-Gscip-go gomod fixture 8366de42779a `fixture/pkg`/Handler#HandleBatch().?```go
-func (*Handler).HandleBatch(inputs []string) []string
-```'HandleBatch processes multiple inputs.
-â
-Bscip-go gomod fixture 8366de42779a `fixture/pkg`/Handler#Handle().5```go
-func (*Handler).Handle(input string) string
-```eHandle processes a request using the service.
-Call chain: Handle -> service.Process (interface call)
-w
-Ascip-go gomod fixture 8366de42779a `fixture/pkg`/Handler#service.2```go
-struct field service fixture/pkg.Service
-```1
-local 02svc:!"go*var svc fixture/pkg.Service.
-local 62results:"go*var results []string
-local 72i:"go*	var i int(
-local 82input:"go*var input string.
-local 12h: "go*var h *fixture/pkg.Handler(
-local 22input:"go*var input string*
-local 32result:"go*var result string.
-local 42h: "go*var h *fixture/pkg.Handler,
-local 52inputs:"go*var inputs []string"go±,
-pkg/model.go:
-1scip-go gomod fixture 8366de42779a `fixture/pkg`/A
-8scip-go gomod github.com/golang/go/src go1.22.0 strings/@
-
-7scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#E
-<scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#Name.G
->scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#Config.A
-	8scip-go gomod fixture 8366de42779a `fixture/pkg`/Config#A
-8scip-go gomod fixture 8366de42779a `fixture/pkg`/Config#H
-?scip-go gomod fixture 8366de42779a `fixture/pkg`/Config#Prefix.K
-
-Bscip-go gomod fixture 8366de42779a `fixture/pkg`/Config#Uppercase.J
-Ascip-go gomod fixture 8366de42779a `fixture/pkg`/DefaultConfig().A
-8scip-go gomod fixture 8366de42779a `fixture/pkg`/Config#A
-	8scip-go gomod fixture 8366de42779a `fixture/pkg`/Config#H
-?scip-go gomod fixture 8366de42779a `fixture/pkg`/Config#Prefix.K
-Bscip-go gomod fixture 8366de42779a `fixture/pkg`/Config#Uppercase.E
-<scip-go gomod fixture 8366de42779a `fixture/pkg`/NewModel().
-local 0@
-!7scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#@
-	7scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#E
-<scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#Name.
-
-local 0G
->scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#Config.J
-
-Ascip-go gomod fixture 8366de42779a `fixture/pkg`/DefaultConfig().
-"local 1@
-"	7scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#L
-"Cscip-go gomod fixture 8366de42779a `fixture/pkg`/Model#Transform().
-"local 2
-#local 3
-#local 1G
-#>scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#Config.H
-#?scip-go gomod fixture 8366de42779a `fixture/pkg`/Config#Prefix.
-##(local 2
-$local 1G
-$>scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#Config.K
-$Bscip-go gomod fixture 8366de42779a `fixture/pkg`/Config#Uppercase.
-%local 3A
-%8scip-go gomod github.com/golang/go/src go1.22.0 strings/K
-%Bscip-go gomod github.com/golang/go/src go1.22.0 strings/ToUpper().
-%!local 3
-'local 3
-+local 4@
-+	7scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#L
-+Cscip-go gomod fixture 8366de42779a `fixture/pkg`/Model#SetConfig().
-+local 5A
-+%8scip-go gomod fixture 8366de42779a `fixture/pkg`/Config#
-,local 4G
-,	>scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#Config.
-,local 5
-0local 6@
-0	7scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#H
-0?scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#Clone().@
-07scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#@
-1	7scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#E
-2<scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#Name.
-2	local 6E
-2
-<scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#Name.G
-3>scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#Config.A
-38scip-go gomod fixture 8366de42779a `fixture/pkg`/Config#H
-4	?scip-go gomod fixture 8366de42779a `fixture/pkg`/Config#Prefix.
-4local 6G
-4>scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#Config.H
-4?scip-go gomod fixture 8366de42779a `fixture/pkg`/Config#Prefix.K
-5Bscip-go gomod fixture 8366de42779a `fixture/pkg`/Config#Uppercase.
-5local 6G
-5>scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#Config.K
-5 Bscip-go gomod fixture 8366de42779a `fixture/pkg`/Config#Uppercase.·
-8scip-go gomod fixture 8366de42779a `fixture/pkg`/Config#```go
-type Config struct
-```"Config holds model configuration.
-9```go
-struct {
-    Prefix string
-    Uppercase bool
-}
-```k
-Bscip-go gomod fixture 8366de42779a `fixture/pkg`/Config#Uppercase.%```go
-struct field Uppercase bool
-```ž
-Ascip-go gomod fixture 8366de42779a `fixture/pkg`/DefaultConfig().&```go
-func DefaultConfig() *Config
-```1DefaultConfig returns the default configuration.
-s
->scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#Config.1```go
-struct field Config *fixture/pkg.Config
-```Ÿ
-<scip-go gomod fixture 8366de42779a `fixture/pkg`/NewModel().+```go
-func NewModel(name string) *Model
-```2NewModel creates a new Model with the given name.
-·
-7scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#```go
-type Model struct
-```&Model represents the core data model.
-7```go
-struct {
-    Name string
-    Config *Config
-}
-```´
-Cscip-go gomod fixture 8366de42779a `fixture/pkg`/Model#Transform().6```go
-func (*Model).Transform(input string) string
-```5Transform applies the model transformation to input.
-Ž
-?scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#Clone().&```go
-func (*Model).Clone() *Model
-```#Clone creates a copy of the model.
-g
-?scip-go gomod fixture 8366de42779a `fixture/pkg`/Config#Prefix.$```go
-struct field Prefix string
-```b
-<scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#Name."```go
-struct field Name string
-```¢
-Cscip-go gomod fixture 8366de42779a `fixture/pkg`/Model#SetConfig()..```go
-func (*Model).SetConfig(cfg *Config)
-```+SetConfig updates the model configuration.
-l
-1scip-go gomod fixture 8366de42779a `fixture/pkg`/7Package pkg provides HTTP handling and business logic.
-,
-local 12m:"go*var m *fixture/pkg.Model(
-local 22input:"go*var input string*
-local 32result:"go*var result string,
-local 42m:"go*var m *fixture/pkg.Model1
-local 52cfg:!"go*var cfg *fixture/pkg.Config,
-local 62m:"go*var m *fixture/pkg.Model&
-local 02name:"go*var name string"goŠ
-pkg/server.go:
-1scip-go gomod fixture 8366de42779a `fixture/pkg`/A
-8scip-go gomod fixture 8366de42779a `fixture/pkg`/Server#I
-@scip-go gomod fixture 8366de42779a `fixture/pkg`/Server#handler.B
-
-9scip-go gomod fixture 8366de42779a `fixture/pkg`/Handler#F
-	=scip-go gomod fixture 8366de42779a `fixture/pkg`/NewServer().A
-	8scip-go gomod fixture 8366de42779a `fixture/pkg`/Server#
-
-local 0N
-
-Escip-go gomod fixture 8366de42779a `fixture/pkg`/NewDefaultService().
-local 1N
-Escip-go gomod fixture 8366de42779a `fixture/pkg`/NewCachingService().
- local 0
-local 2G
->scip-go gomod fixture 8366de42779a `fixture/pkg`/NewHandler().
-local 1A
-	8scip-go gomod fixture 8366de42779a `fixture/pkg`/Server#I
-	@scip-go gomod fixture 8366de42779a `fixture/pkg`/Server#handler.
-local 2
-local 3A
-	8scip-go gomod fixture 8366de42779a `fixture/pkg`/Server#M
-Dscip-go gomod fixture 8366de42779a `fixture/pkg`/Server#RunServer().
-local 3I
-@scip-go gomod fixture 8366de42779a `fixture/pkg`/Server#handler.K
-Bscip-go gomod fixture 8366de42779a `fixture/pkg`/Handler#Handle().
-local 4A
-	8scip-go gomod fixture 8366de42779a `fixture/pkg`/Server#N
-Escip-go gomod fixture 8366de42779a `fixture/pkg`/Server#GetHandler().B
-&9scip-go gomod fixture 8366de42779a `fixture/pkg`/Handler#
-	local 4I
-
-@scip-go gomod fixture 8366de42779a `fixture/pkg`/Server#handler.¯
-8scip-go gomod fixture 8366de42779a `fixture/pkg`/Server#```go
-type Server struct
-```*Server coordinates handlers and services.
-)```go
-struct {
-    handler *Handler
-}
-``` 
-=scip-go gomod fixture 8366de42779a `fixture/pkg`/NewServer()."```go
-func NewServer() *Server
-```;NewServer creates a new Server with default configuration.
-Û
-Dscip-go gomod fixture 8366de42779a `fixture/pkg`/Server#RunServer().$```go
-func (*Server).RunServer()
-```mRunServer starts the server and processes a sample request.
-This is the main entry point called from main().
-w
-@scip-go gomod fixture 8366de42779a `fixture/pkg`/Server#handler.3```go
-struct field handler *fixture/pkg.Handler
-```¢
-Escip-go gomod fixture 8366de42779a `fixture/pkg`/Server#GetHandler()..```go
-func (*Server).GetHandler() *Handler
-```)GetHandler returns the server's handler.
-9
-local 02svc:)"go*#var svc *fixture/pkg.DefaultService?
-local 12cached:,"go*&var cached *fixture/pkg.CachingService:
-local 22handler:&"go* var handler *fixture/pkg.Handler-
-local 32s:"go*var s *fixture/pkg.Server-
-local 42s:"go*var s *fixture/pkg.Server"go½:
-pkg/service.go:
-1scip-go gomod fixture 8366de42779a `fixture/pkg`/?
-6scip-go gomod fixture 8366de42779a `fixture/internal`/B
-9scip-go gomod fixture 8366de42779a `fixture/pkg`/Service#J
-Ascip-go gomod fixture 8366de42779a `fixture/pkg`/Service#Process.
-	local 0K
-	Bscip-go gomod fixture 8366de42779a `fixture/pkg`/Service#Validate.
-
-local 1I
-@scip-go gomod fixture 8366de42779a `fixture/pkg`/DefaultService#O
-Fscip-go gomod fixture 8366de42779a `fixture/pkg`/DefaultService#model.@
-7scip-go gomod fixture 8366de42779a `fixture/pkg`/Model#N
-Escip-go gomod fixture 8366de42779a `fixture/pkg`/NewDefaultService().I
-(@scip-go gomod fixture 8366de42779a `fixture/pkg`/DefaultService#I
-	@scip-go gomod fixture 8366de42779a `fixture/pkg`/DefaultService#O
-Fscip-go gomod fixture 8366de42779a `fixture/pkg`/DefaultService#model.E
-	<scip-go gomod fixture 8366de42779a `fixture/pkg`/NewModel().
-local 2I
-	@scip-go gomod fixture 8366de42779a `fixture/pkg`/DefaultService#S
- Jscip-go gomod fixture 8366de42779a `fixture/pkg`/DefaultService#Process().
-!&local 3
-local 4
-local 2O
-Fscip-go gomod fixture 8366de42779a `fixture/pkg`/DefaultService#model.L
-!Cscip-go gomod fixture 8366de42779a `fixture/pkg`/Model#Transform().
-"'local 3?
-6scip-go gomod fixture 8366de42779a `fixture/internal`/N
-Escip-go gomod fixture 8366de42779a `fixture/internal`/FormatOutput().
-)local 4
-local 5I
-	@scip-go gomod fixture 8366de42779a `fixture/pkg`/DefaultService#T
-!Kscip-go gomod fixture 8366de42779a `fixture/pkg`/DefaultService#Validate().
-"'local 6
- 	local 6?
-!	6scip-go gomod fixture 8366de42779a `fixture/internal`/M
-!Dscip-go gomod fixture 8366de42779a `fixture/internal`/ErrEmptyInput.I
-'@scip-go gomod fixture 8366de42779a `fixture/pkg`/CachingService#O
-(Fscip-go gomod fixture 8366de42779a `fixture/pkg`/CachingService#inner.B
-(9scip-go gomod fixture 8366de42779a `fixture/pkg`/Service#O
-)Fscip-go gomod fixture 8366de42779a `fixture/pkg`/CachingService#cache.N
--Escip-go gomod fixture 8366de42779a `fixture/pkg`/NewCachingService().
--local 7B
--$9scip-go gomod fixture 8366de42779a `fixture/pkg`/Service#I
--'5@scip-go gomod fixture 8366de42779a `fixture/pkg`/CachingService#I
-.	@scip-go gomod fixture 8366de42779a `fixture/pkg`/CachingService#O
-/Fscip-go gomod fixture 8366de42779a `fixture/pkg`/CachingService#inner.
-/	local 7O
-0Fscip-go gomod fixture 8366de42779a `fixture/pkg`/CachingService#cache.
-5local 8I
-5	@scip-go gomod fixture 8366de42779a `fixture/pkg`/CachingService#S
-5 Jscip-go gomod fixture 8366de42779a `fixture/pkg`/CachingService#Process().
-5!&local 9
-6
-local 10
-6local 11
-6local 8O
-6Fscip-go gomod fixture 8366de42779a `fixture/pkg`/CachingService#cache.
-6local 9
-6"$local 11
-7	local 10
-9local 12
-9local 8O
-9Fscip-go gomod fixture 8366de42779a `fixture/pkg`/CachingService#inner.J
-9Ascip-go gomod fixture 8366de42779a `fixture/pkg`/Service#Process.
-9 local 9
-:local 8O
-:Fscip-go gomod fixture 8366de42779a `fixture/pkg`/CachingService#cache.
-:	local 9
-:local 12
-;local 12
-?local 13I
-?	@scip-go gomod fixture 8366de42779a `fixture/pkg`/CachingService#T
-?!Kscip-go gomod fixture 8366de42779a `fixture/pkg`/CachingService#Validate().
-?"'local 14
-@	local 13O
-@
-Fscip-go gomod fixture 8366de42779a `fixture/pkg`/CachingService#inner.K
-@Bscip-go gomod fixture 8366de42779a `fixture/pkg`/Service#Validate.
-@local 14è
-9scip-go gomod fixture 8366de42779a `fixture/pkg`/Service# ```go
-type Service interface
-```.Service defines the business logic interface.
-Y```go
-interface {
-    Process(input string) string
-    Validate(input string) error
-}
-```z
-Fscip-go gomod fixture 8366de42779a `fixture/pkg`/CachingService#inner.0```go
-struct field inner fixture/pkg.Service
-```y
-Fscip-go gomod fixture 8366de42779a `fixture/pkg`/DefaultService#model./```go
-struct field model *fixture/pkg.Model
-```­
-Escip-go gomod fixture 8366de42779a `fixture/pkg`/NewDefaultService().2```go
-func NewDefaultService() *DefaultService
-```0NewDefaultService creates a new DefaultService.
-Š
-Kscip-go gomod fixture 8366de42779a `fixture/pkg`/CachingService#Validate().=```go
-func (*CachingService).Validate(input string) error
-```4Validate implements Service.Validate by delegating.
-"F
-Bscip-go gomod fixture 8366de42779a `fixture/pkg`/Service#Validate.ü
-Kscip-go gomod fixture 8366de42779a `fixture/pkg`/DefaultService#Validate().=```go
-func (*DefaultService).Validate(input string) error
-```&Validate implements Service.Validate.
-"F
-Bscip-go gomod fixture 8366de42779a `fixture/pkg`/Service#Validate.È
-Escip-go gomod fixture 8366de42779a `fixture/pkg`/NewCachingService().?```go
-func NewCachingService(inner Service) *CachingService
-```>NewCachingService creates a caching wrapper around a Service.
-…
-Jscip-go gomod fixture 8366de42779a `fixture/pkg`/CachingService#Process().=```go
-func (*CachingService).Process(input string) string
-```1Process implements Service.Process with caching.
-"E
-Ascip-go gomod fixture 8366de42779a `fixture/pkg`/Service#Process.š
-@scip-go gomod fixture 8366de42779a `fixture/pkg`/CachingService#$```go
-type CachingService struct
-```-CachingService wraps a Service with caching.
-B```go
-struct {
-    inner Service
-    cache map[string]string
-}
-```"=
-9scip-go gomod fixture 8366de42779a `fixture/pkg`/Service#{
-Bscip-go gomod fixture 8366de42779a `fixture/pkg`/Service#Validate.5```go
-func (Service).Validate(input string) error
-```z
-Ascip-go gomod fixture 8366de42779a `fixture/pkg`/Service#Process.5```go
-func (Service).Process(input string) string
-```‰
-@scip-go gomod fixture 8366de42779a `fixture/pkg`/DefaultService#$```go
-type DefaultService struct
-```9DefaultService is the default implementation of Service.
-%```go
-struct {
-    model *Model
-}
-```"=
-9scip-go gomod fixture 8366de42779a `fixture/pkg`/Service#x
-Fscip-go gomod fixture 8366de42779a `fixture/pkg`/CachingService#cache..```go
-struct field cache map[string]string
-```¸
-Jscip-go gomod fixture 8366de42779a `fixture/pkg`/DefaultService#Process().=```go
-func (*DefaultService).Process(input string) string
-```dProcess implements Service.Process.
-Call chain: Process -> model.Transform -> internal.FormatOutput
-"E
-Ascip-go gomod fixture 8366de42779a `fixture/pkg`/Service#Process.(
-local 02input:"go*var input string(
-local 12input:"go*var input string4
-local 42transformed:"go*var transformed string(
-local 62input:"go*var input string!
-local 112ok:"go*var ok bool(
-local 92input:"go*var input string+
-local 102cached:"go*var cached string6
-local 132c:'"go*!var c *fixture/pkg.CachingService5
-local 22s:'"go*!var s *fixture/pkg.DefaultService5
-local 72inner:#"go*var inner fixture/pkg.Service5
-local 82c:'"go*!var c *fixture/pkg.CachingService(
-local 32input:"go*var input string5
-local 52s:'"go*!var s *fixture/pkg.DefaultService+
-local 122result:"go*var result string)
-local 142input:"go*var input string"go

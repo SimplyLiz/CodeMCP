@@ -1,17 +1,11 @@
-ignore:
-  - "internal/testutil/**"      # Test infrastructure, not production code
-  - "testdata/**"               # Test fixtures
-  - "internal/mcp/testdata/**"  # MCP test fixtures
-  - "internal/eval/fixtures/**" # Eval test fixtures
-
 coverage:
   precision: 1
   round: down
   status:
     project:
       default:
-        target: auto       # Track relative to base, not fixed number
-        threshold: 1%      # Allow 1% drop without failing
+        target: 30%
+        threshold: 1%    # Allow 1% drop without failing
         if_ci_failed: error
     patch:
       default:
@@ -19,26 +13,12 @@ coverage:
         threshold: 0%
 
 comment:
-  # Codecov's recommended condensed format
-  layout: "condensed_header, diff, flags, condensed_files, condensed_footer"
+  layout: "header, diff, flags, files, footer"
   behavior: default
-  # Only post when something actionable happens
-  require_changes: "coverage_drop OR uncovered_patch"
-  require_base: false
+  require_changes: false
+  require_base: false    # Post even without base coverage
   require_head: true
-  # Patch-only view keeps reviewers focused on what changed
-  hide_project_coverage: true
+  hide_project_coverage: false
 
-# Annotations deprecated + don't work with flags/components
 github_checks:
-  annotations: false
-
-flag_management:
-  default_rules:
-    carryforward: true
-    statuses:
-      - type: project
-        target: auto
-        threshold: 1%
-      - type: patch
-        target: 90%
+  annotations: true

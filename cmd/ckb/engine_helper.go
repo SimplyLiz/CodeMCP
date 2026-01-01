@@ -98,12 +98,11 @@ func newContext() context.Context {
 }
 
 // newLogger creates a logger with the specified format.
-// For structured output formats (json, markdown, list), logs go to stderr so stdout has clean output.
+// When format is "json", logs go to stderr (human-readable) so stdout has clean JSON output.
 func newLogger(format string) *logging.Logger {
 	output := os.Stdout
-	// Keep stdout clean for structured/machine-readable output formats
-	if format == "json" || format == "markdown" || format == "list" {
-		output = os.Stderr
+	if format == "json" {
+		output = os.Stderr // Keep stdout clean for JSON data
 	}
 	return logging.NewLogger(logging.Config{
 		Format: logging.HumanFormat, // Always human-readable logs

@@ -137,43 +137,6 @@ jobs:
           echo "risk=$(jq -r '.riskAssessment.level // "unknown"' analysis.json)" >> $GITHUB_OUTPUT
           echo "score=$(jq -r '.riskAssessment.score // 0' analysis.json)" >> $GITHUB_OUTPUT
 
-      # ───────────────────────────────────────────────────────────────────────
-      # Change Impact Analysis (v7.5) — Dogfooding our own tool
-      # ───────────────────────────────────────────────────────────────────────
-      - name: Impact Analysis
-        id: impact
-        run: |
-          # Generate both JSON (for metrics) and Markdown (for comment)
-          ./ckb impact diff --base=origin/${{ github.base_ref }} --depth=2 --format=json > impact.json 2>/dev/null || echo '{"summary":{}}' > impact.json
-          ./ckb impact diff --base=origin/${{ github.base_ref }} --depth=2 --format=markdown > impact.md 2>/dev/null || echo "## ⚪ Change Impact Analysis\n\nNo impact data available." > impact.md
-
-          # Extract key metrics
-          echo "symbols_changed=$(jq '.summary.symbolsChanged // 0' impact.json)" >> $GITHUB_OUTPUT
-          echo "directly_affected=$(jq '.summary.directlyAffected // 0' impact.json)" >> $GITHUB_OUTPUT
-          echo "transitively_affected=$(jq '.summary.transitivelyAffected // 0' impact.json)" >> $GITHUB_OUTPUT
-          echo "estimated_risk=$(jq -r '.summary.estimatedRisk // "unknown"' impact.json)" >> $GITHUB_OUTPUT
-          echo "module_count=$(jq '.blastRadius.moduleCount // 0' impact.json)" >> $GITHUB_OUTPUT
-          echo "file_count=$(jq '.blastRadius.fileCount // 0' impact.json)" >> $GITHUB_OUTPUT
-
-          # Log summary for debugging
-          echo "::group::Impact Analysis Summary"
-          jq '.summary' impact.json
-          echo "::endgroup::"
-
-          # Warn on high-risk changes
-          RISK=$(jq -r '.summary.estimatedRisk // "unknown"' impact.json)
-          if [ "$RISK" = "critical" ]; then
-            echo "::error::CRITICAL RISK: This change has significant downstream impact"
-          elif [ "$RISK" = "high" ]; then
-            echo "::warning::HIGH RISK: This change affects many downstream symbols"
-          fi
-
-      - name: Post Impact Comment
-        uses: marocchino/sticky-pull-request-comment@v2
-        with:
-          header: ckb-impact
-          path: impact.md
-
       - name: Complexity
         id: complexity
         run: |
@@ -253,9 +216,8 @@ jobs:
       - name: Blast Radius
         id: blast
         run: |
-          # Derive blast radius from pr-summary changed files
-          # Note: v7.6+ provides per-symbol blast radius via `ckb impact <symbol-id>`
-          # TODO: Add --include-blast-radius to pr-summary for aggregate PR-level data
+          # Use impact analysis on changed symbols from pr-summary
+          # blast-radius command doesn't exist - derive from pr-summary data
           if [ -f analysis.json ]; then
             jq '{
               affectedSymbols: (.changedFiles // []) | map(.symbols // []) | flatten,
@@ -364,7 +326,6 @@ jobs:
 
             // Load all analysis data
             const pr = read('analysis.json', {});
-            const impact = read('impact.json', { summary: {}, changedSymbols: [], affectedSymbols: [], blastRadius: {}, recommendations: [] });
             const complexity = read('complexity.json', []);
             const coupling = read('coupling.json', { missingCoupled: [] });
             const contracts = read('contracts.json', { files: [], breaking: [] });
@@ -388,14 +349,6 @@ jobs:
             const blastTests = blast.affectedTests || [];
             const blastConsumers = blast.affectedConsumers || [];
             const lowQualityLangs = (languages.languages || []).filter(l => (l.quality || 1) < 0.7);
-
-            // Impact analysis data
-            const impactSummary = impact.summary || {};
-            const changedSymbols = impact.changedSymbols || [];
-            const affectedSymbols = impact.affectedSymbols || [];
-            const impactBlast = impact.blastRadius || {};
-            const impactRecs = impact.recommendations || [];
-            const impactRisk = impactSummary.estimatedRisk || 'unknown';
 
             // Computed
             const complexViolations = complexity.filter(c => c.cyclomatic > TH_CY || c.cognitive > TH_CG);
@@ -439,7 +392,6 @@ jobs:
 
             // Quick Stats Line
             const stats = [];
-            if (impactSummary.symbolsChanged) stats.push(`🎯 ${impactSummary.symbolsChanged} changed → ${impactSummary.transitivelyAffected || 0} affected`);
             if (hotspots.length) stats.push(`🔥 ${hotspots.length} hotspot${hotspots.length > 1 ? 's' : ''}`);
             if (criticalItems.length + highItems.length) stats.push(`⚠️ ${criticalItems.length + highItems.length} risk`);
             if (complexViolations.length) stats.push(`📊 ${complexViolations.length} complex`);
@@ -470,14 +422,12 @@ jobs:
             }
 
             // Metrics Table
-            const impactIcon = { critical: '🔴', high: '🟠', medium: '🟡', low: '🟢' }[impactRisk] || '⚪';
             c.push('| Metric | Value | |');
             c.push('|:-------|------:|:-:|');
-            c.push(`| Impact Analysis | ${impactSummary.symbolsChanged || 0} symbols → ${impactSummary.transitivelyAffected || 0} affected | ${impactIcon} |`);
             c.push(`| Doc Coverage | ${docsCov.coveragePercent || docsCov.coverage || 0}% | ${(docsCov.coveragePercent || docsCov.coverage || 0) >= TH_DOC ? '✅' : '⚠️'} |`);
             c.push(`| Complexity | ${complexViolations.length} violations | ${complexViolations.length === 0 ? '✅' : '⚠️'} |`);
             c.push(`| Coupling | ${coupling.missingCoupled?.length || 0} gaps | ${!coupling.missingCoupled?.length ? '✅' : '⚠️'} |`);
-            c.push(`| Blast Radius | ${impactBlast.moduleCount || 0} modules, ${impactBlast.fileCount || 0} files | ${(impactBlast.moduleCount || 0) <= 2 ? '✅' : '⚠️'} |`);
+            c.push(`| Blast Radius | ${blastSymbols.length} symbols, ${blastTests.length} tests | ${blastSymbols.length + blastTests.length === 0 ? '✅' : '⚠️'} |`);
             c.push(`| Index | [${process.env.INDEX_MODE || 'unknown'} (${process.env.INDEX_TIME || '?'})](${runUrl}) | ${process.env.CACHE_HIT === 'true' ? '💾' : '🆕'} |`);
             c.push('');
 
@@ -497,83 +447,6 @@ jobs:
               });
               if (breakingChanges.length > 8) c.push(`| … | +${breakingChanges.length - 8} more |`);
               c.push('');
-              c.push('</details>');
-              c.push('');
-            }
-
-            // 🎯 Change Impact Analysis (v7.5 - dogfooding)
-            if (changedSymbols.length > 0 || affectedSymbols.length > 0) {
-              const isOpen = impactRisk === 'high' || impactRisk === 'critical';
-              c.push(`<details${isOpen ? ' open' : ''}>`);
-              c.push(`<summary>🎯 Change Impact Analysis · ${impactIcon} ${impactRisk.toUpperCase()} · ${changedSymbols.length} changed → ${affectedSymbols.length} affected</summary>`);
-              c.push('');
-
-              // Summary stats
-              c.push('| Metric | Value |');
-              c.push('|:-------|------:|');
-              c.push(`| Symbols Changed | ${impactSummary.symbolsChanged || 0} |`);
-              c.push(`| Directly Affected | ${impactSummary.directlyAffected || 0} |`);
-              c.push(`| Transitively Affected | ${impactSummary.transitivelyAffected || 0} |`);
-              c.push(`| Modules in Blast Radius | ${impactBlast.moduleCount || 0} |`);
-              c.push(`| Files in Blast Radius | ${impactBlast.fileCount || 0} |`);
-              c.push('');
-
-              // Changed symbols (what was modified)
-              if (changedSymbols.length > 0) {
-                c.push('**Symbols changed in this PR:**');
-                changedSymbols.slice(0, 10).forEach(sym => {
-                  const conf = sym.confidence ? ` (${pct(sym.confidence)}%)` : '';
-                  const change = sym.changeType ? ` [${sym.changeType}]` : '';
-                  c.push(`- \`${sym.name || sym.symbolId || '?'}\`${change}${conf} — ${linkedFile(sym.file)}`);
-                });
-                if (changedSymbols.length > 10) c.push(`- … and ${changedSymbols.length - 10} more`);
-                c.push('');
-              }
-
-              // Affected symbols (downstream impact)
-              if (affectedSymbols.length > 0) {
-                c.push('**Downstream symbols affected:**');
-                const directCallers = affectedSymbols.filter(s => s.kind === 'direct-caller' || s.distance === 1);
-                const transitiveCallers = affectedSymbols.filter(s => s.kind === 'transitive-caller' || (s.distance && s.distance > 1));
-
-                if (directCallers.length > 0) {
-                  c.push(`*Direct callers (${directCallers.length}):*`);
-                  directCallers.slice(0, 5).forEach(sym => {
-                    const mod = sym.moduleId ? ` in \`${sym.moduleId}\`` : '';
-                    c.push(`- \`${sym.name || sym.stableId || '?'}\`${mod}`);
-                  });
-                  if (directCallers.length > 5) c.push(`- … and ${directCallers.length - 5} more direct callers`);
-                }
-
-                if (transitiveCallers.length > 0) {
-                  c.push(`*Transitive callers (${transitiveCallers.length}):*`);
-                  transitiveCallers.slice(0, 5).forEach(sym => {
-                    const dist = sym.distance ? ` (depth ${sym.distance})` : '';
-                    c.push(`- \`${sym.name || sym.stableId || '?'}\`${dist}`);
-                  });
-                  if (transitiveCallers.length > 5) c.push(`- … and ${transitiveCallers.length - 5} more transitive callers`);
-                }
-                c.push('');
-              }
-
-              // Recommendations
-              if (impactRecs.length > 0) {
-                c.push('**Recommendations:**');
-                impactRecs.forEach(rec => {
-                  const icon = rec.severity === 'warning' ? '⚠️' : rec.severity === 'error' ? '🔴' : 'ℹ️';
-                  c.push(`- ${icon} ${rec.message}`);
-                  if (rec.action) c.push(`  - *Action:* ${rec.action}`);
-                });
-                c.push('');
-              }
-
-              // Index staleness warning
-              if (impact.indexStaleness?.isStale) {
-                const stale = impact.indexStaleness;
-                c.push(`> ⚠️ **Index is ${stale.commitsBehind} commit(s) behind HEAD.** Results may be incomplete. Run \`ckb index\` to refresh.`);
-                c.push('');
-              }
-
               c.push('</details>');
               c.push('');
             }

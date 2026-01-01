@@ -31,4 +31,3 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.log
-testdata/fixtures/typescript/node_modules/
