@@ -61,8 +61,10 @@ type Truncation struct {
 // CacheInfo describes cache status for this response.
 // v8.0: Added for cache transparency.
 type CacheInfo struct {
-	Hit bool   `json:"hit"`           // true if served from cache
-	Age string `json:"age,omitempty"` // how old the cached data is
+	Hit   bool   `json:"hit"`             // true if served from cache
+	Age   string `json:"age,omitempty"`   // if hit, how old (e.g., "2m30s")
+	Key   string `json:"key,omitempty"`   // cache key for debugging
+	Stale bool   `json:"stale,omitempty"` // served stale while refreshing
 }
 
 // Meta holds response metadata.
