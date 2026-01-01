@@ -122,7 +122,7 @@ func RecordWideResult(m WideResultMetrics) {
 	summary.TotalMs += m.ExecutionMs
 
 	// SQLite persistence (non-blocking, errors are logged but not returned)
-	// Capture db reference inside the lock to avoid race with SetMetricsDB
+	// Capture db pointer while holding lock to avoid race with SetMetricsDB
 	db := globalWideResultAggregator.db
 	if db != nil {
 		go func() {
