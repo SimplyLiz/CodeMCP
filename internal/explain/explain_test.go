@@ -496,7 +496,7 @@ func TestFormatAge(t *testing.T) {
 		wantSub string
 	}{
 		{"recent", now, "less than a month"},
-		{"1 month", now.AddDate(0, -1, -1), "1 month"},
+		{"1 month", now.AddDate(0, -1, 0), "1 month"},
 		{"6 months", now.AddDate(0, -6, 0), "months"},
 		{"1 year", now.AddDate(-1, 0, 0), "year"},
 		{"2 years", now.AddDate(-2, 0, 0), "years"},
