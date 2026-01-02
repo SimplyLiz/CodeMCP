@@ -56,10 +56,12 @@ func TestExplore_Directory(t *testing.T) {
 
 	if resp == nil {
 		t.Fatal("expected response")
+		return
 	}
 
 	if resp.Overview == nil {
-		t.Error("expected overview")
+		t.Fatal("expected overview")
+		return
 	}
 
 	if resp.Overview.TargetType != "directory" {
@@ -93,6 +95,12 @@ func TestExplore_File(t *testing.T) {
 
 	if resp == nil {
 		t.Fatal("expected response")
+		return
+	}
+
+	if resp.Overview == nil {
+		t.Fatal("expected overview")
+		return
 	}
 
 	if resp.Overview.TargetType != "file" {
@@ -144,13 +152,18 @@ func TestExplore_DeepDepth(t *testing.T) {
 
 	if resp == nil {
 		t.Fatal("expected response")
+		return
+	}
+
+	if resp.Health == nil {
+		t.Fatal("expected health info")
+		return
 	}
 
 	// Deep exploration should include hotspots when focus is changes
 	// (depends on git being available)
-	if resp.Health.GitAvailable && resp.Hotspots == nil {
-		// Hotspots may still be empty if no files have changed recently
-	}
+	// Hotspots may still be empty if no files have changed recently
+	_ = resp.Health.GitAvailable
 }
 
 // =============================================================================
@@ -178,6 +191,7 @@ func TestUnderstand_ExactMatch(t *testing.T) {
 
 	if resp == nil {
 		t.Fatal("expected response")
+		return
 	}
 
 	if resp.Symbol == nil && resp.Ambiguity == nil {
@@ -206,6 +220,7 @@ func TestUnderstand_Ambiguous(t *testing.T) {
 
 	if resp == nil {
 		t.Fatal("expected response")
+		return
 	}
 
 	// With a vague query like "Get", we should get ambiguity info
@@ -249,6 +264,7 @@ func TestUnderstand_WithReferences(t *testing.T) {
 
 	if resp == nil {
 		t.Fatal("expected response")
+		return
 	}
 
 	// References should be grouped by file
@@ -289,10 +305,12 @@ func TestPrepareChange_File(t *testing.T) {
 
 	if resp == nil {
 		t.Fatal("expected response")
+		return
 	}
 
 	if resp.Target == nil {
-		t.Error("expected target info")
+		t.Fatal("expected target info")
+		return
 	}
 
 	if resp.Target.Kind != "file" {
@@ -322,6 +340,11 @@ func TestPrepareChange_Directory(t *testing.T) {
 
 	if err != nil {
 		t.Fatalf("PrepareChange failed: %v", err)
+	}
+
+	if resp == nil || resp.Target == nil {
+		t.Fatal("expected response with target")
+		return
 	}
 
 	if resp.Target.Kind != "module" {
@@ -365,7 +388,7 @@ func TestPrepareChange_DeleteType(t *testing.T) {
 	}
 
 	// Delete change type should increase risk score
-	if resp.RiskAssessment != nil {
+	if resp != nil && resp.RiskAssessment != nil {
 		found := false
 		for _, factor := range resp.RiskAssessment.Factors {
 			if factor == "Deletion change type" {
@@ -373,9 +396,8 @@ func TestPrepareChange_DeleteType(t *testing.T) {
 				break
 			}
 		}
-		if !found {
-			// Risk factor may or may not be present depending on implementation
-		}
+		// Risk factor may or may not be present depending on implementation
+		_ = found
 	}
 }
 
@@ -439,12 +461,12 @@ func TestBatchGet_MixedResults(t *testing.T) {
 
 	if resp == nil {
 		t.Fatal("expected response")
+		return
 	}
 
-	// All should be errors since they're fake IDs
-	if len(resp.Errors) == 0 && len(resp.Results) == 0 {
-		// Both empty is also valid
-	}
+	// All should be errors since they're fake IDs - both empty is also valid
+	_ = len(resp.Errors)
+	_ = len(resp.Results)
 }
 
 // =============================================================================
@@ -509,6 +531,7 @@ func TestBatchSearch_Multiple(t *testing.T) {
 
 	if resp == nil {
 		t.Fatal("expected response")
+		return
 	}
 
 	if len(resp.Results) != 3 {
@@ -538,6 +561,11 @@ func TestBatchSearch_WithScope(t *testing.T) {
 
 	if err != nil {
 		t.Fatalf("BatchSearch failed: %v", err)
+	}
+
+	if resp == nil {
+		t.Fatal("expected response")
+		return
 	}
 
 	if len(resp.Results) != 1 {
@@ -584,8 +612,9 @@ func (e *Engine) Search(query string) []string {
 		t.Fatalf("Explore failed: %v", err)
 	}
 
-	if exploreResp.Overview == nil {
-		t.Error("expected overview from explore")
+	if exploreResp == nil || exploreResp.Overview == nil {
+		t.Fatal("expected overview from explore")
+		return
 	}
 
 	// 2. Prepare a change on the file
@@ -597,7 +626,7 @@ func (e *Engine) Search(query string) []string {
 		t.Fatalf("PrepareChange failed: %v", err)
 	}
 
-	if prepareResp.RiskAssessment == nil {
+	if prepareResp == nil || prepareResp.RiskAssessment == nil {
 		t.Error("expected risk assessment in workflow")
 	}
 }
