@@ -1,9 +1,8 @@
 package mcp
 
 import (
-	"fmt"
-
 	"ckb/internal/envelope"
+	"ckb/internal/errors"
 	"ckb/internal/federation"
 	"ckb/internal/logging"
 )
@@ -18,7 +17,7 @@ func (s *MCPServer) toolListFederations(params map[string]interface{}) (*envelop
 
 	names, err := federation.List()
 	if err != nil {
-		return nil, fmt.Errorf("failed to list federations: %w", err)
+		return nil, errors.NewOperationError("list federations", err)
 	}
 
 	return NewToolResponse().
@@ -34,7 +33,7 @@ func (s *MCPServer) toolListFederations(params map[string]interface{}) (*envelop
 func (s *MCPServer) toolFederationStatus(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
-		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
+		return nil, errors.NewInvalidParameterError("federation", "")
 	}
 
 	s.logger.Debug("Executing federationStatus", map[string]interface{}{
@@ -44,10 +43,10 @@ func (s *MCPServer) toolFederationStatus(params map[string]interface{}) (*envelo
 	// Check existence
 	exists, err := federation.Exists(fedName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check federation: %w", err)
+		return nil, errors.NewOperationError("check federation", err)
 	}
 	if !exists {
-		return nil, fmt.Errorf("federation %q not found", fedName)
+		return nil, errors.NewResourceNotFoundError("federation", fedName)
 	}
 
 	// Open federation
@@ -58,7 +57,7 @@ func (s *MCPServer) toolFederationStatus(params map[string]interface{}) (*envelo
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open federation: %w", err)
+		return nil, errors.NewOperationError("open federation", err)
 	}
 	defer func() { _ = fed.Close() }()
 
@@ -108,7 +107,7 @@ func (s *MCPServer) toolFederationStatus(params map[string]interface{}) (*envelo
 func (s *MCPServer) toolFederationRepos(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
-		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
+		return nil, errors.NewInvalidParameterError("federation", "")
 	}
 
 	includeCompat, _ := params["includeCompatibility"].(bool)
@@ -126,7 +125,7 @@ func (s *MCPServer) toolFederationRepos(params map[string]interface{}) (*envelop
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open federation: %w", err)
+		return nil, errors.NewOperationError("open federation", err)
 	}
 	defer func() { _ = fed.Close() }()
 
@@ -154,7 +153,7 @@ func (s *MCPServer) toolFederationRepos(params map[string]interface{}) (*envelop
 func (s *MCPServer) toolFederationSearchModules(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
-		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
+		return nil, errors.NewInvalidParameterError("federation", "")
 	}
 
 	query, _ := params["query"].(string)
@@ -177,7 +176,7 @@ func (s *MCPServer) toolFederationSearchModules(params map[string]interface{}) (
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open federation: %w", err)
+		return nil, errors.NewOperationError("open federation", err)
 	}
 	defer func() { _ = fed.Close() }()
 
@@ -206,7 +205,7 @@ func (s *MCPServer) toolFederationSearchModules(params map[string]interface{}) (
 
 	result, err := fed.SearchModules(opts)
 	if err != nil {
-		return nil, fmt.Errorf("search failed: %w", err)
+		return nil, errors.NewOperationError("search modules", err)
 	}
 
 	return NewToolResponse().
@@ -219,7 +218,7 @@ func (s *MCPServer) toolFederationSearchModules(params map[string]interface{}) (
 func (s *MCPServer) toolFederationSearchOwnership(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
-		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
+		return nil, errors.NewInvalidParameterError("federation", "")
 	}
 
 	pathGlob, _ := params["path"].(string)
@@ -242,7 +241,7 @@ func (s *MCPServer) toolFederationSearchOwnership(params map[string]interface{})
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open federation: %w", err)
+		return nil, errors.NewOperationError("open federation", err)
 	}
 	defer func() { _ = fed.Close() }()
 
@@ -262,7 +261,7 @@ func (s *MCPServer) toolFederationSearchOwnership(params map[string]interface{})
 
 	result, err := fed.SearchOwnership(opts)
 	if err != nil {
-		return nil, fmt.Errorf("search failed: %w", err)
+		return nil, errors.NewOperationError("search ownership", err)
 	}
 
 	return NewToolResponse().
@@ -275,7 +274,7 @@ func (s *MCPServer) toolFederationSearchOwnership(params map[string]interface{})
 func (s *MCPServer) toolFederationGetHotspots(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
-		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
+		return nil, errors.NewInvalidParameterError("federation", "")
 	}
 
 	top := 20
@@ -301,7 +300,7 @@ func (s *MCPServer) toolFederationGetHotspots(params map[string]interface{}) (*e
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open federation: %w", err)
+		return nil, errors.NewOperationError("open federation", err)
 	}
 	defer func() { _ = fed.Close() }()
 
@@ -321,7 +320,7 @@ func (s *MCPServer) toolFederationGetHotspots(params map[string]interface{}) (*e
 
 	result, err := fed.GetHotspots(opts)
 	if err != nil {
-		return nil, fmt.Errorf("query failed: %w", err)
+		return nil, errors.NewOperationError("get hotspots", err)
 	}
 
 	return NewToolResponse().
@@ -334,7 +333,7 @@ func (s *MCPServer) toolFederationGetHotspots(params map[string]interface{}) (*e
 func (s *MCPServer) toolFederationSearchDecisions(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
-		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
+		return nil, errors.NewInvalidParameterError("federation", "")
 	}
 
 	query, _ := params["query"].(string)
@@ -359,7 +358,7 @@ func (s *MCPServer) toolFederationSearchDecisions(params map[string]interface{})
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open federation: %w", err)
+		return nil, errors.NewOperationError("open federation", err)
 	}
 	defer func() { _ = fed.Close() }()
 
@@ -389,7 +388,7 @@ func (s *MCPServer) toolFederationSearchDecisions(params map[string]interface{})
 
 	result, err := fed.SearchDecisions(opts)
 	if err != nil {
-		return nil, fmt.Errorf("search failed: %w", err)
+		return nil, errors.NewOperationError("search decisions", err)
 	}
 
 	return NewToolResponse().
@@ -402,7 +401,7 @@ func (s *MCPServer) toolFederationSearchDecisions(params map[string]interface{})
 func (s *MCPServer) toolFederationSync(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
-		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
+		return nil, errors.NewInvalidParameterError("federation", "")
 	}
 
 	force, _ := params["force"].(bool)
@@ -422,7 +421,7 @@ func (s *MCPServer) toolFederationSync(params map[string]interface{}) (*envelope
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open federation: %w", err)
+		return nil, errors.NewOperationError("open federation", err)
 	}
 	defer func() { _ = fed.Close() }()
 
@@ -442,7 +441,7 @@ func (s *MCPServer) toolFederationSync(params map[string]interface{}) (*envelope
 
 	results, err := fed.Sync(opts)
 	if err != nil {
-		return nil, fmt.Errorf("sync failed: %w", err)
+		return nil, errors.NewOperationError("sync federation", err)
 	}
 
 	// Compute summary

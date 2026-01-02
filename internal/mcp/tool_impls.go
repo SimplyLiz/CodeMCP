@@ -9,6 +9,7 @@ import (
 
 	"ckb/internal/complexity"
 	"ckb/internal/envelope"
+	"ckb/internal/errors"
 	"ckb/internal/index"
 	"ckb/internal/jobs"
 	"ckb/internal/query"
@@ -24,7 +25,7 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 	ctx := context.Background()
 	statusResp, err := s.engine().GetStatus(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get status: %w", err)
+		return nil, errors.NewOperationError("get status", err)
 	}
 
 	// v8.0: Track health tiers and collect suggestions
@@ -177,7 +178,7 @@ func (s *MCPServer) toolDoctor(params map[string]interface{}) (*envelope.Respons
 	ctx := context.Background()
 	doctorResp, err := s.engine().Doctor(ctx, "")
 	if err != nil {
-		return nil, fmt.Errorf("failed to run diagnostics: %w", err)
+		return nil, errors.NewOperationError("run diagnostics", err)
 	}
 
 	checks := make([]map[string]interface{}, 0, len(doctorResp.Checks))
@@ -214,18 +215,18 @@ func (s *MCPServer) toolExpandToolset(params map[string]interface{}) (*envelope.
 	// Extract and validate preset
 	preset, ok := params["preset"].(string)
 	if !ok || preset == "" {
-		return nil, fmt.Errorf("missing required parameter: preset")
+		return nil, errors.NewInvalidParameterError("preset", "required")
 	}
 
 	// Extract and validate reason
 	reason, ok := params["reason"].(string)
 	if !ok || len(reason) < 10 {
-		return nil, fmt.Errorf("missing or insufficient reason (minimum 10 characters)")
+		return nil, errors.NewInvalidParameterError("reason", "minimum 10 characters required")
 	}
 
 	// Validate preset
 	if !IsValidPreset(preset) {
-		return nil, fmt.Errorf("invalid preset: %s (valid: %v)", preset, ValidPresets())
+		return nil, errors.NewInvalidParameterError("preset", fmt.Sprintf("invalid value %q; valid: %v", preset, ValidPresets()))
 	}
 
 	// Rate limit: only allow one expansion per session
@@ -243,7 +244,7 @@ func (s *MCPServer) toolExpandToolset(params map[string]interface{}) (*envelope.
 
 	// Update preset
 	if err := s.SetPreset(preset); err != nil {
-		return nil, fmt.Errorf("failed to set preset: %w", err)
+		return nil, errors.NewOperationError("set preset", err)
 	}
 
 	// Mark as expanded
@@ -278,7 +279,7 @@ func (s *MCPServer) toolExpandToolset(params map[string]interface{}) (*envelope.
 func (s *MCPServer) toolGetSymbol(params map[string]interface{}) (*envelope.Response, error) {
 	symbolId, ok := params["symbolId"].(string)
 	if !ok {
-		return nil, fmt.Errorf("missing or invalid 'symbolId' parameter")
+		return nil, errors.NewInvalidParameterError("symbolId", "")
 	}
 
 	repoStateMode, _ := params["repoStateMode"].(string)
@@ -299,7 +300,7 @@ func (s *MCPServer) toolGetSymbol(params map[string]interface{}) (*envelope.Resp
 
 	symbolResp, err := s.engine().GetSymbol(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get symbol: %w", err)
+		return nil, errors.NewOperationError("get symbol", err)
 	}
 
 	data := map[string]interface{}{}
@@ -359,7 +360,7 @@ func (s *MCPServer) toolSearchSymbols(params map[string]interface{}) (*envelope.
 
 	queryStr, ok := params["query"].(string)
 	if !ok {
-		return nil, fmt.Errorf("missing or invalid 'query' parameter")
+		return nil, errors.NewInvalidParameterError("query", "")
 	}
 
 	scope, _ := params["scope"].(string)
@@ -395,7 +396,7 @@ func (s *MCPServer) toolSearchSymbols(params map[string]interface{}) (*envelope.
 
 	searchResp, err := s.engine().SearchSymbols(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("search failed: %w", err)
+		return nil, errors.NewOperationError("search symbols", err)
 	}
 
 	symbols := make([]map[string]interface{}, 0, len(searchResp.Symbols))
@@ -468,7 +469,7 @@ func (s *MCPServer) toolFindReferences(params map[string]interface{}) (*envelope
 
 	symbolId, ok := params["symbolId"].(string)
 	if !ok {
-		return nil, fmt.Errorf("missing or invalid 'symbolId' parameter")
+		return nil, errors.NewInvalidParameterError("symbolId", "")
 	}
 
 	scope, _ := params["scope"].(string)
@@ -500,7 +501,7 @@ func (s *MCPServer) toolFindReferences(params map[string]interface{}) (*envelope
 
 	refsResp, err := s.engine().FindReferences(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("find references failed: %w", err)
+		return nil, errors.NewOperationError("find references", err)
 	}
 
 	refs := make([]map[string]interface{}, 0, len(refsResp.References))
@@ -583,7 +584,7 @@ func (s *MCPServer) toolGetArchitecture(params map[string]interface{}) (*envelop
 
 	archResp, err := s.engine().GetArchitecture(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("architecture analysis failed: %w", err)
+		return nil, errors.NewOperationError("architecture analysis", err)
 	}
 
 	modules := make([]map[string]interface{}, 0, len(archResp.Modules))
@@ -642,7 +643,7 @@ func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (*envelope.
 
 	symbolId, ok := params["symbolId"].(string)
 	if !ok {
-		return nil, fmt.Errorf("missing or invalid 'symbolId' parameter")
+		return nil, errors.NewInvalidParameterError("symbolId", "")
 	}
 
 	depth := 2
@@ -677,7 +678,7 @@ func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (*envelope.
 
 	impactResp, err := s.engine().AnalyzeImpact(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("impact analysis failed: %w", err)
+		return nil, errors.NewOperationError("impact analysis", err)
 	}
 
 	directImpact := make([]map[string]interface{}, 0, len(impactResp.DirectImpact))
@@ -847,7 +848,7 @@ func (s *MCPServer) toolAnalyzeChange(params map[string]interface{}) (*envelope.
 		Strict:          strict,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("analyzeChange failed: %w", err)
+		return nil, errors.NewOperationError("analyze change", err)
 	}
 
 	// Record wide-result metrics
@@ -878,7 +879,7 @@ func (s *MCPServer) toolAnalyzeChange(params map[string]interface{}) (*envelope.
 func (s *MCPServer) toolExplainSymbol(params map[string]interface{}) (*envelope.Response, error) {
 	symbolId, ok := params["symbolId"].(string)
 	if !ok {
-		return nil, fmt.Errorf("missing or invalid 'symbolId' parameter")
+		return nil, errors.NewInvalidParameterError("symbolId", "")
 	}
 
 	s.logger.Debug("Executing explainSymbol", map[string]interface{}{
@@ -888,7 +889,7 @@ func (s *MCPServer) toolExplainSymbol(params map[string]interface{}) (*envelope.
 	ctx := context.Background()
 	resp, err := s.engine().ExplainSymbol(ctx, query.ExplainSymbolOptions{SymbolId: symbolId})
 	if err != nil {
-		return nil, fmt.Errorf("explainSymbol failed: %w", err)
+		return nil, errors.NewOperationError("explain symbol", err)
 	}
 
 	return NewToolResponse().
@@ -901,7 +902,7 @@ func (s *MCPServer) toolExplainSymbol(params map[string]interface{}) (*envelope.
 func (s *MCPServer) toolJustifySymbol(params map[string]interface{}) (*envelope.Response, error) {
 	symbolId, ok := params["symbolId"].(string)
 	if !ok {
-		return nil, fmt.Errorf("missing or invalid 'symbolId' parameter")
+		return nil, errors.NewInvalidParameterError("symbolId", "")
 	}
 
 	s.logger.Debug("Executing justifySymbol", map[string]interface{}{
@@ -911,7 +912,7 @@ func (s *MCPServer) toolJustifySymbol(params map[string]interface{}) (*envelope.
 	ctx := context.Background()
 	resp, err := s.engine().JustifySymbol(ctx, query.JustifySymbolOptions{SymbolId: symbolId})
 	if err != nil {
-		return nil, fmt.Errorf("justifySymbol failed: %w", err)
+		return nil, errors.NewOperationError("justify symbol", err)
 	}
 
 	return NewToolResponse().
@@ -926,7 +927,7 @@ func (s *MCPServer) toolGetCallGraph(params map[string]interface{}) (*envelope.R
 
 	symbolId, ok := params["symbolId"].(string)
 	if !ok {
-		return nil, fmt.Errorf("missing or invalid 'symbolId' parameter")
+		return nil, errors.NewInvalidParameterError("symbolId", "")
 	}
 
 	direction, _ := params["direction"].(string)
@@ -952,7 +953,7 @@ func (s *MCPServer) toolGetCallGraph(params map[string]interface{}) (*envelope.R
 		Depth:     depth,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("getCallGraph failed: %w", err)
+		return nil, errors.NewOperationError("get call graph", err)
 	}
 
 	// Record wide-result metrics (nodes = callers + callees + root)
@@ -989,7 +990,7 @@ func (s *MCPServer) toolGetModuleOverview(params map[string]interface{}) (*envel
 		Name: name,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("getModuleOverview failed: %w", err)
+		return nil, errors.NewOperationError("get module overview", err)
 	}
 
 	return NewToolResponse().
@@ -1002,7 +1003,7 @@ func (s *MCPServer) toolGetModuleOverview(params map[string]interface{}) (*envel
 func (s *MCPServer) toolExplainFile(params map[string]interface{}) (*envelope.Response, error) {
 	filePath, ok := params["filePath"].(string)
 	if !ok {
-		return nil, fmt.Errorf("missing or invalid 'filePath' parameter")
+		return nil, errors.NewInvalidParameterError("filePath", "")
 	}
 
 	s.logger.Debug("Executing explainFile", map[string]interface{}{
@@ -1014,7 +1015,7 @@ func (s *MCPServer) toolExplainFile(params map[string]interface{}) (*envelope.Re
 		FilePath: filePath,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("explainFile failed: %w", err)
+		return nil, errors.NewOperationError("explain file", err)
 	}
 
 	return NewToolResponse().
@@ -1044,7 +1045,7 @@ func (s *MCPServer) toolListEntrypoints(params map[string]interface{}) (*envelop
 		Limit:        limit,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("listEntrypoints failed: %w", err)
+		return nil, errors.NewOperationError("list entrypoints", err)
 	}
 
 	return NewToolResponse().
@@ -1058,7 +1059,7 @@ func (s *MCPServer) toolListEntrypoints(params map[string]interface{}) (*envelop
 func (s *MCPServer) toolTraceUsage(params map[string]interface{}) (*envelope.Response, error) {
 	symbolId, ok := params["symbolId"].(string)
 	if !ok {
-		return nil, fmt.Errorf("symbolId is required")
+		return nil, errors.NewInvalidParameterError("symbolId", "required")
 	}
 
 	maxPaths := 10
@@ -1084,7 +1085,7 @@ func (s *MCPServer) toolTraceUsage(params map[string]interface{}) (*envelope.Res
 		MaxDepth: maxDepth,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("traceUsage failed: %w", err)
+		return nil, errors.NewOperationError("trace usage", err)
 	}
 
 	return NewToolResponse().
@@ -1131,7 +1132,7 @@ func (s *MCPServer) toolSummarizeDiff(params map[string]interface{}) (*envelope.
 
 	resp, err := s.engine().SummarizeDiff(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("summarizeDiff failed: %w", err)
+		return nil, errors.NewOperationError("summarize diff", err)
 	}
 
 	return NewToolResponse().
@@ -1172,7 +1173,7 @@ func (s *MCPServer) toolGetHotspots(params map[string]interface{}) (*envelope.Re
 
 	resp, err := s.engine().GetHotspots(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("getHotspots failed: %w", err)
+		return nil, errors.NewOperationError("get hotspots", err)
 	}
 
 	// Record wide-result metrics
@@ -1200,7 +1201,7 @@ func (s *MCPServer) toolExplainPath(params map[string]interface{}) (*envelope.Re
 
 	filePath, ok := params["filePath"].(string)
 	if !ok || filePath == "" {
-		return nil, fmt.Errorf("missing or invalid 'filePath' parameter")
+		return nil, errors.NewInvalidParameterError("filePath", "")
 	}
 
 	opts := query.ExplainPathOptions{
@@ -1213,7 +1214,7 @@ func (s *MCPServer) toolExplainPath(params map[string]interface{}) (*envelope.Re
 
 	resp, err := s.engine().ExplainPath(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("explainPath failed: %w", err)
+		return nil, errors.NewOperationError("explain path", err)
 	}
 
 	return NewToolResponse().
@@ -1234,7 +1235,7 @@ func (s *MCPServer) toolListKeyConcepts(params map[string]interface{}) (*envelop
 
 	resp, err := s.engine().ListKeyConcepts(ctx, query.ListKeyConceptsOptions{Limit: limit})
 	if err != nil {
-		return nil, fmt.Errorf("listKeyConcepts failed: %w", err)
+		return nil, errors.NewOperationError("list key concepts", err)
 	}
 
 	return NewToolResponse().
@@ -1274,7 +1275,7 @@ func (s *MCPServer) toolRecentlyRelevant(params map[string]interface{}) (*envelo
 
 	resp, err := s.engine().RecentlyRelevant(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("recentlyRelevant failed: %w", err)
+		return nil, errors.NewOperationError("recently relevant", err)
 	}
 
 	return NewToolResponse().
@@ -1328,7 +1329,7 @@ func (s *MCPServer) toolRefreshArchitecture(params map[string]interface{}) (*env
 
 	resp, err := s.engine().RefreshArchitecture(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("refreshArchitecture failed: %w", err)
+		return nil, errors.NewOperationError("refresh architecture", err)
 	}
 
 	return NewToolResponse().
@@ -1344,7 +1345,7 @@ func (s *MCPServer) toolGetOwnership(params map[string]interface{}) (*envelope.R
 	// Parse path (required)
 	path, ok := params["path"].(string)
 	if !ok || path == "" {
-		return nil, fmt.Errorf("missing or invalid 'path' parameter")
+		return nil, errors.NewInvalidParameterError("path", "")
 	}
 
 	// Parse includeBlame (default: true)
@@ -1373,7 +1374,7 @@ func (s *MCPServer) toolGetOwnership(params map[string]interface{}) (*envelope.R
 
 	resp, err := s.engine().GetOwnership(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("getOwnership failed: %w", err)
+		return nil, errors.NewOperationError("get ownership", err)
 	}
 
 	return NewToolResponse().
@@ -1416,7 +1417,7 @@ func (s *MCPServer) toolGetModuleResponsibilities(params map[string]interface{})
 
 	resp, err := s.engine().GetModuleResponsibilities(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("getModuleResponsibilities failed: %w", err)
+		return nil, errors.NewOperationError("get module responsibilities", err)
 	}
 
 	return NewToolResponse().
@@ -1431,17 +1432,17 @@ func (s *MCPServer) toolRecordDecision(params map[string]interface{}) (*envelope
 	// Parse required parameters
 	title, ok := params["title"].(string)
 	if !ok || title == "" {
-		return nil, fmt.Errorf("missing or invalid 'title' parameter")
+		return nil, errors.NewInvalidParameterError("title", "")
 	}
 
 	context_, ok := params["context"].(string)
 	if !ok || context_ == "" {
-		return nil, fmt.Errorf("missing or invalid 'context' parameter")
+		return nil, errors.NewInvalidParameterError("context", "")
 	}
 
 	decision, ok := params["decision"].(string)
 	if !ok || decision == "" {
-		return nil, fmt.Errorf("missing or invalid 'decision' parameter")
+		return nil, errors.NewInvalidParameterError("decision", "")
 	}
 
 	// Parse consequences (required)
@@ -1454,7 +1455,7 @@ func (s *MCPServer) toolRecordDecision(params map[string]interface{}) (*envelope
 		}
 	}
 	if len(consequences) == 0 {
-		return nil, fmt.Errorf("missing or invalid 'consequences' parameter")
+		return nil, errors.NewInvalidParameterError("consequences", "at least one consequence required")
 	}
 
 	// Parse optional parameters
@@ -1499,7 +1500,7 @@ func (s *MCPServer) toolRecordDecision(params map[string]interface{}) (*envelope
 
 	resp, err := s.engine().RecordDecision(input)
 	if err != nil {
-		return nil, fmt.Errorf("recordDecision failed: %w", err)
+		return nil, errors.NewOperationError("record decision", err)
 	}
 
 	return OperationalResponse(resp), nil
@@ -1515,7 +1516,7 @@ func (s *MCPServer) toolGetDecisions(params map[string]interface{}) (*envelope.R
 
 		resp, err := s.engine().GetDecision(id)
 		if err != nil {
-			return nil, fmt.Errorf("getDecision failed: %w", err)
+			return nil, errors.NewOperationError("get decision", err)
 		}
 
 		return OperationalResponse(resp), nil
@@ -1549,7 +1550,7 @@ func (s *MCPServer) toolGetDecisions(params map[string]interface{}) (*envelope.R
 
 	resp, err := s.engine().GetDecisions(queryOpts)
 	if err != nil {
-		return nil, fmt.Errorf("getDecisions failed: %w", err)
+		return nil, errors.NewOperationError("get decisions", err)
 	}
 
 	return OperationalResponse(resp), nil
@@ -1560,7 +1561,7 @@ func (s *MCPServer) toolAnnotateModule(params map[string]interface{}) (*envelope
 	// Parse required parameters
 	moduleId, ok := params["moduleId"].(string)
 	if !ok || moduleId == "" {
-		return nil, fmt.Errorf("missing or invalid 'moduleId' parameter")
+		return nil, errors.NewInvalidParameterError("moduleId", "")
 	}
 
 	// Parse optional parameters
@@ -1620,7 +1621,7 @@ func (s *MCPServer) toolAnnotateModule(params map[string]interface{}) (*envelope
 
 	resp, err := s.engine().AnnotateModule(input)
 	if err != nil {
-		return nil, fmt.Errorf("annotateModule failed: %w", err)
+		return nil, errors.NewOperationError("annotate module", err)
 	}
 
 	return OperationalResponse(resp), nil
@@ -1633,7 +1634,7 @@ func (s *MCPServer) toolGetJobStatus(params map[string]interface{}) (*envelope.R
 	// Parse jobId (required)
 	jobId, ok := params["jobId"].(string)
 	if !ok || jobId == "" {
-		return nil, fmt.Errorf("missing or invalid 'jobId' parameter")
+		return nil, errors.NewInvalidParameterError("jobId", "")
 	}
 
 	s.logger.Debug("Executing getJobStatus", map[string]interface{}{
@@ -1642,11 +1643,11 @@ func (s *MCPServer) toolGetJobStatus(params map[string]interface{}) (*envelope.R
 
 	job, err := s.engine().GetJob(jobId)
 	if err != nil {
-		return nil, fmt.Errorf("getJobStatus failed: %w", err)
+		return nil, errors.NewOperationError("get job status", err)
 	}
 
 	if job == nil {
-		return nil, fmt.Errorf("job not found: %s", jobId)
+		return nil, errors.NewResourceNotFoundError("job", jobId)
 	}
 
 	return OperationalResponse(job), nil
@@ -1678,7 +1679,7 @@ func (s *MCPServer) toolListJobs(params map[string]interface{}) (*envelope.Respo
 
 	resp, err := s.engine().ListJobs(opts)
 	if err != nil {
-		return nil, fmt.Errorf("listJobs failed: %w", err)
+		return nil, errors.NewOperationError("list jobs", err)
 	}
 
 	return OperationalResponse(resp), nil
@@ -1689,7 +1690,7 @@ func (s *MCPServer) toolCancelJob(params map[string]interface{}) (*envelope.Resp
 	// Parse jobId (required)
 	jobId, ok := params["jobId"].(string)
 	if !ok || jobId == "" {
-		return nil, fmt.Errorf("missing or invalid 'jobId' parameter")
+		return nil, errors.NewInvalidParameterError("jobId", "")
 	}
 
 	s.logger.Debug("Executing cancelJob", map[string]interface{}{
@@ -1698,7 +1699,7 @@ func (s *MCPServer) toolCancelJob(params map[string]interface{}) (*envelope.Resp
 
 	err := s.engine().CancelJob(jobId)
 	if err != nil {
-		return nil, fmt.Errorf("cancelJob failed: %w", err)
+		return nil, errors.NewOperationError("cancel job", err)
 	}
 
 	return OperationalResponse(map[string]interface{}{
@@ -1744,7 +1745,7 @@ func (s *MCPServer) toolSummarizePr(params map[string]interface{}) (*envelope.Re
 
 	resp, err := s.engine().SummarizePR(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("summarizePr failed: %w", err)
+		return nil, errors.NewOperationError("summarize PR", err)
 	}
 
 	// Record wide-result metrics
@@ -1801,7 +1802,7 @@ func (s *MCPServer) toolGetOwnershipDrift(params map[string]interface{}) (*envel
 
 	resp, err := s.engine().GetOwnershipDrift(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("getOwnershipDrift failed: %w", err)
+		return nil, errors.NewOperationError("get ownership drift", err)
 	}
 
 	return NewToolResponse().
@@ -1817,7 +1818,7 @@ func (s *MCPServer) toolGetFileComplexity(params map[string]interface{}) (*envel
 	// Parse filePath (required)
 	filePath, ok := params["filePath"].(string)
 	if !ok || filePath == "" {
-		return nil, fmt.Errorf("filePath is required")
+		return nil, errors.NewInvalidParameterError("filePath", "required")
 	}
 
 	// Parse includeFunctions (optional, default: true)
@@ -1853,7 +1854,7 @@ func (s *MCPServer) toolGetFileComplexity(params map[string]interface{}) (*envel
 
 	// Check if file exists
 	if _, err := os.Stat(absPath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("file not found: %s", filePath)
+		return nil, errors.NewResourceNotFoundError("file", filePath)
 	}
 
 	// Check if complexity analysis is available
@@ -1871,7 +1872,7 @@ func (s *MCPServer) toolGetFileComplexity(params map[string]interface{}) (*envel
 	analyzer := complexity.NewAnalyzer()
 	result, err := analyzer.AnalyzeFile(ctx, absPath)
 	if err != nil {
-		return nil, fmt.Errorf("analysis failed: %w", err)
+		return nil, errors.NewOperationError("analyze file complexity", err)
 	}
 
 	// Check for analysis error
