@@ -1,10 +1,9 @@
 package mcp
 
 import (
-	"fmt"
-
 	"ckb/internal/daemon"
 	"ckb/internal/envelope"
+	"ckb/internal/errors"
 	"ckb/internal/logging"
 	"ckb/internal/paths"
 	"ckb/internal/scheduler"
@@ -15,7 +14,7 @@ import (
 func (s *MCPServer) toolDaemonStatus(params map[string]interface{}) (*envelope.Response, error) {
 	running, pid, err := daemon.IsRunning()
 	if err != nil {
-		return nil, fmt.Errorf("failed to check daemon status: %w", err)
+		return nil, errors.NewOperationError("check daemon status", err)
 	}
 
 	if !running {
@@ -52,7 +51,7 @@ func (s *MCPServer) toolListSchedules(params map[string]interface{}) (*envelope.
 	// Get daemon directory
 	daemonDir, err := paths.GetDaemonDir()
 	if err != nil {
-		return nil, fmt.Errorf("daemon not configured: %w", err)
+		return nil, errors.NewPreconditionError("daemon configured", "run 'ckb daemon start' first")
 	}
 
 	// Create logger
@@ -61,7 +60,7 @@ func (s *MCPServer) toolListSchedules(params map[string]interface{}) (*envelope.
 	// Open scheduler store
 	sched, err := scheduler.New(daemonDir, logger, scheduler.DefaultConfig())
 	if err != nil {
-		return nil, fmt.Errorf("failed to access scheduler: %w", err)
+		return nil, errors.NewOperationError("access scheduler", err)
 	}
 
 	// Build filter options
@@ -83,7 +82,7 @@ func (s *MCPServer) toolListSchedules(params map[string]interface{}) (*envelope.
 
 	result, err := sched.ListSchedules(opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list schedules: %w", err)
+		return nil, errors.NewOperationError("list schedules", err)
 	}
 
 	return OperationalResponse(map[string]interface{}{
@@ -96,13 +95,13 @@ func (s *MCPServer) toolListSchedules(params map[string]interface{}) (*envelope.
 func (s *MCPServer) toolRunSchedule(params map[string]interface{}) (*envelope.Response, error) {
 	scheduleID, ok := params["scheduleId"].(string)
 	if !ok || scheduleID == "" {
-		return nil, fmt.Errorf("scheduleId is required")
+		return nil, errors.NewInvalidParameterError("scheduleId", "required")
 	}
 
 	// Get daemon directory
 	daemonDir, err := paths.GetDaemonDir()
 	if err != nil {
-		return nil, fmt.Errorf("daemon not configured: %w", err)
+		return nil, errors.NewPreconditionError("daemon configured", "run 'ckb daemon start' first")
 	}
 
 	// Create logger
@@ -111,12 +110,12 @@ func (s *MCPServer) toolRunSchedule(params map[string]interface{}) (*envelope.Re
 	// Open scheduler
 	sched, err := scheduler.New(daemonDir, logger, scheduler.DefaultConfig())
 	if err != nil {
-		return nil, fmt.Errorf("failed to access scheduler: %w", err)
+		return nil, errors.NewOperationError("access scheduler", err)
 	}
 
 	// Run the schedule
 	if err := sched.RunNow(scheduleID); err != nil {
-		return nil, fmt.Errorf("failed to run schedule: %w", err)
+		return nil, errors.NewOperationError("run schedule", err)
 	}
 
 	return OperationalResponse(map[string]interface{}{
@@ -131,7 +130,7 @@ func (s *MCPServer) toolListWebhooks(params map[string]interface{}) (*envelope.R
 	// Get daemon directory
 	daemonDir, err := paths.GetDaemonDir()
 	if err != nil {
-		return nil, fmt.Errorf("daemon not configured: %w", err)
+		return nil, errors.NewPreconditionError("daemon configured", "run 'ckb daemon start' first")
 	}
 
 	// Create logger
@@ -140,13 +139,13 @@ func (s *MCPServer) toolListWebhooks(params map[string]interface{}) (*envelope.R
 	// Open webhook manager
 	mgr, err := webhooks.NewManager(daemonDir, logger, webhooks.DefaultConfig())
 	if err != nil {
-		return nil, fmt.Errorf("failed to access webhooks: %w", err)
+		return nil, errors.NewOperationError("access webhooks", err)
 	}
 
 	// List webhooks
 	hooks, err := mgr.ListWebhooks()
 	if err != nil {
-		return nil, fmt.Errorf("failed to list webhooks: %w", err)
+		return nil, errors.NewOperationError("list webhooks", err)
 	}
 
 	// Convert to summaries
@@ -165,13 +164,13 @@ func (s *MCPServer) toolListWebhooks(params map[string]interface{}) (*envelope.R
 func (s *MCPServer) toolTestWebhook(params map[string]interface{}) (*envelope.Response, error) {
 	webhookID, ok := params["webhookId"].(string)
 	if !ok || webhookID == "" {
-		return nil, fmt.Errorf("webhookId is required")
+		return nil, errors.NewInvalidParameterError("webhookId", "required")
 	}
 
 	// Get daemon directory
 	daemonDir, err := paths.GetDaemonDir()
 	if err != nil {
-		return nil, fmt.Errorf("daemon not configured: %w", err)
+		return nil, errors.NewPreconditionError("daemon configured", "run 'ckb daemon start' first")
 	}
 
 	// Create logger
@@ -180,12 +179,12 @@ func (s *MCPServer) toolTestWebhook(params map[string]interface{}) (*envelope.Re
 	// Open webhook manager
 	mgr, err := webhooks.NewManager(daemonDir, logger, webhooks.DefaultConfig())
 	if err != nil {
-		return nil, fmt.Errorf("failed to access webhooks: %w", err)
+		return nil, errors.NewOperationError("access webhooks", err)
 	}
 
 	// Test the webhook
 	if err := mgr.TestWebhook(webhookID); err != nil {
-		return nil, fmt.Errorf("failed to test webhook: %w", err)
+		return nil, errors.NewOperationError("test webhook", err)
 	}
 
 	return OperationalResponse(map[string]interface{}{
@@ -199,13 +198,13 @@ func (s *MCPServer) toolTestWebhook(params map[string]interface{}) (*envelope.Re
 func (s *MCPServer) toolWebhookDeliveries(params map[string]interface{}) (*envelope.Response, error) {
 	webhookID, ok := params["webhookId"].(string)
 	if !ok || webhookID == "" {
-		return nil, fmt.Errorf("webhookId is required")
+		return nil, errors.NewInvalidParameterError("webhookId", "required")
 	}
 
 	// Get daemon directory
 	daemonDir, err := paths.GetDaemonDir()
 	if err != nil {
-		return nil, fmt.Errorf("daemon not configured: %w", err)
+		return nil, errors.NewPreconditionError("daemon configured", "run 'ckb daemon start' first")
 	}
 
 	// Create logger
@@ -214,7 +213,7 @@ func (s *MCPServer) toolWebhookDeliveries(params map[string]interface{}) (*envel
 	// Open webhook manager
 	mgr, err := webhooks.NewManager(daemonDir, logger, webhooks.DefaultConfig())
 	if err != nil {
-		return nil, fmt.Errorf("failed to access webhooks: %w", err)
+		return nil, errors.NewOperationError("access webhooks", err)
 	}
 
 	// Build filter options
@@ -233,7 +232,7 @@ func (s *MCPServer) toolWebhookDeliveries(params map[string]interface{}) (*envel
 
 	result, err := mgr.ListDeliveries(opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list deliveries: %w", err)
+		return nil, errors.NewOperationError("list deliveries", err)
 	}
 
 	return OperationalResponse(map[string]interface{}{

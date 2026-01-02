@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"ckb/internal/envelope"
+	"ckb/internal/errors"
 	"ckb/internal/telemetry"
 )
 
@@ -14,7 +15,7 @@ import (
 func (s *MCPServer) toolGetTelemetryStatus(params map[string]interface{}) (*envelope.Response, error) {
 	cfg := s.engine().GetConfig()
 	if cfg == nil {
-		return nil, fmt.Errorf("configuration not available")
+		return nil, errors.NewPreconditionError("configuration available", "ensure CKB is initialized")
 	}
 
 	status := telemetry.TelemetryStatus{
@@ -101,7 +102,7 @@ func (s *MCPServer) toolGetTelemetryStatus(params map[string]interface{}) (*enve
 func (s *MCPServer) toolGetObservedUsage(params map[string]interface{}) (*envelope.Response, error) {
 	symbolID, _ := params["symbolId"].(string)
 	if symbolID == "" {
-		return nil, fmt.Errorf("symbolId is required")
+		return nil, errors.NewInvalidParameterError("symbolId", "required")
 	}
 
 	period, _ := params["period"].(string)
@@ -113,12 +114,12 @@ func (s *MCPServer) toolGetObservedUsage(params map[string]interface{}) (*envelo
 
 	cfg := s.engine().GetConfig()
 	if cfg == nil || !cfg.Telemetry.Enabled {
-		return nil, fmt.Errorf("telemetry is not enabled")
+		return nil, errors.NewPreconditionError("telemetry enabled", "enable with: ckb config set telemetry.enabled true")
 	}
 
 	storage := s.getTelemetryStorage()
 	if storage == nil {
-		return nil, fmt.Errorf("telemetry storage not available")
+		return nil, errors.NewPreconditionError("telemetry storage available", "ensure database is initialized")
 	}
 
 	// Convert period to filter
@@ -127,7 +128,7 @@ func (s *MCPServer) toolGetObservedUsage(params map[string]interface{}) (*envelo
 	// Get usage data
 	usages, err := storage.GetObservedUsage(symbolID, periodFilter)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get observed usage: %w", err)
+		return nil, errors.NewOperationError("get observed usage", err)
 	}
 
 	response := telemetry.ObservedUsageResponse{
@@ -205,12 +206,12 @@ func (s *MCPServer) toolFindDeadCodeCandidates(params map[string]interface{}) (*
 
 	cfg := s.engine().GetConfig()
 	if cfg == nil || !cfg.Telemetry.Enabled {
-		return nil, fmt.Errorf("telemetry is not enabled")
+		return nil, errors.NewPreconditionError("telemetry enabled", "enable with: ckb config set telemetry.enabled true")
 	}
 
 	storage := s.getTelemetryStorage()
 	if storage == nil {
-		return nil, fmt.Errorf("telemetry storage not available")
+		return nil, errors.NewPreconditionError("telemetry storage available", "ensure database is initialized")
 	}
 
 	// Get match stats for coverage
@@ -300,7 +301,7 @@ func (s *MCPServer) toolFindDeadCodeCandidates(params map[string]interface{}) (*
 	// Get symbols from engine and check for dead code
 	symbols, err := s.engine().GetAllSymbols()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get symbols: %w", err)
+		return nil, errors.NewOperationError("get symbols", err)
 	}
 
 	// Convert to SymbolInfo slice

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"ckb/internal/envelope"
+	"ckb/internal/errors"
 	"ckb/internal/federation"
 	"ckb/internal/logging"
 )
@@ -16,17 +17,17 @@ import (
 func (s *MCPServer) toolFederationAddRemote(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
-		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
+		return nil, errors.NewInvalidParameterError("federation", "")
 	}
 
 	serverName, ok := params["name"].(string)
 	if !ok || serverName == "" {
-		return nil, fmt.Errorf("missing or invalid 'name' parameter")
+		return nil, errors.NewInvalidParameterError("name", "")
 	}
 
 	serverURL, ok := params["url"].(string)
 	if !ok || serverURL == "" {
-		return nil, fmt.Errorf("missing or invalid 'url' parameter")
+		return nil, errors.NewInvalidParameterError("url", "")
 	}
 
 	token, _ := params["token"].(string)
@@ -57,7 +58,7 @@ func (s *MCPServer) toolFederationAddRemote(params map[string]interface{}) (*env
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open federation: %w", err)
+		return nil, errors.NewOperationError("open federation", err)
 	}
 	defer func() { _ = fed.Close() }()
 
@@ -71,7 +72,7 @@ func (s *MCPServer) toolFederationAddRemote(params map[string]interface{}) (*env
 	}
 
 	if addErr := fed.AddRemoteServer(server); addErr != nil {
-		return nil, fmt.Errorf("failed to add remote server: %w", addErr)
+		return nil, errors.NewOperationError("add remote server", addErr)
 	}
 
 	return NewToolResponse().
@@ -91,12 +92,12 @@ func (s *MCPServer) toolFederationAddRemote(params map[string]interface{}) (*env
 func (s *MCPServer) toolFederationRemoveRemote(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
-		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
+		return nil, errors.NewInvalidParameterError("federation", "")
 	}
 
 	serverName, ok := params["name"].(string)
 	if !ok || serverName == "" {
-		return nil, fmt.Errorf("missing or invalid 'name' parameter")
+		return nil, errors.NewInvalidParameterError("name", "")
 	}
 
 	s.logger.Debug("Executing federationRemoveRemote", map[string]interface{}{
@@ -112,12 +113,12 @@ func (s *MCPServer) toolFederationRemoveRemote(params map[string]interface{}) (*
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open federation: %w", err)
+		return nil, errors.NewOperationError("open federation", err)
 	}
 	defer func() { _ = fed.Close() }()
 
 	if removeErr := fed.RemoveRemoteServer(serverName); removeErr != nil {
-		return nil, fmt.Errorf("failed to remove remote server: %w", removeErr)
+		return nil, errors.NewOperationError("remove remote server", removeErr)
 	}
 
 	return NewToolResponse().
@@ -133,7 +134,7 @@ func (s *MCPServer) toolFederationRemoveRemote(params map[string]interface{}) (*
 func (s *MCPServer) toolFederationListRemote(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
-		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
+		return nil, errors.NewInvalidParameterError("federation", "")
 	}
 
 	s.logger.Debug("Executing federationListRemote", map[string]interface{}{
@@ -148,7 +149,7 @@ func (s *MCPServer) toolFederationListRemote(params map[string]interface{}) (*en
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open federation: %w", err)
+		return nil, errors.NewOperationError("open federation", err)
 	}
 	defer func() { _ = fed.Close() }()
 
@@ -182,7 +183,7 @@ func (s *MCPServer) toolFederationListRemote(params map[string]interface{}) (*en
 func (s *MCPServer) toolFederationSyncRemote(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
-		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
+		return nil, errors.NewInvalidParameterError("federation", "")
 	}
 
 	serverName, _ := params["name"].(string) // Optional
@@ -200,14 +201,14 @@ func (s *MCPServer) toolFederationSyncRemote(params map[string]interface{}) (*en
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open federation: %w", err)
+		return nil, errors.NewOperationError("open federation", err)
 	}
 	defer func() { _ = fed.Close() }()
 
 	// Create hybrid engine
 	engine := federation.NewHybridEngine(fed, logger)
 	if initErr := engine.InitRemoteClients(); initErr != nil {
-		return nil, fmt.Errorf("failed to initialize remote clients: %w", initErr)
+		return nil, errors.NewOperationError("initialize remote clients", initErr)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -218,7 +219,7 @@ func (s *MCPServer) toolFederationSyncRemote(params map[string]interface{}) (*en
 	if serverName != "" {
 		// Sync specific server
 		if syncErr := engine.SyncRemote(ctx, serverName); syncErr != nil {
-			return nil, fmt.Errorf("failed to sync server %q: %w", serverName, syncErr)
+			return nil, errors.NewOperationError("sync remote server", syncErr)
 		}
 
 		repos, _ := fed.Index().GetRemoteRepos(serverName)
@@ -252,12 +253,12 @@ func (s *MCPServer) toolFederationSyncRemote(params map[string]interface{}) (*en
 func (s *MCPServer) toolFederationStatusRemote(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
-		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
+		return nil, errors.NewInvalidParameterError("federation", "")
 	}
 
 	serverName, ok := params["name"].(string)
 	if !ok || serverName == "" {
-		return nil, fmt.Errorf("missing or invalid 'name' parameter")
+		return nil, errors.NewInvalidParameterError("name", "")
 	}
 
 	s.logger.Debug("Executing federationStatusRemote", map[string]interface{}{
@@ -273,14 +274,14 @@ func (s *MCPServer) toolFederationStatusRemote(params map[string]interface{}) (*
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open federation: %w", err)
+		return nil, errors.NewOperationError("open federation", err)
 	}
 	defer func() { _ = fed.Close() }()
 
 	// Create hybrid engine
 	engine := federation.NewHybridEngine(fed, logger)
 	if initErr := engine.InitRemoteClients(); initErr != nil {
-		return nil, fmt.Errorf("failed to initialize remote clients: %w", initErr)
+		return nil, errors.NewOperationError("initialize remote clients", initErr)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -288,7 +289,7 @@ func (s *MCPServer) toolFederationStatusRemote(params map[string]interface{}) (*
 
 	status, statusErr := engine.GetRemoteStatus(ctx, serverName)
 	if statusErr != nil {
-		return nil, fmt.Errorf("failed to get status: %w", statusErr)
+		return nil, errors.NewOperationError("get remote status", statusErr)
 	}
 
 	return NewToolResponse().
@@ -311,12 +312,12 @@ func (s *MCPServer) toolFederationStatusRemote(params map[string]interface{}) (*
 func (s *MCPServer) toolFederationSearchSymbolsHybrid(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
-		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
+		return nil, errors.NewInvalidParameterError("federation", "")
 	}
 
 	query, ok := params["query"].(string)
 	if !ok || query == "" {
-		return nil, fmt.Errorf("missing or invalid 'query' parameter")
+		return nil, errors.NewInvalidParameterError("query", "")
 	}
 
 	limit := 100
@@ -341,14 +342,14 @@ func (s *MCPServer) toolFederationSearchSymbolsHybrid(params map[string]interfac
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open federation: %w", err)
+		return nil, errors.NewOperationError("open federation", err)
 	}
 	defer func() { _ = fed.Close() }()
 
 	// Create hybrid engine
 	engine := federation.NewHybridEngine(fed, logger)
 	if initErr := engine.InitRemoteClients(); initErr != nil {
-		return nil, fmt.Errorf("failed to initialize remote clients: %w", initErr)
+		return nil, errors.NewOperationError("initialize remote clients", initErr)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -373,7 +374,7 @@ func (s *MCPServer) toolFederationSearchSymbolsHybrid(params map[string]interfac
 
 	result, err := engine.SearchSymbols(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("search failed: %w", err)
+		return nil, errors.NewOperationError("search symbols", err)
 	}
 
 	return NewToolResponse().
@@ -386,7 +387,7 @@ func (s *MCPServer) toolFederationSearchSymbolsHybrid(params map[string]interfac
 func (s *MCPServer) toolFederationListAllRepos(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
-		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
+		return nil, errors.NewInvalidParameterError("federation", "")
 	}
 
 	s.logger.Debug("Executing federationListAllRepos", map[string]interface{}{
@@ -401,14 +402,14 @@ func (s *MCPServer) toolFederationListAllRepos(params map[string]interface{}) (*
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open federation: %w", err)
+		return nil, errors.NewOperationError("open federation", err)
 	}
 	defer func() { _ = fed.Close() }()
 
 	// Create hybrid engine
 	engine := federation.NewHybridEngine(fed, logger)
 	if initErr := engine.InitRemoteClients(); initErr != nil {
-		return nil, fmt.Errorf("failed to initialize remote clients: %w", initErr)
+		return nil, errors.NewOperationError("initialize remote clients", initErr)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -416,7 +417,7 @@ func (s *MCPServer) toolFederationListAllRepos(params map[string]interface{}) (*
 
 	result, listErr := engine.ListAllRepos(ctx)
 	if listErr != nil {
-		return nil, fmt.Errorf("list failed: %w", listErr)
+		return nil, errors.NewOperationError("list repos", listErr)
 	}
 
 	return NewToolResponse().

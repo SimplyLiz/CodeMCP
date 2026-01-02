@@ -2,11 +2,11 @@ package mcp
 
 import (
 	"context"
-	"fmt"
 
 	"ckb/internal/audit"
 	"ckb/internal/coupling"
 	"ckb/internal/envelope"
+	"ckb/internal/errors"
 	"ckb/internal/explain"
 	"ckb/internal/export"
 )
@@ -17,7 +17,7 @@ import (
 func (s *MCPServer) toolExplainOrigin(params map[string]interface{}) (*envelope.Response, error) {
 	symbol, ok := params["symbol"].(string)
 	if !ok || symbol == "" {
-		return nil, fmt.Errorf("symbol is required")
+		return nil, errors.NewInvalidParameterError("symbol", "required")
 	}
 
 	includeUsage := true
@@ -48,7 +48,7 @@ func (s *MCPServer) toolExplainOrigin(params map[string]interface{}) (*envelope.
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to explain symbol: %w", err)
+		return nil, errors.NewOperationError("explain symbol origin", err)
 	}
 
 	return NewToolResponse().
@@ -60,7 +60,7 @@ func (s *MCPServer) toolExplainOrigin(params map[string]interface{}) (*envelope.
 func (s *MCPServer) toolAnalyzeCoupling(params map[string]interface{}) (*envelope.Response, error) {
 	target, ok := params["target"].(string)
 	if !ok || target == "" {
-		return nil, fmt.Errorf("target is required")
+		return nil, errors.NewInvalidParameterError("target", "required")
 	}
 
 	minCorrelation := 0.3
@@ -91,7 +91,7 @@ func (s *MCPServer) toolAnalyzeCoupling(params map[string]interface{}) (*envelop
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to analyze coupling: %w", err)
+		return nil, errors.NewOperationError("analyze coupling", err)
 	}
 
 	return NewToolResponse().
@@ -153,7 +153,7 @@ func (s *MCPServer) toolExportForLLM(params map[string]interface{}) (*envelope.R
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to export for LLM: %w", err)
+		return nil, errors.NewOperationError("export for LLM", err)
 	}
 
 	// Use organizer for structured output
@@ -212,7 +212,7 @@ func (s *MCPServer) toolAuditRisk(params map[string]interface{}) (*envelope.Resp
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to audit risk: %w", err)
+		return nil, errors.NewOperationError("audit risk", err)
 	}
 
 	// If quickWins mode, return only quick wins
