@@ -10,7 +10,7 @@ This document consolidates the implementation plan for CKB versions 8.0, 8.1, an
 
 | Version | Focus | Status |
 |---------|-------|--------|
-| **8.0** | Foundation: reliability, error clarity, confidence transparency | In Progress |
+| **8.0** | Foundation: reliability, error clarity, confidence transparency | Nearly Complete |
 | **8.1** | Compound operations: explore, understand, prepareChange | Planned |
 | **8.2** | Streaming: SSE for large results | Planned |
 
@@ -35,16 +35,16 @@ This document consolidates the implementation plan for CKB versions 8.0, 8.1, an
 | Static dead code | `findDeadCode` tool for unused symbol detection | #62 |
 | Change impact analysis | Diff-based impact with test mapping | #55, #56 |
 | Golden test suite | Multi-language fixtures for regression testing | #59 |
+| Enhanced `getStatus` | Health tiers (available/degraded/unavailable), remediation, suggestions | #75 |
+| `reindex` tool | Trigger index refresh via MCP, scope parameter (full/incremental) | #75 |
+| Structured error codes | 6 new codes with constructors and remediation | #75 |
+| Streaming design doc | SSE design document for v8.2 | #75 |
 
 ### Remaining
 
 | Feature | Description | Priority |
 |---------|-------------|----------|
-| Enhanced `getStatus` | Health tiers (available/degraded/unavailable), remediation suggestions, actionable `suggestions` array | High |
-| `reindex` tool | Trigger index refresh via MCP without restart, scope parameter (full/incremental) | High |
-| Structured error codes | `AMBIGUOUS_QUERY`, `PARTIAL_RESULT`, `INVALID_PARAMETER`, `RESOURCE_NOT_FOUND`, `PRECONDITION_FAILED`, `OPERATION_FAILED` | High |
 | Error audit | Replace raw `fmt.Errorf` with `CkbError` in all tool handlers | Medium |
-| Streaming design doc | SSE design document for v8.2 | Low |
 
 ### Enhanced getStatus Spec
 
@@ -349,11 +349,12 @@ data: {"totalSymbols": 156, "truncated": false}
 ## Implementation Order
 
 ```
-v8.0 (Current)
-├── Enhanced getStatus with health tiers
-├── reindex tool
-├── New error codes
-└── Error audit across tool handlers
+v8.0 (Nearly Complete)
+├── ✅ Enhanced getStatus with health tiers (#75)
+├── ✅ reindex tool (#75)
+├── ✅ New error codes (#75)
+├── ✅ Streaming design doc (#75)
+└── ⏳ Error audit across tool handlers
 
 v8.1 (Next)
 ├── explore tool
@@ -362,7 +363,7 @@ v8.1 (Next)
 └── batchGet / batchSearch
 
 v8.2 (Future)
-├── SSE streaming design
+├── SSE streaming implementation
 ├── Streaming for compound ops
 └── Client capability detection
 ```
