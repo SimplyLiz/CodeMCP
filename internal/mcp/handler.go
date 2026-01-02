@@ -202,6 +202,35 @@ func (s *MCPServer) handleCallTool(params map[string]interface{}) (interface{}, 
 		"params": toolParams,
 	})
 
+	// v8.0: Check for streaming request
+	if streamResp, err := s.wrapForStreaming(toolName, toolParams); streamResp != nil || err != nil {
+		if err != nil {
+			errResp := envelope.New().Data(nil).Error(err).Build()
+			jsonBytes, _ := json.Marshal(errResp)
+			return map[string]interface{}{
+				"content": []map[string]interface{}{
+					{
+						"type": "text",
+						"text": string(jsonBytes),
+					},
+				},
+			}, nil
+		}
+		// Return streaming initial response
+		jsonBytes, err := json.Marshal(streamResp)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal streaming response: %w", err)
+		}
+		return map[string]interface{}{
+			"content": []map[string]interface{}{
+				{
+					"type": "text",
+					"text": string(jsonBytes),
+				},
+			},
+		}, nil
+	}
+
 	result, err := handler(toolParams)
 	if err != nil {
 		// Wrap error in envelope format

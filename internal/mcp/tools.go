@@ -2133,4 +2133,7 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["prepareChange"] = s.toolPrepareChange
 	s.tools["batchGet"] = s.toolBatchGet
 	s.tools["batchSearch"] = s.toolBatchSearch
+
+	// v8.0 Streaming support
+	s.RegisterStreamableTools()
 }

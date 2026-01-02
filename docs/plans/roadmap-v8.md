@@ -10,8 +10,7 @@ This document consolidates the implementation plan for CKB versions 8.0 and 8.2.
 
 | Version | Focus | Status |
 |---------|-------|--------|
-| **8.0** | Foundation + Compound Operations: reliability, error clarity, compound tools | Complete |
-| **8.2** | Streaming: SSE for large results | Planned |
+| **8.0** | Foundation + Compound Operations + Streaming: reliability, error clarity, compound tools, SSE streaming | Complete |
 
 **Key Principle:** Compound tools coexist with granular tools. Granular tools remain for specific queries; compound tools optimize AI workflows by reducing tool calls.
 
@@ -283,43 +282,75 @@ Replaces: `analyzeImpact` + `getAffectedTests` + `analyzeCoupling` + risk calcul
 
 ---
 
-## v8.2: Streaming
+## Streaming (Merged into v8.0)
 
 **Goal:** Real-time feedback for long-running operations.
 
-### SSE Streaming
+> **Note:** These features were originally planned for v8.2 but have been merged into v8.0.
 
-For operations that take >2s, stream partial results:
+### Completed
 
+| Feature | Description | PR |
+|---------|-------------|-----|
+| Streaming infrastructure | `internal/streaming/` package with Stream, Chunker, MCP integration | #78 |
+| `findReferences` streaming | Stream references in chunks with progress updates | #78 |
+| `searchSymbols` streaming | Stream symbol search results | #78 |
+| `getStatus` streaming info | Added streaming capabilities to status response | #78 |
+
+### SSE Streaming Protocol
+
+For streamable tools, add `stream: true` to opt-in:
+
+```json
+// Request
+{
+  "name": "findReferences",
+  "arguments": {
+    "symbolId": "ckb:repo:sym:abc123",
+    "stream": true,
+    "chunkSize": 20
+  }
+}
+
+// Initial response
+{
+  "streamId": "abc123",
+  "streaming": true,
+  "meta": { "chunkSize": 20 }
+}
+
+// MCP notifications follow:
+// ckb/streamMeta, ckb/streamChunk, ckb/streamProgress, ckb/streamComplete
 ```
-event: progress
-data: {"phase": "searching", "found": 42}
 
-event: partial
-data: {"symbols": [...first 10...]}
+### Event Types
 
-event: partial
-data: {"symbols": [...next 10...]}
+| Event | Purpose |
+|-------|---------|
+| `meta` | Stream metadata (total count, chunk size, backends) |
+| `chunk` | Batch of items with sequence number |
+| `progress` | Phase updates with percentage |
+| `done` | Stream complete with summary |
+| `error` | Error with code and remediation |
 
-event: complete
-data: {"totalSymbols": 156, "truncated": false}
-```
+### Streamable Tools
 
-### Streaming Candidates
+| Operation | Status |
+|-----------|--------|
+| `findReferences` | Implemented |
+| `searchSymbols` | Implemented |
+| `explore` (deep) | Planned |
+| `prepareChange` | Planned |
 
-| Operation | Why Stream |
-|-----------|------------|
-| `explore` (deep) | Module analysis can be slow |
-| `searchSymbols` (large results) | Show results as found |
-| `getAffectedTests` | Test discovery can take time |
-| `prepareChange` | Impact analysis is multi-phase |
+### Files Created
 
-### Implementation Notes
-
-- MCP transport must support SSE (check client capabilities)
-- Fallback to buffered response if streaming unsupported
-- Add `stream: true` parameter to opt-in
-- Design doc: `docs/streaming-design.md`
+| File | Purpose |
+|------|---------|
+| `internal/streaming/stream.go` | Core Stream type with event sending, heartbeat |
+| `internal/streaming/chunker.go` | Generic chunking by count and byte size |
+| `internal/streaming/mcp.go` | MCP notification writer for streams |
+| `internal/mcp/streaming.go` | StreamingHandler type, registry, wrapForStreaming |
+| `internal/mcp/tool_impls_streaming.go` | Streaming implementations for tools |
 
 ---
 
@@ -335,11 +366,6 @@ data: {"totalSymbols": 156, "truncated": false}
 | Tool call reduction | 60-70% fewer calls for common workflows |
 | Compound op response time | <2s p95 |
 | Ambiguity handling | 100% of multi-match queries return disambiguation |
-
-### v8.2
-
-| Metric | Target |
-|--------|--------|
 | Time-to-first-result | <500ms for streamable operations |
 | Client compatibility | Works with Claude Code, Cursor |
 
@@ -357,12 +383,10 @@ v8.0 (Complete)
 ├── ✅ understand tool (#77)
 ├── ✅ prepareChange tool (#77)
 ├── ✅ batchGet / batchSearch (#77)
+├── ✅ SSE streaming infrastructure (#78)
+├── ✅ findReferences streaming (#78)
+├── ✅ searchSymbols streaming (#78)
 └── ⏳ Error audit across tool handlers
-
-v8.2 (Future)
-├── SSE streaming implementation
-├── Streaming for compound ops
-└── Client capability detection
 ```
 
 ---
