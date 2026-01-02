@@ -93,13 +93,13 @@ func TestResourcesRead(t *testing.T) {
 			name:        "invalid URI scheme",
 			uri:         "http://invalid",
 			expectError: true,
-			errorSubstr: "invalid URI scheme",
+			errorSubstr: "expected ckb://",
 		},
 		{
 			name:        "unknown resource type",
 			uri:         "ckb://unknown",
 			expectError: true,
-			errorSubstr: "unknown resource type",
+			errorSubstr: "resource type not found",
 		},
 		{
 			name:        "module without ID",

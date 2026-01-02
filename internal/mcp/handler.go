@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"ckb/internal/envelope"
+	"ckb/internal/errors"
 )
 
 // handleMessage processes an incoming MCP message and returns a response
@@ -157,7 +158,7 @@ func (s *MCPServer) handleListTools(params map[string]interface{}) (interface{},
 	offset, err := DecodeToolsCursor(cursor, preset, toolsetHash)
 	if err != nil {
 		// Return MCP error code -32602 (Invalid params) for invalid cursor
-		return nil, fmt.Errorf("invalid cursor: %s", err.Error())
+		return nil, errors.NewInvalidParameterError("cursor", err.Error())
 	}
 
 	// Get filtered and ordered tools
@@ -184,7 +185,7 @@ func (s *MCPServer) handleListTools(params map[string]interface{}) (interface{},
 func (s *MCPServer) handleCallTool(params map[string]interface{}) (interface{}, error) {
 	toolName, ok := params["name"].(string)
 	if !ok {
-		return nil, fmt.Errorf("missing or invalid 'name' parameter")
+		return nil, errors.NewInvalidParameterError("name", "")
 	}
 
 	toolParams, ok := params["arguments"].(map[string]interface{})
@@ -194,7 +195,7 @@ func (s *MCPServer) handleCallTool(params map[string]interface{}) (interface{}, 
 
 	handler, exists := s.tools[toolName]
 	if !exists {
-		return nil, fmt.Errorf("tool not found: %s", toolName)
+		return nil, errors.NewResourceNotFoundError("tool", toolName)
 	}
 
 	s.logger.Info("Calling tool", map[string]interface{}{
@@ -219,7 +220,7 @@ func (s *MCPServer) handleCallTool(params map[string]interface{}) (interface{}, 
 		// Return streaming initial response
 		jsonBytes, err := json.Marshal(streamResp)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal streaming response: %w", err)
+			return nil, errors.NewOperationError("marshal streaming response", err)
 		}
 		return map[string]interface{}{
 			"content": []map[string]interface{}{
@@ -249,7 +250,7 @@ func (s *MCPServer) handleCallTool(params map[string]interface{}) (interface{}, 
 	// Marshal the envelope response to JSON
 	jsonBytes, err := json.Marshal(result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal response: %w", err)
+		return nil, errors.NewOperationError("marshal response", err)
 	}
 
 	return map[string]interface{}{
@@ -275,7 +276,7 @@ func (s *MCPServer) handleListResources(params map[string]interface{}) (interfac
 func (s *MCPServer) handleReadResource(params map[string]interface{}) (interface{}, error) {
 	uri, ok := params["uri"].(string)
 	if !ok {
-		return nil, fmt.Errorf("missing or invalid 'uri' parameter")
+		return nil, errors.NewInvalidParameterError("uri", "")
 	}
 
 	s.logger.Info("Reading resource", map[string]interface{}{
@@ -284,7 +285,7 @@ func (s *MCPServer) handleReadResource(params map[string]interface{}) (interface
 
 	result, err := s.handleResourceRead(uri)
 	if err != nil {
-		return nil, fmt.Errorf("resource read failed: %w", err)
+		return nil, errors.NewOperationError("resource read", err)
 	}
 
 	return map[string]interface{}{

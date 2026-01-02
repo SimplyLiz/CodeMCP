@@ -42,12 +42,7 @@ This document consolidates the implementation plan for CKB versions 8.0 and 8.2.
 | **`prepareChange` tool** | Pre-change impact + risk assessment | #77 |
 | **`batchGet` tool** | Retrieve multiple symbols by ID (max 50) | #77 |
 | **`batchSearch` tool** | Multiple symbol searches in one call (max 10) | #77 |
-
-### Remaining
-
-| Feature | Description | Priority |
-|---------|-------------|----------|
-| Error audit | Replace raw `fmt.Errorf` with `CkbError` in all tool handlers | Medium |
+| **Error audit** | Replace raw `fmt.Errorf` with `CkbError` in MCP handlers | #79 |
 
 ### Enhanced getStatus Spec
 
@@ -386,7 +381,7 @@ v8.0 (Complete)
 ├── ✅ SSE streaming infrastructure (#78)
 ├── ✅ findReferences streaming (#78)
 ├── ✅ searchSymbols streaming (#78)
-└── ⏳ Error audit across tool handlers
+└── ✅ Error audit across tool handlers (#79)
 ```
 
 ---
