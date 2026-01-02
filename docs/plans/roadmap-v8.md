@@ -1,0 +1,377 @@
+# CKB v8.x Roadmap
+
+This document consolidates the implementation plan for CKB versions 8.0, 8.1, and 8.2.
+
+**Theme:** Reliability, clarity, and compound operations for AI workflows.
+
+---
+
+## Version Overview
+
+| Version | Focus | Status |
+|---------|-------|--------|
+| **8.0** | Foundation: reliability, error clarity, confidence transparency | In Progress |
+| **8.1** | Compound operations: explore, understand, prepareChange | Planned |
+| **8.2** | Streaming: SSE for large results | Planned |
+
+**Key Principle:** Compound tools coexist with granular tools. Granular tools remain for specific queries; compound tools optimize AI workflows by reducing tool calls.
+
+---
+
+## v8.0: Foundation
+
+**Goal:** Every response is trustworthy, every error is actionable.
+
+### Completed
+
+| Feature | Description | PR |
+|---------|-------------|-----|
+| ConfidenceFactor type | Structured explanation of confidence scores | #73 |
+| CacheInfo type | Cache hit/miss transparency in responses | #73, #74 |
+| Confidence wiring | `FromProvenance()` generates factors automatically | #73 |
+| Cache wiring | Cache info populated when serving cached responses | #73 |
+| Breaking change detection | `compareAPI` tool for API compatibility | #64 |
+| Affected tests | `getAffectedTests` MCP tool for test coverage mapping | #63 |
+| Static dead code | `findDeadCode` tool for unused symbol detection | #62 |
+| Change impact analysis | Diff-based impact with test mapping | #55, #56 |
+| Golden test suite | Multi-language fixtures for regression testing | #59 |
+
+### Remaining
+
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| Enhanced `getStatus` | Health tiers (available/degraded/unavailable), remediation suggestions, actionable `suggestions` array | High |
+| `reindex` tool | Trigger index refresh via MCP without restart, scope parameter (full/incremental) | High |
+| Structured error codes | `AMBIGUOUS_QUERY`, `PARTIAL_RESULT`, `INVALID_PARAMETER`, `RESOURCE_NOT_FOUND`, `PRECONDITION_FAILED`, `OPERATION_FAILED` | High |
+| Error audit | Replace raw `fmt.Errorf` with `CkbError` in all tool handlers | Medium |
+| Streaming design doc | SSE design document for v8.2 | Low |
+
+### Enhanced getStatus Spec
+
+The `getStatus` tool should return:
+
+```json
+{
+  "backends": {
+    "scip": {
+      "status": "available",
+      "latencyMs": 12
+    },
+    "git": {
+      "status": "available"
+    },
+    "lsp": {
+      "status": "unavailable",
+      "reason": "No LSP server configured",
+      "remediation": "Configure LSP server in .ckb/config.json"
+    }
+  },
+  "index": {
+    "fresh": false,
+    "commitsBehind": 3,
+    "lastIndexed": "2h ago",
+    "symbolCount": 4521,
+    "fileCount": 156
+  },
+  "overallHealth": "degraded",
+  "suggestions": [
+    "Run 'ckb index' to refresh stale index",
+    "Configure LSP for enhanced code intelligence"
+  ]
+}
+```
+
+Health tiers:
+- `available` — Backend working normally
+- `degraded` — Backend available but with warnings
+- `unavailable` — Backend not available, includes remediation
+
+### reindex Tool Spec
+
+```json
+// Input
+{
+  "scope": "full",      // "full" | "incremental"
+  "async": false        // Return immediately if true
+}
+
+// Output
+{
+  "status": "action_required",  // "skipped" | "action_required" | "started" | "completed"
+  "message": "Index is 3 commits behind. Run 'ckb index' to refresh.",
+  "jobId": "..."               // If async=true
+}
+```
+
+### Error Code Taxonomy
+
+| Code | When | Remediation |
+|------|------|-------------|
+| `AMBIGUOUS_QUERY` | Multiple symbols match query | Narrow with scope, kind, or more specific name |
+| `PARTIAL_RESULT` | Some backends failed | Result incomplete; check backend health |
+| `INVALID_PARAMETER` | Bad input | Check parameter format |
+| `RESOURCE_NOT_FOUND` | Symbol/file doesn't exist | Verify ID or path |
+| `PRECONDITION_FAILED` | Required condition not met | Check index freshness, backend availability |
+| `OPERATION_FAILED` | General failure | Check logs, retry |
+
+---
+
+## v8.1: Compound Operations
+
+**Goal:** Reduce AI tool calls by 60-70% with smart aggregation.
+
+### Tools
+
+#### `explore` — Area Exploration
+
+Replaces: `explainFile` → `searchSymbols` → `getCallGraph` → `getHotspots`
+
+```json
+// Input
+{
+  "target": "internal/query",  // file, directory, or module path
+  "depth": "standard",         // "shallow" | "standard" | "deep"
+  "focus": "structure"         // "structure" | "dependencies" | "changes"
+}
+
+// Output
+{
+  "overview": { /* module overview */ },
+  "keySymbols": [ /* top 20 by importance */ ],
+  "dependencies": { /* imports/exports */ },
+  "recentChanges": [ /* if git available */ ],
+  "hotspots": [ /* if git available */ ],
+  "suggestions": [ /* drilldown hints */ ],
+  "health": { /* backend status */ }
+}
+```
+
+Implementation:
+1. Determine target type (file vs directory vs module)
+2. Run sub-queries in parallel:
+   - `ExplainFile` or `GetModuleOverview`
+   - `SearchSymbols` (scoped to target)
+   - `GetCallGraph` (if depth >= standard)
+   - `GetHotspots` (if git available)
+3. Rank symbols: exported > internal, referenced > orphan
+4. Truncate to response budget (~100KB)
+5. Generate drilldown suggestions
+
+#### `understand` — Symbol Deep-Dive
+
+Replaces: `searchSymbols` → `getSymbol` → `explainSymbol` → `findReferences` → `getCallGraph`
+
+```json
+// Input
+{
+  "query": "HandleRequest",
+  "includeReferences": true,
+  "includeCallGraph": true,
+  "maxReferences": 50
+}
+
+// Output
+{
+  "symbol": { /* full symbol detail */ },
+  "explanation": "...",
+  "references": [ /* grouped by file */ ],
+  "callers": [ /* symbols that call this */ ],
+  "callees": [ /* symbols this calls */ ],
+  "relatedTests": [ /* test files using this */ ],
+  "ambiguity": {
+    "matchCount": 3,
+    "topMatches": [ /* if multiple matches */ ],
+    "hint": "Add scope to disambiguate"
+  }
+}
+```
+
+Implementation:
+1. Search for symbol, check match count
+2. If exact match → proceed
+3. If multiple matches → return ambiguity info with top 3-5
+4. Parallel fetch: explanation, references, call graph
+5. Group references by file
+6. Identify test files via naming convention + import analysis
+
+#### `prepareChange` — Pre-Change Analysis
+
+Replaces: `analyzeImpact` + `getAffectedTests` + `analyzeCoupling` + risk calculation
+
+```json
+// Input
+{
+  "target": "ckb:repo:sym:abc123",  // symbol ID or file path
+  "changeType": "modify"            // "modify" | "rename" | "delete" | "extract"
+}
+
+// Output
+{
+  "target": { /* symbol detail */ },
+  "directDependents": [ /* immediate callers */ ],
+  "transitiveImpact": {
+    "totalCallers": 47,
+    "moduleSpread": 8,
+    "maxDepth": 3
+  },
+  "relatedTests": [ /* tests to run */ ],
+  "coChangeFiles": [ /* historically changed together */ ],
+  "riskAssessment": {
+    "level": "high",        // "low" | "medium" | "high" | "critical"
+    "score": 0.78,
+    "factors": [
+      "High module spread (8 modules)",
+      "Low test coverage",
+      "Hot file (changed 12 times in 30 days)"
+    ],
+    "suggestions": [
+      "Consider splitting into smaller changes",
+      "Add tests before modifying"
+    ]
+  }
+}
+```
+
+### Batch Operations
+
+#### `batchGet` — Multiple Symbols by ID
+
+```json
+// Input
+{ "symbolIds": ["ckb:...", "ckb:...", ...] }  // max 50
+
+// Output
+{
+  "results": { "ckb:...": { /* symbol */ }, ... },
+  "errors": { "ckb:...": { "code": "...", "message": "..." }, ... }
+}
+```
+
+#### `batchSearch` — Multiple Searches
+
+```json
+// Input
+{
+  "queries": [
+    { "query": "Handler", "kind": "function" },
+    { "query": "Service", "kind": "class" }
+  ]
+}
+
+// Output
+{
+  "results": [
+    { "query": "Handler", "symbols": [...] },
+    { "query": "Service", "symbols": [...] }
+  ]
+}
+```
+
+### Files to Create
+
+| File | Purpose |
+|------|---------|
+| `internal/query/explore.go` | `Engine.Explore()` method |
+| `internal/query/understand.go` | `Engine.Understand()` method |
+| `internal/query/prepare_change.go` | `Engine.PrepareChange()` method |
+| `internal/query/batch.go` | Batch operation implementations |
+| `internal/mcp/tool_impls_v81.go` | MCP handlers for compound tools |
+
+---
+
+## v8.2: Streaming
+
+**Goal:** Real-time feedback for long-running operations.
+
+### SSE Streaming
+
+For operations that take >2s, stream partial results:
+
+```
+event: progress
+data: {"phase": "searching", "found": 42}
+
+event: partial
+data: {"symbols": [...first 10...]}
+
+event: partial
+data: {"symbols": [...next 10...]}
+
+event: complete
+data: {"totalSymbols": 156, "truncated": false}
+```
+
+### Streaming Candidates
+
+| Operation | Why Stream |
+|-----------|------------|
+| `explore` (deep) | Module analysis can be slow |
+| `searchSymbols` (large results) | Show results as found |
+| `getAffectedTests` | Test discovery can take time |
+| `prepareChange` | Impact analysis is multi-phase |
+
+### Implementation Notes
+
+- MCP transport must support SSE (check client capabilities)
+- Fallback to buffered response if streaming unsupported
+- Add `stream: true` parameter to opt-in
+- Design doc: `docs/streaming-design.md`
+
+---
+
+## Success Metrics
+
+### v8.0
+
+| Metric | Target |
+|--------|--------|
+| Error remediation coverage | 100% of errors include remediation |
+| Confidence factors in responses | 100% of tool responses |
+| Cache visibility | 100% of cached responses show cache info |
+
+### v8.1
+
+| Metric | Target |
+|--------|--------|
+| Tool call reduction | 60-70% fewer calls for common workflows |
+| Compound op response time | <2s p95 |
+| Ambiguity handling | 100% of multi-match queries return disambiguation |
+
+### v8.2
+
+| Metric | Target |
+|--------|--------|
+| Time-to-first-result | <500ms for streamable operations |
+| Client compatibility | Works with Claude Code, Cursor |
+
+---
+
+## Implementation Order
+
+```
+v8.0 (Current)
+├── Enhanced getStatus with health tiers
+├── reindex tool
+├── New error codes
+└── Error audit across tool handlers
+
+v8.1 (Next)
+├── explore tool
+├── understand tool
+├── prepareChange tool
+└── batchGet / batchSearch
+
+v8.2 (Future)
+├── SSE streaming design
+├── Streaming for compound ops
+└── Client capability detection
+```
+
+---
+
+## Related Documents
+
+- `docs/ideas.md` — Feature ideas with value/effort matrix
+- `docs/featureplans/change-impact-analysis.md` — Detailed impact analysis spec
+- `docs/plan/incremental-multi-language.md` — Multi-language indexing plan
+- `docs/backlog/index-refresh-improvements.md` — Index refresh enhancements
