@@ -14,13 +14,15 @@ func TestPresetFiltering(t *testing.T) {
 	server := NewMCPServer("test", nil, logger)
 
 	// Test core preset (default)
+	// v8.0: Core now includes 5 compound tools (explore, understand, prepareChange, batchGet, batchSearch)
 	coreTools := server.GetFilteredTools()
-	if len(coreTools) != 14 {
-		t.Errorf("expected 14 core tools, got %d", len(coreTools))
+	if len(coreTools) != 19 {
+		t.Errorf("expected 19 core tools (v8.0 includes compound tools), got %d", len(coreTools))
 	}
 
-	// Verify core tools are in correct order (core-first)
+	// Verify compound tools come first (preferred for AI workflows)
 	expectedFirst := []string{
+		"explore", "understand", "prepareChange", "batchGet", "batchSearch",
 		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "listKeyConcepts",
@@ -41,8 +43,9 @@ func TestPresetFiltering(t *testing.T) {
 		t.Fatalf("failed to set full preset: %v", err)
 	}
 	fullTools := server.GetFilteredTools()
-	if len(fullTools) != 81 {
-		t.Errorf("expected 81 full tools, got %d", len(fullTools))
+	// v8.0: Full now includes 5 additional compound tools (86 = 81 + 5)
+	if len(fullTools) != 86 {
+		t.Errorf("expected 86 full tools (v8.0 includes compound tools), got %d", len(fullTools))
 	}
 
 	// Full preset should still have core tools first

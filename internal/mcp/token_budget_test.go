@@ -12,9 +12,10 @@ import (
 // the test fails and forces review of the token impact.
 const (
 	// tools/list budgets (bytes)
-	maxCorePresetBytes   = 45000  // ~11k tokens - core preset should be lean
-	maxReviewPresetBytes = 65000  // ~16k tokens - review adds a few tools
-	maxFullPresetBytes   = 250000 // ~62k tokens - all 58 tools
+	// v8.0: Increased budgets for compound tools (explore, understand, prepareChange, batchGet, batchSearch)
+	maxCorePresetBytes   = 60000  // ~15k tokens - v8.0: core now includes 5 compound tools
+	maxReviewPresetBytes = 80000  // ~20k tokens - review adds a few tools
+	maxFullPresetBytes   = 270000 // ~67k tokens - all 86 tools (v8.0: 81 + 5 compound)
 
 	// Per-tool schema budget (bytes) - catches bloated schemas
 	maxToolSchemaBytes = 6000 // ~1500 tokens per tool
@@ -32,9 +33,9 @@ func TestToolsListTokenBudget(t *testing.T) {
 		minTools int // Ensure we don't accidentally drop tools
 		maxTools int
 	}{
-		{PresetCore, maxCorePresetBytes, 12, 16},
-		{PresetReview, maxReviewPresetBytes, 17, 22},
-		{PresetFull, maxFullPresetBytes, 70, 81}, // v8.0: 81 tools (added reindex)
+		{PresetCore, maxCorePresetBytes, 17, 21},     // v8.0: 19 tools (14 + 5 compound)
+		{PresetReview, maxReviewPresetBytes, 22, 27}, // v8.0: 24 tools (19 + 5 review-specific)
+		{PresetFull, maxFullPresetBytes, 80, 90},     // v8.0: 86 tools (81 + 5 compound)
 	}
 
 	for _, tt := range tests {

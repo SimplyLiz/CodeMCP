@@ -1,6 +1,6 @@
 # CKB v8.x Roadmap
 
-This document consolidates the implementation plan for CKB versions 8.0, 8.1, and 8.2.
+This document consolidates the implementation plan for CKB versions 8.0 and 8.2.
 
 **Theme:** Reliability, clarity, and compound operations for AI workflows.
 
@@ -10,17 +10,16 @@ This document consolidates the implementation plan for CKB versions 8.0, 8.1, an
 
 | Version | Focus | Status |
 |---------|-------|--------|
-| **8.0** | Foundation: reliability, error clarity, confidence transparency | Nearly Complete |
-| **8.1** | Compound operations: explore, understand, prepareChange | Planned |
+| **8.0** | Foundation + Compound Operations: reliability, error clarity, compound tools | Complete |
 | **8.2** | Streaming: SSE for large results | Planned |
 
 **Key Principle:** Compound tools coexist with granular tools. Granular tools remain for specific queries; compound tools optimize AI workflows by reducing tool calls.
 
 ---
 
-## v8.0: Foundation
+## v8.0: Foundation + Compound Operations
 
-**Goal:** Every response is trustworthy, every error is actionable.
+**Goal:** Every response is trustworthy, every error is actionable. Reduce AI tool calls by 60-70%.
 
 ### Completed
 
@@ -37,8 +36,13 @@ This document consolidates the implementation plan for CKB versions 8.0, 8.1, an
 | Golden test suite | Multi-language fixtures for regression testing | #59 |
 | Enhanced `getStatus` | Health tiers (available/degraded/unavailable), remediation, suggestions | #75 |
 | `reindex` tool | Trigger index refresh via MCP, scope parameter (full/incremental) | #75 |
-| Structured error codes | 6 new codes with constructors and remediation | #75 |
+| Structured error codes | 6 new codes with constructors and remediation | #75, #76 |
 | Streaming design doc | SSE design document for v8.2 | #75 |
+| **`explore` tool** | Comprehensive area exploration (file/dir/module) | #77 |
+| **`understand` tool** | Symbol deep-dive with ambiguity handling | #77 |
+| **`prepareChange` tool** | Pre-change impact + risk assessment | #77 |
+| **`batchGet` tool** | Retrieve multiple symbols by ID (max 50) | #77 |
+| **`batchSearch` tool** | Multiple symbol searches in one call (max 10) | #77 |
 
 ### Remaining
 
@@ -116,9 +120,11 @@ Health tiers:
 
 ---
 
-## v8.1: Compound Operations
+## Compound Operations (Merged into v8.0)
 
 **Goal:** Reduce AI tool calls by 60-70% with smart aggregation.
+
+> **Note:** These features were originally planned for v8.1 but have been merged into v8.0.
 
 ### Tools
 
@@ -267,15 +273,13 @@ Replaces: `analyzeImpact` + `getAffectedTests` + `analyzeCoupling` + risk calcul
 }
 ```
 
-### Files to Create
+### Files Created
 
 | File | Purpose |
 |------|---------|
-| `internal/query/explore.go` | `Engine.Explore()` method |
-| `internal/query/understand.go` | `Engine.Understand()` method |
-| `internal/query/prepare_change.go` | `Engine.PrepareChange()` method |
-| `internal/query/batch.go` | Batch operation implementations |
-| `internal/mcp/tool_impls_v81.go` | MCP handlers for compound tools |
+| `internal/query/compound.go` | All compound operations: `Explore()`, `Understand()`, `PrepareChange()`, `BatchGet()`, `BatchSearch()` |
+| `internal/query/compound_test.go` | Tests for compound tools |
+| `internal/mcp/tool_impls_compound.go` | MCP handlers for compound tools |
 
 ---
 
@@ -328,11 +332,6 @@ data: {"totalSymbols": 156, "truncated": false}
 | Error remediation coverage | 100% of errors include remediation |
 | Confidence factors in responses | 100% of tool responses |
 | Cache visibility | 100% of cached responses show cache info |
-
-### v8.1
-
-| Metric | Target |
-|--------|--------|
 | Tool call reduction | 60-70% fewer calls for common workflows |
 | Compound op response time | <2s p95 |
 | Ambiguity handling | 100% of multi-match queries return disambiguation |
@@ -349,18 +348,16 @@ data: {"totalSymbols": 156, "truncated": false}
 ## Implementation Order
 
 ```
-v8.0 (Nearly Complete)
+v8.0 (Complete)
 ├── ✅ Enhanced getStatus with health tiers (#75)
 ├── ✅ reindex tool (#75)
-├── ✅ New error codes (#75)
+├── ✅ New error codes (#75, #76)
 ├── ✅ Streaming design doc (#75)
+├── ✅ explore tool (#77)
+├── ✅ understand tool (#77)
+├── ✅ prepareChange tool (#77)
+├── ✅ batchGet / batchSearch (#77)
 └── ⏳ Error audit across tool handlers
-
-v8.1 (Next)
-├── explore tool
-├── understand tool
-├── prepareChange tool
-└── batchGet / batchSearch
 
 v8.2 (Future)
 ├── SSE streaming implementation
