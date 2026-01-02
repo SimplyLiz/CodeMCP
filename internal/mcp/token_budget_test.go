@@ -34,7 +34,7 @@ func TestToolsListTokenBudget(t *testing.T) {
 	}{
 		{PresetCore, maxCorePresetBytes, 12, 16},
 		{PresetReview, maxReviewPresetBytes, 17, 22},
-		{PresetFull, maxFullPresetBytes, 70, 80}, // 75 tools: 74 original + expandToolset
+		{PresetFull, maxFullPresetBytes, 70, 81}, // v8.0: 81 tools (added reindex)
 	}
 
 	for _, tt := range tests {

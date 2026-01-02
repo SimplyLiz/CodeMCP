@@ -39,6 +39,26 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				"properties": map[string]interface{}{},
 			},
 		},
+		{
+			Name:        "reindex",
+			Description: "Trigger a refresh of the SCIP index without restarting CKB. Returns actionable guidance on how to refresh the index based on current staleness.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"scope": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"full", "incremental"},
+						"default":     "full",
+						"description": "Reindex scope: 'full' for complete reindex, 'incremental' for changed files only (Go only)",
+					},
+					"async": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Return immediately and poll status (not yet implemented)",
+					},
+				},
+			},
+		},
 		// Meta-tool for dynamic preset expansion
 		{
 			Name:        "expandToolset",
@@ -1884,6 +1904,7 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["getStatus"] = s.toolGetStatus
 	s.tools["getWideResultMetrics"] = s.toolGetWideResultMetrics
 	s.tools["doctor"] = s.toolDoctor
+	s.tools["reindex"] = s.toolReindex
 	s.tools["expandToolset"] = s.toolExpandToolset
 	s.tools["getSymbol"] = s.toolGetSymbol
 	s.tools["searchSymbols"] = s.toolSearchSymbols

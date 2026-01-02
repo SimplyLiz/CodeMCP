@@ -137,6 +137,7 @@ var Presets = map[string][]string{
 		"analyzeImpact", "getHotspots", "getStatus", "expandToolset",
 		// Ops-specific
 		"doctor",
+		"reindex",
 		"daemonStatus",
 		"listJobs",
 		"getJobStatus",
