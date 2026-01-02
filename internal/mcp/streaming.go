@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"sync"
 
 	"ckb/internal/envelope"
 	"ckb/internal/streaming"
@@ -19,10 +20,15 @@ type StreamableToolInfo struct {
 }
 
 // streamableTools maps tool names to their streaming info.
-var streamableTools = map[string]StreamableToolInfo{}
+var (
+	streamableTools   = map[string]StreamableToolInfo{}
+	streamableToolsMu sync.RWMutex
+)
 
 // RegisterStreamableHandler registers a tool as streamable.
 func (s *MCPServer) RegisterStreamableHandler(name string, handler StreamingHandler, groupKey string) {
+	streamableToolsMu.Lock()
+	defer streamableToolsMu.Unlock()
 	streamableTools[name] = StreamableToolInfo{
 		Handler:    handler,
 		GroupKey:   groupKey,
@@ -32,6 +38,8 @@ func (s *MCPServer) RegisterStreamableHandler(name string, handler StreamingHand
 
 // IsStreamable returns true if the tool supports streaming.
 func IsStreamable(toolName string) bool {
+	streamableToolsMu.RLock()
+	defer streamableToolsMu.RUnlock()
 	_, ok := streamableTools[toolName]
 	return ok
 }
@@ -52,7 +60,9 @@ func StreamingConfig(params map[string]interface{}) (enabled bool, chunkSize int
 
 // handleStreamingCall handles a streaming tool call.
 func (s *MCPServer) handleStreamingCall(toolName string, params map[string]interface{}) (*envelope.Response, error) {
+	streamableToolsMu.RLock()
 	info, ok := streamableTools[toolName]
+	streamableToolsMu.RUnlock()
 	if !ok {
 		return nil, nil // Not streamable
 	}
@@ -103,6 +113,8 @@ type StreamCapabilities struct {
 
 // GetStreamCapabilities returns current streaming capabilities.
 func GetStreamCapabilities() StreamCapabilities {
+	streamableToolsMu.RLock()
+	defer streamableToolsMu.RUnlock()
 	tools := make([]string, 0, len(streamableTools))
 	for name := range streamableTools {
 		tools = append(tools, name)

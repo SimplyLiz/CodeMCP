@@ -258,7 +258,11 @@ func TestStreamMultipleChunks(t *testing.T) {
 	chunkCount := 0
 	for event := range stream.Events() {
 		if event.Type == EventChunk {
-			chunk := event.Data.(ChunkData)
+			chunk, ok := event.Data.(ChunkData)
+			if !ok {
+				t.Errorf("expected ChunkData, got %T", event.Data)
+				continue
+			}
 			if chunk.Sequence != chunkCount+1 {
 				t.Errorf("expected sequence %d, got %d", chunkCount+1, chunk.Sequence)
 			}

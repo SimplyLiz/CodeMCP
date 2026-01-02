@@ -158,7 +158,12 @@ func TestToInterfaceSlice(t *testing.T) {
 	}
 
 	for i, item := range result {
-		if item.(int) != i+1 {
+		val, ok := item.(int)
+		if !ok {
+			t.Errorf("expected int, got %T", item)
+			continue
+		}
+		if val != i+1 {
 			t.Errorf("expected %d, got %v", i+1, item)
 		}
 	}

@@ -138,11 +138,11 @@ func (w *MCPStreamWriter) forwardEvents() {
 
 // InitialResponse creates the initial response for a streaming request.
 type InitialResponse struct {
-	StreamID  string       `json:"streamId"`
-	Streaming bool         `json:"streaming"`
-	Meta      *MetaData    `json:"meta,omitempty"`
-	Warnings  []string     `json:"warnings,omitempty"`
-	Data      interface{}  `json:"data,omitempty"` // Optional initial data
+	StreamID  string      `json:"streamId"`
+	Streaming bool        `json:"streaming"`
+	Meta      *MetaData   `json:"meta,omitempty"`
+	Warnings  []string    `json:"warnings,omitempty"`
+	Data      interface{} `json:"data,omitempty"` // Optional initial data
 }
 
 // StreamableTools lists tools that support streaming.

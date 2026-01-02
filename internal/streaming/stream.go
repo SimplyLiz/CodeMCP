@@ -49,10 +49,10 @@ type MetaData struct {
 
 // ChunkData contains a batch of results.
 type ChunkData struct {
-	Sequence int         `json:"sequence"`        // Chunk sequence number
-	Items    interface{} `json:"items"`           // The actual items
-	Count    int         `json:"count"`           // Number of items in this chunk
-	HasMore  bool        `json:"hasMore"`         // More chunks coming
+	Sequence int         `json:"sequence"` // Chunk sequence number
+	Items    interface{} `json:"items"`    // The actual items
+	Count    int         `json:"count"`    // Number of items in this chunk
+	HasMore  bool        `json:"hasMore"`  // More chunks coming
 }
 
 // ProgressData reports progress.
