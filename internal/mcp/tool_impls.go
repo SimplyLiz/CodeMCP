@@ -105,6 +105,9 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 		}
 	}
 
+	// v8.0: Get streaming capabilities
+	streamCaps := GetStreamCapabilities()
+
 	data := map[string]interface{}{
 		"status":        status,
 		"healthy":       statusResp.Healthy,
@@ -129,6 +132,9 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 			"estimatedTokens":     activeTokens,
 			"fullPresetTokens":    fullTokens,
 			"tokenSavingsPercent": tokenSavings,
+		},
+		"capabilities": map[string]interface{}{
+			"streaming": streamCaps, // v8.0: streaming support
 		},
 		"index":       indexInfo,
 		"lastRefresh": statusResp.LastRefresh,
