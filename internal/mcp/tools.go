@@ -1896,6 +1896,136 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				"properties": map[string]interface{}{},
 			},
 		},
+		// v8.0 Compound Tools - aggregate multiple queries to reduce tool calls
+		{
+			Name:        "explore",
+			Description: "Comprehensive area exploration. Aggregates: explainFile → searchSymbols → getCallGraph → getHotspots. Use for initial codebase orientation.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"target": map[string]interface{}{
+						"type":        "string",
+						"description": "File, directory, or module path to explore",
+					},
+					"depth": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"shallow", "standard", "deep"},
+						"default":     "standard",
+						"description": "Exploration thoroughness: shallow (quick overview), standard (balanced), deep (comprehensive)",
+					},
+					"focus": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"structure", "dependencies", "changes"},
+						"default":     "structure",
+						"description": "Aspect to emphasize: structure (symbols/types), dependencies (imports/exports), changes (hotspots/history)",
+					},
+				},
+				"required": []string{"target"},
+			},
+		},
+		{
+			Name:        "understand",
+			Description: "Comprehensive symbol deep-dive. Aggregates: searchSymbols → getSymbol → explainSymbol → findReferences → getCallGraph. Handles ambiguity with multiple matches.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"query": map[string]interface{}{
+						"type":        "string",
+						"description": "Symbol name or ID to understand",
+					},
+					"includeReferences": map[string]interface{}{
+						"type":        "boolean",
+						"default":     true,
+						"description": "Include reference information grouped by file",
+					},
+					"includeCallGraph": map[string]interface{}{
+						"type":        "boolean",
+						"default":     true,
+						"description": "Include callers and callees",
+					},
+					"maxReferences": map[string]interface{}{
+						"type":        "number",
+						"default":     50,
+						"description": "Maximum references to include",
+					},
+				},
+				"required": []string{"query"},
+			},
+		},
+		{
+			Name:        "prepareChange",
+			Description: "Pre-change impact analysis. Aggregates: analyzeImpact + getAffectedTests + analyzeCoupling + risk assessment. Use before modifying code.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"target": map[string]interface{}{
+						"type":        "string",
+						"description": "Symbol ID or file path to analyze",
+					},
+					"changeType": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"modify", "rename", "delete", "extract"},
+						"default":     "modify",
+						"description": "Type of change being planned",
+					},
+				},
+				"required": []string{"target"},
+			},
+		},
+		{
+			Name:        "batchGet",
+			Description: "Retrieve multiple symbols by ID in a single call. Max 50 symbols.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"symbolIds": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Array of symbol IDs to retrieve (max 50)",
+					},
+				},
+				"required": []string{"symbolIds"},
+			},
+		},
+		{
+			Name:        "batchSearch",
+			Description: "Perform multiple symbol searches in a single call. Max 10 queries.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"queries": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"query": map[string]interface{}{
+									"type":        "string",
+									"description": "Search query",
+								},
+								"kind": map[string]interface{}{
+									"type":        "string",
+									"description": "Optional kind filter",
+								},
+								"scope": map[string]interface{}{
+									"type":        "string",
+									"description": "Optional module scope",
+								},
+								"limit": map[string]interface{}{
+									"type":        "number",
+									"default":     10,
+									"description": "Max results per query",
+								},
+							},
+							"required": []string{"query"},
+						},
+						"description": "Array of search queries (max 10)",
+					},
+				},
+				"required": []string{"queries"},
+			},
+		},
 	}
 }
 
@@ -1997,4 +2127,10 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["listRepos"] = s.toolListRepos
 	s.tools["switchRepo"] = s.toolSwitchRepo
 	s.tools["getActiveRepo"] = s.toolGetActiveRepo
+	// v8.0 Compound Tools
+	s.tools["explore"] = s.toolExplore
+	s.tools["understand"] = s.toolUnderstand
+	s.tools["prepareChange"] = s.toolPrepareChange
+	s.tools["batchGet"] = s.toolBatchGet
+	s.tools["batchSearch"] = s.toolBatchSearch
 }
