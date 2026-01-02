@@ -15,6 +15,7 @@ import (
 )
 
 // toolGetStatus implements the getStatus tool
+// v8.0: Enhanced with health tiers, remediation, and suggestions
 func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Response, error) {
 	s.logger.Debug("Executing getStatus", map[string]interface{}{
 		"params": params,
@@ -26,15 +27,55 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 		return nil, fmt.Errorf("failed to get status: %w", err)
 	}
 
+	// v8.0: Track health tiers and collect suggestions
+	availableCount := 0
+	degradedCount := 0
+	unavailableCount := 0
+	var suggestions []string
+
 	backends := make([]map[string]interface{}, 0, len(statusResp.Backends))
 	for _, b := range statusResp.Backends {
-		backends = append(backends, map[string]interface{}{
+		// v8.0: Determine health tier for each backend
+		var healthTier string
+		switch {
+		case b.Available && b.Healthy:
+			healthTier = "available"
+			availableCount++
+		case b.Available && !b.Healthy:
+			healthTier = "degraded"
+			degradedCount++
+		default:
+			healthTier = "unavailable"
+			unavailableCount++
+		}
+
+		backendInfo := map[string]interface{}{
 			"id":           b.Id,
 			"available":    b.Available,
 			"healthy":      b.Healthy,
+			"healthTier":   healthTier,
 			"capabilities": b.Capabilities,
 			"details":      b.Details,
-		})
+		}
+
+		// v8.0: Add remediation for unavailable/degraded backends
+		if healthTier != "available" {
+			backendInfo["remediation"] = getBackendRemediation(b.Id)
+			suggestions = append(suggestions, getBackendRemediation(b.Id))
+		}
+
+		backends = append(backends, backendInfo)
+	}
+
+	// v8.0: Determine overall health tier
+	var overallHealth string
+	switch {
+	case unavailableCount == 0 && degradedCount == 0:
+		overallHealth = "available"
+	case unavailableCount > 0 && availableCount == 0:
+		overallHealth = "unavailable"
+	default:
+		overallHealth = "degraded"
 	}
 
 	status := "unhealthy"
@@ -54,10 +95,20 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 	// Get index staleness info
 	indexInfo := s.getIndexStaleness()
 
+	// v8.0: Add index-related suggestions
+	if fresh, ok := indexInfo["fresh"].(bool); ok && !fresh {
+		if commitsBehind, ok := indexInfo["commitsBehind"].(int); ok && commitsBehind > 0 {
+			suggestions = append(suggestions, fmt.Sprintf("Index is %d commits behind. Run 'ckb index' to refresh.", commitsBehind))
+		} else if reason, ok := indexInfo["reason"].(string); ok && reason != "" {
+			suggestions = append(suggestions, fmt.Sprintf("Index issue: %s. Run 'ckb index' to refresh.", reason))
+		}
+	}
+
 	data := map[string]interface{}{
-		"status":   status,
-		"healthy":  statusResp.Healthy,
-		"backends": backends,
+		"status":        status,
+		"healthy":       statusResp.Healthy,
+		"overallHealth": overallHealth, // v8.0: health tier
+		"backends":      backends,
 		"cache": map[string]interface{}{
 			"sizeBytes":     statusResp.Cache.SizeBytes,
 			"queriesCached": statusResp.Cache.QueriesCached,
@@ -80,9 +131,10 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 		},
 		"index":       indexInfo,
 		"lastRefresh": statusResp.LastRefresh,
+		"suggestions": suggestions, // v8.0: actionable suggestions
 	}
 
-	return OperationalResponse(data), nil
+	return envelope.Operational(data), nil
 }
 
 // getIndexStaleness returns index freshness information
