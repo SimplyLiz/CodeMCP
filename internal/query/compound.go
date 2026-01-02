@@ -31,9 +31,9 @@ const (
 type ExploreFocus string
 
 const (
-	FocusStructure     ExploreFocus = "structure"
-	FocusDependencies  ExploreFocus = "dependencies"
-	FocusChanges       ExploreFocus = "changes"
+	FocusStructure    ExploreFocus = "structure"
+	FocusDependencies ExploreFocus = "dependencies"
+	FocusChanges      ExploreFocus = "changes"
 )
 
 // ExploreOptions controls explore behavior.
@@ -46,13 +46,13 @@ type ExploreOptions struct {
 // ExploreResponse provides comprehensive area exploration.
 type ExploreResponse struct {
 	AINavigationMeta
-	Overview       *ExploreOverview    `json:"overview"`
-	KeySymbols     []ExploreSymbol     `json:"keySymbols"`
-	Dependencies   *ExploreDependencies `json:"dependencies,omitempty"`
-	RecentChanges  []ExploreChange     `json:"recentChanges,omitempty"`
-	Hotspots       []ExploreHotspot    `json:"hotspots,omitempty"`
-	Suggestions    []string            `json:"suggestions,omitempty"`
-	Health         *ExploreHealth      `json:"health"`
+	Overview      *ExploreOverview     `json:"overview"`
+	KeySymbols    []ExploreSymbol      `json:"keySymbols"`
+	Dependencies  *ExploreDependencies `json:"dependencies,omitempty"`
+	RecentChanges []ExploreChange      `json:"recentChanges,omitempty"`
+	Hotspots      []ExploreHotspot     `json:"hotspots,omitempty"`
+	Suggestions   []string             `json:"suggestions,omitempty"`
+	Health        *ExploreHealth       `json:"health"`
 }
 
 // ExploreOverview provides high-level information about the target.
@@ -77,16 +77,16 @@ type ExploreSymbol struct {
 	Line       int     `json:"line,omitempty"`
 	File       string  `json:"file,omitempty"`
 	Visibility string  `json:"visibility"`
-	Importance float64 `json:"importance"` // ranking score
+	Importance float64 `json:"importance"`       // ranking score
 	Reason     string  `json:"reason,omitempty"` // why it's important
 }
 
 // ExploreDependencies describes imports and exports.
 type ExploreDependencies struct {
-	Imports       []ExploreDependency `json:"imports,omitempty"`
-	Exports       []ExploreDependency `json:"exports,omitempty"`
-	InternalDeps  []string            `json:"internalDeps,omitempty"`
-	ExternalDeps  []string            `json:"externalDeps,omitempty"`
+	Imports      []ExploreDependency `json:"imports,omitempty"`
+	Exports      []ExploreDependency `json:"exports,omitempty"`
+	InternalDeps []string            `json:"internalDeps,omitempty"`
+	ExternalDeps []string            `json:"externalDeps,omitempty"`
 }
 
 // ExploreDependency represents a single dependency.
@@ -99,10 +99,10 @@ type ExploreDependency struct {
 
 // ExploreChange represents a recent change in the area.
 type ExploreChange struct {
-	CommitHash string   `json:"commitHash"`
-	Message    string   `json:"message"`
-	Author     string   `json:"author"`
-	Date       string   `json:"date"`
+	CommitHash   string `json:"commitHash"`
+	Message      string `json:"message"`
+	Author       string `json:"author"`
+	Date         string `json:"date"`
 	FilesChanged int    `json:"filesChanged"`
 }
 
@@ -116,9 +116,9 @@ type ExploreHotspot struct {
 
 // ExploreHealth summarizes backend status for this query.
 type ExploreHealth struct {
-	ScipAvailable bool   `json:"scipAvailable"`
-	GitAvailable  bool   `json:"gitAvailable"`
-	OverallStatus string `json:"overallStatus"` // healthy, degraded, limited
+	ScipAvailable bool     `json:"scipAvailable"`
+	GitAvailable  bool     `json:"gitAvailable"`
+	OverallStatus string   `json:"overallStatus"` // healthy, degraded, limited
 	Warnings      []string `json:"warnings,omitempty"`
 }
 
@@ -304,12 +304,12 @@ func (e *Engine) Explore(ctx context.Context, opts ExploreOptions) (*ExploreResp
 			Provenance:    e.buildProvenance(repoState, "head", startTime, backendContribs, completeness),
 		},
 		Overview:      overview,
-		KeySymbols:   keySymbols,
-		Dependencies: dependencies,
+		KeySymbols:    keySymbols,
+		Dependencies:  dependencies,
 		RecentChanges: recentChanges,
-		Hotspots:     hotspots,
-		Suggestions:  suggestions,
-		Health:       health,
+		Hotspots:      hotspots,
+		Suggestions:   suggestions,
+		Health:        health,
 	}, nil
 }
 
@@ -360,8 +360,12 @@ func (e *Engine) buildExploreOverview(ctx context.Context, targetType, absPath, 
 	} else {
 		// Directory overview
 		fileCount := 0
-		_ = filepath.Walk(absPath, func(path string, info os.FileInfo, err error) error {
-			if err != nil || info.IsDir() {
+		//nolint:errcheck // intentionally ignore walk errors to count accessible files
+		_ = filepath.Walk(absPath, func(path string, info os.FileInfo, walkErr error) error {
+			if walkErr != nil {
+				return nil //nolint:nilerr // skip inaccessible files, continue walk
+			}
+			if info.IsDir() {
 				return nil
 			}
 			fileCount++
@@ -514,8 +518,12 @@ func (e *Engine) getExploreDependencies(ctx context.Context, targetType, absPath
 	} else {
 		// For directory, aggregate imports from all files
 		importSet := make(map[string]bool)
-		_ = filepath.Walk(absPath, func(path string, info os.FileInfo, err error) error {
-			if err != nil || info.IsDir() {
+		//nolint:errcheck // intentionally ignore walk errors to collect imports from accessible files
+		_ = filepath.Walk(absPath, func(path string, info os.FileInfo, walkErr error) error {
+			if walkErr != nil {
+				return nil //nolint:nilerr // skip inaccessible files, continue walk
+			}
+			if info.IsDir() {
 				return nil
 			}
 			for _, imp := range parseFileImports(path) {
@@ -710,13 +718,13 @@ type UnderstandOptions struct {
 // UnderstandResponse provides comprehensive symbol understanding.
 type UnderstandResponse struct {
 	AINavigationMeta
-	Symbol        *SymbolInfo           `json:"symbol,omitempty"`
-	Explanation   string                `json:"explanation"`
-	References    *UnderstandReferences `json:"references,omitempty"`
-	Callers       []UnderstandCaller    `json:"callers,omitempty"`
-	Callees       []UnderstandCallee    `json:"callees,omitempty"`
-	RelatedTests  []UnderstandTest      `json:"relatedTests,omitempty"`
-	Ambiguity     *UnderstandAmbiguity  `json:"ambiguity,omitempty"`
+	Symbol       *SymbolInfo           `json:"symbol,omitempty"`
+	Explanation  string                `json:"explanation"`
+	References   *UnderstandReferences `json:"references,omitempty"`
+	Callers      []UnderstandCaller    `json:"callers,omitempty"`
+	Callees      []UnderstandCallee    `json:"callees,omitempty"`
+	RelatedTests []UnderstandTest      `json:"relatedTests,omitempty"`
+	Ambiguity    *UnderstandAmbiguity  `json:"ambiguity,omitempty"`
 }
 
 // UnderstandReferences groups references by file.
@@ -767,9 +775,9 @@ type UnderstandTest struct {
 
 // UnderstandAmbiguity describes multi-match scenarios.
 type UnderstandAmbiguity struct {
-	MatchCount int                  `json:"matchCount"`
-	TopMatches []UnderstandMatch    `json:"topMatches"`
-	Hint       string               `json:"hint"`
+	MatchCount int               `json:"matchCount"`
+	TopMatches []UnderstandMatch `json:"topMatches"`
+	Hint       string            `json:"hint"`
 }
 
 // UnderstandMatch represents a potential match for ambiguous queries.
@@ -1125,12 +1133,12 @@ type PrepareChangeOptions struct {
 // PrepareChangeResponse provides comprehensive pre-change analysis.
 type PrepareChangeResponse struct {
 	AINavigationMeta
-	Target            *PrepareChangeTarget `json:"target"`
-	DirectDependents  []PrepareDependent   `json:"directDependents"`
-	TransitiveImpact  *PrepareTransitive   `json:"transitiveImpact"`
-	RelatedTests      []PrepareTest        `json:"relatedTests"`
-	CoChangeFiles     []PrepareCoChange    `json:"coChangeFiles,omitempty"`
-	RiskAssessment    *PrepareRisk         `json:"riskAssessment"`
+	Target           *PrepareChangeTarget `json:"target"`
+	DirectDependents []PrepareDependent   `json:"directDependents"`
+	TransitiveImpact *PrepareTransitive   `json:"transitiveImpact"`
+	RelatedTests     []PrepareTest        `json:"relatedTests"`
+	CoChangeFiles    []PrepareCoChange    `json:"coChangeFiles,omitempty"`
+	RiskAssessment   *PrepareRisk         `json:"riskAssessment"`
 }
 
 // PrepareChangeTarget describes what will be changed.
@@ -1176,10 +1184,10 @@ type PrepareCoChange struct {
 
 // PrepareRisk assesses the risk of the change.
 type PrepareRisk struct {
-	Level       string       `json:"level"` // low, medium, high, critical
-	Score       float64      `json:"score"`
-	Factors     []string     `json:"factors"`
-	Suggestions []string     `json:"suggestions"`
+	Level       string   `json:"level"` // low, medium, high, critical
+	Score       float64  `json:"score"`
+	Factors     []string `json:"factors"`
+	Suggestions []string `json:"suggestions"`
 }
 
 // PrepareChange provides comprehensive pre-change analysis.
@@ -1661,10 +1669,10 @@ func (e *Engine) BatchGet(ctx context.Context, opts BatchGetOptions) (*BatchGetR
 
 // BatchSearchQuery represents a single search in a batch.
 type BatchSearchQuery struct {
-	Query string   `json:"query"`
-	Kind  string   `json:"kind,omitempty"`
-	Scope string   `json:"scope,omitempty"`
-	Limit int      `json:"limit,omitempty"`
+	Query string `json:"query"`
+	Kind  string `json:"kind,omitempty"`
+	Scope string `json:"scope,omitempty"`
+	Limit int    `json:"limit,omitempty"`
 }
 
 // BatchSearchOptions controls batchSearch behavior.
