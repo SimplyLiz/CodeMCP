@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"ckb/internal/errors"
 	"ckb/internal/logging"
 	"ckb/internal/query"
 	"ckb/internal/repos"
@@ -128,7 +129,7 @@ func (s *MCPServer) engine() *query.Engine {
 func (s *MCPServer) GetEngine() (*query.Engine, error) {
 	engine := s.engine()
 	if engine == nil {
-		return nil, fmt.Errorf("no active repository. Call listRepos to see available repos, then switchRepo")
+		return nil, errors.NewPreconditionError("no active repository", "Call listRepos to see available repos, then switchRepo")
 	}
 	return engine, nil
 }
@@ -221,7 +222,7 @@ func (s *MCPServer) SetStdout(w io.Writer) {
 // SetPreset sets the active preset and updates the toolset hash
 func (s *MCPServer) SetPreset(preset string) error {
 	if !IsValidPreset(preset) {
-		return fmt.Errorf("invalid preset: %s (valid: %v)", preset, ValidPresets())
+		return errors.NewInvalidParameterError("preset", fmt.Sprintf("%s (valid: %v)", preset, ValidPresets()))
 	}
 
 	s.mu.Lock()
