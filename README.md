@@ -129,7 +129,7 @@ claude mcp add --transport stdio ckb -- npx @tastehub/ckb mcp
 
 **Token efficiency shown at startup:**
 ```
-CKB MCP Server v7.5.0
+CKB MCP Server v8.0.0
   Active tools: 14 / 76 (18%)
   Estimated context: ~1k tokens
   Preset: core
