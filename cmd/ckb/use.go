@@ -1,9 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
-	"sort"
 	"text/tabwriter"
 	"time"
 
@@ -14,6 +14,7 @@ import (
 
 var (
 	useListFlag bool
+	useJSONFlag bool
 )
 
 var useCmd = &cobra.Command{
@@ -37,6 +38,7 @@ Examples:
 
 func init() {
 	useCmd.Flags().BoolVarP(&useListFlag, "list", "l", false, "List available repositories")
+	useCmd.Flags().BoolVar(&useJSONFlag, "json", false, "Output as JSON")
 	rootCmd.AddCommand(useCmd)
 }
 
@@ -54,6 +56,10 @@ func runUse(cmd *cobra.Command, args []string) error {
 	// No args: show current
 	if len(args) == 0 {
 		if registry.Default == "" {
+			if useJSONFlag {
+				fmt.Println("{}")
+				return nil
+			}
 			fmt.Println("No active repository.")
 			fmt.Println()
 			fmt.Println("Use 'ckb use <name>' to activate a repository.")
@@ -64,6 +70,17 @@ func runUse(cmd *cobra.Command, args []string) error {
 		entry, state, err := registry.Get(registry.Default)
 		if err != nil {
 			return err
+		}
+
+		if useJSONFlag {
+			info := map[string]interface{}{
+				"name":  entry.Name,
+				"path":  entry.Path,
+				"state": string(state),
+			}
+			data, _ := json.MarshalIndent(info, "", "  ")
+			fmt.Println(string(data))
+			return nil
 		}
 
 		fmt.Printf("Active: %s\n", entry.Name)
@@ -118,18 +135,7 @@ func listReposForUse(registry *repos.Registry) error {
 	}
 
 	// Sort by last used (most recent first), then by name
-	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].LastUsedAt.IsZero() && entries[j].LastUsedAt.IsZero() {
-			return entries[i].Name < entries[j].Name
-		}
-		if entries[i].LastUsedAt.IsZero() {
-			return false
-		}
-		if entries[j].LastUsedAt.IsZero() {
-			return true
-		}
-		return entries[i].LastUsedAt.After(entries[j].LastUsedAt)
-	})
+	repos.SortByLastUsed(entries)
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "NAME\tPATH\tLAST USED")

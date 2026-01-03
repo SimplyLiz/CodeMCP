@@ -109,21 +109,6 @@ func mustGetRepoRoot() string {
 	return repoRoot
 }
 
-// getRepoRootOrError returns the repository root, or an error if none is active.
-// Unlike getRepoRoot, this requires an active/registered repo.
-func getRepoRootOrError() (string, error) {
-	resolved, err := repos.ResolveActiveRepo("")
-	if err != nil {
-		return "", fmt.Errorf("failed to load registry: %w", err)
-	}
-
-	if resolved.Entry == nil {
-		return "", fmt.Errorf("no active repository. Use 'ckb use <name>' to switch projects or 'ckb init' to initialize")
-	}
-
-	return resolved.Entry.Path, nil
-}
-
 // newContext creates a new context for command execution.
 func newContext() context.Context {
 	return context.Background()

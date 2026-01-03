@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -126,18 +125,7 @@ func runGlobalStatus() {
 	}
 
 	// Sort by last used (most recent first), then by name
-	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].LastUsedAt.IsZero() && entries[j].LastUsedAt.IsZero() {
-			return entries[i].Name < entries[j].Name
-		}
-		if entries[i].LastUsedAt.IsZero() {
-			return false
-		}
-		if entries[j].LastUsedAt.IsZero() {
-			return true
-		}
-		return entries[i].LastUsedAt.After(entries[j].LastUsedAt)
-	})
+	repos.SortByLastUsed(entries)
 
 	fmt.Println("Registered projects:")
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)

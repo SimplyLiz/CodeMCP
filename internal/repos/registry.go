@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"time"
 )
 
@@ -262,6 +263,23 @@ func (r *Registry) List() []RepoEntry {
 		entries = append(entries, entry)
 	}
 	return entries
+}
+
+// SortByLastUsed sorts repo entries by last used time (most recent first),
+// falling back to alphabetical by name for entries without timestamps.
+func SortByLastUsed(entries []RepoEntry) {
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].LastUsedAt.IsZero() && entries[j].LastUsedAt.IsZero() {
+			return entries[i].Name < entries[j].Name
+		}
+		if entries[i].LastUsedAt.IsZero() {
+			return false
+		}
+		if entries[j].LastUsedAt.IsZero() {
+			return true
+		}
+		return entries[i].LastUsedAt.After(entries[j].LastUsedAt)
+	})
 }
 
 // SetDefault sets the default repo.

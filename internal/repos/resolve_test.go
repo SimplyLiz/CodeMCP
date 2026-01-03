@@ -341,3 +341,41 @@ func TestFindRepoContainingPath_NotInRepo(t *testing.T) {
 		t.Errorf("expected nil for path outside repo, got %v", entry)
 	}
 }
+
+func TestFindRepoContainingPath_LongestMatchWins(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create nested repos:
+	// /work (registered as "parent")
+	// /work/ckb (registered as "child")
+	parentDir := filepath.Join(tmpDir, "work")
+	childDir := filepath.Join(parentDir, "ckb")
+	targetDir := filepath.Join(childDir, "internal")
+
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	registry := &Registry{
+		Repos: map[string]RepoEntry{
+			"parent": {
+				Name: "parent",
+				Path: parentDir,
+			},
+			"child": {
+				Name: "child",
+				Path: childDir,
+			},
+		},
+	}
+
+	// When in /work/ckb/internal, should match "child" not "parent"
+	entry := findRepoContainingPath(registry, targetDir)
+	if entry == nil {
+		t.Fatal("expected to find repo")
+	}
+
+	if entry.Name != "child" {
+		t.Errorf("expected most specific match 'child', got %q", entry.Name)
+	}
+}

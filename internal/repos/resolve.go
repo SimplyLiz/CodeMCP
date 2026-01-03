@@ -116,6 +116,7 @@ func ResolveActiveRepoWithRegistry(registry *Registry, flagValue string) (*Resol
 
 // findRepoContainingPath finds a registered repo whose path contains the given path.
 // This handles the case where the user is in a subdirectory of a registered repo.
+// When multiple repos match, returns the most specific one (longest path).
 func findRepoContainingPath(registry *Registry, path string) *RepoEntry {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
@@ -129,7 +130,9 @@ func findRepoContainingPath(registry *Registry, path string) *RepoEntry {
 		resolvedPath = absPath
 	}
 
-	// First check for exact match
+	var bestMatch *RepoEntry
+	bestMatchLen := -1
+
 	for _, entry := range registry.Repos {
 		entryPath := entry.Path
 		// Resolve symlinks in entry path too
@@ -138,38 +141,29 @@ func findRepoContainingPath(registry *Registry, path string) *RepoEntry {
 			resolvedEntryPath = entryPath
 		}
 
-		if resolvedEntryPath == resolvedPath {
-			entryCopy := entry
-			return &entryCopy
-		}
-	}
-
-	// Then check if path is within any registered repo
-	for _, entry := range registry.Repos {
-		entryPath := entry.Path
-		// Resolve symlinks in entry path too
-		resolvedEntryPath, err := filepath.EvalSymlinks(entryPath)
-		if err != nil {
-			resolvedEntryPath = entryPath
-		}
-
+		// Check if this repo contains our path
 		rel, err := filepath.Rel(resolvedEntryPath, resolvedPath)
 		if err != nil {
 			continue
 		}
-		// If the relative path doesn't start with "..", we're inside this repo
-		if len(rel) > 0 && rel[0] != '.' {
-			entryCopy := entry
-			return &entryCopy
+
+		// Path is inside repo if:
+		// - rel == "." (exact match)
+		// - rel doesn't start with ".." (is a subdirectory)
+		isInside := rel == "." || (len(rel) > 0 && rel[0] != '.')
+		if !isInside {
+			continue
 		}
-		// Exact match (rel == ".")
-		if rel == "." {
+
+		// Pick the most specific match (longest path wins)
+		if len(resolvedEntryPath) > bestMatchLen {
+			bestMatchLen = len(resolvedEntryPath)
 			entryCopy := entry
-			return &entryCopy
+			bestMatch = &entryCopy
 		}
 	}
 
-	return nil
+	return bestMatch
 }
 
 // IsInRegisteredRepo checks if the given path is within a registered repo.
