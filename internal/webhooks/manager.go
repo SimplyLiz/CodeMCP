@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,14 +18,12 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite"
-
-	"ckb/internal/logging"
 )
 
 // Manager manages webhooks and their deliveries
 type Manager struct {
 	store  *Store
-	logger *logging.Logger
+	logger *slog.Logger
 	client *http.Client
 
 	ctx    context.Context
@@ -54,7 +53,7 @@ func DefaultConfig() Config {
 }
 
 // NewManager creates a new webhook manager
-func NewManager(ckbDir string, logger *logging.Logger, config Config) (*Manager, error) {
+func NewManager(ckbDir string, logger *slog.Logger, config Config) (*Manager, error) {
 	if config.WorkerCount <= 0 {
 		config.WorkerCount = 2
 	}
@@ -87,10 +86,9 @@ func NewManager(ckbDir string, logger *logging.Logger, config Config) (*Manager,
 
 // Start begins the webhook delivery workers
 func (m *Manager) Start() error {
-	m.logger.Info("Starting webhook manager", map[string]interface{}{
-		"workers":       m.workerCount,
-		"retryInterval": m.retryInterval.String(),
-	})
+	m.logger.Info("Starting webhook manager",
+		"workers", m.workerCount,
+		"retryInterval", m.retryInterval.String())
 
 	// Start retry worker
 	m.wg.Add(1)
@@ -101,7 +99,7 @@ func (m *Manager) Start() error {
 
 // Stop gracefully stops the webhook manager
 func (m *Manager) Stop(timeout time.Duration) error {
-	m.logger.Info("Stopping webhook manager", nil)
+	m.logger.Info("Stopping webhook manager")
 	m.cancel()
 
 	done := make(chan struct{})
@@ -112,7 +110,7 @@ func (m *Manager) Stop(timeout time.Duration) error {
 
 	select {
 	case <-done:
-		m.logger.Info("Webhook manager stopped", nil)
+		m.logger.Info("Webhook manager stopped")
 		return m.store.Close()
 	case <-time.After(timeout):
 		return fmt.Errorf("webhook manager shutdown timed out")
@@ -140,9 +138,7 @@ func (m *Manager) retryWorker() {
 func (m *Manager) processRetries() {
 	deliveries, err := m.store.GetPendingRetries()
 	if err != nil {
-		m.logger.Error("Failed to get pending retries", map[string]interface{}{
-			"error": err.Error(),
-		})
+		m.logger.Error("Failed to get pending retries", "error", err.Error())
 		return
 	}
 
@@ -162,19 +158,17 @@ func (m *Manager) Emit(event *Event) error {
 		return nil
 	}
 
-	m.logger.Info("Emitting event to webhooks", map[string]interface{}{
-		"eventId":      event.ID,
-		"eventType":    event.Type,
-		"webhookCount": len(webhooks),
-	})
+	m.logger.Info("Emitting event to webhooks",
+		"eventId", event.ID,
+		"eventType", event.Type,
+		"webhookCount", len(webhooks))
 
 	for _, webhook := range webhooks {
 		if err := m.queueDelivery(webhook, event); err != nil {
-			m.logger.Error("Failed to queue delivery", map[string]interface{}{
-				"eventId":   event.ID,
-				"webhookId": webhook.ID,
-				"error":     err.Error(),
-			})
+			m.logger.Error("Failed to queue delivery",
+				"eventId", event.ID,
+				"webhookId", webhook.ID,
+				"error", err.Error())
 		}
 	}
 
@@ -213,19 +207,17 @@ func (m *Manager) queueDelivery(webhook *Webhook, event *Event) error {
 func (m *Manager) deliver(delivery *Delivery) {
 	webhook, err := m.store.GetWebhook(delivery.WebhookID)
 	if err != nil || webhook == nil {
-		m.logger.Error("Webhook not found for delivery", map[string]interface{}{
-			"deliveryId": delivery.ID,
-			"webhookId":  delivery.WebhookID,
-		})
+		m.logger.Error("Webhook not found for delivery",
+			"deliveryId", delivery.ID,
+			"webhookId", delivery.WebhookID)
 		return
 	}
 
-	m.logger.Debug("Delivering webhook", map[string]interface{}{
-		"deliveryId": delivery.ID,
-		"webhookId":  webhook.ID,
-		"url":        webhook.URL,
-		"attempt":    delivery.Attempts + 1,
-	})
+	m.logger.Debug("Delivering webhook",
+		"deliveryId", delivery.ID,
+		"webhookId", webhook.ID,
+		"url", webhook.URL,
+		"attempt", delivery.Attempts+1)
 
 	// Create request
 	req, err := http.NewRequestWithContext(m.ctx, "POST", webhook.URL, bytes.NewBufferString(delivery.Payload))
@@ -266,11 +258,10 @@ func (m *Manager) deliver(delivery *Delivery) {
 	// Check response
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		delivery.MarkDelivered(resp.StatusCode)
-		m.logger.Info("Webhook delivered successfully", map[string]interface{}{
-			"deliveryId":   delivery.ID,
-			"webhookId":    webhook.ID,
-			"responseCode": resp.StatusCode,
-		})
+		m.logger.Info("Webhook delivered successfully",
+			"deliveryId", delivery.ID,
+			"webhookId", webhook.ID,
+			"responseCode", resp.StatusCode)
 	} else {
 		err := fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
 		m.handleDeliveryError(delivery, webhook, err)
@@ -278,10 +269,9 @@ func (m *Manager) deliver(delivery *Delivery) {
 	}
 
 	if err := m.store.UpdateDelivery(delivery); err != nil {
-		m.logger.Error("Failed to update delivery", map[string]interface{}{
-			"deliveryId": delivery.ID,
-			"error":      err.Error(),
-		})
+		m.logger.Error("Failed to update delivery",
+			"deliveryId", delivery.ID,
+			"error", err.Error())
 	}
 }
 
@@ -289,29 +279,26 @@ func (m *Manager) deliver(delivery *Delivery) {
 func (m *Manager) handleDeliveryError(delivery *Delivery, webhook *Webhook, err error) {
 	delivery.MarkFailed(err, webhook.MaxRetries, webhook.RetryDelay)
 
-	m.logger.Warn("Webhook delivery failed", map[string]interface{}{
-		"deliveryId": delivery.ID,
-		"webhookId":  webhook.ID,
-		"error":      err.Error(),
-		"attempts":   delivery.Attempts,
-		"status":     delivery.Status,
-	})
+	m.logger.Warn("Webhook delivery failed",
+		"deliveryId", delivery.ID,
+		"webhookId", webhook.ID,
+		"error", err.Error(),
+		"attempts", delivery.Attempts,
+		"status", delivery.Status)
 
 	if delivery.Status == DeliveryDead {
 		// Move to dead letter queue
 		if err := m.store.MoveToDeadLetter(delivery); err != nil {
-			m.logger.Error("Failed to move to dead letter", map[string]interface{}{
-				"deliveryId": delivery.ID,
-				"error":      err.Error(),
-			})
+			m.logger.Error("Failed to move to dead letter",
+				"deliveryId", delivery.ID,
+				"error", err.Error())
 		}
 	}
 
 	if err := m.store.UpdateDelivery(delivery); err != nil {
-		m.logger.Error("Failed to update delivery", map[string]interface{}{
-			"deliveryId": delivery.ID,
-			"error":      err.Error(),
-		})
+		m.logger.Error("Failed to update delivery",
+			"deliveryId", delivery.ID,
+			"error", err.Error())
 	}
 }
 
@@ -542,12 +529,12 @@ func (m *Manager) RetryDeadLetter(deadLetterID string) error {
 // Store manages webhook persistence
 type Store struct {
 	conn   *sql.DB
-	logger *logging.Logger
+	logger *slog.Logger
 	dbPath string
 }
 
 // OpenStore opens or creates the webhooks database
-func OpenStore(ckbDir string, logger *logging.Logger) (*Store, error) {
+func OpenStore(ckbDir string, logger *slog.Logger) (*Store, error) {
 	if err := os.MkdirAll(ckbDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create directory: %w", err)
 	}
@@ -582,9 +569,7 @@ func OpenStore(ckbDir string, logger *logging.Logger) (*Store, error) {
 	}
 
 	if !dbExists {
-		logger.Info("Creating webhooks database", map[string]interface{}{
-			"path": dbPath,
-		})
+		logger.Info("Creating webhooks database", "path", dbPath)
 		if err := store.initializeSchema(); err != nil {
 			_ = conn.Close()
 			return nil, fmt.Errorf("failed to initialize webhooks schema: %w", err)

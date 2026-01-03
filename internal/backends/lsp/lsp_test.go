@@ -1,18 +1,19 @@
 package lsp
 
 import (
+t"io"
+t"log/slog"
 	"context"
 	"testing"
 	"time"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
 )
 
 // TestLspSupervisorCreation tests basic supervisor creation
 func TestLspSupervisorCreation(t *testing.T) {
 	cfg := config.DefaultConfig()
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.HumanFormat,
 		Level:  logging.InfoLevel,
 	})
@@ -73,7 +74,7 @@ func TestProcessLifecycle(t *testing.T) {
 // TestBackoffCalculation tests exponential backoff
 func TestBackoffCalculation(t *testing.T) {
 	cfg := config.DefaultConfig()
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.HumanFormat,
 		Level:  logging.InfoLevel,
 	})
@@ -108,7 +109,7 @@ func TestBackoffCalculation(t *testing.T) {
 func TestQueueManagement(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.LspSupervisor.QueueSizePerLanguage = 5
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.HumanFormat,
 		Level:  logging.InfoLevel,
 	})
@@ -131,7 +132,7 @@ func TestQueueManagement(t *testing.T) {
 // TestLspAdapter tests the adapter implementation
 func TestLspAdapter(t *testing.T) {
 	cfg := config.DefaultConfig()
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.HumanFormat,
 		Level:  logging.InfoLevel,
 	})
@@ -166,7 +167,7 @@ func TestLspAdapter(t *testing.T) {
 func TestEviction(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.LspSupervisor.MaxTotalProcesses = 2
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.HumanFormat,
 		Level:  logging.InfoLevel,
 	})
@@ -273,7 +274,7 @@ func TestSymbolKindConversion(t *testing.T) {
 // TestHealthChecking tests health check logic
 func TestHealthChecking(t *testing.T) {
 	cfg := config.DefaultConfig()
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.HumanFormat,
 		Level:  logging.InfoLevel,
 	})
@@ -297,7 +298,7 @@ func TestHealthChecking(t *testing.T) {
 // BenchmarkBackoffCalculation benchmarks backoff calculation
 func BenchmarkBackoffCalculation(b *testing.B) {
 	cfg := config.DefaultConfig()
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.HumanFormat,
 		Level:  logging.InfoLevel,
 	})
@@ -317,7 +318,7 @@ func ExampleLspSupervisor() {
 	cfg := config.DefaultConfig()
 
 	// Create logger
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.HumanFormat,
 		Level:  logging.InfoLevel,
 	})

@@ -3,11 +3,11 @@ package backends
 import (
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
-
-	"ckb/internal/logging"
 )
 
 // mockBackend is a test double for Backend interface

@@ -3,10 +3,10 @@ package architecture
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
 	"ckb/internal/modules"
 )
 
@@ -15,7 +15,7 @@ type ArchitectureGenerator struct {
 	repoRoot      string
 	config        *config.Config
 	importScanner *modules.ImportScanner
-	logger        *logging.Logger
+	logger        *slog.Logger
 	limits        *ArchitectureLimits
 	cache         *ArchitectureCache
 }
@@ -43,7 +43,7 @@ func NewArchitectureGenerator(
 	repoRoot string,
 	cfg *config.Config,
 	importScanner *modules.ImportScanner,
-	logger *logging.Logger,
+	logger *slog.Logger,
 ) *ArchitectureGenerator {
 	limits := DefaultLimits()
 

@@ -3,9 +3,9 @@ package incremental
 import (
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"time"
 
-	"ckb/internal/logging"
 	"ckb/internal/storage"
 )
 
@@ -14,11 +14,11 @@ type DependencyTracker struct {
 	db     *storage.DB
 	store  *Store
 	config *TransitiveConfig
-	logger *logging.Logger
+	logger *slog.Logger
 }
 
 // NewDependencyTracker creates a new dependency tracker
-func NewDependencyTracker(db *storage.DB, store *Store, config *TransitiveConfig, logger *logging.Logger) *DependencyTracker {
+func NewDependencyTracker(db *storage.DB, store *Store, config *TransitiveConfig, logger *slog.Logger) *DependencyTracker {
 	if config == nil {
 		defaultCfg := DefaultConfig()
 		config = &defaultCfg.Transitive

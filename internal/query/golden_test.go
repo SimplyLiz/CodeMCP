@@ -2,6 +2,8 @@ package query
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"math"
 	"os"
 	"path/filepath"
@@ -9,7 +11,6 @@ import (
 
 	"ckb/internal/backends/scip"
 	"ckb/internal/config"
-	"ckb/internal/logging"
 	"ckb/internal/storage"
 	"ckb/internal/testutil"
 )
@@ -31,10 +32,7 @@ func setupGoldenEngine(t *testing.T, fixture *testutil.FixtureContext) (*Engine,
 		t.Fatalf("Failed to create .ckb dir: %v", err)
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.JSONFormat,
-		Level:  logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Create storage in temp dir
 	db, err := storage.Open(tmpDir, logger)
@@ -734,10 +732,7 @@ func normalizeAnalyzeImpact(resp *AnalyzeImpactResponse) map[string]any {
 // TestGolden_SCIPBackendDirect tests SCIP backend methods directly.
 func TestGolden_SCIPBackendDirect(t *testing.T) {
 	testutil.ForEachLanguage(t, func(t *testing.T, fixture *testutil.FixtureContext) {
-		logger := logging.NewLogger(logging.Config{
-			Format: logging.JSONFormat,
-			Level:  logging.ErrorLevel,
-		})
+		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 		// Create config for SCIP adapter
 		cfg := config.DefaultConfig()

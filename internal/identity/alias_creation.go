@@ -2,10 +2,10 @@ package identity
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
-	"ckb/internal/logging"
 	"ckb/internal/storage"
 )
 
@@ -18,11 +18,11 @@ type FuzzyMatchResult struct {
 // AliasCreator handles creating aliases and tombstones during refresh
 type AliasCreator struct {
 	db     *storage.DB
-	logger *logging.Logger
+	logger *slog.Logger
 }
 
 // NewAliasCreator creates a new alias creator
-func NewAliasCreator(db *storage.DB, logger *logging.Logger) *AliasCreator {
+func NewAliasCreator(db *storage.DB, logger *slog.Logger) *AliasCreator {
 	return &AliasCreator{
 		db:     db,
 		logger: logger,

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,7 +14,6 @@ import (
 
 	"ckb/internal/config"
 	"ckb/internal/index"
-	"ckb/internal/logging"
 	"ckb/internal/project"
 	"ckb/internal/query"
 	"ckb/internal/repos"
@@ -56,10 +56,7 @@ func runStatus(cmd *cobra.Command, args []string) {
 	// We have an active repo - show detailed status
 	repoRoot := resolved.Entry.Path
 	// Use silent logger - status output already displays all relevant info
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Output: io.Discard,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	engine := mustGetEngine(repoRoot, logger)
 	ctx := newContext()
 

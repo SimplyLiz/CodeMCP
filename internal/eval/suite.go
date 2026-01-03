@@ -6,13 +6,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
-	"ckb/internal/logging"
 	"ckb/internal/query"
 )
 
@@ -83,12 +83,12 @@ type SuiteResult struct {
 // Suite runs evaluation tests against a query engine.
 type Suite struct {
 	engine   *query.Engine
-	logger   *logging.Logger
+	logger   *slog.Logger
 	fixtures []TestCase
 }
 
 // NewSuite creates a new evaluation suite.
-func NewSuite(engine *query.Engine, logger *logging.Logger) *Suite {
+func NewSuite(engine *query.Engine, logger *slog.Logger) *Suite {
 	return &Suite{
 		engine:   engine,
 		logger:   logger,

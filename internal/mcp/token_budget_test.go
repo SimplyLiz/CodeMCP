@@ -2,9 +2,9 @@ package mcp
 
 import (
 	"encoding/json"
+	"io"
+	"log/slog"
 	"testing"
-
-	"ckb/internal/logging"
 )
 
 // Token budget thresholds for CI regression detection.
@@ -24,7 +24,7 @@ const (
 // TestToolsListTokenBudget validates that preset token usage stays within budget.
 // This test fails CI if someone accidentally bloats tool schemas or adds too many tools.
 func TestToolsListTokenBudget(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	server := NewMCPServer("test", nil, logger)
 
 	tests := []struct {
@@ -72,7 +72,7 @@ func TestToolsListTokenBudget(t *testing.T) {
 // TestToolSchemaSize validates individual tool schemas don't bloat.
 // Catches cases where a single tool's schema grows excessively.
 func TestToolSchemaSize(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	server := NewMCPServer("test", nil, logger)
 
 	tools := server.GetToolDefinitions()
@@ -132,7 +132,7 @@ func TestTokenMetrics(t *testing.T) {
 		t.Skip("skipping metrics output in short mode")
 	}
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	server := NewMCPServer("test", nil, logger)
 
 	t.Log("")

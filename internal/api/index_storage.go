@@ -3,14 +3,13 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
-
-	"ckb/internal/logging"
 )
 
 // IndexStorage manages the server's data directory for uploaded repos
@@ -18,7 +17,7 @@ type IndexStorage struct {
 	dataDir   string
 	uploadDir string
 	reposDir  string
-	logger    *logging.Logger
+	logger    *slog.Logger
 }
 
 // RepoMeta contains metadata for an uploaded repo
@@ -34,7 +33,7 @@ type RepoMeta struct {
 
 // NewIndexStorage creates a new storage manager
 // dataDir can be absolute or "~/.ckb-server" style
-func NewIndexStorage(dataDir string, logger *logging.Logger) (*IndexStorage, error) {
+func NewIndexStorage(dataDir string, logger *slog.Logger) (*IndexStorage, error) {
 	// Expand ~ to home directory
 	if strings.HasPrefix(dataDir, "~/") {
 		home, err := os.UserHomeDir()

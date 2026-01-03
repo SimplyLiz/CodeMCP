@@ -3,6 +3,8 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,7 +14,6 @@ import (
 	"time"
 
 	"ckb/internal/index"
-	"ckb/internal/logging"
 	"ckb/internal/webhooks"
 )
 
@@ -29,10 +30,7 @@ func (m *mockLogger) Printf(format string, args ...interface{}) {
 }
 
 func TestNewRefreshManager(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.InfoLevel,
-		Format: logging.HumanFormat,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	stdLogger := &mockLogger{}
 
 	rm := NewRefreshManager(logger, stdLogger, nil)
@@ -197,10 +195,7 @@ func TestRefreshResult_Error(t *testing.T) {
 }
 
 func TestRefreshManager_RunIncrementalRefresh_InvalidRepo(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel, // Suppress info logs
-		Format: logging.HumanFormat,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	stdLogger := &mockLogger{}
 
 	rm := NewRefreshManager(logger, stdLogger, nil)
@@ -228,10 +223,7 @@ func TestRefreshManager_RunIncrementalRefresh_InvalidRepo(t *testing.T) {
 }
 
 func TestRefreshManager_RunFullReindex_InvalidRepo(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.HumanFormat,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	stdLogger := &mockLogger{}
 
 	rm := NewRefreshManager(logger, stdLogger, nil)
@@ -254,10 +246,7 @@ func TestRefreshManager_RunFullReindex_Cancelled(t *testing.T) {
 	// Note: Context cancellation check in RunFullReindex happens after
 	// language detection, so we test that failure modes work correctly.
 	// For an empty dir, it will fail at language detection first.
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.HumanFormat,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	stdLogger := &mockLogger{}
 
 	rm := NewRefreshManager(logger, stdLogger, nil)
@@ -308,10 +297,7 @@ func TestRefreshManager_EmitWebhookEvent_WithData(t *testing.T) {
 }
 
 func TestRefreshManager_RunIncrementalRefresh_SetsType(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.HumanFormat,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	stdLogger := &mockLogger{}
 
 	rm := NewRefreshManager(logger, stdLogger, nil)
@@ -326,10 +312,7 @@ func TestRefreshManager_RunIncrementalRefresh_SetsType(t *testing.T) {
 }
 
 func TestRefreshManager_RunFullReindex_SetsType(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.HumanFormat,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	stdLogger := &mockLogger{}
 
 	rm := NewRefreshManager(logger, stdLogger, nil)
@@ -344,10 +327,7 @@ func TestRefreshManager_RunFullReindex_SetsType(t *testing.T) {
 }
 
 func TestRefreshManager_RunIncrementalRefresh_SetsDuration(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.HumanFormat,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	stdLogger := &mockLogger{}
 
 	rm := NewRefreshManager(logger, stdLogger, nil)
@@ -362,10 +342,7 @@ func TestRefreshManager_RunIncrementalRefresh_SetsDuration(t *testing.T) {
 }
 
 func TestRefreshManager_RunFullReindex_SetsDuration(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.HumanFormat,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	stdLogger := &mockLogger{}
 
 	rm := NewRefreshManager(logger, stdLogger, nil)
@@ -380,10 +357,7 @@ func TestRefreshManager_RunFullReindex_SetsDuration(t *testing.T) {
 }
 
 func TestRefreshManager_PendingClearedAfterRefresh(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.HumanFormat,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	stdLogger := &mockLogger{}
 
 	rm := NewRefreshManager(logger, stdLogger, nil)
@@ -507,10 +481,7 @@ func main() {}
 		t.Fatal(err)
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.HumanFormat,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	stdLogger := &mockLogger{}
 
 	rm := NewRefreshManager(logger, stdLogger, nil)
@@ -563,10 +534,7 @@ func main() {}
 	}
 	defer lock.Release()
 
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.HumanFormat,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	stdLogger := &mockLogger{}
 
 	rm := NewRefreshManager(logger, stdLogger, nil)
@@ -593,10 +561,7 @@ func TestRefreshManager_RunFullReindex_NoIndexerForLanguage(t *testing.T) {
 	// Looking at the code, all detected languages have indexers, so let's use
 	// an empty directory to trigger "could not detect project language"
 
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.HumanFormat,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	stdLogger := &mockLogger{}
 
 	rm := NewRefreshManager(logger, stdLogger, nil)
@@ -621,10 +586,7 @@ func TestRefreshManager_EmitWebhookEvent_WithManager(t *testing.T) {
 	tmpDir := t.TempDir()
 	ckbDir := filepath.Join(tmpDir, ".ckb")
 
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.HumanFormat,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Create real webhook manager
 	webhookMgr, err := webhooks.NewManager(ckbDir, logger, webhooks.Config{
@@ -703,10 +665,7 @@ func main() {
 	runGitCmd(t, tmpDir, "add", ".")
 	runGitCmd(t, tmpDir, "commit", "-m", "initial")
 
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.HumanFormat,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	stdLogger := &mockLogger{}
 
 	rm := NewRefreshManager(logger, stdLogger, nil)
@@ -757,10 +716,7 @@ func runGitCmd(t *testing.T, dir string, args ...string) {
 // =============================================================================
 
 func TestRefreshManager_RunIncrementalRefresh_EmptyRepoPath(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.HumanFormat,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	stdLogger := &mockLogger{}
 
 	rm := NewRefreshManager(logger, stdLogger, nil)
@@ -778,10 +734,7 @@ func TestRefreshManager_RunIncrementalRefresh_EmptyRepoPath(t *testing.T) {
 }
 
 func TestRefreshManager_RunFullReindex_EmptyRepoPath(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.HumanFormat,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	stdLogger := &mockLogger{}
 
 	rm := NewRefreshManager(logger, stdLogger, nil)

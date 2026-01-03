@@ -3,25 +3,24 @@ package jobs
 import (
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
-
-	"ckb/internal/logging"
 )
 
 // Store provides persistence for jobs in a separate SQLite database.
 type Store struct {
 	conn   *sql.DB
-	logger *logging.Logger
+	logger *slog.Logger
 	dbPath string
 }
 
 // OpenStore opens or creates the jobs database at .ckb/jobs.db
-func OpenStore(ckbDir string, logger *logging.Logger) (*Store, error) {
+func OpenStore(ckbDir string, logger *slog.Logger) (*Store, error) {
 	// Ensure .ckb directory exists
 	if err := os.MkdirAll(ckbDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create .ckb directory: %w", err)

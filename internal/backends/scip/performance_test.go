@@ -1,12 +1,13 @@
 package scip
 
 import (
+t"io"
+t"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
 )
 
 // getTestAdapter returns a SCIP adapter for testing, or skips the test if unavailable
@@ -19,7 +20,7 @@ func getTestAdapter(t *testing.T) *SCIPAdapter {
 	cfg := config.DefaultConfig()
 	cfg.RepoRoot = repoRoot
 
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.HumanFormat,
 		Level:  logging.WarnLevel,
 	})

@@ -2,13 +2,13 @@ package git
 
 import (
 	"context"
+	"log/slog"
 	"os/exec"
 	"strings"
 	"time"
 
 	"ckb/internal/config"
 	"ckb/internal/errors"
-	"ckb/internal/logging"
 	"ckb/internal/repostate"
 )
 
@@ -24,13 +24,13 @@ const (
 type GitAdapter struct {
 	repoRoot     string
 	queryTimeout time.Duration
-	logger       *logging.Logger
+	logger       *slog.Logger
 	enabled      bool
 }
 
 // NewGitAdapter creates a new Git backend adapter
 // Git backend is always enabled per design ("git is always")
-func NewGitAdapter(cfg *config.Config, logger *logging.Logger) (*GitAdapter, error) {
+func NewGitAdapter(cfg *config.Config, logger *slog.Logger) (*GitAdapter, error) {
 	if logger == nil {
 		return nil, errors.NewCkbError(
 			errors.InternalError,
@@ -50,9 +50,8 @@ func NewGitAdapter(cfg *config.Config, logger *logging.Logger) (*GitAdapter, err
 	// Git is always enabled per design
 	enabled := true
 	if !cfg.Backends.Git.Enabled {
-		logger.Warn("Git backend is disabled in config, but Git is always available", map[string]interface{}{
-			"backend": BackendID,
-		})
+		logger.Warn("Git backend is disabled in config, but Git is always available",
+			"backend", BackendID)
 	}
 
 	adapter := &GitAdapter{
@@ -86,12 +85,11 @@ func NewGitAdapter(cfg *config.Config, logger *logging.Logger) (*GitAdapter, err
 		)
 	}
 
-	logger.Info("Git adapter initialized", map[string]interface{}{
-		"backend":  BackendID,
-		"repoRoot": cfg.RepoRoot,
-		"timeout":  timeout.String(),
-		"enabled":  enabled,
-	})
+	logger.Info("Git adapter initialized",
+		"backend", BackendID,
+		"repoRoot", cfg.RepoRoot,
+		"timeout", timeout.String(),
+		"enabled", enabled)
 
 	return adapter, nil
 }

@@ -5,12 +5,11 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"ckb/internal/logging"
 )
 
 // Directories to skip during hash-based detection
@@ -31,11 +30,11 @@ type ChangeDetector struct {
 	repoRoot string
 	store    *Store
 	config   *Config
-	logger   *logging.Logger
+	logger   *slog.Logger
 }
 
 // NewChangeDetector creates a new change detector
-func NewChangeDetector(repoRoot string, store *Store, config *Config, logger *logging.Logger) *ChangeDetector {
+func NewChangeDetector(repoRoot string, store *Store, config *Config, logger *slog.Logger) *ChangeDetector {
 	if config == nil {
 		config = DefaultConfig()
 	}
@@ -56,9 +55,7 @@ func (d *ChangeDetector) DetectChanges(since string) ([]ChangedFile, error) {
 			return changes, nil
 		}
 		// Fall back to hash-based detection on git error
-		d.logger.Debug("Git detection failed, falling back to hash-based", map[string]interface{}{
-			"error": err.Error(),
-		})
+		d.logger.Debug("Git detection failed, falling back to hash-based", "error", err.Error())
 	}
 
 	return d.detectHashChanges()

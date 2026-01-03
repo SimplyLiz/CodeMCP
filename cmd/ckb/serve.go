@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"ckb/internal/api"
-	"ckb/internal/logging"
 	"ckb/internal/repos"
 	"ckb/internal/version"
 
@@ -51,10 +50,7 @@ func init() {
 
 func runServe(cmd *cobra.Command, args []string) error {
 	// Create logger
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := newLogger("human")
 
 	fmt.Printf("CKB HTTP API Server v%s\n", version.Version)
 

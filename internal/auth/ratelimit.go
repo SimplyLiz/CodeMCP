@@ -2,10 +2,9 @@ package auth
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"time"
-
-	"ckb/internal/logging"
 )
 
 // RateLimitConfig configures rate limiting behavior
@@ -31,7 +30,7 @@ type RateLimiter struct {
 	config  RateLimitConfig
 	buckets map[string]*tokenBucket
 	mu      sync.RWMutex
-	logger  *logging.Logger
+	logger  *slog.Logger
 }
 
 type tokenBucket struct {
@@ -42,7 +41,7 @@ type tokenBucket struct {
 }
 
 // NewRateLimiter creates a new rate limiter
-func NewRateLimiter(config RateLimitConfig, logger *logging.Logger) *RateLimiter {
+func NewRateLimiter(config RateLimitConfig, logger *slog.Logger) *RateLimiter {
 	if config.DefaultLimit <= 0 {
 		config.DefaultLimit = 60
 	}

@@ -1,12 +1,13 @@
 package incremental
 
 import (
+	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 
-	"ckb/internal/logging"
 	"ckb/internal/storage"
 )
 

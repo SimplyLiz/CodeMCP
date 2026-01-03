@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"testing"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
 	"ckb/internal/query"
 	"ckb/internal/storage"
 	"ckb/internal/version"
@@ -567,11 +567,7 @@ func TestMCPServerVersion(t *testing.T) {
 		},
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.JSONFormat,
-		Output: io.Discard,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	db, err := storage.Open(":memory:", logger)
 	if err != nil {
@@ -622,11 +618,7 @@ func newTestMCPServerWithVersion(t *testing.T, ver string) *MCPServer {
 		},
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.JSONFormat,
-		Output: io.Discard,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	db, err := storage.Open(":memory:", logger)
 	if err != nil {
@@ -667,11 +659,7 @@ func BenchmarkToolsList(b *testing.B) {
 		},
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.JSONFormat,
-		Output: io.Discard,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	db, _ := storage.Open(":memory:", logger)
 	engine, _ := query.NewEngine(".", db, logger, cfg)
@@ -701,11 +689,7 @@ func BenchmarkResourcesList(b *testing.B) {
 		},
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.JSONFormat,
-		Output: io.Discard,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	db, _ := storage.Open(":memory:", logger)
 	engine, _ := query.NewEngine(".", db, logger, cfg)

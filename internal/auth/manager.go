@@ -3,12 +3,11 @@ package auth
 import (
 	"context"
 	"database/sql"
+	"log/slog"
 	"os"
 	"strings"
 	"sync"
 	"time"
-
-	"ckb/internal/logging"
 )
 
 // ManagerConfig configures the auth manager
@@ -44,14 +43,14 @@ type Manager struct {
 	config      ManagerConfig
 	store       *KeyStore
 	rateLimiter *RateLimiter
-	logger      *logging.Logger
+	logger      *slog.Logger
 	staticKeys  map[string]*APIKey // In-memory cache of static keys
 	mu          sync.RWMutex
 }
 
 // NewManager creates a new auth manager
 // db can be nil if only using static keys
-func NewManager(config ManagerConfig, db *sql.DB, logger *logging.Logger) (*Manager, error) {
+func NewManager(config ManagerConfig, db *sql.DB, logger *slog.Logger) (*Manager, error) {
 	m := &Manager{
 		config:     config,
 		logger:     logger,

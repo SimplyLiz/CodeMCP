@@ -2,24 +2,24 @@ package deadcode
 
 import (
 	"context"
+	"log/slog"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"ckb/internal/backends/scip"
-	"ckb/internal/logging"
 )
 
 // Analyzer detects dead code using SCIP index reference analysis.
 type Analyzer struct {
 	scipAdapter *scip.SCIPAdapter
 	exclusions  *ExclusionRules
-	logger      *logging.Logger
+	logger      *slog.Logger
 	repoRoot    string
 }
 
 // NewAnalyzer creates a new dead code analyzer.
-func NewAnalyzer(scipAdapter *scip.SCIPAdapter, repoRoot string, logger *logging.Logger, excludePatterns []string) *Analyzer {
+func NewAnalyzer(scipAdapter *scip.SCIPAdapter, repoRoot string, logger *slog.Logger, excludePatterns []string) *Analyzer {
 	return &Analyzer{
 		scipAdapter: scipAdapter,
 		exclusions:  NewExclusionRules(excludePatterns),
@@ -55,7 +55,7 @@ func (a *Analyzer) Analyze(ctx context.Context, opts AnalyzerOptions) (*Result, 
 	// Get all symbols
 	allSymbols := a.scipAdapter.AllSymbols()
 	if allSymbols == nil {
-		a.logger.Debug("AllSymbols returned nil", nil)
+		a.logger.Debug("AllSymbols returned nil")
 		return &Result{
 			DeadCode: []DeadCodeItem{},
 			Summary: DeadCodeSummary{
@@ -65,12 +65,11 @@ func (a *Analyzer) Analyze(ctx context.Context, opts AnalyzerOptions) (*Result, 
 		}, nil
 	}
 
-	a.logger.Debug("Starting dead code analysis", map[string]interface{}{
-		"totalSymbols":      len(allSymbols),
-		"includeExported":   opts.IncludeExported,
-		"includeUnexported": opts.IncludeUnexported,
-		"scope":             opts.Scope,
-	})
+	a.logger.Debug("Starting dead code analysis",
+		"totalSymbols", len(allSymbols),
+		"includeExported", opts.IncludeExported,
+		"includeUnexported", opts.IncludeUnexported,
+		"scope", opts.Scope)
 
 	var deadCode []DeadCodeItem
 	totalAnalyzed := 0
@@ -130,10 +129,9 @@ func (a *Analyzer) Analyze(ctx context.Context, opts AnalyzerOptions) (*Result, 
 			IncludeTests:      true,
 		})
 		if err != nil {
-			a.logger.Debug("Error finding references", map[string]interface{}{
-				"symbol": sym.Symbol,
-				"error":  err.Error(),
-			})
+			a.logger.Debug("Error finding references",
+				"symbol", sym.Symbol,
+				"error", err.Error())
 			continue
 		}
 
@@ -160,15 +158,14 @@ func (a *Analyzer) Analyze(ctx context.Context, opts AnalyzerOptions) (*Result, 
 		deadCode = deadCode[:opts.Limit]
 	}
 
-	a.logger.Debug("Dead code analysis completed", map[string]interface{}{
-		"totalAnalyzed":    totalAnalyzed,
-		"deadCodeFound":    len(deadCode),
-		"skippedNoId":      skippedNoId,
-		"skippedScope":     skippedScope,
-		"skippedExport":    skippedExport,
-		"skippedTest":      skippedTest,
-		"skippedExclusion": skippedExclusion,
-	})
+	a.logger.Debug("Dead code analysis completed",
+		"totalAnalyzed", totalAnalyzed,
+		"deadCodeFound", len(deadCode),
+		"skippedNoId", skippedNoId,
+		"skippedScope", skippedScope,
+		"skippedExport", skippedExport,
+		"skippedTest", skippedTest,
+		"skippedExclusion", skippedExclusion)
 
 	return &Result{
 		DeadCode: deadCode,

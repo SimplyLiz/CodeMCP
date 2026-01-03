@@ -3,12 +3,13 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
 	"time"
 
 	"ckb/internal/envelope"
 	"ckb/internal/errors"
 	"ckb/internal/federation"
-	"ckb/internal/logging"
 )
 
 // v7.3 Remote Federation tool implementations (Phase 5)
@@ -51,10 +52,7 @@ func (s *MCPServer) toolFederationAddRemote(params map[string]interface{}) (*env
 	})
 
 	// Open federation
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
@@ -106,10 +104,7 @@ func (s *MCPServer) toolFederationRemoveRemote(params map[string]interface{}) (*
 	})
 
 	// Open federation
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
@@ -142,10 +137,7 @@ func (s *MCPServer) toolFederationListRemote(params map[string]interface{}) (*en
 	})
 
 	// Open federation
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
@@ -194,10 +186,7 @@ func (s *MCPServer) toolFederationSyncRemote(params map[string]interface{}) (*en
 	})
 
 	// Open federation
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
@@ -267,10 +256,7 @@ func (s *MCPServer) toolFederationStatusRemote(params map[string]interface{}) (*
 	})
 
 	// Open federation
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
@@ -335,10 +321,7 @@ func (s *MCPServer) toolFederationSearchSymbolsHybrid(params map[string]interfac
 	})
 
 	// Open federation
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
@@ -395,10 +378,7 @@ func (s *MCPServer) toolFederationListAllRepos(params map[string]interface{}) (*
 	})
 
 	// Open federation
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
