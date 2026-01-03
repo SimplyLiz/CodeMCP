@@ -67,7 +67,9 @@ func runUse(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 
-		entry, state, err := registry.Get(registry.Default)
+		var entry *repos.RepoEntry
+		var state repos.RepoState
+		entry, state, err = registry.Get(registry.Default)
 		if err != nil {
 			return err
 		}

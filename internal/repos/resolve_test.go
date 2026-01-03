@@ -137,7 +137,7 @@ func TestResolveActiveRepo_CWD(t *testing.T) {
 	if err := os.Chdir(repoDir); err != nil {
 		t.Fatal(err)
 	}
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	// Now register the repo (after chdir so paths resolve correctly)
 	registry, err := LoadRegistry()
@@ -207,7 +207,7 @@ func TestResolveActiveRepo_Default(t *testing.T) {
 	if err := os.Chdir(tmpDir); err != nil {
 		t.Fatal(err)
 	}
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	resolved, err := ResolveActiveRepo("")
 	if err != nil {
