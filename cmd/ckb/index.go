@@ -88,16 +88,12 @@ func init() {
 func runIndex(cmd *cobra.Command, args []string) {
 	repoRoot := mustGetRepoRoot()
 
-	// Check if .ckb directory exists, auto-init if not
+	// Check if this is an initialized CKB project
 	ckbDir := filepath.Join(repoRoot, ".ckb")
 	if _, err := os.Stat(ckbDir); os.IsNotExist(err) {
-		fmt.Println("No .ckb directory found. Initializing...")
-		if err := os.MkdirAll(ckbDir, 0755); err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating .ckb directory: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("  Created .ckb/")
-		fmt.Println()
+		fmt.Fprintln(os.Stderr, "Error: Not a CKB project.")
+		fmt.Fprintln(os.Stderr, "Run 'ckb init' first to initialize this directory.")
+		os.Exit(1)
 	}
 
 	// Get SCIP index path from config (default: .scip/index.scip)

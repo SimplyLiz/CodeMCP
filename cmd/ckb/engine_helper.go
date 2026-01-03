@@ -9,6 +9,7 @@ import (
 	"ckb/internal/config"
 	"ckb/internal/logging"
 	"ckb/internal/query"
+	"ckb/internal/repos"
 	"ckb/internal/storage"
 )
 
@@ -78,7 +79,23 @@ func mustGetEngine(repoRoot string, logger *logging.Logger) *query.Engine {
 }
 
 // getRepoRoot returns the repository root directory.
+// It uses the global repo resolution order:
+// 1. CKB_REPO environment variable
+// 2. Current directory matches a registered repo
+// 3. Default repo from registry
+// 4. Falls back to current working directory
 func getRepoRoot() (string, error) {
+	resolved, err := repos.ResolveActiveRepo("")
+	if err != nil {
+		// Fall back to CWD if registry can't be loaded
+		return os.Getwd()
+	}
+
+	if resolved.Entry != nil {
+		return resolved.Entry.Path, nil
+	}
+
+	// No registered repo found, fall back to CWD
 	return os.Getwd()
 }
 

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -13,7 +14,9 @@ import (
 	"ckb/internal/index"
 	"ckb/internal/project"
 	"ckb/internal/query"
+	"ckb/internal/repos"
 	"ckb/internal/tier"
+	"ckb/internal/version"
 )
 
 var (
@@ -34,9 +37,23 @@ func init() {
 
 func runStatus(cmd *cobra.Command, args []string) {
 	start := time.Now()
-	logger := newLogger(statusFormat)
 
-	repoRoot := mustGetRepoRoot()
+	// Try to resolve active repo using the global registry
+	resolved, err := repos.ResolveActiveRepo("")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading registry: %v\n", err)
+		os.Exit(1)
+	}
+
+	// If no active repo, show global status
+	if resolved.Entry == nil {
+		runGlobalStatus()
+		return
+	}
+
+	// We have an active repo - show detailed status
+	repoRoot := resolved.Entry.Path
+	logger := newLogger(statusFormat)
 	engine := mustGetEngine(repoRoot, logger)
 	ctx := newContext()
 
@@ -49,6 +66,13 @@ func runStatus(cmd *cobra.Command, args []string) {
 
 	// Convert to CLI response format
 	cliResponse := convertStatusResponse(response)
+
+	// Add active repo info
+	cliResponse.ActiveRepo = &ActiveRepoCLI{
+		Name:   resolved.Entry.Name,
+		Path:   resolved.Entry.Path,
+		Source: string(resolved.Source),
+	}
 
 	// Add index freshness status
 	ckbDir := filepath.Join(repoRoot, ".ckb")
@@ -70,11 +94,74 @@ func runStatus(cmd *cobra.Command, args []string) {
 	if statusFormat == "human" {
 		fmt.Printf("\n(Query took %dms)\n", duration)
 	}
+
+	// Touch last used timestamp (non-blocking, ignore errors)
+	registry, _ := repos.LoadRegistry()
+	if registry != nil {
+		_ = registry.TouchLastUsed(resolved.Entry.Name)
+	}
+}
+
+// runGlobalStatus shows status when no active repo is set
+func runGlobalStatus() {
+	fmt.Printf("CKB %s\n\n", version.Version)
+
+	registry, err := repos.LoadRegistry()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading registry: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Active repo: (none)")
+	fmt.Println()
+
+	entries := registry.List()
+	if len(entries) == 0 {
+		fmt.Println("No repositories registered.")
+		fmt.Println()
+		fmt.Println("Get started:")
+		fmt.Println("  cd /path/to/project && ckb init")
+		return
+	}
+
+	// Sort by last used (most recent first), then by name
+	repos.SortByLastUsed(entries)
+
+	fmt.Println("Registered projects:")
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+
+	for i, e := range entries {
+		state := registry.ValidateState(e.Name)
+		stateIndicator := ""
+		if state != repos.RepoStateValid {
+			stateIndicator = fmt.Sprintf(" (%s)", state)
+		}
+
+		lastUsed := ""
+		if !e.LastUsedAt.IsZero() {
+			lastUsed = formatRelativeTime(e.LastUsedAt)
+		}
+
+		fmt.Fprintf(w, "  %d. %s\t%s\t%s%s\n", i+1, e.Name, e.Path, lastUsed, stateIndicator)
+	}
+	w.Flush()
+
+	fmt.Println()
+	fmt.Println("Use 'ckb use <name>' to switch projects.")
+	fmt.Println("Use 'ckb init' to initialize current directory as a new project.")
+}
+
+// ActiveRepoCLI describes the currently active repository
+type ActiveRepoCLI struct {
+	Name   string `json:"name"`
+	Path   string `json:"path"`
+	Source string `json:"source"` // How the repo was resolved: env, flag, cwd, default
 }
 
 // StatusResponseCLI contains the complete system status for CLI output
 type StatusResponseCLI struct {
 	CkbVersion         string                 `json:"ckbVersion"`
+	ActiveRepo         *ActiveRepoCLI         `json:"activeRepo,omitempty"`
 	Tier               *tier.TierInfo         `json:"tier"`
 	RepoState          *query.RepoState       `json:"repoState"`
 	IndexStatus        *IndexStatusCLI        `json:"indexStatus,omitempty"`
