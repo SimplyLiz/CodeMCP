@@ -3,12 +3,12 @@ package api
 import (
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
 	"ckb/internal/query"
 	"ckb/internal/storage"
 )
@@ -34,11 +34,7 @@ func newTestServer(t *testing.T) *Server {
 		},
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.JSONFormat,
-		Output: io.Discard,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Create in-memory database
 	db, err := storage.Open(":memory:", logger)

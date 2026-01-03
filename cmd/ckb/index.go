@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -17,7 +19,6 @@ import (
 	"ckb/internal/config"
 	"ckb/internal/incremental"
 	"ckb/internal/index"
-	"ckb/internal/logging"
 	"ckb/internal/project"
 	"ckb/internal/repostate"
 	"ckb/internal/storage"
@@ -654,11 +655,8 @@ func tryIncrementalIndex(repoRoot, ckbDir string, lang project.Language) bool {
 		return false
 	}
 
-	// Create logger (quiet for CLI - only errors)
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.ErrorLevel,
-	})
+	// Create logger (silent for CLI)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Open database
 	db, err := storage.Open(repoRoot, logger)
@@ -733,11 +731,8 @@ func tryIncrementalIndex(repoRoot, ckbDir string, lang project.Language) bool {
 // populateIncrementalTracking sets up tracking tables after a full index.
 // This enables subsequent incremental updates.
 func populateIncrementalTracking(repoRoot string, lang project.Language) {
-	// Create logger (quiet for CLI - only errors)
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.ErrorLevel,
-	})
+	// Create logger (silent for CLI)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Open database
 	db, err := storage.Open(repoRoot, logger)

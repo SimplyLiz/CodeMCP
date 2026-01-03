@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 
@@ -10,7 +12,6 @@ import (
 
 	"ckb/internal/config"
 	"ckb/internal/daemon"
-	"ckb/internal/logging"
 	"ckb/internal/paths"
 	"ckb/internal/scheduler"
 )
@@ -382,8 +383,8 @@ func runScheduleList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("daemon not configured: %w", err)
 	}
 
-	// Create logger
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	// Create logger (silent for CLI commands)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Open scheduler
 	sched, err := scheduler.New(daemonDir, logger, scheduler.DefaultConfig())
@@ -428,8 +429,8 @@ func runScheduleRun(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("daemon not configured: %w", err)
 	}
 
-	// Create logger
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	// Create logger (silent for CLI commands)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Open scheduler
 	sched, err := scheduler.New(daemonDir, logger, scheduler.DefaultConfig())

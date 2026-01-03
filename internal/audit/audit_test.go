@@ -1,12 +1,12 @@
 package audit
 
 import (
+	"io"
+	"log/slog"
 	"math"
 	"os"
 	"path/filepath"
 	"testing"
-
-	"ckb/internal/logging"
 )
 
 func TestGetRiskLevel(t *testing.T) {
@@ -219,7 +219,7 @@ func TestAuditOptionsStructure(t *testing.T) {
 }
 
 func TestNewAnalyzer(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	analyzer := NewAnalyzer("/path/to/repo", logger)
 
 	if analyzer == nil {
@@ -232,7 +232,7 @@ func TestNewAnalyzer(t *testing.T) {
 
 func TestGetComplexity(t *testing.T) {
 	tmpDir := t.TempDir()
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	analyzer := NewAnalyzer(tmpDir, logger)
 
 	// Create a file with known complexity
@@ -267,7 +267,7 @@ func main() {
 }
 
 func TestGetComplexityNonexistent(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	analyzer := NewAnalyzer("/tmp", logger)
 
 	complexity := analyzer.getComplexity("/nonexistent/file.go")
@@ -278,7 +278,7 @@ func TestGetComplexityNonexistent(t *testing.T) {
 
 func TestHasTestFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	analyzer := NewAnalyzer(tmpDir, logger)
 
 	// Create a source file and its test file
@@ -304,7 +304,7 @@ func TestHasTestFile(t *testing.T) {
 
 func TestDetectSecurityKeywords(t *testing.T) {
 	tmpDir := t.TempDir()
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	analyzer := NewAnalyzer(tmpDir, logger)
 
 	// Create a file with security keywords
@@ -341,7 +341,7 @@ func Login(password string) {
 }
 
 func TestDetectSecurityKeywordsNonexistent(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	analyzer := NewAnalyzer("/tmp", logger)
 
 	keywords := analyzer.detectSecurityKeywords("/nonexistent/file.go")
@@ -351,7 +351,7 @@ func TestDetectSecurityKeywordsNonexistent(t *testing.T) {
 }
 
 func TestGenerateRecommendation(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	analyzer := NewAnalyzer("/tmp", logger)
 
 	tests := []struct {
@@ -415,7 +415,7 @@ func TestGenerateRecommendation(t *testing.T) {
 }
 
 func TestComputeSummary(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	analyzer := NewAnalyzer("/tmp", logger)
 
 	items := []RiskItem{
@@ -448,7 +448,7 @@ func TestComputeSummary(t *testing.T) {
 }
 
 func TestFindQuickWins(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	analyzer := NewAnalyzer("/tmp", logger)
 
 	items := []RiskItem{
@@ -488,7 +488,7 @@ func TestFindQuickWins(t *testing.T) {
 
 func TestFindSourceFiles(t *testing.T) {
 	tmpDir := t.TempDir()
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	analyzer := NewAnalyzer(tmpDir, logger)
 
 	// Create some source files

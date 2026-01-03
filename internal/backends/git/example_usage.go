@@ -9,12 +9,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"log/slog"
 	"os"
 
 	"ckb/internal/backends/git"
 	"ckb/internal/config"
-	"ckb/internal/logging"
 )
 
 func main() {
@@ -35,11 +36,7 @@ func main() {
 		},
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-		Output: os.Stdout,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	adapter, err := git.NewGitAdapter(cfg, logger)
 	if err != nil {

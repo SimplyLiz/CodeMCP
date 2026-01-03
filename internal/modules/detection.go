@@ -5,11 +5,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"ckb/internal/logging"
 	"ckb/internal/paths"
 )
 
@@ -57,24 +57,20 @@ type DetectionResult struct {
 }
 
 // DetectModules detects modules in a repository using the cascading resolution order
-func DetectModules(repoRoot string, explicitRoots []string, ignoreDirs []string, stateId string, logger *logging.Logger) (*DetectionResult, error) {
+func DetectModules(repoRoot string, explicitRoots []string, ignoreDirs []string, stateId string, logger *slog.Logger) (*DetectionResult, error) {
 	return DetectModulesWithDeclaration(repoRoot, explicitRoots, ignoreDirs, "", stateId, logger)
 }
 
 // DetectModulesWithDeclaration detects modules with optional MODULES.toml support
-func DetectModulesWithDeclaration(repoRoot string, explicitRoots []string, ignoreDirs []string, declarationFile string, stateId string, logger *logging.Logger) (*DetectionResult, error) {
+func DetectModulesWithDeclaration(repoRoot string, explicitRoots []string, ignoreDirs []string, declarationFile string, stateId string, logger *slog.Logger) (*DetectionResult, error) {
 	// Step 0: Check for MODULES.toml (v6.0 declared modules)
 	declaredModules, err := LoadDeclaredModules(repoRoot, declarationFile, stateId)
 	if err != nil {
-		logger.Warn("Failed to load MODULES.toml", map[string]interface{}{
-			"error": err.Error(),
-		})
+		logger.Warn("Failed to load MODULES.toml", "error", err.Error())
 		// Continue with fallback detection
 	}
 	if len(declaredModules) > 0 {
-		logger.Debug("Loaded declared modules from MODULES.toml", map[string]interface{}{
-			"count": len(declaredModules),
-		})
+		logger.Debug("Loaded declared modules from MODULES.toml", "count", len(declaredModules))
 		return &DetectionResult{
 			Modules:         declaredModules,
 			DetectionMethod: "declared",
@@ -129,7 +125,7 @@ func DetectModulesWithDeclaration(repoRoot string, explicitRoots []string, ignor
 }
 
 // detectExplicitModules detects modules from explicit configuration
-func detectExplicitModules(repoRoot string, explicitRoots []string, stateId string, logger *logging.Logger) ([]*Module, error) {
+func detectExplicitModules(repoRoot string, explicitRoots []string, stateId string, logger *slog.Logger) ([]*Module, error) {
 	var modules []*Module
 
 	for _, root := range explicitRoots {
@@ -137,9 +133,7 @@ func detectExplicitModules(repoRoot string, explicitRoots []string, stateId stri
 
 		// Check if path exists
 		if _, err := os.Stat(absPath); os.IsNotExist(err) {
-			logger.Warn("Explicit module root does not exist", map[string]interface{}{
-				"root": root,
-			})
+			logger.Warn("Explicit module root does not exist", "root", root)
 			continue
 		}
 
@@ -160,13 +154,13 @@ func detectExplicitModules(repoRoot string, explicitRoots []string, stateId stri
 		module := NewModule(moduleID, name, root, manifest, language, stateId)
 		modules = append(modules, module)
 
-		logger.Debug("Detected explicit module", map[string]interface{}{
-			"id":           moduleID,
-			"name":         name,
-			"rootPath":     root,
-			"manifestType": manifest,
-			"language":     language,
-		})
+		logger.Debug("Detected explicit module",
+			"id", moduleID,
+			"name", name,
+			"rootPath", root,
+			"manifestType", manifest,
+			"language", language,
+		)
 	}
 
 	return modules, nil
@@ -221,7 +215,7 @@ func detectLanguageFromFiles(dir string) string {
 }
 
 // detectManifestModules walks the repository and finds all manifest files
-func detectManifestModules(repoRoot string, ignoreDirs []string, stateId string, logger *logging.Logger) ([]*Module, error) {
+func detectManifestModules(repoRoot string, ignoreDirs []string, stateId string, logger *slog.Logger) ([]*Module, error) {
 	var modules []*Module
 	ignoreMap := make(map[string]bool)
 	for _, dir := range ignoreDirs {
@@ -255,12 +249,12 @@ func detectManifestModules(repoRoot string, ignoreDirs []string, stateId string,
 				module := NewModule(moduleID, name, relPath, mf.FileName, mf.Language, stateId)
 				modules = append(modules, module)
 
-				logger.Debug("Detected manifest module", map[string]interface{}{
-					"id":           moduleID,
-					"name":         name,
-					"rootPath":     relPath,
-					"manifestType": mf.FileName,
-				})
+				logger.Debug("Detected manifest module",
+					"id", moduleID,
+					"name", name,
+					"rootPath", relPath,
+					"manifestType", mf.FileName,
+				)
 
 				// Don't descend into this module's subdirectories
 				return filepath.SkipDir
@@ -278,7 +272,7 @@ func detectManifestModules(repoRoot string, ignoreDirs []string, stateId string,
 }
 
 // detectConventionModules detects modules based on language conventions
-func detectConventionModules(repoRoot string, ignoreDirs []string, stateId string, logger *logging.Logger) ([]*Module, error) {
+func detectConventionModules(repoRoot string, ignoreDirs []string, stateId string, logger *slog.Logger) ([]*Module, error) {
 	var modules []*Module
 	ignoreMap := make(map[string]bool)
 	for _, dir := range ignoreDirs {
@@ -300,11 +294,11 @@ func detectConventionModules(repoRoot string, ignoreDirs []string, stateId strin
 			module := NewModule(moduleID, name, relPath, ManifestNone, language, stateId)
 			modules = append(modules, module)
 
-			logger.Debug("Detected convention module", map[string]interface{}{
-				"id":       moduleID,
-				"name":     name,
-				"rootPath": relPath,
-			})
+			logger.Debug("Detected convention module",
+				"id", moduleID,
+				"name", name,
+				"rootPath", relPath,
+			)
 		}
 	}
 
@@ -312,7 +306,7 @@ func detectConventionModules(repoRoot string, ignoreDirs []string, stateId strin
 }
 
 // detectFallbackModules detects modules using top-level directories as fallback
-func detectFallbackModules(repoRoot string, ignoreDirs []string, stateId string, logger *logging.Logger) ([]*Module, error) {
+func detectFallbackModules(repoRoot string, ignoreDirs []string, stateId string, logger *slog.Logger) ([]*Module, error) {
 	var modules []*Module
 	ignoreMap := make(map[string]bool)
 	for _, dir := range ignoreDirs {
@@ -343,11 +337,11 @@ func detectFallbackModules(repoRoot string, ignoreDirs []string, stateId string,
 		module := NewModule(moduleID, name, relPath, ManifestNone, LanguageUnknown, stateId)
 		modules = append(modules, module)
 
-		logger.Debug("Detected fallback module", map[string]interface{}{
-			"id":       moduleID,
-			"name":     name,
-			"rootPath": relPath,
-		})
+		logger.Debug("Detected fallback module",
+			"id", moduleID,
+			"name", name,
+			"rootPath", relPath,
+		)
 	}
 
 	return modules, nil

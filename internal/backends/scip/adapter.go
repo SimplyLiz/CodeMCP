@@ -3,6 +3,7 @@ package scip
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"sync"
 	"time"
@@ -10,7 +11,6 @@ import (
 	"ckb/internal/backends"
 	"ckb/internal/config"
 	"ckb/internal/errors"
-	"ckb/internal/logging"
 	"ckb/internal/repostate"
 )
 
@@ -18,7 +18,7 @@ import (
 type SCIPAdapter struct {
 	indexPath    string
 	index        *SCIPIndex
-	logger       *logging.Logger
+	logger       *slog.Logger
 	queryTimeout time.Duration
 	repoRoot     string
 	cfg          *config.Config
@@ -31,7 +31,7 @@ type SCIPAdapter struct {
 }
 
 // NewSCIPAdapter creates a new SCIP adapter
-func NewSCIPAdapter(cfg *config.Config, logger *logging.Logger) (*SCIPAdapter, error) {
+func NewSCIPAdapter(cfg *config.Config, logger *slog.Logger) (*SCIPAdapter, error) {
 	if !cfg.Backends.Scip.Enabled {
 		return nil, errors.NewCkbError(
 			errors.BackendUnavailable,
@@ -61,10 +61,9 @@ func NewSCIPAdapter(cfg *config.Config, logger *logging.Logger) (*SCIPAdapter, e
 	// Try to load the index immediately
 	if err := adapter.LoadIndex(); err != nil {
 		// Log warning but don't fail - adapter can still report unavailable
-		logger.Warn("Failed to load SCIP index", map[string]interface{}{
-			"error": err.Error(),
-			"path":  indexPath,
-		})
+		logger.Warn("Failed to load SCIP index",
+			"error", err.Error(),
+			"path", indexPath)
 	}
 
 	return adapter, nil

@@ -4,12 +4,12 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"sync"
 	"time"
 
 	"ckb/internal/errors"
-	"ckb/internal/logging"
 	"ckb/internal/query"
 	"ckb/internal/repos"
 )
@@ -31,7 +31,7 @@ type MCPServer struct {
 	stdin     io.Reader
 	stdout    io.Writer
 	scanner   *bufio.Scanner
-	logger    *logging.Logger
+	logger    *slog.Logger
 	version   string
 	tools     map[string]ToolHandler
 	resources map[string]ResourceHandler
@@ -53,7 +53,7 @@ type MCPServer struct {
 }
 
 // NewMCPServer creates a new MCP server in legacy single-engine mode
-func NewMCPServer(version string, engine *query.Engine, logger *logging.Logger) *MCPServer {
+func NewMCPServer(version string, engine *query.Engine, logger *slog.Logger) *MCPServer {
 	server := &MCPServer{
 		stdin:        os.Stdin,
 		stdout:       os.Stdout,
@@ -80,7 +80,7 @@ func NewMCPServer(version string, engine *query.Engine, logger *logging.Logger) 
 }
 
 // NewMCPServerWithRegistry creates a new MCP server with multi-repo support
-func NewMCPServerWithRegistry(version string, registry *repos.Registry, logger *logging.Logger) *MCPServer {
+func NewMCPServerWithRegistry(version string, registry *repos.Registry, logger *slog.Logger) *MCPServer {
 	server := &MCPServer{
 		stdin:        os.Stdin,
 		stdout:       os.Stdout,

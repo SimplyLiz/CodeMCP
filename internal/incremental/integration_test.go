@@ -2,6 +2,8 @@ package incremental
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"ckb/internal/logging"
 	"ckb/internal/project"
 	"ckb/internal/storage"
 )
@@ -64,7 +65,7 @@ func TestExtractDeltas_GoFixture(t *testing.T) {
 		t.Fatalf("SCIP index fixture not found at %s - run 'scip-go --output .scip/index.scip' in testdata/incremental/go", indexPath)
 	}
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	extractor := NewSCIPExtractor(goFixture, indexPath, logger)
 
 	// Simulate changes to both files
@@ -165,7 +166,7 @@ func TestExtractDeltas_DeletedFile(t *testing.T) {
 		t.Skip("SCIP index fixture not found")
 	}
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	extractor := NewSCIPExtractor(goFixture, indexPath, logger)
 
 	// Simulate a deleted file
@@ -202,7 +203,7 @@ func TestExtractDeltas_AddedFile(t *testing.T) {
 		t.Skip("SCIP index fixture not found")
 	}
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	extractor := NewSCIPExtractor(goFixture, indexPath, logger)
 
 	// Simulate adding main.go (which exists in the index)
@@ -288,7 +289,7 @@ func TestLiveIncrementalIndex_Go(t *testing.T) {
 		t.Fatalf("failed to create .ckb dir: %v", err)
 	}
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	db, err := storage.Open(tmpDir, logger)
 	if err != nil {
 		t.Fatalf("failed to open database: %v", err)
@@ -370,7 +371,7 @@ func TestLiveIncrementalIndex_NoChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	db, err := storage.Open(tmpDir, logger)
 	if err != nil {
 		t.Fatal(err)

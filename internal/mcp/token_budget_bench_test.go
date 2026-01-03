@@ -1,10 +1,11 @@
 package mcp
 
 import (
+t"io"
+t"log/slog"
 	"encoding/json"
 	"testing"
 
-	"ckb/internal/logging"
 )
 
 // BenchmarkToolsListSize measures tools/list payload size per preset.
@@ -15,7 +16,7 @@ import (
 //	go test -bench=BenchmarkToolsListSize ./internal/mcp/... -count=5 > after.txt
 //	benchstat before.txt after.txt
 func BenchmarkToolsListSize(b *testing.B) {
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	server := NewMCPServer("test", nil, logger)
 
 	presets := []string{PresetCore, PresetReview, PresetRefactor, PresetFull}
@@ -52,7 +53,7 @@ func BenchmarkToolsListSize(b *testing.B) {
 // BenchmarkToolsListPaginated measures paginated tools/list payload.
 // Compares full page 1 vs multiple pages.
 func BenchmarkToolsListPaginated(b *testing.B) {
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	server := NewMCPServer("test", nil, logger)
 
 	if err := server.SetPreset(PresetFull); err != nil {
@@ -99,7 +100,7 @@ func BenchmarkToolsListPaginated(b *testing.B) {
 // BenchmarkToolSchemaSize measures individual tool schema sizes.
 // Helps identify which tools contribute most to token budget.
 func BenchmarkToolSchemaSize(b *testing.B) {
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	server := NewMCPServer("test", nil, logger)
 
 	tools := server.GetToolDefinitions()

@@ -1,10 +1,12 @@
 package mcp
 
 import (
+	"io"
+	"log/slog"
+
 	"ckb/internal/daemon"
 	"ckb/internal/envelope"
 	"ckb/internal/errors"
-	"ckb/internal/logging"
 	"ckb/internal/paths"
 	"ckb/internal/scheduler"
 	"ckb/internal/webhooks"
@@ -54,8 +56,8 @@ func (s *MCPServer) toolListSchedules(params map[string]interface{}) (*envelope.
 		return nil, errors.NewPreconditionError("daemon configured", "run 'ckb daemon start' first")
 	}
 
-	// Create logger
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	// Create logger (silent for MCP tool calls)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Open scheduler store
 	sched, err := scheduler.New(daemonDir, logger, scheduler.DefaultConfig())
@@ -105,7 +107,7 @@ func (s *MCPServer) toolRunSchedule(params map[string]interface{}) (*envelope.Re
 	}
 
 	// Create logger
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Open scheduler
 	sched, err := scheduler.New(daemonDir, logger, scheduler.DefaultConfig())
@@ -134,7 +136,7 @@ func (s *MCPServer) toolListWebhooks(params map[string]interface{}) (*envelope.R
 	}
 
 	// Create logger
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Open webhook manager
 	mgr, err := webhooks.NewManager(daemonDir, logger, webhooks.DefaultConfig())
@@ -174,7 +176,7 @@ func (s *MCPServer) toolTestWebhook(params map[string]interface{}) (*envelope.Re
 	}
 
 	// Create logger
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Open webhook manager
 	mgr, err := webhooks.NewManager(daemonDir, logger, webhooks.DefaultConfig())
@@ -208,7 +210,7 @@ func (s *MCPServer) toolWebhookDeliveries(params map[string]interface{}) (*envel
 	}
 
 	// Create logger
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Open webhook manager
 	mgr, err := webhooks.NewManager(daemonDir, logger, webhooks.DefaultConfig())

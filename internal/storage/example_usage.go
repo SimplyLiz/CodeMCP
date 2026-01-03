@@ -5,18 +5,16 @@ package storage
 
 import (
 	"database/sql"
+	"os"
 	"time"
 
-	"ckb/internal/logging"
+	"ckb/internal/slogutil"
 )
 
 // ExampleBasicSetup demonstrates basic database initialization
 func ExampleBasicSetup(repoRoot string) error {
-	// Create logger
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	// Create logger using slog
+	logger := slogutil.NewLogger(os.Stderr, slogutil.LevelFromString("info"))
 
 	// Open database (creates if doesn't exist)
 	db, err := Open(repoRoot, logger)

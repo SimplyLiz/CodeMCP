@@ -3,13 +3,12 @@ package api
 import (
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"sync"
 	"time"
 
 	_ "modernc.org/sqlite" // Pure Go SQLite driver
-
-	"ckb/internal/logging"
 )
 
 // IndexRepoHandle holds an open connection to a repo's index database
@@ -25,7 +24,7 @@ type IndexRepoHandle struct {
 type IndexRepoManager struct {
 	repos     map[string]*IndexRepoHandle
 	config    *IndexServerConfig
-	logger    *logging.Logger
+	logger    *slog.Logger
 	cursor    *CursorManager
 	storage   *IndexStorage  // For uploaded repos (Phase 2)
 	processor *SCIPProcessor // For processing uploads (Phase 2)
@@ -33,7 +32,7 @@ type IndexRepoManager struct {
 }
 
 // NewIndexRepoManager creates a new repo manager with connections to all configured repos
-func NewIndexRepoManager(config *IndexServerConfig, logger *logging.Logger) (*IndexRepoManager, error) {
+func NewIndexRepoManager(config *IndexServerConfig, logger *slog.Logger) (*IndexRepoManager, error) {
 	m := &IndexRepoManager{
 		repos:  make(map[string]*IndexRepoHandle),
 		config: config,

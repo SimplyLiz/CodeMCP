@@ -8,9 +8,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
-
-	"ckb/internal/logging"
 )
 
 // Cache TTL defaults
@@ -26,11 +25,11 @@ const (
 type CachedRemoteClient struct {
 	client *RemoteClient
 	index  *Index
-	logger *logging.Logger
+	logger *slog.Logger
 }
 
 // NewCachedRemoteClient creates a new cached remote client.
-func NewCachedRemoteClient(client *RemoteClient, index *Index, logger *logging.Logger) *CachedRemoteClient {
+func NewCachedRemoteClient(client *RemoteClient, index *Index, logger *slog.Logger) *CachedRemoteClient {
 	return &CachedRemoteClient{
 		client: client,
 		index:  index,
@@ -90,10 +89,10 @@ func (c *CachedRemoteClient) ListRepos(ctx context.Context) ([]RemoteRepoInfo, e
 	var cached []RemoteRepoInfo
 	if found, _ := c.getFromCache("", key, &cached); found {
 		if c.logger != nil {
-			c.logger.Debug("Remote repos from cache", map[string]interface{}{
-				"server": c.Server().Name,
-				"count":  len(cached),
-			})
+			c.logger.Debug("Remote repos from cache",
+				"server", c.Server().Name,
+				"count", len(cached),
+			)
 		}
 		return cached, nil
 	}
@@ -106,10 +105,10 @@ func (c *CachedRemoteClient) ListRepos(ctx context.Context) ([]RemoteRepoInfo, e
 
 	// Cache the result
 	if cacheErr := c.setInCache("", key, repos, CacheTTLRepoList); cacheErr != nil && c.logger != nil {
-		c.logger.Warn("Failed to cache repo list", map[string]interface{}{
-			"server": c.Server().Name,
-			"error":  cacheErr.Error(),
-		})
+		c.logger.Warn("Failed to cache repo list",
+			"server", c.Server().Name,
+			"error", cacheErr.Error(),
+		)
 	}
 
 	// Update cached repo info in the index
@@ -128,11 +127,11 @@ func (c *CachedRemoteClient) ListRepos(ctx context.Context) ([]RemoteRepoInfo, e
 			IndexVersion: repo.IndexVersion,
 			CachedAt:     time.Now(),
 		}); upsertErr != nil && c.logger != nil {
-			c.logger.Warn("Failed to cache repo info", map[string]interface{}{
-				"server": c.Server().Name,
-				"repo":   repo.ID,
-				"error":  upsertErr.Error(),
-			})
+			c.logger.Warn("Failed to cache repo info",
+				"server", c.Server().Name,
+				"repo", repo.ID,
+				"error", upsertErr.Error(),
+			)
 		}
 	}
 
@@ -147,10 +146,10 @@ func (c *CachedRemoteClient) GetRepoMeta(ctx context.Context, repoID string) (*R
 	var cached RemoteRepoMeta
 	if found, _ := c.getFromCache(repoID, key, &cached); found {
 		if c.logger != nil {
-			c.logger.Debug("Remote meta from cache", map[string]interface{}{
-				"server": c.Server().Name,
-				"repo":   repoID,
-			})
+			c.logger.Debug("Remote meta from cache",
+				"server", c.Server().Name,
+				"repo", repoID,
+			)
 		}
 		return &cached, nil
 	}
@@ -163,11 +162,11 @@ func (c *CachedRemoteClient) GetRepoMeta(ctx context.Context, repoID string) (*R
 
 	// Cache the result
 	if cacheErr := c.setInCache(repoID, key, meta, CacheTTLMetadata); cacheErr != nil && c.logger != nil {
-		c.logger.Warn("Failed to cache repo meta", map[string]interface{}{
-			"server": c.Server().Name,
-			"repo":   repoID,
-			"error":  cacheErr.Error(),
-		})
+		c.logger.Warn("Failed to cache repo meta",
+			"server", c.Server().Name,
+			"repo", repoID,
+			"error", cacheErr.Error(),
+		)
 	}
 
 	return meta, nil
@@ -185,12 +184,12 @@ func (c *CachedRemoteClient) SearchSymbols(ctx context.Context, repoID string, o
 	var cached cachedResult
 	if found, _ := c.getFromCache(repoID, key, &cached); found {
 		if c.logger != nil {
-			c.logger.Debug("Remote symbol search from cache", map[string]interface{}{
-				"server": c.Server().Name,
-				"repo":   repoID,
-				"query":  opts.Query,
-				"count":  len(cached.Symbols),
-			})
+			c.logger.Debug("Remote symbol search from cache",
+				"server", c.Server().Name,
+				"repo", repoID,
+				"query", opts.Query,
+				"count", len(cached.Symbols),
+			)
 		}
 		return cached.Symbols, cached.Truncated, nil
 	}
@@ -204,11 +203,11 @@ func (c *CachedRemoteClient) SearchSymbols(ctx context.Context, repoID string, o
 	// Cache the result
 	cacheErr := c.setInCache(repoID, key, cachedResult{Symbols: symbols, Truncated: truncated}, CacheTTLSymbolSearch)
 	if cacheErr != nil && c.logger != nil {
-		c.logger.Warn("Failed to cache symbol search", map[string]interface{}{
-			"server": c.Server().Name,
-			"repo":   repoID,
-			"error":  cacheErr.Error(),
-		})
+		c.logger.Warn("Failed to cache symbol search",
+			"server", c.Server().Name,
+			"repo", repoID,
+			"error", cacheErr.Error(),
+		)
 	}
 
 	return symbols, truncated, nil
@@ -226,12 +225,12 @@ func (c *CachedRemoteClient) SearchFiles(ctx context.Context, repoID, query stri
 	var cached cachedResult
 	if found, _ := c.getFromCache(repoID, key, &cached); found {
 		if c.logger != nil {
-			c.logger.Debug("Remote file search from cache", map[string]interface{}{
-				"server": c.Server().Name,
-				"repo":   repoID,
-				"query":  query,
-				"count":  len(cached.Files),
-			})
+			c.logger.Debug("Remote file search from cache",
+				"server", c.Server().Name,
+				"repo", repoID,
+				"query", query,
+				"count", len(cached.Files),
+			)
 		}
 		return cached.Files, cached.Truncated, nil
 	}
@@ -245,11 +244,11 @@ func (c *CachedRemoteClient) SearchFiles(ctx context.Context, repoID, query stri
 	// Cache the result
 	cacheErr := c.setInCache(repoID, key, cachedResult{Files: files, Truncated: truncated}, CacheTTLFileSearch)
 	if cacheErr != nil && c.logger != nil {
-		c.logger.Warn("Failed to cache file search", map[string]interface{}{
-			"server": c.Server().Name,
-			"repo":   repoID,
-			"error":  cacheErr.Error(),
-		})
+		c.logger.Warn("Failed to cache file search",
+			"server", c.Server().Name,
+			"repo", repoID,
+			"error", cacheErr.Error(),
+		)
 	}
 
 	return files, truncated, nil

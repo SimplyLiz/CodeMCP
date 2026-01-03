@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"runtime/debug"
 	"strconv"
@@ -11,7 +12,6 @@ import (
 	"time"
 
 	"ckb/internal/auth"
-	"ckb/internal/logging"
 
 	"github.com/google/uuid"
 )
@@ -25,7 +25,7 @@ const (
 )
 
 // LoggingMiddleware logs HTTP requests and responses
-func LoggingMiddleware(logger *logging.Logger) func(http.Handler) http.Handler {
+func LoggingMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
@@ -37,43 +37,43 @@ func LoggingMiddleware(logger *logging.Logger) func(http.Handler) http.Handler {
 			reqID := GetRequestID(r.Context())
 
 			// Log request
-			logger.Info("HTTP request", map[string]interface{}{
-				"method":     r.Method,
-				"path":       r.URL.Path,
-				"query":      r.URL.RawQuery,
-				"remoteAddr": r.RemoteAddr,
-				"requestID":  reqID,
-			})
+			logger.Info("HTTP request",
+				"method", r.Method,
+				"path", r.URL.Path,
+				"query", r.URL.RawQuery,
+				"remoteAddr", r.RemoteAddr,
+				"requestID", reqID,
+			)
 
 			// Call next handler
 			next.ServeHTTP(wrapped, r)
 
 			// Log response
 			duration := time.Since(start)
-			logger.Info("HTTP response", map[string]interface{}{
-				"method":     r.Method,
-				"path":       r.URL.Path,
-				"status":     wrapped.statusCode,
-				"duration":   duration.String(),
-				"durationMs": duration.Milliseconds(),
-				"requestID":  reqID,
-			})
+			logger.Info("HTTP response",
+				"method", r.Method,
+				"path", r.URL.Path,
+				"status", wrapped.statusCode,
+				"duration", duration.String(),
+				"durationMs", duration.Milliseconds(),
+				"requestID", reqID,
+			)
 		})
 	}
 }
 
 // RecoveryMiddleware recovers from panics and logs them
-func RecoveryMiddleware(logger *logging.Logger) func(http.Handler) http.Handler {
+func RecoveryMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
 				if err := recover(); err != nil {
 					reqID := GetRequestID(r.Context())
-					logger.Error("Panic recovered", map[string]interface{}{
-						"error":     fmt.Sprintf("%v", err),
-						"stack":     string(debug.Stack()),
-						"requestID": reqID,
-					})
+					logger.Error("Panic recovered",
+						"error", fmt.Sprintf("%v", err),
+						"stack", string(debug.Stack()),
+						"requestID", reqID,
+					)
 
 					// Return 500 error
 					InternalError(w, "Internal server error", fmt.Errorf("%v", err))
@@ -179,7 +179,7 @@ type AuthConfig struct {
 }
 
 // AuthMiddleware enforces token-based authentication for mutating requests
-func AuthMiddleware(config AuthConfig, logger *logging.Logger) func(http.Handler) http.Handler {
+func AuthMiddleware(config AuthConfig, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Skip auth if disabled
@@ -197,11 +197,11 @@ func AuthMiddleware(config AuthConfig, logger *logging.Logger) func(http.Handler
 			// Check Authorization header
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
-				logger.Warn("Missing authorization header", map[string]interface{}{
-					"path":      r.URL.Path,
-					"method":    r.Method,
-					"requestID": GetRequestID(r.Context()),
-				})
+				logger.Warn("Missing authorization header",
+					"path", r.URL.Path,
+					"method", r.Method,
+					"requestID", GetRequestID(r.Context()),
+				)
 				http.Error(w, `{"error":"unauthorized","message":"missing Authorization header"}`, http.StatusUnauthorized)
 				return
 			}
@@ -209,22 +209,22 @@ func AuthMiddleware(config AuthConfig, logger *logging.Logger) func(http.Handler
 			// Expect "Bearer <token>" format
 			const bearerPrefix = "Bearer "
 			if len(authHeader) < len(bearerPrefix) || authHeader[:len(bearerPrefix)] != bearerPrefix {
-				logger.Warn("Invalid authorization format", map[string]interface{}{
-					"path":      r.URL.Path,
-					"method":    r.Method,
-					"requestID": GetRequestID(r.Context()),
-				})
+				logger.Warn("Invalid authorization format",
+					"path", r.URL.Path,
+					"method", r.Method,
+					"requestID", GetRequestID(r.Context()),
+				)
 				http.Error(w, `{"error":"unauthorized","message":"invalid Authorization format, expected 'Bearer <token>'"}`, http.StatusUnauthorized)
 				return
 			}
 
 			token := authHeader[len(bearerPrefix):]
 			if token != config.Token {
-				logger.Warn("Invalid auth token", map[string]interface{}{
-					"path":      r.URL.Path,
-					"method":    r.Method,
-					"requestID": GetRequestID(r.Context()),
-				})
+				logger.Warn("Invalid auth token",
+					"path", r.URL.Path,
+					"method", r.Method,
+					"requestID", GetRequestID(r.Context()),
+				)
 				http.Error(w, `{"error":"forbidden","message":"invalid token"}`, http.StatusForbidden)
 				return
 			}
@@ -236,7 +236,7 @@ func AuthMiddleware(config AuthConfig, logger *logging.Logger) func(http.Handler
 
 // ScopedAuthMiddleware enforces scoped token-based authentication
 // This is the Phase 4 middleware that supports API keys with scopes and rate limiting
-func ScopedAuthMiddleware(authManager *auth.Manager, logger *logging.Logger) func(http.Handler) http.Handler {
+func ScopedAuthMiddleware(authManager *auth.Manager, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Exempt health check endpoints from authentication
@@ -263,12 +263,12 @@ func ScopedAuthMiddleware(authManager *auth.Manager, logger *logging.Logger) fun
 
 			// Check rate limiting first (rate limited is a valid auth but over limit)
 			if result.RateLimited {
-				logger.Info("Rate limited", map[string]interface{}{
-					"path":        r.URL.Path,
-					"key_id":      result.KeyID,
-					"retry_after": result.RetryAfter,
-					"requestID":   GetRequestID(r.Context()),
-				})
+				logger.Info("Rate limited",
+					"path", r.URL.Path,
+					"key_id", result.KeyID,
+					"retry_after", result.RetryAfter,
+					"requestID", GetRequestID(r.Context()),
+				)
 
 				w.Header().Set("Retry-After", strconv.Itoa(result.RetryAfter))
 				w.Header().Set("X-RateLimit-Remaining", "0")
@@ -277,12 +277,12 @@ func ScopedAuthMiddleware(authManager *auth.Manager, logger *logging.Logger) fun
 			}
 
 			if !result.Authenticated {
-				logger.Warn("Authentication failed", map[string]interface{}{
-					"path":       r.URL.Path,
-					"method":     r.Method,
-					"error_code": result.ErrorCode,
-					"requestID":  GetRequestID(r.Context()),
-				})
+				logger.Warn("Authentication failed",
+					"path", r.URL.Path,
+					"method", r.Method,
+					"error_code", result.ErrorCode,
+					"requestID", GetRequestID(r.Context()),
+				)
 
 				writeAuthError(w, result)
 				return

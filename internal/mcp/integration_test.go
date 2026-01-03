@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+t"log/slog"
 	"os"
 	"strings"
 	"testing"
 
 	"ckb/internal/backends/scip"
 	"ckb/internal/config"
-	"ckb/internal/logging"
 	"ckb/internal/query"
 	"ckb/internal/storage"
 	"ckb/internal/version"
@@ -139,7 +139,7 @@ func newTestMCPServerWithSCIP(t *testing.T, scipIndexPath string) *MCPServer {
 		},
 	}
 
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Level:  logging.ErrorLevel,
 		Format: logging.JSONFormat,
 		Output: io.Discard,

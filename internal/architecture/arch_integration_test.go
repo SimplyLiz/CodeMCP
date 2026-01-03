@@ -1,6 +1,8 @@
 package architecture_test
 
 import (
+t"io"
+t"log/slog"
 	"context"
 	"fmt"
 	"os"
@@ -8,7 +10,6 @@ import (
 	"testing"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
 	"ckb/internal/modules"
 	"ckb/internal/query"
 	"ckb/internal/storage"
@@ -53,7 +54,7 @@ func TestArchitectureIntegration(t *testing.T) {
 		t.Fatalf("Config error: %v", err)
 	}
 
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.HumanFormat,
 		Level:  logging.InfoLevel,
 	})
@@ -127,7 +128,7 @@ func TestModuleDetection(t *testing.T) {
 		t.Fatalf("Config error: %v", err)
 	}
 
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.HumanFormat,
 		Level:  logging.DebugLevel,
 	})

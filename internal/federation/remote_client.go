@@ -7,24 +7,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
-
-	"ckb/internal/logging"
 )
 
 // RemoteClient is an HTTP client for communicating with remote index servers.
 type RemoteClient struct {
 	server *RemoteServer
 	client *http.Client
-	logger *logging.Logger
+	logger *slog.Logger
 	index  *Index
 }
 
 // NewRemoteClient creates a new client for a remote server.
-func NewRemoteClient(server *RemoteServer, index *Index, logger *logging.Logger) *RemoteClient {
+func NewRemoteClient(server *RemoteServer, index *Index, logger *slog.Logger) *RemoteClient {
 	return &RemoteClient{
 		server: server,
 		client: &http.Client{
@@ -81,11 +80,11 @@ func (c *RemoteClient) doRequest(ctx context.Context, method, path string, body 
 			}
 
 			if c.logger != nil {
-				c.logger.Debug("Retrying request", map[string]interface{}{
-					"server":  c.server.Name,
-					"attempt": attempt + 1,
-					"url":     u.String(),
-				})
+				c.logger.Debug("Retrying request",
+					"server", c.server.Name,
+					"attempt", attempt+1,
+					"url", u.String(),
+				)
 			}
 		}
 

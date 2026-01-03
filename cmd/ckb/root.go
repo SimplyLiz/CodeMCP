@@ -13,6 +13,12 @@ import (
 var (
 	// tierFlag is the CLI --tier flag value
 	tierFlag string
+
+	// verbosity is the count of -v flags (0=warn, 1=info, 2+=debug)
+	verbosity int
+
+	// quiet suppresses all log output
+	quiet bool
 )
 
 var rootCmd = &cobra.Command{
@@ -28,6 +34,10 @@ func init() {
 	rootCmd.SetVersionTemplate("CKB version {{.Version}}\n")
 	rootCmd.PersistentFlags().StringVar(&tierFlag, "tier", "",
 		"Analysis tier: fast, standard, full, or auto (default: auto)")
+	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v",
+		"Increase verbosity (-v=info, -vv=debug)")
+	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false,
+		"Suppress all log output")
 }
 
 // resolveTierMode determines the effective tier mode from CLI flag, env var, and config.

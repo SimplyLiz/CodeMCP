@@ -1,19 +1,20 @@
 package auth
 
 import (
+t"io"
+t"log/slog"
 	"database/sql"
 	"os"
 	"testing"
 	"time"
 
-	"ckb/internal/logging"
 
 	_ "modernc.org/sqlite" // Pure Go SQLite driver
 )
 
 // testLogger returns a silent logger for tests
-func testLogger() *logging.Logger {
-	return logging.NewLogger(logging.Config{
+func testLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
 		Level:  logging.DebugLevel,
 		Format: logging.JSONFormat,
 		Output: os.Stderr,

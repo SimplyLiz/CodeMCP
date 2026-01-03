@@ -1,13 +1,14 @@
 package scip
 
 import (
+t"io"
+t"log/slog"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
 )
 
 // findRepoRoot finds the repository root by looking for go.mod
@@ -37,7 +38,7 @@ func TestFindCallers(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.RepoRoot = repoRoot
 
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.HumanFormat,
 		Level:  logging.DebugLevel,
 	})
@@ -159,7 +160,7 @@ func TestCallGraph(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.RepoRoot = repoRoot
 
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.HumanFormat,
 		Level:  logging.DebugLevel,
 	})
@@ -224,7 +225,7 @@ func TestCountSymbolsByPath(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.RepoRoot = repoRoot
 
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.HumanFormat,
 		Level:  logging.DebugLevel,
 	})

@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,7 +13,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"ckb/internal/federation"
-	"ckb/internal/logging"
 )
 
 var federationCmd = &cobra.Command{
@@ -253,10 +254,7 @@ func init() {
 func runFedCreate(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Create(name, fedDescription, logger)
 	if err != nil {
@@ -291,10 +289,7 @@ func runFedDelete(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(name, logger)
 	if err != nil {
@@ -336,10 +331,7 @@ func runFedList(cmd *cobra.Command, args []string) error {
 func runFedStatus(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(name, logger)
 	if err != nil {
@@ -421,10 +413,7 @@ func runFedAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("path does not exist: %s", absPath)
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(name, logger)
 	if err != nil {
@@ -469,10 +458,7 @@ func runFedRemove(cmd *cobra.Command, args []string) error {
 	name := args[0]
 	repoID := args[1]
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(name, logger)
 	if err != nil {
@@ -493,10 +479,7 @@ func runFedRename(cmd *cobra.Command, args []string) error {
 	oldID := args[1]
 	newID := args[2]
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(name, logger)
 	if err != nil {
@@ -515,10 +498,7 @@ func runFedRename(cmd *cobra.Command, args []string) error {
 func runFedRepos(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(name, logger)
 	if err != nil {
@@ -553,10 +533,7 @@ func runFedRepos(cmd *cobra.Command, args []string) error {
 func runFedSync(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(name, logger)
 	if err != nil {
@@ -613,10 +590,7 @@ func runFedSync(cmd *cobra.Command, args []string) error {
 func runFedSearchModules(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(name, logger)
 	if err != nil {
@@ -671,10 +645,7 @@ func runFedSearchModules(cmd *cobra.Command, args []string) error {
 func runFedSearchOwnership(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(name, logger)
 	if err != nil {
@@ -732,10 +703,7 @@ func runFedSearchOwnership(cmd *cobra.Command, args []string) error {
 func runFedHotspots(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(name, logger)
 	if err != nil {
@@ -783,10 +751,7 @@ func runFedHotspots(cmd *cobra.Command, args []string) error {
 func runFedSearchDecisions(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(name, logger)
 	if err != nil {

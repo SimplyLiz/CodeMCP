@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,13 +14,12 @@ import (
 	_ "modernc.org/sqlite"
 
 	"ckb/internal/backends/scip"
-	"ckb/internal/logging"
 )
 
 // SCIPProcessor processes uploaded SCIP index files into CKB databases
 type SCIPProcessor struct {
 	storage *IndexStorage
-	logger  *logging.Logger
+	logger  *slog.Logger
 }
 
 // UploadMeta contains metadata provided with an upload
@@ -45,7 +45,7 @@ type ProcessResult struct {
 }
 
 // NewSCIPProcessor creates a new processor
-func NewSCIPProcessor(storage *IndexStorage, logger *logging.Logger) *SCIPProcessor {
+func NewSCIPProcessor(storage *IndexStorage, logger *slog.Logger) *SCIPProcessor {
 	return &SCIPProcessor{
 		storage: storage,
 		logger:  logger,

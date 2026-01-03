@@ -3,22 +3,22 @@ package breaking
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 
 	"ckb/internal/backends/scip"
-	"ckb/internal/logging"
 )
 
 // Analyzer compares API surfaces between git refs
 type Analyzer struct {
 	scipAdapter *scip.SCIPAdapter
-	logger      *logging.Logger
+	logger      *slog.Logger
 	repoRoot    string
 }
 
 // NewAnalyzer creates a new breaking change analyzer
-func NewAnalyzer(scipAdapter *scip.SCIPAdapter, repoRoot string, logger *logging.Logger) *Analyzer {
+func NewAnalyzer(scipAdapter *scip.SCIPAdapter, repoRoot string, logger *slog.Logger) *Analyzer {
 	return &Analyzer{
 		scipAdapter: scipAdapter,
 		logger:      logger,
@@ -32,11 +32,10 @@ func (a *Analyzer) Compare(ctx context.Context, opts CompareOptions) (*CompareRe
 		opts.IgnorePrivate = true // Default to true
 	}
 
-	a.logger.Debug("Starting breaking change analysis", map[string]interface{}{
-		"baseRef":   opts.BaseRef,
-		"targetRef": opts.TargetRef,
-		"scope":     opts.Scope,
-	})
+	a.logger.Debug("Starting breaking change analysis",
+		"baseRef", opts.BaseRef,
+		"targetRef", opts.TargetRef,
+		"scope", opts.Scope)
 
 	// For now, we can only analyze the current state (targetRef)
 	// Full git ref comparison would require indexing at different commits
@@ -56,9 +55,7 @@ func (a *Analyzer) Compare(ctx context.Context, opts CompareOptions) (*CompareRe
 
 	// For now, report all symbols as the API surface
 	// A full implementation would compare base vs target
-	a.logger.Debug("API analysis completed", map[string]interface{}{
-		"targetSymbols": len(targetSymbols),
-	})
+	a.logger.Debug("API analysis completed", "targetSymbols", len(targetSymbols))
 
 	result.Summary = a.computeSummary(result.Changes)
 	result.SemverAdvice = a.computeSemverAdvice(result.Summary)

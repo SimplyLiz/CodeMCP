@@ -2,9 +2,9 @@ package identity
 
 import (
 	"fmt"
+	"log/slog"
 
 	"ckb/internal/errors"
-	"ckb/internal/logging"
 	"ckb/internal/storage"
 )
 
@@ -27,11 +27,11 @@ type ResolvedSymbol struct {
 // IdentityResolver handles symbol ID resolution with alias following
 type IdentityResolver struct {
 	db     *storage.DB
-	logger *logging.Logger
+	logger *slog.Logger
 }
 
 // NewIdentityResolver creates a new identity resolver
-func NewIdentityResolver(db *storage.DB, logger *logging.Logger) *IdentityResolver {
+func NewIdentityResolver(db *storage.DB, logger *slog.Logger) *IdentityResolver {
 	return &IdentityResolver{
 		db:     db,
 		logger: logger,
@@ -52,10 +52,9 @@ func (r *IdentityResolver) resolveWithDepth(
 ) (*ResolvedSymbol, error) {
 	// Cycle detection
 	if visited[requestedId] {
-		r.logger.Error("alias cycle detected", map[string]interface{}{
-			"requested_id": requestedId,
-			"visited":      visited,
-		})
+		r.logger.Error("alias cycle detected",
+			"requested_id", requestedId,
+			"visited", visited)
 		return &ResolvedSymbol{
 				Error: string(errors.AliasCycle),
 			}, errors.NewCkbError(
@@ -70,11 +69,10 @@ func (r *IdentityResolver) resolveWithDepth(
 
 	// Max depth check
 	if depth > AliasChainMaxDepth {
-		r.logger.Warn("alias chain too deep", map[string]interface{}{
-			"requested_id": requestedId,
-			"depth":        depth,
-			"max_depth":    AliasChainMaxDepth,
-		})
+		r.logger.Warn("alias chain too deep",
+			"requested_id", requestedId,
+			"depth", depth,
+			"max_depth", AliasChainMaxDepth)
 		return &ResolvedSymbol{
 				Error: string(errors.AliasChainTooDeep),
 			}, errors.NewCkbError(
@@ -103,13 +101,12 @@ func (r *IdentityResolver) resolveWithDepth(
 			alias, aliasErr := r.getAlias(requestedId)
 			if aliasErr == nil && alias != nil {
 				// Follow the alias
-				r.logger.Debug("following alias from deleted symbol", map[string]interface{}{
-					"from":       requestedId,
-					"to":         alias.NewStableId,
-					"reason":     alias.Reason,
-					"confidence": alias.Confidence,
-					"depth":      depth,
-				})
+				r.logger.Debug("following alias from deleted symbol",
+					"from", requestedId,
+					"to", alias.NewStableId,
+					"reason", alias.Reason,
+					"confidence", alias.Confidence,
+					"depth", depth)
 
 				resolved, resolveErr := r.resolveWithDepth(alias.NewStableId, depth+1, visited)
 				if resolveErr != nil {
@@ -129,10 +126,9 @@ func (r *IdentityResolver) resolveWithDepth(
 			}
 
 			// No alias - symbol is truly deleted
-			r.logger.Debug("symbol is deleted", map[string]interface{}{
-				"stable_id":  requestedId,
-				"deleted_at": symbol.DeletedAt,
-			})
+			r.logger.Debug("symbol is deleted",
+				"stable_id", requestedId,
+				"deleted_at", symbol.DeletedAt)
 			return &ResolvedSymbol{
 				Deleted:   true,
 				DeletedAt: symbol.DeletedAt,
@@ -144,9 +140,7 @@ func (r *IdentityResolver) resolveWithDepth(
 	alias, err := r.getAlias(requestedId)
 	if err != nil {
 		// No alias found either
-		r.logger.Debug("symbol not found", map[string]interface{}{
-			"stable_id": requestedId,
-		})
+		r.logger.Debug("symbol not found", "stable_id", requestedId)
 		return &ResolvedSymbol{
 				Error: string(errors.SymbolNotFound),
 			}, errors.NewCkbError(
@@ -159,13 +153,12 @@ func (r *IdentityResolver) resolveWithDepth(
 	}
 
 	// Follow the alias recursively
-	r.logger.Debug("following alias", map[string]interface{}{
-		"from":       requestedId,
-		"to":         alias.NewStableId,
-		"reason":     alias.Reason,
-		"confidence": alias.Confidence,
-		"depth":      depth,
-	})
+	r.logger.Debug("following alias",
+		"from", requestedId,
+		"to", alias.NewStableId,
+		"reason", alias.Reason,
+		"confidence", alias.Confidence,
+		"depth", depth)
 
 	resolved, err := r.resolveWithDepth(alias.NewStableId, depth+1, visited)
 	if err != nil {

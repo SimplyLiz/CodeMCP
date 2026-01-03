@@ -1,11 +1,11 @@
 package api
 
 import (
+	"io"
+	"log/slog"
 	"os"
 	"strings"
 	"testing"
-
-	"ckb/internal/logging"
 )
 
 func TestIsValidRepoID(t *testing.T) {

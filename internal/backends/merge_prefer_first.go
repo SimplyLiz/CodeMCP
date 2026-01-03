@@ -1,20 +1,19 @@
 package backends
 
 import (
+	"log/slog"
 	"reflect"
-
-	"ckb/internal/logging"
 )
 
 // PreferFirstMerger implements the prefer-first merge strategy
 // Uses the highest-preference backend's result, supplementing only metadata
 type PreferFirstMerger struct {
 	policy *QueryPolicy
-	logger *logging.Logger
+	logger *slog.Logger
 }
 
 // NewPreferFirstMerger creates a new prefer-first merger
-func NewPreferFirstMerger(policy *QueryPolicy, logger *logging.Logger) *PreferFirstMerger {
+func NewPreferFirstMerger(policy *QueryPolicy, logger *slog.Logger) *PreferFirstMerger {
 	return &PreferFirstMerger{
 		policy: policy,
 		logger: logger,
@@ -131,10 +130,9 @@ func (m *PreferFirstMerger) supplementMetadata(
 
 	// Supplement Visibility
 	if shouldSupplement(primary.Visibility, supplement.Visibility) {
-		m.logger.Debug("Supplementing Visibility", map[string]interface{}{
-			"backend": supplementBackend,
-			"value":   supplement.Visibility,
-		})
+		m.logger.Debug("Supplementing Visibility",
+			"backend", supplementBackend,
+			"value", supplement.Visibility)
 		primary.Visibility = supplement.Visibility
 		supplemented = true
 	} else if primary.Visibility != supplement.Visibility && supplement.Visibility != "" {
@@ -149,9 +147,7 @@ func (m *PreferFirstMerger) supplementMetadata(
 
 	// Supplement SignatureNormalized
 	if shouldSupplement(primary.SignatureNormalized, supplement.SignatureNormalized) {
-		m.logger.Debug("Supplementing SignatureNormalized", map[string]interface{}{
-			"backend": supplementBackend,
-		})
+		m.logger.Debug("Supplementing SignatureNormalized", "backend", supplementBackend)
 		primary.SignatureNormalized = supplement.SignatureNormalized
 		supplemented = true
 	} else if primary.SignatureNormalized != supplement.SignatureNormalized && supplement.SignatureNormalized != "" {
@@ -166,10 +162,9 @@ func (m *PreferFirstMerger) supplementMetadata(
 
 	// Supplement Kind
 	if shouldSupplement(primary.Kind, supplement.Kind) {
-		m.logger.Debug("Supplementing Kind", map[string]interface{}{
-			"backend": supplementBackend,
-			"value":   supplement.Kind,
-		})
+		m.logger.Debug("Supplementing Kind",
+			"backend", supplementBackend,
+			"value", supplement.Kind)
 		primary.Kind = supplement.Kind
 		supplemented = true
 	} else if primary.Kind != supplement.Kind && supplement.Kind != "" {
@@ -220,12 +215,11 @@ func (m *PreferFirstMerger) recordConflict(
 
 	provenance.MetadataConflicts = append(provenance.MetadataConflicts, conflict)
 
-	m.logger.Debug("Metadata conflict detected", map[string]interface{}{
-		"field":        field,
-		"primaryValue": primaryVal,
-		"backendValue": supplementVal,
-		"backend":      backendID,
-	})
+	m.logger.Debug("Metadata conflict detected",
+		"field", field,
+		"primaryValue", primaryVal,
+		"backendValue", supplementVal,
+		"backend", backendID)
 }
 
 // isEmptyValue checks if a value is empty/zero

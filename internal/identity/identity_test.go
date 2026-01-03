@@ -1,12 +1,13 @@
 package identity
 
 import (
+t"io"
+t"log/slog"
 	"fmt"
 	"os"
 	"testing"
 	"time"
 
-	"ckb/internal/logging"
 	"ckb/internal/storage"
 )
 
@@ -20,7 +21,7 @@ func setupTestDB(t *testing.T) (*storage.DB, string) {
 	}
 
 	// Create logger
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.JSONFormat,
 		Level:  logging.DebugLevel,
 	})
@@ -79,7 +80,7 @@ func TestSymbolRepository(t *testing.T) {
 	db, tmpDir := setupTestDB(t)
 	defer cleanupTestDB(db, tmpDir)
 
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.JSONFormat,
 		Level:  logging.DebugLevel,
 	})
@@ -174,7 +175,7 @@ func TestAliasResolution(t *testing.T) {
 	db, tmpDir := setupTestDB(t)
 	defer cleanupTestDB(db, tmpDir)
 
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.JSONFormat,
 		Level:  logging.DebugLevel,
 	})
@@ -278,7 +279,7 @@ func TestAliasCreation(t *testing.T) {
 	db, tmpDir := setupTestDB(t)
 	defer cleanupTestDB(db, tmpDir)
 
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.JSONFormat,
 		Level:  logging.DebugLevel,
 	})
@@ -397,7 +398,7 @@ func TestTombstones(t *testing.T) {
 	db, tmpDir := setupTestDB(t)
 	defer cleanupTestDB(db, tmpDir)
 
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.JSONFormat,
 		Level:  logging.DebugLevel,
 	})
@@ -458,7 +459,7 @@ func TestAliasCycleDetection(t *testing.T) {
 	db, tmpDir := setupTestDB(t)
 	defer cleanupTestDB(db, tmpDir)
 
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.JSONFormat,
 		Level:  logging.DebugLevel,
 	})
@@ -543,7 +544,7 @@ func TestAliasChainTooDeep(t *testing.T) {
 	db, tmpDir := setupTestDB(t)
 	defer cleanupTestDB(db, tmpDir)
 
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.JSONFormat,
 		Level:  logging.DebugLevel,
 	})
@@ -614,7 +615,7 @@ func TestSymbolNotFound(t *testing.T) {
 	db, tmpDir := setupTestDB(t)
 	defer cleanupTestDB(db, tmpDir)
 
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.JSONFormat,
 		Level:  logging.DebugLevel,
 	})
@@ -641,7 +642,7 @@ func TestDirectSymbolResolution(t *testing.T) {
 	db, tmpDir := setupTestDB(t)
 	defer cleanupTestDB(db, tmpDir)
 
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.JSONFormat,
 		Level:  logging.DebugLevel,
 	})

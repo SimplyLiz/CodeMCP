@@ -2,8 +2,8 @@ package federation
 
 import (
 	"fmt"
+	"log/slog"
 
-	"ckb/internal/logging"
 	"ckb/internal/paths"
 )
 
@@ -11,11 +11,11 @@ import (
 type Federation struct {
 	config *Config
 	index  *Index
-	logger *logging.Logger
+	logger *slog.Logger
 }
 
 // Open opens an existing federation
-func Open(name string, logger *logging.Logger) (*Federation, error) {
+func Open(name string, logger *slog.Logger) (*Federation, error) {
 	// Check if federation exists
 	exists, err := paths.FederationExists(name)
 	if err != nil {
@@ -45,7 +45,7 @@ func Open(name string, logger *logging.Logger) (*Federation, error) {
 }
 
 // Create creates a new federation
-func Create(name, description string, logger *logging.Logger) (*Federation, error) {
+func Create(name, description string, logger *slog.Logger) (*Federation, error) {
 	// Check if federation already exists
 	exists, err := paths.FederationExists(name)
 	if err != nil {
@@ -70,9 +70,7 @@ func Create(name, description string, logger *logging.Logger) (*Federation, erro
 	}
 
 	if logger != nil {
-		logger.Info("Created federation", map[string]interface{}{
-			"name": name,
-		})
+		logger.Info("Created federation", "name", name)
 	}
 
 	return &Federation{
@@ -121,11 +119,11 @@ func (f *Federation) AddRepo(repoID, path string, tags []string) (*RepoConfig, e
 	}
 
 	if f.logger != nil {
-		f.logger.Info("Added repository to federation", map[string]interface{}{
-			"federation": f.config.Name,
-			"repoId":     repoID,
-			"path":       path,
-		})
+		f.logger.Info("Added repository to federation",
+			"federation", f.config.Name,
+			"repoId", repoID,
+			"path", path,
+		)
 	}
 
 	return repo, nil
@@ -155,10 +153,10 @@ func (f *Federation) RemoveRepo(repoID string) error {
 	}
 
 	if f.logger != nil {
-		f.logger.Info("Removed repository from federation", map[string]interface{}{
-			"federation": f.config.Name,
-			"repoId":     repoID,
-		})
+		f.logger.Info("Removed repository from federation",
+			"federation", f.config.Name,
+			"repoId", repoID,
+		)
 	}
 
 	return nil
@@ -176,11 +174,11 @@ func (f *Federation) RenameRepo(oldID, newID string) error {
 	}
 
 	if f.logger != nil {
-		f.logger.Info("Renamed repository in federation", map[string]interface{}{
-			"federation": f.config.Name,
-			"oldId":      oldID,
-			"newId":      newID,
-		})
+		f.logger.Info("Renamed repository in federation",
+			"federation", f.config.Name,
+			"oldId", oldID,
+			"newId", newID,
+		)
 	}
 
 	return nil
@@ -209,9 +207,7 @@ func (f *Federation) Delete() error {
 	}
 
 	if f.logger != nil {
-		f.logger.Info("Deleted federation", map[string]interface{}{
-			"name": f.config.Name,
-		})
+		f.logger.Info("Deleted federation", "name", f.config.Name)
 	}
 
 	return nil

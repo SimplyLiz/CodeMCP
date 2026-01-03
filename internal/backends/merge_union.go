@@ -2,19 +2,18 @@ package backends
 
 import (
 	"fmt"
-
-	"ckb/internal/logging"
+	"log/slog"
 )
 
 // UnionMerger implements the union merge strategy
 // Queries all backends and merges all results, resolving conflicts by precedence
 type UnionMerger struct {
 	policy *QueryPolicy
-	logger *logging.Logger
+	logger *slog.Logger
 }
 
 // NewUnionMerger creates a new union merger
-func NewUnionMerger(policy *QueryPolicy, logger *logging.Logger) *UnionMerger {
+func NewUnionMerger(policy *QueryPolicy, logger *slog.Logger) *UnionMerger {
 	return &UnionMerger{
 		policy: policy,
 		logger: logger,
@@ -141,13 +140,12 @@ func (m *UnionMerger) recordUnionConflict(
 
 	provenance.UnionConflicts = append(provenance.UnionConflicts, conflict)
 
-	m.logger.Debug("Union conflict detected", map[string]interface{}{
-		"field":        field,
-		"itemID":       itemID,
-		"primaryValue": primaryVal,
-		"backendValue": secondaryVal,
-		"backend":      backendID,
-	})
+	m.logger.Debug("Union conflict detected",
+		"field", field,
+		"itemID", itemID,
+		"primaryValue", primaryVal,
+		"backendValue", secondaryVal,
+		"backend", backendID)
 }
 
 // locationsEqual checks if two locations are equal

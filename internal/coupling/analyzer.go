@@ -2,23 +2,22 @@ package coupling
 
 import (
 	"context"
+	"log/slog"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
-
-	"ckb/internal/logging"
 )
 
 // Analyzer performs co-change pattern analysis on files
 type Analyzer struct {
 	repoRoot string
-	logger   *logging.Logger
+	logger   *slog.Logger
 }
 
 // NewAnalyzer creates a new coupling analyzer
-func NewAnalyzer(repoRoot string, logger *logging.Logger) *Analyzer {
+func NewAnalyzer(repoRoot string, logger *slog.Logger) *Analyzer {
 	return &Analyzer{
 		repoRoot: repoRoot,
 		logger:   logger,
@@ -44,11 +43,10 @@ func (a *Analyzer) Analyze(ctx context.Context, opts AnalyzeOptions) (*CouplingA
 	// Resolve target to file path
 	targetFile := a.resolveToFile(opts.Target)
 
-	a.logger.Debug("Starting coupling analysis", map[string]interface{}{
-		"target":         targetFile,
-		"minCorrelation": opts.MinCorrelation,
-		"windowDays":     opts.WindowDays,
-	})
+	a.logger.Debug("Starting coupling analysis",
+		"target", targetFile,
+		"minCorrelation", opts.MinCorrelation,
+		"windowDays", opts.WindowDays)
 
 	// Calculate the "since" date
 	since := time.Now().AddDate(0, 0, -opts.WindowDays)
@@ -84,10 +82,9 @@ func (a *Analyzer) Analyze(ctx context.Context, opts AnalyzeOptions) (*CouplingA
 	for _, commitHash := range targetCommits {
 		filesInCommit, err := a.getFilesInCommit(ctx, commitHash)
 		if err != nil {
-			a.logger.Warn("Failed to get files in commit", map[string]interface{}{
-				"commit": commitHash,
-				"error":  err.Error(),
-			})
+			a.logger.Warn("Failed to get files in commit",
+				"commit", commitHash,
+				"error", err.Error())
 			continue
 		}
 

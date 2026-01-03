@@ -5,6 +5,7 @@ package query
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"sync"
 	"time"
@@ -19,7 +20,6 @@ import (
 	"ckb/internal/hotspots"
 	"ckb/internal/identity"
 	"ckb/internal/jobs"
-	"ckb/internal/logging"
 	"ckb/internal/output"
 	"ckb/internal/storage"
 	"ckb/internal/symbols"
@@ -29,7 +29,7 @@ import (
 // Engine is the central query coordinator for CKB.
 type Engine struct {
 	db         *storage.DB
-	logger     *logging.Logger
+	logger     *slog.Logger
 	config     *config.Config
 	compressor *compression.Compressor
 	resolver   *identity.IdentityResolver
@@ -78,7 +78,7 @@ type RepoState struct {
 }
 
 // NewEngine creates a new query engine.
-func NewEngine(repoRoot string, db *storage.DB, logger *logging.Logger, cfg *config.Config) (*Engine, error) {
+func NewEngine(repoRoot string, db *storage.DB, logger *slog.Logger, cfg *config.Config) (*Engine, error) {
 	// Create compressor
 	budget := compression.NewBudgetFromConfig(cfg)
 	limits := compression.NewLimitsFromConfig(cfg)
@@ -116,17 +116,13 @@ func NewEngine(repoRoot string, db *storage.DB, logger *logging.Logger, cfg *con
 
 	// Initialize backends
 	if err := engine.initializeBackends(cfg); err != nil {
-		logger.Warn("Some backends failed to initialize", map[string]interface{}{
-			"error": err.Error(),
-		})
+		logger.Warn("Some backends failed to initialize", "error", err.Error())
 		// Don't fail - some backends are optional
 	}
 
 	// Initialize job runner
 	if err := engine.initializeJobRunner(); err != nil {
-		logger.Warn("Failed to initialize job runner", map[string]interface{}{
-			"error": err.Error(),
-		})
+		logger.Warn("Failed to initialize job runner", "error", err.Error())
 		// Don't fail - async operations will be unavailable
 	}
 
@@ -205,9 +201,7 @@ func (e *Engine) initializeBackends(cfg *config.Config) error {
 	// Initialize Git backend (always available)
 	gitAdapter, err := git.NewGitAdapter(cfg, e.logger)
 	if err != nil {
-		e.logger.Warn("Failed to initialize Git backend", map[string]interface{}{
-			"error": err.Error(),
-		})
+		e.logger.Warn("Failed to initialize Git backend", "error", err.Error())
 		lastErr = err
 	} else {
 		e.gitAdapter = gitAdapter
@@ -217,9 +211,7 @@ func (e *Engine) initializeBackends(cfg *config.Config) error {
 	if cfg.Backends.Scip.Enabled {
 		scipAdapter, err := scip.NewSCIPAdapter(cfg, e.logger)
 		if err != nil {
-			e.logger.Warn("Failed to initialize SCIP backend", map[string]interface{}{
-				"error": err.Error(),
-			})
+			e.logger.Warn("Failed to initialize SCIP backend", "error", err.Error())
 			lastErr = err
 		} else {
 			e.scipAdapter = scipAdapter
@@ -231,9 +223,7 @@ func (e *Engine) initializeBackends(cfg *config.Config) error {
 				// Populate FTS index from SCIP symbols
 				ctx := context.Background()
 				if err := e.PopulateFTSFromSCIP(ctx); err != nil {
-					e.logger.Warn("Failed to populate FTS from SCIP", map[string]interface{}{
-						"error": err.Error(),
-					})
+					e.logger.Warn("Failed to populate FTS from SCIP", "error", err.Error())
 					// Don't fail initialization - FTS is optional optimization
 				}
 			}
@@ -318,9 +308,7 @@ func (e *Engine) computeRepoState(ctx context.Context) (*RepoState, error) {
 
 	state, err := e.gitAdapter.GetRepoState()
 	if err != nil {
-		e.logger.Warn("failed to get repo state from git", map[string]interface{}{
-			"error": err.Error(),
-		})
+		e.logger.Warn("failed to get repo state from git", "error", err.Error())
 		//nolint:nilerr // return fallback state on git errors
 		return &RepoState{
 			RepoStateId: "unknown",

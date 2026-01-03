@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"runtime"
 	"time"
@@ -11,7 +12,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
 	"ckb/internal/paths"
 	"ckb/internal/query"
 	"ckb/internal/version"
@@ -72,10 +72,7 @@ type DiagSystemInfo struct {
 }
 
 func runDiag(cmd *cobra.Command, args []string) {
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := newLogger("human")
 
 	fmt.Println("Creating diagnostic bundle...")
 
@@ -101,7 +98,7 @@ func runDiag(cmd *cobra.Command, args []string) {
 }
 
 // collectDiagnostics gathers all diagnostic information
-func collectDiagnostics(repoRoot string, logger *logging.Logger) *DiagnosticBundle {
+func collectDiagnostics(repoRoot string, logger *slog.Logger) *DiagnosticBundle {
 	bundle := &DiagnosticBundle{
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 		CkbVersion:  version.Version,
@@ -123,9 +120,7 @@ func collectDiagnostics(repoRoot string, logger *logging.Logger) *DiagnosticBund
 	// Get engine for queries
 	engine, err := getEngine(repoRoot, logger)
 	if err != nil {
-		logger.Warn("Failed to initialize engine", map[string]interface{}{
-			"error": err.Error(),
-		})
+		logger.Warn("Failed to initialize engine", "error", err.Error())
 		return bundle
 	}
 

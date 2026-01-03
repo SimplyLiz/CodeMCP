@@ -1,11 +1,11 @@
 package watcher
 
 import (
+	"io"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
-
-	"ckb/internal/logging"
 )
 
 func TestEventTypeString(t *testing.T) {
@@ -76,7 +76,7 @@ func TestDefaultConfigIgnorePatterns(t *testing.T) {
 }
 
 func TestNewWatcher(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	config := DefaultConfig()
 	handler := func(repoPath string, events []Event) {}
 
@@ -96,7 +96,7 @@ func TestNewWatcher(t *testing.T) {
 }
 
 func TestWatcherStats(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	config := DefaultConfig()
 	config.DebounceMs = 1000
 
@@ -115,7 +115,7 @@ func TestWatcherStats(t *testing.T) {
 }
 
 func TestWatcherWatchedRepos(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	config := DefaultConfig()
 
 	w := New(config, logger, nil)
@@ -127,7 +127,7 @@ func TestWatcherWatchedRepos(t *testing.T) {
 }
 
 func TestWatcherIsIgnored(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	config := Config{
 		IgnorePatterns: []string{
 			"*.log",
@@ -162,7 +162,7 @@ func TestWatcherIsIgnored(t *testing.T) {
 }
 
 func TestWatcherStartDisabled(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	config := Config{Enabled: false}
 
 	w := New(config, logger, nil)
@@ -173,7 +173,7 @@ func TestWatcherStartDisabled(t *testing.T) {
 }
 
 func TestWatcherStartEnabled(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	config := DefaultConfig()
 
 	w := New(config, logger, nil)
@@ -184,7 +184,7 @@ func TestWatcherStartEnabled(t *testing.T) {
 }
 
 func TestWatcherStopWithoutStart(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	config := DefaultConfig()
 
 	w := New(config, logger, nil)
@@ -472,7 +472,7 @@ func TestBatchDebouncerNoEmitWithNoEvents(t *testing.T) {
 }
 
 func TestWatchRepoNonGitDir(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	config := DefaultConfig()
 
 	w := New(config, logger, nil)
@@ -490,7 +490,7 @@ func TestWatchRepoNonGitDir(t *testing.T) {
 }
 
 func TestUnwatchRepoNotWatched(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	config := DefaultConfig()
 
 	w := New(config, logger, nil)

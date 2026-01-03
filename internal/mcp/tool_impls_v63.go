@@ -1,10 +1,12 @@
 package mcp
 
 import (
+	"io"
+	"log/slog"
+
 	"ckb/internal/envelope"
 	"ckb/internal/errors"
 	"ckb/internal/federation"
-	"ckb/internal/logging"
 )
 
 // v6.3 Contract-Aware Impact Analysis tool implementations
@@ -21,10 +23,7 @@ func (s *MCPServer) toolListContracts(params map[string]interface{}) (*envelope.
 	})
 
 	// Open federation
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
@@ -82,10 +81,7 @@ func (s *MCPServer) toolAnalyzeContractImpact(params map[string]interface{}) (*e
 	})
 
 	// Open federation
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
@@ -144,10 +140,7 @@ func (s *MCPServer) toolGetContractDependencies(params map[string]interface{}) (
 	})
 
 	// Open federation
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
@@ -200,10 +193,7 @@ func (s *MCPServer) toolSuppressContractEdge(params map[string]interface{}) (*en
 	})
 
 	// Open federation
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
@@ -243,10 +233,7 @@ func (s *MCPServer) toolVerifyContractEdge(params map[string]interface{}) (*enve
 	})
 
 	// Open federation
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
@@ -280,10 +267,7 @@ func (s *MCPServer) toolGetContractStats(params map[string]interface{}) (*envelo
 	})
 
 	// Open federation
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {

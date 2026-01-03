@@ -3,11 +3,11 @@ package api
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"ckb/internal/auth"
-	"ckb/internal/logging"
 	"ckb/internal/query"
 )
 
@@ -36,7 +36,7 @@ type Server struct {
 	router       *http.ServeMux
 	server       *http.Server
 	addr         string
-	logger       *logging.Logger
+	logger       *slog.Logger
 	engine       *query.Engine
 	config       ServerConfig
 	metrics      *MetricsCollector
@@ -45,7 +45,7 @@ type Server struct {
 }
 
 // NewServer creates a new HTTP server instance
-func NewServer(addr string, engine *query.Engine, logger *logging.Logger, config ServerConfig) (*Server, error) {
+func NewServer(addr string, engine *query.Engine, logger *slog.Logger, config ServerConfig) (*Server, error) {
 	s := &Server{
 		addr:   addr,
 		logger: logger,
@@ -66,9 +66,7 @@ func NewServer(addr string, engine *query.Engine, logger *logging.Logger, config
 			return nil, fmt.Errorf("failed to initialize index server: %w", err)
 		}
 		s.indexManager = mgr
-		logger.Info("Index server enabled", map[string]interface{}{
-			"repo_count": len(config.IndexServer.Repos),
-		})
+		logger.Info("Index server enabled", "repo_count", len(config.IndexServer.Repos))
 
 		// Initialize auth manager if enabled
 		if config.IndexServer.Auth.Enabled {
@@ -79,11 +77,11 @@ func NewServer(addr string, engine *query.Engine, logger *logging.Logger, config
 				return nil, fmt.Errorf("failed to initialize auth manager: %w", err)
 			}
 			s.authManager = authMgr
-			logger.Info("Scoped auth enabled", map[string]interface{}{
-				"static_keys":   len(config.IndexServer.Auth.StaticKeys),
-				"has_legacy":    config.IndexServer.Auth.LegacyToken != "",
-				"rate_limiting": config.IndexServer.Auth.RateLimiting.Enabled,
-			})
+			logger.Info("Scoped auth enabled",
+				"static_keys", len(config.IndexServer.Auth.StaticKeys),
+				"has_legacy", config.IndexServer.Auth.LegacyToken != "",
+				"rate_limiting", config.IndexServer.Auth.RateLimiting.Enabled,
+			)
 		}
 	}
 
@@ -105,9 +103,7 @@ func NewServer(addr string, engine *query.Engine, logger *logging.Logger, config
 
 // Start starts the HTTP server
 func (s *Server) Start() error {
-	s.logger.Info("Starting HTTP server", map[string]interface{}{
-		"addr": s.addr,
-	})
+	s.logger.Info("Starting HTTP server", "addr", s.addr)
 
 	if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("failed to start server: %w", err)
@@ -118,7 +114,7 @@ func (s *Server) Start() error {
 
 // Shutdown gracefully shuts down the server
 func (s *Server) Shutdown(ctx context.Context) error {
-	s.logger.Info("Shutting down HTTP server", nil)
+	s.logger.Info("Shutting down HTTP server")
 
 	if err := s.server.Shutdown(ctx); err != nil {
 		return fmt.Errorf("failed to shutdown server: %w", err)
@@ -127,13 +123,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	// Close index manager if enabled
 	if s.indexManager != nil {
 		if err := s.indexManager.Close(); err != nil {
-			s.logger.Warn("Failed to close index manager", map[string]interface{}{
-				"error": err.Error(),
-			})
+			s.logger.Warn("Failed to close index manager", "error", err.Error())
 		}
 	}
 
-	s.logger.Info("Server shut down successfully", nil)
+	s.logger.Info("Server shut down successfully")
 	return nil
 }
 

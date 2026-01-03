@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
-	"ckb/internal/logging"
 	"ckb/internal/project"
 	"ckb/internal/storage"
 )
@@ -32,11 +32,11 @@ type IncrementalIndexer struct {
 	updater   *IndexUpdater
 	store     *Store
 	config    *Config
-	logger    *logging.Logger
+	logger    *slog.Logger
 }
 
 // NewIncrementalIndexer creates a new incremental indexer
-func NewIncrementalIndexer(repoRoot string, db *storage.DB, config *Config, logger *logging.Logger) *IncrementalIndexer {
+func NewIncrementalIndexer(repoRoot string, db *storage.DB, config *Config, logger *slog.Logger) *IncrementalIndexer {
 	if config == nil {
 		config = DefaultConfig()
 	}
@@ -89,11 +89,11 @@ func (i *IncrementalIndexer) IndexIncrementalWithLang(ctx context.Context, since
 		if installInfo != nil {
 			installCmd = installInfo.InstallCommand
 		}
-		i.logger.Warn("Indexer not installed for incremental mode", map[string]interface{}{
-			"language": string(lang),
-			"indexer":  config.Cmd,
-			"install":  installCmd,
-		})
+		i.logger.Warn("Indexer not installed for incremental mode",
+			"language", string(lang),
+			"indexer", config.Cmd,
+			"install", installCmd,
+		)
 		return nil, fmt.Errorf("%w: %s (install: %s)", ErrIndexerNotInstalled, config.Cmd, installCmd)
 	}
 
@@ -111,10 +111,7 @@ func (i *IncrementalIndexer) IndexIncrementalWithLang(ctx context.Context, since
 		return stats, nil
 	}
 
-	i.logger.Info("Detected file changes", map[string]interface{}{
-		"changeCount": len(changes),
-		"language":    string(lang),
-	})
+	i.logger.Info("Detected file changes", "changeCount", len(changes), "language", string(lang))
 
 	// 2. Check if we should do full reindex instead
 	totalFiles := i.store.GetTotalFileCount()
@@ -126,10 +123,7 @@ func (i *IncrementalIndexer) IndexIncrementalWithLang(ctx context.Context, since
 	}
 
 	// 3. Run indexer to regenerate index
-	i.logger.Info("Running indexer", map[string]interface{}{
-		"indexer":  config.Cmd,
-		"language": string(lang),
-	})
+	i.logger.Info("Running indexer", "indexer", config.Cmd, "language", string(lang))
 	if runErr := i.extractor.RunIndexer(config); runErr != nil {
 		return nil, fmt.Errorf("%s indexer failed: %w", config.Cmd, runErr)
 	}
@@ -154,15 +148,15 @@ func (i *IncrementalIndexer) IndexIncrementalWithLang(ctx context.Context, since
 	delta.Stats.Duration = time.Since(start)
 	delta.Stats.IndexState = "partial"
 
-	i.logger.Info("Incremental index complete", map[string]interface{}{
-		"filesChanged":   delta.Stats.FilesChanged,
-		"filesAdded":     delta.Stats.FilesAdded,
-		"filesDeleted":   delta.Stats.FilesDeleted,
-		"symbolsAdded":   delta.Stats.SymbolsAdded,
-		"symbolsRemoved": delta.Stats.SymbolsRemoved,
-		"duration":       delta.Stats.Duration.String(),
-		"language":       string(lang),
-	})
+	i.logger.Info("Incremental index complete",
+		"filesChanged", delta.Stats.FilesChanged,
+		"filesAdded", delta.Stats.FilesAdded,
+		"filesDeleted", delta.Stats.FilesDeleted,
+		"symbolsAdded", delta.Stats.SymbolsAdded,
+		"symbolsRemoved", delta.Stats.SymbolsRemoved,
+		"duration", delta.Stats.Duration.String(),
+		"language", string(lang),
+	)
 
 	return &delta.Stats, nil
 }

@@ -1,10 +1,10 @@
 package explain
 
 import (
+	"io"
+	"log/slog"
 	"testing"
 	"time"
-
-	"ckb/internal/logging"
 )
 
 func TestParseSymbolQuery(t *testing.T) {
@@ -167,7 +167,7 @@ func TestSymbolExplanationStructure(t *testing.T) {
 }
 
 func TestNewExplainer(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	explainer := NewExplainer("/path/to/repo", logger)
 
 	if explainer == nil {
@@ -179,7 +179,7 @@ func TestNewExplainer(t *testing.T) {
 }
 
 func TestFindOrigin(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	explainer := NewExplainer("/tmp", logger)
 
 	now := time.Now()
@@ -229,7 +229,7 @@ func TestFindOrigin(t *testing.T) {
 }
 
 func TestBuildEvolution(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	explainer := NewExplainer("/tmp", logger)
 
 	now := time.Now()
@@ -270,7 +270,7 @@ func TestBuildEvolution(t *testing.T) {
 }
 
 func TestBuildEvolutionEmpty(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	explainer := NewExplainer("/tmp", logger)
 
 	evolution := explainer.buildEvolution([]commitInfo{}, 10)
@@ -281,7 +281,7 @@ func TestBuildEvolutionEmpty(t *testing.T) {
 }
 
 func TestExtractReferences(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	explainer := NewExplainer("/tmp", logger)
 
 	commits := []commitInfo{
@@ -309,7 +309,7 @@ func TestExtractReferences(t *testing.T) {
 }
 
 func TestAnalyzeWarnings(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	explainer := NewExplainer("/tmp", logger)
 
 	tests := []struct {
@@ -398,7 +398,7 @@ func TestAnalyzeWarnings(t *testing.T) {
 }
 
 func TestBuildOwnership(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	explainer := NewExplainer("/tmp", logger)
 
 	evolution := Evolution{

@@ -4,14 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
-
-	"ckb/internal/logging"
 )
 
 // TaskHandler executes a scheduled task
@@ -20,7 +19,7 @@ type TaskHandler func(ctx context.Context, schedule *Schedule) error
 // Scheduler manages scheduled task execution
 type Scheduler struct {
 	store    *Store
-	logger   *logging.Logger
+	logger   *slog.Logger
 	handlers map[TaskType]TaskHandler
 
 	// Control
@@ -47,7 +46,7 @@ func DefaultConfig() Config {
 }
 
 // New creates a new scheduler
-func New(ckbDir string, logger *logging.Logger, config Config) (*Scheduler, error) {
+func New(ckbDir string, logger *slog.Logger, config Config) (*Scheduler, error) {
 	if config.CheckInterval <= 0 {
 		config.CheckInterval = time.Minute
 	}
@@ -74,16 +73,12 @@ func (s *Scheduler) RegisterHandler(taskType TaskType, handler TaskHandler) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.handlers[taskType] = handler
-	s.logger.Debug("Registered scheduler handler", map[string]interface{}{
-		"taskType": taskType,
-	})
+	s.logger.Debug("Registered scheduler handler", "taskType", taskType)
 }
 
 // Start begins the scheduler loop
 func (s *Scheduler) Start() error {
-	s.logger.Info("Starting scheduler", map[string]interface{}{
-		"checkInterval": s.checkInterval.String(),
-	})
+	s.logger.Info("Starting scheduler", "checkInterval", s.checkInterval.String())
 
 	s.wg.Add(1)
 	go s.run()
@@ -93,7 +88,7 @@ func (s *Scheduler) Start() error {
 
 // Stop gracefully stops the scheduler
 func (s *Scheduler) Stop(timeout time.Duration) error {
-	s.logger.Info("Stopping scheduler", nil)
+	s.logger.Info("Stopping scheduler")
 	s.cancel()
 
 	done := make(chan struct{})
@@ -104,7 +99,7 @@ func (s *Scheduler) Stop(timeout time.Duration) error {
 
 	select {
 	case <-done:
-		s.logger.Info("Scheduler stopped", nil)
+		s.logger.Info("Scheduler stopped")
 		return s.store.Close()
 	case <-time.After(timeout):
 		return fmt.Errorf("scheduler shutdown timed out")
@@ -135,9 +130,7 @@ func (s *Scheduler) run() {
 func (s *Scheduler) checkDueSchedules() {
 	schedules, err := s.store.GetDueSchedules()
 	if err != nil {
-		s.logger.Error("Failed to get due schedules", map[string]interface{}{
-			"error": err.Error(),
-		})
+		s.logger.Error("Failed to get due schedules", "error", err.Error())
 		return
 	}
 
@@ -153,18 +146,14 @@ func (s *Scheduler) executeSchedule(schedule *Schedule) {
 	s.mu.RUnlock()
 
 	if !ok {
-		s.logger.Warn("No handler for task type", map[string]interface{}{
-			"scheduleId": schedule.ID,
-			"taskType":   schedule.TaskType,
-		})
+		s.logger.Warn("No handler for task type", "scheduleId", schedule.ID, "taskType", schedule.TaskType)
 		return
 	}
 
-	s.logger.Info("Executing scheduled task", map[string]interface{}{
-		"scheduleId": schedule.ID,
-		"taskType":   schedule.TaskType,
-		"target":     schedule.Target,
-	})
+	s.logger.Info("Executing scheduled task",
+		"scheduleId", schedule.ID,
+		"taskType", schedule.TaskType,
+		"target", schedule.Target)
 
 	startTime := time.Now()
 	err := handler(s.ctx, schedule)
@@ -173,32 +162,28 @@ func (s *Scheduler) executeSchedule(schedule *Schedule) {
 	var errMsg string
 	if err != nil {
 		errMsg = err.Error()
-		s.logger.Error("Scheduled task failed", map[string]interface{}{
-			"scheduleId": schedule.ID,
-			"error":      errMsg,
-			"duration":   duration.String(),
-		})
+		s.logger.Error("Scheduled task failed",
+			"scheduleId", schedule.ID,
+			"error", errMsg,
+			"duration", duration.String())
 	} else {
-		s.logger.Info("Scheduled task completed", map[string]interface{}{
-			"scheduleId": schedule.ID,
-			"duration":   duration.String(),
-		})
+		s.logger.Info("Scheduled task completed",
+			"scheduleId", schedule.ID,
+			"duration", duration.String())
 	}
 
 	// Update schedule
 	success := err == nil
 	if markErr := schedule.MarkRun(success, duration, errMsg); markErr != nil {
-		s.logger.Error("Failed to calculate next run time", map[string]interface{}{
-			"scheduleId": schedule.ID,
-			"error":      markErr.Error(),
-		})
+		s.logger.Error("Failed to calculate next run time",
+			"scheduleId", schedule.ID,
+			"error", markErr.Error())
 	}
 
 	if updateErr := s.store.UpdateSchedule(schedule); updateErr != nil {
-		s.logger.Error("Failed to update schedule", map[string]interface{}{
-			"scheduleId": schedule.ID,
-			"error":      updateErr.Error(),
-		})
+		s.logger.Error("Failed to update schedule",
+			"scheduleId", schedule.ID,
+			"error", updateErr.Error())
 	}
 }
 
@@ -283,12 +268,12 @@ func (s *Scheduler) RunNow(id string) error {
 // Store provides persistence for schedules
 type Store struct {
 	conn   *sql.DB
-	logger *logging.Logger
+	logger *slog.Logger
 	dbPath string
 }
 
 // OpenStore opens or creates the scheduler database
-func OpenStore(ckbDir string, logger *logging.Logger) (*Store, error) {
+func OpenStore(ckbDir string, logger *slog.Logger) (*Store, error) {
 	if err := os.MkdirAll(ckbDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create directory: %w", err)
 	}
@@ -323,9 +308,7 @@ func OpenStore(ckbDir string, logger *logging.Logger) (*Store, error) {
 	}
 
 	if !dbExists {
-		logger.Info("Creating scheduler database", map[string]interface{}{
-			"path": dbPath,
-		})
+		logger.Info("Creating scheduler database", "path", dbPath)
 		if err := store.initializeSchema(); err != nil {
 			_ = conn.Close()
 			return nil, fmt.Errorf("failed to initialize scheduler schema: %w", err)

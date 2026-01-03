@@ -2,12 +2,12 @@ package query
 
 import (
 	"context"
+	"log/slog"
 	"sort"
 	"strings"
 
 	"ckb/internal/backends/scip"
 	"ckb/internal/graph"
-	"ckb/internal/logging"
 )
 
 // FusionWeights controls how different signals are combined in ranking.
@@ -52,11 +52,11 @@ func DefaultFusionConfig() FusionConfig {
 type FusionRanker struct {
 	config FusionConfig
 	graph  *graph.Graph
-	logger *logging.Logger
+	logger *slog.Logger
 }
 
 // NewFusionRanker creates a new fusion ranker.
-func NewFusionRanker(g *graph.Graph, logger *logging.Logger, config FusionConfig) *FusionRanker {
+func NewFusionRanker(g *graph.Graph, logger *slog.Logger, config FusionConfig) *FusionRanker {
 	return &FusionRanker{
 		config: config,
 		graph:  g,
@@ -214,7 +214,7 @@ func normalizeSlice(values []float64) {
 
 // BuildGraphFromSCIP creates a symbol graph from SCIP data.
 // This is a convenience function for building graphs for ranking.
-func BuildGraphFromSCIP(ctx context.Context, adapter *scip.SCIPAdapter, logger *logging.Logger) (*graph.Graph, error) {
+func BuildGraphFromSCIP(ctx context.Context, adapter *scip.SCIPAdapter, logger *slog.Logger) (*graph.Graph, error) {
 	if adapter == nil || !adapter.IsAvailable() {
 		return graph.NewGraph(), nil
 	}

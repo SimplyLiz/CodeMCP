@@ -1,12 +1,13 @@
 package git
 
 import (
+t"io"
+t"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
 )
 
 // TestGitAdapter_GetFileHistory tests file history retrieval
@@ -319,7 +320,7 @@ func TestGitAdapterCreation_NonGitDirectory(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.RepoRoot = tempDir
 
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.HumanFormat,
 		Level:  logging.InfoLevel,
 	})
@@ -462,7 +463,7 @@ func TestGitAdapter_CustomTimeout(t *testing.T) {
 		},
 	}
 
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.HumanFormat,
 		Level:  logging.InfoLevel,
 	})
@@ -497,7 +498,7 @@ func BenchmarkGetRecentCommits(b *testing.B) {
 		},
 	}
 
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.HumanFormat,
 		Level:  logging.ErrorLevel,
 	})
@@ -529,7 +530,7 @@ func BenchmarkGetHeadCommit(b *testing.B) {
 		},
 	}
 
-	logger := logging.NewLogger(logging.Config{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		Format: logging.HumanFormat,
 		Level:  logging.ErrorLevel,
 	})

@@ -3,10 +3,9 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
-
-	"ckb/internal/logging"
 )
 
 // JobHandler executes a specific type of job.
@@ -15,7 +14,7 @@ type JobHandler func(ctx context.Context, job *Job, progress func(int)) (interfa
 // Runner manages background job execution.
 type Runner struct {
 	store    *Store
-	logger   *logging.Logger
+	logger   *slog.Logger
 	handlers map[JobType]JobHandler
 
 	queue       chan *Job
@@ -54,7 +53,7 @@ func DefaultRunnerConfig() RunnerConfig {
 }
 
 // NewRunner creates a new job runner.
-func NewRunner(store *Store, logger *logging.Logger, config RunnerConfig) *Runner {
+func NewRunner(store *Store, logger *slog.Logger, config RunnerConfig) *Runner {
 	if config.QueueSize <= 0 {
 		config.QueueSize = 100
 	}

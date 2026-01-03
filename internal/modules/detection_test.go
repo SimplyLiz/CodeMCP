@@ -2,15 +2,15 @@ package modules
 
 import (
 	"io"
+t"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"ckb/internal/logging"
 )
 
-func newTestLogger() *logging.Logger {
-	return logging.NewLogger(logging.Config{
+func newTestLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
 		Level:  logging.ErrorLevel,
 		Format: logging.JSONFormat,
 		Output: io.Discard,

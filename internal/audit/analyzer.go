@@ -3,6 +3,7 @@ package audit
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,18 +12,17 @@ import (
 	"time"
 
 	"ckb/internal/coupling"
-	"ckb/internal/logging"
 )
 
 // Analyzer performs risk analysis on codebases
 type Analyzer struct {
 	repoRoot         string
-	logger           *logging.Logger
+	logger           *slog.Logger
 	couplingAnalyzer *coupling.Analyzer
 }
 
 // NewAnalyzer creates a new risk analyzer
-func NewAnalyzer(repoRoot string, logger *logging.Logger) *Analyzer {
+func NewAnalyzer(repoRoot string, logger *slog.Logger) *Analyzer {
 	return &Analyzer{
 		repoRoot:         repoRoot,
 		logger:           logger,
@@ -43,11 +43,10 @@ func (a *Analyzer) Analyze(ctx context.Context, opts AuditOptions) (*RiskAnalysi
 		opts.Limit = 50
 	}
 
-	a.logger.Debug("Starting risk audit", map[string]interface{}{
-		"repoRoot": opts.RepoRoot,
-		"minScore": opts.MinScore,
-		"limit":    opts.Limit,
-	})
+	a.logger.Debug("Starting risk audit",
+		"repoRoot", opts.RepoRoot,
+		"minScore", opts.MinScore,
+		"limit", opts.Limit)
 
 	// Find all source files
 	files, err := a.findSourceFiles(opts.RepoRoot)
