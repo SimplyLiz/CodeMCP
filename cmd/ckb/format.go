@@ -151,6 +151,18 @@ func formatStatusHuman(resp *StatusResponseCLI) (string, error) {
 	b.WriteString(fmt.Sprintf("CKB v%s\n", resp.CkbVersion))
 	b.WriteString("──────────────────────────────────────────────────────────\n")
 
+	// Active repository (if set)
+	if resp.ActiveRepo != nil {
+		sourceHint := ""
+		switch resp.ActiveRepo.Source {
+		case "env":
+			sourceHint = " (from CKB_REPO)"
+		case "cwd":
+			sourceHint = " (from current directory)"
+		}
+		b.WriteString(fmt.Sprintf("Active: %s (%s)%s\n\n", resp.ActiveRepo.Name, resp.ActiveRepo.Path, sourceHint))
+	}
+
 	// Analysis Tier (prominent)
 	if resp.Tier != nil {
 		tierIcon := "◐"
