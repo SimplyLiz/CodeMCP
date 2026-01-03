@@ -159,6 +159,8 @@ func formatStatusHuman(resp *StatusResponseCLI) (string, error) {
 			sourceHint = " (from CKB_REPO)"
 		case "cwd":
 			sourceHint = " (from current directory)"
+		case "default":
+			sourceHint = " (default - run from project directory for full status)"
 		}
 		b.WriteString(fmt.Sprintf("Active: %s (%s)%s\n\n", resp.ActiveRepo.Name, resp.ActiveRepo.Path, sourceHint))
 	}
