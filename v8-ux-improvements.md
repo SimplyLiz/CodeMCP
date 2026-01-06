@@ -152,15 +152,25 @@ Daemon: running (PID 12345, port 9120, uptime 2h)
 ...
 ```
 
-### Phase 2: Enhanced Status (v8.0.2)
-4. Unified status with all services
-5. `ckb ps` command
-6. MCP session tracking
+### Phase 2: Enhanced Status (v8.0.2) - COMPLETED
+4. [x] `ckb ps` command - list all CKB processes
+5. [x] `ckb tools` command - MCP tool discovery with categories
+6. [ ] MCP session tracking (deferred)
 
-### Phase 3: Discoverability (v8.0.3)
-7. `ckb tools` command
-8. Tool categories
-9. Shell integration (`ckb prompt`)
+**New commands:**
+```bash
+ckb ps              # List running CKB processes (daemon, etc.)
+ckb ps --json       # JSON output for scripting
+
+ckb tools           # Show preset summary with token estimates
+ckb tools core      # Show tools in core preset (categorized)
+ckb tools search    # Show details for searchSymbols tool
+```
+
+### Phase 3: Future Enhancements
+7. MCP session tracking in daemon
+8. Shell integration (`ckb prompt`)
+9. `ckb recent` for recently used repos
 
 ---
 
