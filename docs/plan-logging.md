@@ -9,22 +9,36 @@ Continuation of the logging improvements. Phase 1 (slog migration) is complete i
 3. **Global logs** - System-wide logs in `~/.ckb/logs/`
 4. **Configurable levels** - Global defaults + per-project overrides
 5. **Active repo context** - `ckb log` shows logs for the currently active repo
+6. **Reuse existing code** - Extend `paths.go`, `config.go`, `slogutil.go` — no new files where existing patterns exist
+
+## Existing Infrastructure (DO NOT DUPLICATE)
+
+| Component | Location | Reuse |
+|-----------|----------|-------|
+| Path helpers | `internal/paths/paths.go` | Extend with log path functions |
+| LoggingConfig | `internal/config/config.go:161-165` | Extend struct fields |
+| Level parsing | `internal/slogutil/slogutil.go` | Extend `LevelFromString()` |
+| File logger | `internal/slogutil/slogutil.go:18` | `NewFileLogger()` |
+| Tee handler | `internal/slogutil/slogutil.go:70` | `TeeHandler` |
+| Daemon log | `internal/paths/paths.go:457-465` | `GetDaemonLogPath()` — keep as-is |
 
 ## Log File Structure
 
 ```
 ~/.ckb/                          # Global CKB directory
+├── daemon/
+│   └── daemon.log               # Background daemon (EXISTING - keep here)
 ├── logs/
-│   ├── daemon.log               # Background daemon (system-wide)
-│   └── system.log               # Global operations, errors
+│   └── system.log               # Global operations, errors (NEW)
 │
 /path/to/repo/.ckb/              # Per-repo directory
 ├── logs/
 │   ├── mcp.log                  # MCP server sessions for this repo
 │   ├── api.log                  # HTTP API requests for this repo
-│   ├── index.log                # Indexing operations
-│   └── query.log                # Query engine operations (optional, debug)
+│   └── index.log                # Indexing operations
 ```
+
+**Note:** Daemon log stays at `~/.ckb/daemon/daemon.log` to avoid breaking existing users.
 
 ## Log Levels
 
@@ -44,107 +58,163 @@ Configuration precedence:
 ## Work Packages
 
 ### WP1: Log Directory Infrastructure
-**Files:** `internal/paths/logs.go` (new)
+**Files:** `internal/paths/paths.go` (extend existing)
+
+Add to existing `paths.go` (following established patterns):
 
 ```go
-// Global log paths
-func GetGlobalLogsDir() (string, error)      // ~/.ckb/logs/
-func GetDaemonLogPath() (string, error)      // ~/.ckb/logs/daemon.log
-func GetSystemLogPath() (string, error)      // ~/.ckb/logs/system.log
+const (
+    // LogsSubdir is the subdirectory for log files
+    LogsSubdir = "logs"
+)
 
-// Per-repo log paths (requires repo root)
+// Global log paths (add to existing daemon section)
+func GetGlobalLogsDir() (string, error)      // ~/.ckb/logs/
+func GetSystemLogPath() (string, error)      // ~/.ckb/logs/system.log
+func EnsureGlobalLogsDir() (string, error)
+
+// Per-repo log paths (add new section)
 func GetRepoLogsDir(repoRoot string) (string, error)   // .ckb/logs/
 func GetMCPLogPath(repoRoot string) (string, error)    // .ckb/logs/mcp.log
 func GetAPILogPath(repoRoot string) (string, error)    // .ckb/logs/api.log
 func GetIndexLogPath(repoRoot string) (string, error)  // .ckb/logs/index.log
-
-// Ensure directories exist
-func EnsureGlobalLogsDir() (string, error)
 func EnsureRepoLogsDir(repoRoot string) (string, error)
+
+// NOTE: GetDaemonLogPath() already exists at line 457 - DO NOT DUPLICATE
 ```
 
-**Estimate:** ~50 lines
+**Estimate:** ~40 lines added to existing file
 
 ---
 
 ### WP2: Log Level Configuration
-**Files:** `internal/config/config.go`, `internal/slogutil/level.go`
+**Files:** `internal/config/config.go`, `internal/slogutil/slogutil.go` (extend existing)
 
-Add to config structure:
+Extend existing `LoggingConfig` struct (line 161-165):
 ```go
+// LoggingConfig contains logging configuration
+// EXISTING: Format, Level
+// NEW: Subsystem overrides, rotation, remote
 type LoggingConfig struct {
-    Level      string            `json:"level"`      // minimal, standard, verbose, debug
-    MCP        string            `json:"mcp"`        // per-subsystem override
-    API        string            `json:"api"`
-    Index      string            `json:"index"`
-    MaxSize    string            `json:"maxSize"`    // e.g., "10MB"
-    MaxBackups int               `json:"maxBackups"` // number of rotated files
-    Remote     *RemoteLogConfig  `json:"remote,omitempty"` // optional remote aggregator
+    Format     string            `json:"format" mapstructure:"format"`     // EXISTING
+    Level      string            `json:"level" mapstructure:"level"`       // EXISTING (extend values)
+    MCP        string            `json:"mcp" mapstructure:"mcp"`           // NEW: per-subsystem override
+    API        string            `json:"api" mapstructure:"api"`           // NEW
+    Index      string            `json:"index" mapstructure:"index"`       // NEW
+    MaxSize    string            `json:"maxSize" mapstructure:"maxSize"`   // NEW: e.g., "10MB"
+    MaxBackups int               `json:"maxBackups" mapstructure:"maxBackups"` // NEW
+    Remote     *RemoteLogConfig  `json:"remote,omitempty" mapstructure:"remote"` // NEW
 }
 
+// RemoteLogConfig for log aggregators (NEW struct)
 type RemoteLogConfig struct {
-    Type     string            `json:"type"`     // "loki", "otlp" (future)
-    Endpoint string            `json:"endpoint"` // e.g., "http://localhost:3100"
-    Labels   map[string]string `json:"labels"`   // static labels for all logs
-    BatchSize int              `json:"batchSize"` // logs to batch before sending (default: 100)
-    FlushInterval string       `json:"flushInterval"` // e.g., "5s" (default: 5s)
-}
-
-type Config struct {
-    // ...existing fields...
-    Logging LoggingConfig `json:"logging"`
+    Type          string            `json:"type" mapstructure:"type"`
+    Endpoint      string            `json:"endpoint" mapstructure:"endpoint"`
+    Labels        map[string]string `json:"labels" mapstructure:"labels"`
+    BatchSize     int               `json:"batchSize" mapstructure:"batchSize"`
+    FlushInterval string            `json:"flushInterval" mapstructure:"flushInterval"`
 }
 ```
 
-Add level helpers:
+Add env var mappings (line 510+):
 ```go
-// slogutil/level.go
-func ParseLevel(s string) slog.Level {
+"CKB_LOGGING_MCP":         {path: "logging.mcp", varType: "string"},
+"CKB_LOGGING_API":         {path: "logging.api", varType: "string"},
+"CKB_LOGGING_INDEX":       {path: "logging.index", varType: "string"},
+"CKB_LOGGING_MAX_SIZE":    {path: "logging.maxSize", varType: "string"},
+"CKB_LOGGING_MAX_BACKUPS": {path: "logging.maxBackups", varType: "int"},
+```
+
+Extend `LevelFromString()` in `slogutil.go` (line 35-48):
+```go
+// LevelFromString converts a string to a slog.Level.
+// Supports: debug, info, warn, error (case-insensitive)
+// NEW: Also supports minimal, standard, verbose
+func LevelFromString(s string) slog.Level {
     switch strings.ToLower(s) {
-    case "minimal":
-        return slog.LevelWarn
-    case "standard":
-        return slog.LevelInfo
-    case "verbose":
-        return slog.Level(-2) // Between Debug and Info
     case "debug":
         return slog.LevelDebug
-    default:
+    case "info", "standard":           // NEW alias
+        return slog.LevelInfo
+    case "warn", "warning", "minimal": // NEW alias
         return slog.LevelWarn
+    case "error":
+        return slog.LevelError
+    case "verbose":                    // NEW level
+        return slog.Level(-2)          // Between Debug and Info
+    default:
+        return slog.LevelInfo
     }
 }
 ```
 
-**Estimate:** ~60 lines
+**Estimate:** ~50 lines modified across 2 files
 
 ---
 
 ### WP3: Subsystem Loggers
-**Files:** `internal/slogutil/factory.go` (new)
+**Files:** `internal/slogutil/factory.go` (new file, composes existing functions)
 
-Logger factory that creates appropriately configured loggers:
+Logger factory that **composes existing functions** (`NewFileLogger`, `TeeHandler`, `LevelFromString`):
 
 ```go
 type LoggerFactory struct {
-    repoRoot   string
-    config     *config.Config
-    globalLevel slog.Level  // from CLI flags
+    repoRoot    string
+    config      *config.Config
+    cliLevel    slog.Level  // from CLI flags (takes precedence)
+    closers     []io.Closer // track open files for cleanup
 }
 
 func NewLoggerFactory(repoRoot string, cfg *config.Config, cliLevel slog.Level) *LoggerFactory
 
-// Create loggers for each subsystem
-func (f *LoggerFactory) MCPLogger() (*slog.Logger, io.Closer, error)
-func (f *LoggerFactory) APILogger() (*slog.Logger, io.Closer, error)
-func (f *LoggerFactory) IndexLogger() (*slog.Logger, io.Closer, error)
-func (f *LoggerFactory) DaemonLogger() (*slog.Logger, io.Closer, error)  // global
-func (f *LoggerFactory) SystemLogger() (*slog.Logger, io.Closer, error)  // global
+// Create loggers for each subsystem - REUSE existing functions
+func (f *LoggerFactory) MCPLogger() (*slog.Logger, error) {
+    logPath, _ := paths.GetMCPLogPath(f.repoRoot)
+    _ = paths.EnsureRepoLogsDir(f.repoRoot)
+    level := f.effectiveLevel("mcp")
+
+    // REUSE: NewFileLogger from slogutil.go:18
+    logger, file, err := NewFileLogger(logPath, level)
+    if err != nil {
+        return NewDiscardLogger(), nil  // REUSE: graceful fallback
+    }
+    f.closers = append(f.closers, file)
+    return logger, nil
+}
+
+func (f *LoggerFactory) APILogger() (*slog.Logger, error)
+func (f *LoggerFactory) IndexLogger() (*slog.Logger, error)
+func (f *LoggerFactory) DaemonLogger() (*slog.Logger, error)  // uses paths.GetDaemonLogPath()
+func (f *LoggerFactory) SystemLogger() (*slog.Logger, error)  // uses paths.GetSystemLogPath()
 
 // Helper to get effective level for subsystem
-func (f *LoggerFactory) effectiveLevel(subsystem string) slog.Level
+// Precedence: CLI flag > subsystem config > global config > default
+func (f *LoggerFactory) effectiveLevel(subsystem string) slog.Level {
+    // CLI flag takes precedence
+    if f.cliLevel != 0 {
+        return f.cliLevel
+    }
+    // Check subsystem-specific config
+    var subsystemLevel string
+    switch subsystem {
+    case "mcp":
+        subsystemLevel = f.config.Logging.MCP
+    case "api":
+        subsystemLevel = f.config.Logging.API
+    case "index":
+        subsystemLevel = f.config.Logging.Index
+    }
+    if subsystemLevel != "" {
+        return LevelFromString(subsystemLevel)  // REUSE
+    }
+    // Fall back to global config
+    return LevelFromString(f.config.Logging.Level)  // REUSE
+}
+
+func (f *LoggerFactory) Close() error  // closes all tracked files
 ```
 
-**Estimate:** ~100 lines
+**Estimate:** ~80 lines (smaller due to reuse)
 
 ---
 
@@ -199,43 +269,47 @@ func runServe(cmd *cobra.Command, args []string) error {
 ---
 
 ### WP6: Enhanced `ckb log` Command
-**Files:** `cmd/ckb/log.go`
+**Files:** `cmd/ckb/log.go` (extend existing)
+
+Existing code (lines 14-17, 31-34) already has `logFollow` and `logLines` flags.
+Add new flags and extend `runLog()`:
 
 ```go
 var (
-    logFollow  bool
-    logLines   int
-    logType    string  // mcp, api, index, daemon, system
-    logClear   bool
-    logPath    bool
-    logGlobal  bool    // show global logs instead of repo logs
+    logFollow  bool   // EXISTING
+    logLines   int    // EXISTING
+    logType    string // NEW: mcp, api, index, daemon, system
+    logClear   bool   // NEW
+    logPath    bool   // NEW
 )
 
 func init() {
+    // EXISTING flags preserved
     logCmd.Flags().BoolVarP(&logFollow, "follow", "f", false, "Follow log output")
     logCmd.Flags().IntVarP(&logLines, "lines", "n", 50, "Number of lines to show")
-    logCmd.Flags().StringVarP(&logType, "type", "t", "mcp", "Log type: mcp, api, index, daemon, system")
+    // NEW flags
+    logCmd.Flags().StringVarP(&logType, "type", "t", "", "Log type: mcp, api, index, daemon, system")
     logCmd.Flags().BoolVar(&logClear, "clear", false, "Clear the log file")
-    logCmd.Flags().BoolVar(&logPath, "path", false, "Print log file path")
-    logCmd.Flags().BoolVar(&logGlobal, "global", false, "Show global logs (daemon, system)")
+    logCmd.Flags().BoolVar(&logPath, "path", false, "Print log file path instead of contents")
+    rootCmd.AddCommand(logCmd)
 }
 
 func runLog(cmd *cobra.Command, args []string) error {
     var logFile string
 
-    if logGlobal || logType == "daemon" || logType == "system" {
-        // Global logs
-        switch logType {
-        case "daemon":
-            logFile, _ = paths.GetDaemonLogPath()
-        case "system":
-            logFile, _ = paths.GetSystemLogPath()
-        default:
-            logFile, _ = paths.GetDaemonLogPath()
+    // Determine log file path
+    switch logType {
+    case "daemon", "":
+        // Default: daemon log (backward compatible with existing behavior)
+        logFile, _ = paths.GetDaemonLogPath()  // REUSE existing function
+    case "system":
+        logFile, _ = paths.GetSystemLogPath()  // NEW function from WP1
+    case "mcp", "api", "index":
+        // Per-repo logs - use active repo from global config
+        repoRoot := getActiveRepoRoot()  // From v8.0 global config
+        if repoRoot == "" {
+            return fmt.Errorf("no active repo set, use 'ckb use <path>' first")
         }
-    } else {
-        // Per-repo logs (uses active repo)
-        repoRoot := getActiveRepoRoot()
         switch logType {
         case "mcp":
             logFile, _ = paths.GetMCPLogPath(repoRoot)
@@ -244,40 +318,89 @@ func runLog(cmd *cobra.Command, args []string) error {
         case "index":
             logFile, _ = paths.GetIndexLogPath(repoRoot)
         }
+    default:
+        return fmt.Errorf("unknown log type: %s", logType)
     }
 
-    // ... rest of implementation
+    if logPath {
+        fmt.Println(logFile)
+        return nil
+    }
+
+    if logClear {
+        return os.Truncate(logFile, 0)
+    }
+
+    // REUSE existing showLogLines() and followLogFile() functions
+    if logFollow {
+        return followLogFile(logFile)
+    }
+    return showLogLines(logFile, logLines)
 }
 ```
 
 Usage:
 ```bash
-ckb log                    # MCP logs for active repo
+ckb log                    # Daemon logs (backward compatible)
+ckb log -t mcp             # MCP logs for active repo
 ckb log -t api             # API logs for active repo
 ckb log -t index           # Index logs for active repo
-ckb log -t daemon --global # Global daemon logs
-ckb log -t system --global # Global system logs
-ckb log --clear            # Clear MCP logs
-ckb log --path             # Print log file path
+ckb log -t daemon          # Global daemon logs (explicit)
+ckb log -t system          # Global system logs
+ckb log --clear -t mcp     # Clear MCP logs
+ckb log --path -t api      # Print log file path
 ```
 
-**Estimate:** ~80 lines
+**Estimate:** ~50 lines modified (reuses existing showLogLines/followLogFile)
 
 ---
 
 ### WP7: Log Rotation
-**Files:** `internal/slogutil/rotation.go` (new)
+**Files:** `internal/slogutil/rotation.go` (new file)
 
 ```go
-// RotateIfNeeded rotates log file if it exceeds maxSize.
-// Keeps up to maxBackups rotated files: log.1, log.2, etc.
-func RotateIfNeeded(path string, maxSize int64, maxBackups int) error
+// RotatingFile wraps os.File with size-based rotation
+type RotatingFile struct {
+    path       string
+    maxSize    int64
+    maxBackups int
+    file       *os.File
+    size       int64
+    mu         sync.Mutex
+}
 
-// Called automatically when opening log files
-func OpenLogFile(path string, maxSize int64, maxBackups int) (*os.File, error)
+// OpenRotatingFile opens a file with rotation support
+// Integrates with existing NewFileLogger by returning *os.File interface
+func OpenRotatingFile(path string, maxSize int64, maxBackups int) (*RotatingFile, error)
+
+// Write implements io.Writer - rotates if needed before writing
+func (r *RotatingFile) Write(p []byte) (n int, err error)
+
+// Close implements io.Closer
+func (r *RotatingFile) Close() error
+
+// rotate performs the rotation: log -> log.1 -> log.2 -> ...
+func (r *RotatingFile) rotate() error
 ```
 
-**Estimate:** ~60 lines
+Update `NewFileLogger` in `slogutil.go` to optionally use rotation:
+
+```go
+// NewFileLoggerWithRotation creates a rotating file logger
+// Uses config.Logging.MaxSize and MaxBackups
+func NewFileLoggerWithRotation(path string, level slog.Level, maxSize string, maxBackups int) (*slog.Logger, io.Closer, error) {
+    size := parseSize(maxSize)  // "10MB" -> 10485760
+    rf, err := OpenRotatingFile(path, size, maxBackups)
+    if err != nil {
+        return nil, nil, err
+    }
+    return NewLogger(rf, level), rf, nil
+}
+
+func parseSize(s string) int64  // "10MB" -> 10485760, "1GB" -> 1073741824
+```
+
+**Estimate:** ~80 lines
 
 ---
 
@@ -395,19 +518,34 @@ func (f *LoggerFactory) createLogger(subsystem string, logPath string) (*slog.Lo
 ## Implementation Order
 
 ```
-WP1 (paths) ──┬──> WP3 (factory) ──┬──> WP4 (MCP)
-              │                    ├──> WP5 (API)
-WP2 (config) ─┘                    └──> WP6 (ckb log)
-                                           │
-WP7 (rotation) ────────────────────────────┤
-                                           │
-WP8 (loki) ────────────────────────────────┘
+WP1 (extend paths.go) ──┬──> WP3 (factory) ──┬──> WP4 (MCP)
+                        │                    ├──> WP5 (API)
+WP2 (extend config.go) ─┘                    └──> WP6 (extend log.go)
+                                                      │
+WP7 (rotation.go) ────────────────────────────────────┤
+                                                      │
+WP8 (loki.go) ────────────────────────────────────────┘
 ```
 
-**Phase 2a:** WP1 + WP2 (foundation)
-**Phase 2b:** WP3 + WP4 + WP5 (integration)
-**Phase 2c:** WP6 + WP7 (CLI + polish)
+**Phase 2a:** WP1 + WP2 (extend existing files)
+**Phase 2b:** WP3 + WP4 + WP5 (new factory + integration)
+**Phase 2c:** WP6 + WP7 (extend CLI + rotation)
 **Phase 2d:** WP8 (remote aggregation - optional)
+
+## Code Reuse Summary
+
+| New Code | Reuses |
+|----------|--------|
+| WP1: path functions | Pattern from `GetDaemonDir()`, `EnsureDaemonDir()` |
+| WP2: config fields | Existing `LoggingConfig` struct, env var pattern |
+| WP3: LoggerFactory | `NewFileLogger()`, `TeeHandler`, `LevelFromString()` |
+| WP4-5: integration | Factory from WP3 |
+| WP6: ckb log | `showLogLines()`, `followLogFile()`, `GetDaemonLogPath()` |
+| WP7: rotation | Integrates with `NewLogger()` via `io.Writer` |
+| WP8: loki | Uses `TeeHandler` for multi-destination |
+
+**Files modified:** 4 existing (`paths.go`, `config.go`, `slogutil.go`, `log.go`)
+**New files:** 3 (`factory.go`, `rotation.go`, `loki.go`)
 
 ## Config Example
 
@@ -456,18 +594,41 @@ With Loki remote logging:
 
 ## Acceptance Criteria
 
-- [ ] MCP creates logs at `.ckb/logs/mcp.log` in active repo
-- [ ] API creates logs at `.ckb/logs/api.log` in active repo
-- [ ] Daemon creates logs at `~/.ckb/logs/daemon.log` (global)
-- [ ] `ckb log` shows MCP logs for active repo by default
-- [ ] `ckb log -t api` shows API logs
-- [ ] `ckb log -t daemon --global` shows daemon logs
-- [ ] Log levels configurable in config.json (global + per-repo)
-- [ ] `-v`/`-vv`/`-vvv` flags override config
-- [ ] Log rotation works at configured size
-- [ ] Loki integration sends logs when `remote.type: "loki"` is configured
+### Paths (WP1)
+- [ ] `paths.GetMCPLogPath(repoRoot)` returns `.ckb/logs/mcp.log`
+- [ ] `paths.GetAPILogPath(repoRoot)` returns `.ckb/logs/api.log`
+- [ ] `paths.GetSystemLogPath()` returns `~/.ckb/logs/system.log`
+- [ ] `paths.GetDaemonLogPath()` unchanged (`~/.ckb/daemon/daemon.log`)
+
+### Config (WP2)
+- [ ] `LoggingConfig` has new fields: MCP, API, Index, MaxSize, MaxBackups, Remote
+- [ ] `LevelFromString()` supports "minimal", "standard", "verbose"
+- [ ] Env vars work: `CKB_LOGGING_MCP`, `CKB_LOGGING_API`, etc.
+
+### Logging (WP3-5)
+- [ ] MCP command writes to `.ckb/logs/mcp.log` in active repo
+- [ ] API server writes to `.ckb/logs/api.log` in active repo
+- [ ] CLI flags `-v`/`-vv`/`-vvv` override config levels
+
+### CLI (WP6)
+- [ ] `ckb log` shows daemon logs (backward compatible)
+- [ ] `ckb log -t mcp` shows MCP logs for active repo
+- [ ] `ckb log -t api` shows API logs for active repo
+- [ ] `ckb log --path -t mcp` prints log file path
+- [ ] `ckb log --clear -t mcp` truncates log file
+
+### Rotation (WP7)
+- [ ] Log rotation triggers at configured `maxSize`
+- [ ] Keeps up to `maxBackups` rotated files
+
+### Loki (WP8 - optional)
+- [ ] Logs sent to Loki when `remote.type: "loki"` configured
+- [ ] Batching works with configured `batchSize` and `flushInterval`
+
+### Quality
 - [ ] Build passes: `go build -o /dev/null ./...`
-- [ ] Tests pass for new packages
+- [ ] Tests pass for modified and new packages
+- [ ] No duplicate code - all reuse documented in Code Reuse Summary
 
 ## Out of Scope (Future)
 
