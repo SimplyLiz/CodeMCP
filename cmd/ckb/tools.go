@@ -299,7 +299,10 @@ func showToolDetails(tool mcp.Tool) error {
 			sort.Strings(names)
 
 			for _, name := range names {
-				prop := props[name].(map[string]interface{})
+				prop, ok := props[name].(map[string]interface{})
+				if !ok {
+					continue
+				}
 				reqMarker := ""
 				if required[name] {
 					reqMarker = " (required)"
