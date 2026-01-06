@@ -79,6 +79,14 @@ func NewMCPServer(version string, engine *query.Engine, logger *slog.Logger) *MC
 	return server
 }
 
+// NewMCPServerForCLI creates a minimal MCP server for CLI tool introspection.
+// This server cannot handle tool calls but can provide tool definitions.
+func NewMCPServerForCLI() *MCPServer {
+	return &MCPServer{
+		activePreset: DefaultPreset,
+	}
+}
+
 // NewMCPServerWithRegistry creates a new MCP server with multi-repo support
 func NewMCPServerWithRegistry(version string, registry *repos.Registry, logger *slog.Logger) *MCPServer {
 	server := &MCPServer{
