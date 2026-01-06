@@ -832,10 +832,10 @@ func (e *Engine) searchWithTreesitter(ctx context.Context, opts SearchSymbolsOpt
 	// Extract all symbols from the directory
 	allSymbols, err := e.treesitterExtractor.ExtractDirectory(ctx, searchRoot, nil)
 	if err != nil {
-		e.logger.Warn("Tree-sitter extraction failed", map[string]interface{}{
-			"error": err.Error(),
-			"root":  searchRoot,
-		})
+		e.logger.Warn("Tree-sitter extraction failed",
+			"error", err.Error(),
+			"root", searchRoot,
+		)
 		return nil, err
 	}
 

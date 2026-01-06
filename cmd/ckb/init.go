@@ -8,7 +8,6 @@ import (
 
 	"ckb/internal/config"
 	"ckb/internal/errors"
-	"ckb/internal/logging"
 	"ckb/internal/repos"
 
 	"github.com/spf13/cobra"
@@ -35,10 +34,7 @@ func init() {
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
-	logger := logging.NewLogger(logging.Config{
-		Format: "human",
-		Level:  "info",
-	})
+	logger := newLogger("human")
 
 	// Get current directory
 	cwd, err := os.Getwd()
@@ -60,7 +56,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		if removeErr := os.RemoveAll(ckbDir); removeErr != nil {
 			return errors.NewCkbError(errors.InternalError, "Failed to remove existing .ckb directory", removeErr, nil, nil)
 		}
-		logger.Info("Removed existing .ckb directory", nil)
+		logger.Info("Removed existing .ckb directory")
 	}
 
 	// Create .ckb directory
@@ -83,9 +79,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return errors.NewCkbError(errors.InternalError, "Failed to write config file", writeErr, nil, nil)
 	}
 
-	logger.Info("CKB initialized successfully", map[string]interface{}{
-		"config_path": configPath,
-	})
+	logger.Info("CKB initialized successfully", "config_path", configPath)
 
 	// Register in global registry
 	repoName := initName
@@ -96,16 +90,12 @@ func runInit(cmd *cobra.Command, args []string) error {
 	registry, err := repos.LoadRegistry()
 	if err != nil {
 		// Non-fatal: warn but continue
-		logger.Warn("Failed to load global registry", map[string]interface{}{
-			"error": err.Error(),
-		})
+		logger.Warn("Failed to load global registry", "error", err.Error())
 	} else {
 		// Check if already registered (possibly under different name)
 		existingEntry, _ := registry.GetByPath(cwd)
 		if existingEntry != nil {
-			logger.Info("Repository already registered", map[string]interface{}{
-				"name": existingEntry.Name,
-			})
+			logger.Info("Repository already registered", "name", existingEntry.Name)
 			repoName = existingEntry.Name
 		} else {
 			// Check if name is taken
@@ -123,22 +113,16 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 			// Register the repo
 			if err := registry.Add(repoName, cwd); err != nil {
-				logger.Warn("Failed to register in global registry", map[string]interface{}{
-					"error": err.Error(),
-				})
+				logger.Warn("Failed to register in global registry", "error", err.Error())
 			} else {
-				logger.Info("Registered in global registry", map[string]interface{}{
-					"name": repoName,
-				})
+				logger.Info("Registered in global registry", "name", repoName)
 			}
 		}
 
 		// Set as active unless --no-activate
 		if !initNoActivate {
 			if err := registry.SetDefault(repoName); err != nil {
-				logger.Warn("Failed to set as active repository", map[string]interface{}{
-					"error": err.Error(),
-				})
+				logger.Warn("Failed to set as active repository", "error", err.Error())
 			}
 		}
 	}

@@ -162,8 +162,22 @@ func formatStatusHuman(resp *StatusResponseCLI) (string, error) {
 		case "default":
 			sourceHint = " (default - run from project directory for full status)"
 		}
-		b.WriteString(fmt.Sprintf("Active: %s (%s)%s\n\n", resp.ActiveRepo.Name, resp.ActiveRepo.Path, sourceHint))
+		b.WriteString(fmt.Sprintf("Active: %s (%s)%s\n", resp.ActiveRepo.Name, resp.ActiveRepo.Path, sourceHint))
 	}
+
+	// Daemon status (show on same line group as active repo)
+	if resp.DaemonStatus != nil {
+		if resp.DaemonStatus.Running {
+			uptimeInfo := ""
+			if resp.DaemonStatus.Uptime != "" {
+				uptimeInfo = fmt.Sprintf(", uptime %s", resp.DaemonStatus.Uptime)
+			}
+			b.WriteString(fmt.Sprintf("Daemon: running (PID %d, port %d%s)\n", resp.DaemonStatus.PID, resp.DaemonStatus.Port, uptimeInfo))
+		} else {
+			b.WriteString("Daemon: stopped\n")
+		}
+	}
+	b.WriteString("\n")
 
 	// Analysis Tier (prominent)
 	if resp.Tier != nil {

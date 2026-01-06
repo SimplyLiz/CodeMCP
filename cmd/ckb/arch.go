@@ -76,10 +76,10 @@ func runArch(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Architecture query completed", map[string]interface{}{
-		"modules":  len(response.Modules),
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Architecture query completed",
+		"modules", len(response.Modules),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // ArchitectureResponseCLI contains architecture overview for CLI output

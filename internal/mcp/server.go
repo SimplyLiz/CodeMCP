@@ -4,12 +4,12 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"sync"
 	"time"
 
 	"ckb/internal/errors"
-	"ckb/internal/logging"
 	"ckb/internal/query"
 	"ckb/internal/repos"
 )
@@ -31,7 +31,7 @@ type MCPServer struct {
 	stdin     io.Reader
 	stdout    io.Writer
 	scanner   *bufio.Scanner
-	logger    *logging.Logger
+	logger    *slog.Logger
 	version   string
 	tools     map[string]ToolHandler
 	resources map[string]ResourceHandler
@@ -53,7 +53,7 @@ type MCPServer struct {
 }
 
 // NewMCPServer creates a new MCP server in legacy single-engine mode
-func NewMCPServer(version string, engine *query.Engine, logger *logging.Logger) *MCPServer {
+func NewMCPServer(version string, engine *query.Engine, logger *slog.Logger) *MCPServer {
 	server := &MCPServer{
 		stdin:        os.Stdin,
 		stdout:       os.Stdout,
@@ -79,8 +79,16 @@ func NewMCPServer(version string, engine *query.Engine, logger *logging.Logger) 
 	return server
 }
 
+// NewMCPServerForCLI creates a minimal MCP server for CLI tool introspection.
+// This server cannot handle tool calls but can provide tool definitions.
+func NewMCPServerForCLI() *MCPServer {
+	return &MCPServer{
+		activePreset: DefaultPreset,
+	}
+}
+
 // NewMCPServerWithRegistry creates a new MCP server with multi-repo support
-func NewMCPServerWithRegistry(version string, registry *repos.Registry, logger *logging.Logger) *MCPServer {
+func NewMCPServerWithRegistry(version string, registry *repos.Registry, logger *slog.Logger) *MCPServer {
 	server := &MCPServer{
 		stdin:        os.Stdin,
 		stdout:       os.Stdout,
@@ -171,21 +179,21 @@ func (s *MCPServer) SetActiveRepo(name, path string, engine *query.Engine) {
 
 // Start starts the MCP server and begins processing messages
 func (s *MCPServer) Start() error {
-	s.logger.Info("MCP server starting", map[string]interface{}{
-		"version": s.version,
-	})
+	s.logger.Info("MCP server starting",
+		"version", s.version,
+	)
 
 	// Main message loop
 	for {
 		msg, err := s.readMessage()
 		if err != nil {
 			if err == io.EOF {
-				s.logger.Info("MCP server shutting down (EOF)", nil)
+				s.logger.Info("MCP server shutting down (EOF)")
 				return nil
 			}
-			s.logger.Error("Error reading message", map[string]interface{}{
-				"error": err.Error(),
-			})
+			s.logger.Error("Error reading message",
+				"error", err.Error(),
+			)
 
 			// Try to send error response if we can extract an ID
 			if msg != nil && msg.Id != nil {
@@ -200,9 +208,9 @@ func (s *MCPServer) Start() error {
 		// Write response if one was generated (notifications don't generate responses)
 		if response != nil {
 			if err := s.writeMessage(response); err != nil {
-				s.logger.Error("Error writing response", map[string]interface{}{
-					"error": err.Error(),
-				})
+				s.logger.Error("Error writing response",
+					"error", err.Error(),
+				)
 			}
 		}
 	}
@@ -231,9 +239,9 @@ func (s *MCPServer) SetPreset(preset string) error {
 	s.activePreset = preset
 	s.updateToolsetHashLocked()
 
-	s.logger.Info("Preset changed", map[string]interface{}{
-		"preset": preset,
-	})
+	s.logger.Info("Preset changed",
+		"preset", preset,
+	)
 
 	return nil
 }

@@ -4,9 +4,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
-	"ckb/internal/logging"
 	"ckb/internal/storage"
 )
 
@@ -22,11 +22,11 @@ type SymbolFilter struct {
 // SymbolRepository provides CRUD operations for symbol mappings
 type SymbolRepository struct {
 	db     *storage.DB
-	logger *logging.Logger
+	logger *slog.Logger
 }
 
 // NewSymbolRepository creates a new symbol repository
-func NewSymbolRepository(db *storage.DB, logger *logging.Logger) *SymbolRepository {
+func NewSymbolRepository(db *storage.DB, logger *slog.Logger) *SymbolRepository {
 	return &SymbolRepository{
 		db:     db,
 		logger: logger,
@@ -144,10 +144,9 @@ func (r *SymbolRepository) Create(mapping *SymbolMapping) error {
 		return fmt.Errorf("failed to create symbol: %w", err)
 	}
 
-	r.logger.Debug("created symbol mapping", map[string]interface{}{
-		"stable_id": mapping.StableId,
-		"state":     mapping.State,
-	})
+	r.logger.Debug("created symbol mapping",
+		"stable_id", mapping.StableId,
+		"state", mapping.State)
 
 	return nil
 }
@@ -212,10 +211,9 @@ func (r *SymbolRepository) Update(mapping *SymbolMapping) error {
 		return fmt.Errorf("symbol not found: %s", mapping.StableId)
 	}
 
-	r.logger.Debug("updated symbol mapping", map[string]interface{}{
-		"stable_id": mapping.StableId,
-		"state":     mapping.State,
-	})
+	r.logger.Debug("updated symbol mapping",
+		"stable_id", mapping.StableId,
+		"state", mapping.State)
 
 	return nil
 }
@@ -246,11 +244,10 @@ func (r *SymbolRepository) MarkDeleted(stableId, deletedStateId string) error {
 		return fmt.Errorf("symbol not found: %s", stableId)
 	}
 
-	r.logger.Info("marked symbol as deleted", map[string]interface{}{
-		"stable_id":     stableId,
-		"deleted_at":    now,
-		"deleted_state": deletedStateId,
-	})
+	r.logger.Info("marked symbol as deleted",
+		"stable_id", stableId,
+		"deleted_at", now,
+		"deleted_state", deletedStateId)
 
 	return nil
 }

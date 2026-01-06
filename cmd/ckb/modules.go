@@ -131,10 +131,10 @@ func runModulesOverview(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Module overview completed", map[string]interface{}{
-		"path":     path,
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Module overview completed",
+		"path", path,
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 func runModulesAnnotate(cmd *cobra.Command, args []string) {
@@ -179,12 +179,12 @@ func runModulesAnnotate(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Module annotation completed", map[string]interface{}{
-		"moduleId": moduleId,
-		"created":  result.Created,
-		"updated":  result.Updated,
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Module annotation completed",
+		"moduleId", moduleId,
+		"created", result.Created,
+		"updated", result.Updated,
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 func splitAndTrim(s string) []string {
@@ -311,11 +311,11 @@ func runModulesResponsibilities(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Module responsibilities completed", map[string]interface{}{
-		"moduleId": moduleId,
-		"count":    len(response.Modules),
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Module responsibilities completed",
+		"moduleId", moduleId,
+		"count", len(response.Modules),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // ModuleResponsibilitiesResponseCLI contains responsibilities for CLI output

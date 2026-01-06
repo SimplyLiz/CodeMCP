@@ -18,9 +18,9 @@ func (e *Engine) IndexDocs(force bool) (*docs.IndexStats, error) {
 	// First, rebuild the suffix index if SCIP is available
 	if e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
 		if err := e.rebuildSuffixIndex(store); err != nil {
-			e.logger.Warn("Failed to rebuild suffix index", map[string]interface{}{
-				"error": err.Error(),
-			})
+			e.logger.Warn("Failed to rebuild suffix index",
+				"error", err.Error(),
+			)
 		}
 	}
 

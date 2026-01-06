@@ -1,15 +1,13 @@
 package mcp
 
 import (
+	"io"
+	"log/slog"
 	"testing"
-
-	"ckb/internal/logging"
 )
 
 func TestPresetFiltering(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{
-		Level: logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	server := NewMCPServer("test", nil, logger)
 
@@ -57,9 +55,7 @@ func TestPresetFiltering(t *testing.T) {
 }
 
 func TestPagination(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{
-		Level: logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	server := NewMCPServer("test", nil, logger)
 
@@ -159,9 +155,7 @@ func TestCursorInvalidation(t *testing.T) {
 }
 
 func TestExpandToolsetRateLimit(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{
-		Level: logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	server := NewMCPServer("test", nil, logger)
 
@@ -179,9 +173,7 @@ func TestExpandToolsetRateLimit(t *testing.T) {
 }
 
 func TestSetPresetInvalid(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{
-		Level: logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	server := NewMCPServer("test", nil, logger)
 
@@ -199,9 +191,7 @@ func TestSetPresetInvalid(t *testing.T) {
 }
 
 func TestGetActivePresetAfterSet(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{
-		Level: logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	server := NewMCPServer("test", nil, logger)
 
@@ -297,9 +287,7 @@ func TestToolsetHash(t *testing.T) {
 }
 
 func TestGetAllPresetInfo(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{
-		Level: logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	server := NewMCPServer("test", nil, logger)
 	allTools := server.GetToolDefinitions()

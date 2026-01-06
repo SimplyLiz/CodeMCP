@@ -18,9 +18,9 @@ import (
 // toolGetStatus implements the getStatus tool
 // v8.0: Enhanced with health tiers, remediation, and suggestions
 func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Response, error) {
-	s.logger.Debug("Executing getStatus", map[string]interface{}{
-		"params": params,
-	})
+	s.logger.Debug("Executing getStatus",
+		"params", params,
+	)
 
 	ctx := context.Background()
 	statusResp, err := s.engine().GetStatus(ctx)
@@ -177,9 +177,9 @@ func (s *MCPServer) getIndexStaleness() map[string]interface{} {
 
 // toolDoctor implements the doctor tool
 func (s *MCPServer) toolDoctor(params map[string]interface{}) (*envelope.Response, error) {
-	s.logger.Debug("Executing doctor", map[string]interface{}{
-		"params": params,
-	})
+	s.logger.Debug("Executing doctor",
+		"params", params,
+	)
 
 	ctx := context.Background()
 	doctorResp, err := s.engine().Doctor(ctx, "")
@@ -214,9 +214,9 @@ func (s *MCPServer) toolDoctor(params map[string]interface{}) (*envelope.Respons
 
 // toolExpandToolset implements the expandToolset meta-tool for dynamic preset expansion
 func (s *MCPServer) toolExpandToolset(params map[string]interface{}) (*envelope.Response, error) {
-	s.logger.Debug("Executing expandToolset", map[string]interface{}{
-		"params": params,
-	})
+	s.logger.Debug("Executing expandToolset",
+		"params", params,
+	)
 
 	// Extract and validate preset
 	preset, ok := params["preset"].(string)
@@ -262,9 +262,9 @@ func (s *MCPServer) toolExpandToolset(params map[string]interface{}) (*envelope.
 	// Send notification to client (if they support it)
 	// Note: Not all clients handle this notification
 	if err := s.SendNotification("notifications/tools/list_changed", nil); err != nil {
-		s.logger.Debug("Failed to send tools/list_changed notification (client may not support it)", map[string]interface{}{
-			"error": err.Error(),
-		})
+		s.logger.Debug("Failed to send tools/list_changed notification (client may not support it)",
+			"error", err.Error(),
+		)
 	}
 
 	data := map[string]interface{}{
@@ -293,10 +293,10 @@ func (s *MCPServer) toolGetSymbol(params map[string]interface{}) (*envelope.Resp
 		repoStateMode = "head"
 	}
 
-	s.logger.Debug("Executing getSymbol", map[string]interface{}{
-		"symbolId":      symbolId,
-		"repoStateMode": repoStateMode,
-	})
+	s.logger.Debug("Executing getSymbol",
+		"symbolId", symbolId,
+		"repoStateMode", repoStateMode,
+	)
 
 	ctx := context.Background()
 	opts := query.GetSymbolOptions{
@@ -385,12 +385,12 @@ func (s *MCPServer) toolSearchSymbols(params map[string]interface{}) (*envelope.
 		limit = int(limitVal)
 	}
 
-	s.logger.Debug("Executing searchSymbols", map[string]interface{}{
-		"query": queryStr,
-		"scope": scope,
-		"kinds": kinds,
-		"limit": limit,
-	})
+	s.logger.Debug("Executing searchSymbols",
+		"query", queryStr,
+		"scope", scope,
+		"kinds", kinds,
+		"limit", limit,
+	)
 
 	ctx := context.Background()
 	opts := query.SearchSymbolsOptions{
@@ -490,12 +490,12 @@ func (s *MCPServer) toolFindReferences(params map[string]interface{}) (*envelope
 		includeTests = includeVal
 	}
 
-	s.logger.Debug("Executing findReferences", map[string]interface{}{
-		"symbolId":     symbolId,
-		"scope":        scope,
-		"limit":        limit,
-		"includeTests": includeTests,
-	})
+	s.logger.Debug("Executing findReferences",
+		"symbolId", symbolId,
+		"scope", scope,
+		"limit", limit,
+		"includeTests", includeTests,
+	)
 
 	ctx := context.Background()
 	opts := query.FindReferencesOptions{
@@ -575,11 +575,11 @@ func (s *MCPServer) toolGetArchitecture(params map[string]interface{}) (*envelop
 		refresh = refreshVal
 	}
 
-	s.logger.Debug("Executing getArchitecture", map[string]interface{}{
-		"depth":               depth,
-		"includeExternalDeps": includeExternalDeps,
-		"refresh":             refresh,
-	})
+	s.logger.Debug("Executing getArchitecture",
+		"depth", depth,
+		"includeExternalDeps", includeExternalDeps,
+		"refresh", refresh,
+	)
 
 	ctx := context.Background()
 	opts := query.GetArchitectureOptions{
@@ -668,11 +668,11 @@ func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (*envelope.
 		telemetryPeriod = v
 	}
 
-	s.logger.Debug("Executing analyzeImpact", map[string]interface{}{
-		"symbolId":         symbolId,
-		"depth":            depth,
-		"includeTelemetry": includeTelemetry,
-	})
+	s.logger.Debug("Executing analyzeImpact",
+		"symbolId", symbolId,
+		"depth", depth,
+		"includeTelemetry", includeTelemetry,
+	)
 
 	ctx := context.Background()
 	opts := query.AnalyzeImpactOptions{
@@ -835,14 +835,14 @@ func (s *MCPServer) toolAnalyzeChange(params map[string]interface{}) (*envelope.
 		strict = v
 	}
 
-	s.logger.Debug("Executing analyzeChange", map[string]interface{}{
-		"staged":       staged,
-		"baseBranch":   baseBranch,
-		"depth":        depth,
-		"includeTests": includeTests,
-		"strict":       strict,
-		"hasDiff":      diffContent != "",
-	})
+	s.logger.Debug("Executing analyzeChange",
+		"staged", staged,
+		"baseBranch", baseBranch,
+		"depth", depth,
+		"includeTests", includeTests,
+		"strict", strict,
+		"hasDiff", diffContent != "",
+	)
 
 	ctx := context.Background()
 	resp, err := s.engine().AnalyzeChangeSet(ctx, query.AnalyzeChangeSetOptions{
@@ -888,9 +888,9 @@ func (s *MCPServer) toolExplainSymbol(params map[string]interface{}) (*envelope.
 		return nil, errors.NewInvalidParameterError("symbolId", "")
 	}
 
-	s.logger.Debug("Executing explainSymbol", map[string]interface{}{
-		"symbolId": symbolId,
-	})
+	s.logger.Debug("Executing explainSymbol",
+		"symbolId", symbolId,
+	)
 
 	ctx := context.Background()
 	resp, err := s.engine().ExplainSymbol(ctx, query.ExplainSymbolOptions{SymbolId: symbolId})
@@ -911,9 +911,9 @@ func (s *MCPServer) toolJustifySymbol(params map[string]interface{}) (*envelope.
 		return nil, errors.NewInvalidParameterError("symbolId", "")
 	}
 
-	s.logger.Debug("Executing justifySymbol", map[string]interface{}{
-		"symbolId": symbolId,
-	})
+	s.logger.Debug("Executing justifySymbol",
+		"symbolId", symbolId,
+	)
 
 	ctx := context.Background()
 	resp, err := s.engine().JustifySymbol(ctx, query.JustifySymbolOptions{SymbolId: symbolId})
@@ -946,11 +946,11 @@ func (s *MCPServer) toolGetCallGraph(params map[string]interface{}) (*envelope.R
 		depth = int(depthVal)
 	}
 
-	s.logger.Debug("Executing getCallGraph", map[string]interface{}{
-		"symbolId":  symbolId,
-		"direction": direction,
-		"depth":     depth,
-	})
+	s.logger.Debug("Executing getCallGraph",
+		"symbolId", symbolId,
+		"direction", direction,
+		"depth", depth,
+	)
 
 	ctx := context.Background()
 	resp, err := s.engine().GetCallGraph(ctx, query.CallGraphOptions{
@@ -985,10 +985,10 @@ func (s *MCPServer) toolGetModuleOverview(params map[string]interface{}) (*envel
 	path, _ := params["path"].(string)
 	name, _ := params["name"].(string)
 
-	s.logger.Debug("Executing getModuleOverview", map[string]interface{}{
-		"path": path,
-		"name": name,
-	})
+	s.logger.Debug("Executing getModuleOverview",
+		"path", path,
+		"name", name,
+	)
 
 	ctx := context.Background()
 	resp, err := s.engine().GetModuleOverview(ctx, query.ModuleOverviewOptions{
@@ -1012,9 +1012,9 @@ func (s *MCPServer) toolExplainFile(params map[string]interface{}) (*envelope.Re
 		return nil, errors.NewInvalidParameterError("filePath", "")
 	}
 
-	s.logger.Debug("Executing explainFile", map[string]interface{}{
-		"filePath": filePath,
-	})
+	s.logger.Debug("Executing explainFile",
+		"filePath", filePath,
+	)
 
 	ctx := context.Background()
 	resp, err := s.engine().ExplainFile(ctx, query.ExplainFileOptions{
@@ -1040,10 +1040,10 @@ func (s *MCPServer) toolListEntrypoints(params map[string]interface{}) (*envelop
 		limit = int(limitVal)
 	}
 
-	s.logger.Debug("Executing listEntrypoints", map[string]interface{}{
-		"moduleFilter": moduleFilter,
-		"limit":        limit,
-	})
+	s.logger.Debug("Executing listEntrypoints",
+		"moduleFilter", moduleFilter,
+		"limit", limit,
+	)
 
 	ctx := context.Background()
 	resp, err := s.engine().ListEntrypoints(ctx, query.ListEntrypointsOptions{
@@ -1078,11 +1078,11 @@ func (s *MCPServer) toolTraceUsage(params map[string]interface{}) (*envelope.Res
 		maxDepth = int(maxDepthVal)
 	}
 
-	s.logger.Debug("Executing traceUsage", map[string]interface{}{
-		"symbolId": symbolId,
-		"maxPaths": maxPaths,
-		"maxDepth": maxDepth,
-	})
+	s.logger.Debug("Executing traceUsage",
+		"symbolId", symbolId,
+		"maxPaths", maxPaths,
+		"maxDepth", maxDepth,
+	)
 
 	ctx := context.Background()
 	resp, err := s.engine().TraceUsage(ctx, query.TraceUsageOptions{
@@ -1319,12 +1319,12 @@ func (s *MCPServer) toolRefreshArchitecture(params map[string]interface{}) (*env
 		async = asyncVal
 	}
 
-	s.logger.Debug("Executing refreshArchitecture", map[string]interface{}{
-		"scope":  scope,
-		"force":  force,
-		"dryRun": dryRun,
-		"async":  async,
-	})
+	s.logger.Debug("Executing refreshArchitecture",
+		"scope", scope,
+		"force", force,
+		"dryRun", dryRun,
+		"async", async,
+	)
 
 	opts := query.RefreshArchitectureOptions{
 		Scope:  scope,
@@ -1366,11 +1366,11 @@ func (s *MCPServer) toolGetOwnership(params map[string]interface{}) (*envelope.R
 		includeHistory = includeHistoryVal
 	}
 
-	s.logger.Debug("Executing getOwnership", map[string]interface{}{
-		"path":           path,
-		"includeBlame":   includeBlame,
-		"includeHistory": includeHistory,
-	})
+	s.logger.Debug("Executing getOwnership",
+		"path", path,
+		"includeBlame", includeBlame,
+		"includeHistory", includeHistory,
+	)
 
 	opts := query.GetOwnershipOptions{
 		Path:           path,
@@ -1409,11 +1409,11 @@ func (s *MCPServer) toolGetModuleResponsibilities(params map[string]interface{})
 		limit = int(limitVal)
 	}
 
-	s.logger.Debug("Executing getModuleResponsibilities", map[string]interface{}{
-		"moduleId":     moduleId,
-		"includeFiles": includeFiles,
-		"limit":        limit,
-	})
+	s.logger.Debug("Executing getModuleResponsibilities",
+		"moduleId", moduleId,
+		"includeFiles", includeFiles,
+		"limit", limit,
+	)
 
 	opts := query.GetModuleResponsibilitiesOptions{
 		ModuleId:     moduleId,
@@ -1486,12 +1486,12 @@ func (s *MCPServer) toolRecordDecision(params map[string]interface{}) (*envelope
 	author, _ := params["author"].(string)
 	status, _ := params["status"].(string)
 
-	s.logger.Debug("Executing recordDecision", map[string]interface{}{
-		"title":           title,
-		"affectedModules": affectedModules,
-		"author":          author,
-		"status":          status,
-	})
+	s.logger.Debug("Executing recordDecision",
+		"title", title,
+		"affectedModules", affectedModules,
+		"author", author,
+		"status", status,
+	)
 
 	input := &query.RecordDecisionInput{
 		Title:           title,
@@ -1516,9 +1516,9 @@ func (s *MCPServer) toolRecordDecision(params map[string]interface{}) (*envelope
 func (s *MCPServer) toolGetDecisions(params map[string]interface{}) (*envelope.Response, error) {
 	// Check if specific ID is requested
 	if id, ok := params["id"].(string); ok && id != "" {
-		s.logger.Debug("Executing getDecisions (single)", map[string]interface{}{
-			"id": id,
-		})
+		s.logger.Debug("Executing getDecisions (single)",
+			"id", id,
+		)
 
 		resp, err := s.engine().GetDecision(id)
 		if err != nil {
@@ -1547,12 +1547,12 @@ func (s *MCPServer) toolGetDecisions(params map[string]interface{}) (*envelope.R
 		queryOpts.Limit = int(limit)
 	}
 
-	s.logger.Debug("Executing getDecisions (list)", map[string]interface{}{
-		"status":   queryOpts.Status,
-		"moduleId": queryOpts.ModuleID,
-		"search":   queryOpts.Search,
-		"limit":    queryOpts.Limit,
-	})
+	s.logger.Debug("Executing getDecisions (list)",
+		"status", queryOpts.Status,
+		"moduleId", queryOpts.ModuleID,
+		"search", queryOpts.Search,
+		"limit", queryOpts.Limit,
+	)
 
 	resp, err := s.engine().GetDecisions(queryOpts)
 	if err != nil {
@@ -1609,12 +1609,12 @@ func (s *MCPServer) toolAnnotateModule(params map[string]interface{}) (*envelope
 		}
 	}
 
-	s.logger.Debug("Executing annotateModule", map[string]interface{}{
-		"moduleId":       moduleId,
-		"responsibility": responsibility,
-		"capabilities":   capabilities,
-		"tags":           tags,
-	})
+	s.logger.Debug("Executing annotateModule",
+		"moduleId", moduleId,
+		"responsibility", responsibility,
+		"capabilities", capabilities,
+		"tags", tags,
+	)
 
 	input := &query.AnnotateModuleInput{
 		ModuleId:       moduleId,
@@ -1643,9 +1643,9 @@ func (s *MCPServer) toolGetJobStatus(params map[string]interface{}) (*envelope.R
 		return nil, errors.NewInvalidParameterError("jobId", "")
 	}
 
-	s.logger.Debug("Executing getJobStatus", map[string]interface{}{
-		"jobId": jobId,
-	})
+	s.logger.Debug("Executing getJobStatus",
+		"jobId", jobId,
+	)
 
 	job, err := s.engine().GetJob(jobId)
 	if err != nil {
@@ -1661,7 +1661,7 @@ func (s *MCPServer) toolGetJobStatus(params map[string]interface{}) (*envelope.R
 
 // toolListJobs handles the listJobs tool call
 func (s *MCPServer) toolListJobs(params map[string]interface{}) (*envelope.Response, error) {
-	s.logger.Debug("Executing listJobs", params)
+	s.logger.Debug("Executing listJobs")
 
 	opts := jobs.ListJobsOptions{}
 
@@ -1699,9 +1699,9 @@ func (s *MCPServer) toolCancelJob(params map[string]interface{}) (*envelope.Resp
 		return nil, errors.NewInvalidParameterError("jobId", "")
 	}
 
-	s.logger.Debug("Executing cancelJob", map[string]interface{}{
-		"jobId": jobId,
-	})
+	s.logger.Debug("Executing cancelJob",
+		"jobId", jobId,
+	)
 
 	err := s.engine().CancelJob(jobId)
 	if err != nil {
@@ -1737,11 +1737,11 @@ func (s *MCPServer) toolSummarizePr(params map[string]interface{}) (*envelope.Re
 		includeOwnership = v
 	}
 
-	s.logger.Debug("Executing summarizePr", map[string]interface{}{
-		"baseBranch":       baseBranch,
-		"headBranch":       headBranch,
-		"includeOwnership": includeOwnership,
-	})
+	s.logger.Debug("Executing summarizePr",
+		"baseBranch", baseBranch,
+		"headBranch", headBranch,
+		"includeOwnership", includeOwnership,
+	)
 
 	opts := query.SummarizePROptions{
 		BaseBranch:       baseBranch,
@@ -1794,11 +1794,11 @@ func (s *MCPServer) toolGetOwnershipDrift(params map[string]interface{}) (*envel
 		limit = int(v)
 	}
 
-	s.logger.Debug("Executing getOwnershipDrift", map[string]interface{}{
-		"scope":     scope,
-		"threshold": threshold,
-		"limit":     limit,
-	})
+	s.logger.Debug("Executing getOwnershipDrift",
+		"scope", scope,
+		"threshold", threshold,
+		"limit", limit,
+	)
 
 	opts := query.OwnershipDriftOptions{
 		Scope:     scope,
@@ -1845,12 +1845,12 @@ func (s *MCPServer) toolGetFileComplexity(params map[string]interface{}) (*envel
 		limit = int(v)
 	}
 
-	s.logger.Debug("Executing getFileComplexity", map[string]interface{}{
-		"filePath":         filePath,
-		"includeFunctions": includeFunctions,
-		"sortBy":           sortBy,
-		"limit":            limit,
-	})
+	s.logger.Debug("Executing getFileComplexity",
+		"filePath", filePath,
+		"includeFunctions", includeFunctions,
+		"sortBy", sortBy,
+		"limit", limit,
+	)
 
 	// Resolve the file path
 	absPath := filePath
@@ -1948,9 +1948,9 @@ func (s *MCPServer) toolGetFileComplexity(params map[string]interface{}) (*envel
 // toolGetWideResultMetrics returns aggregated metrics for wide-result tools.
 // This is an internal/debug tool to inform the Frontier mode decision.
 func (s *MCPServer) toolGetWideResultMetrics(params map[string]interface{}) (*envelope.Response, error) {
-	s.logger.Debug("Executing getWideResultMetrics", map[string]interface{}{
-		"params": params,
-	})
+	s.logger.Debug("Executing getWideResultMetrics",
+		"params", params,
+	)
 
 	summary := GetWideResultSummary()
 

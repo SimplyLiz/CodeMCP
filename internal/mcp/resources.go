@@ -50,9 +50,9 @@ func (s *MCPServer) GetResourceDefinitions() ([]Resource, []ResourceTemplate) {
 
 // handleResourceRead handles reading a resource by URI
 func (s *MCPServer) handleResourceRead(uri string) (interface{}, error) {
-	s.logger.Debug("Reading resource", map[string]interface{}{
-		"uri": uri,
-	})
+	s.logger.Debug("Reading resource",
+		"uri", uri,
+	)
 
 	// Parse the URI scheme
 	if !strings.HasPrefix(uri, "ckb://") {

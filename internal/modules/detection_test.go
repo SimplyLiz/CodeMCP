@@ -2,19 +2,14 @@ package modules
 
 import (
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
-
-	"ckb/internal/logging"
 )
 
-func newTestLogger() *logging.Logger {
-	return logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.JSONFormat,
-		Output: io.Discard,
-	})
+func newTestLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
 func TestDetectModulesWithManifest(t *testing.T) {

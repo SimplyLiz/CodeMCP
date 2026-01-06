@@ -27,10 +27,10 @@ func (s *MCPServer) handleMessage(msg *MCPMessage) *MCPMessage {
 
 // handleRequest handles a JSON-RPC request
 func (s *MCPServer) handleRequest(msg *MCPMessage) *MCPMessage {
-	s.logger.Debug("Handling request", map[string]interface{}{
-		"method": msg.Method,
-		"id":     msg.Id,
-	})
+	s.logger.Debug("Handling request",
+		"method", msg.Method,
+		"id", msg.Id,
+	)
 
 	switch msg.Method {
 	case "initialize":
@@ -50,18 +50,18 @@ func (s *MCPServer) handleRequest(msg *MCPMessage) *MCPMessage {
 
 // handleNotification handles a JSON-RPC notification
 func (s *MCPServer) handleNotification(msg *MCPMessage) {
-	s.logger.Debug("Handling notification", map[string]interface{}{
-		"method": msg.Method,
-	})
+	s.logger.Debug("Handling notification",
+		"method", msg.Method,
+	)
 
 	// Handle specific notifications if needed
 	switch msg.Method {
 	case "notifications/initialized":
-		s.logger.Info("Client initialized", nil)
+		s.logger.Info("Client initialized")
 	default:
-		s.logger.Debug("Unknown notification", map[string]interface{}{
-			"method": msg.Method,
-		})
+		s.logger.Debug("Unknown notification",
+			"method", msg.Method,
+		)
 	}
 }
 
@@ -198,10 +198,10 @@ func (s *MCPServer) handleCallTool(params map[string]interface{}) (interface{}, 
 		return nil, errors.NewResourceNotFoundError("tool", toolName)
 	}
 
-	s.logger.Info("Calling tool", map[string]interface{}{
-		"tool":   toolName,
-		"params": toolParams,
-	})
+	s.logger.Info("Calling tool",
+		"tool", toolName,
+		"params", toolParams,
+	)
 
 	// v8.0: Check for streaming request
 	if streamResp, err := s.wrapForStreaming(toolName, toolParams); streamResp != nil || err != nil {
@@ -279,9 +279,9 @@ func (s *MCPServer) handleReadResource(params map[string]interface{}) (interface
 		return nil, errors.NewInvalidParameterError("uri", "")
 	}
 
-	s.logger.Info("Reading resource", map[string]interface{}{
-		"uri": uri,
-	})
+	s.logger.Info("Reading resource",
+		"uri", uri,
+	)
 
 	result, err := s.handleResourceRead(uri)
 	if err != nil {

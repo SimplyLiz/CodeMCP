@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,11 +12,11 @@ import (
 	"time"
 
 	"ckb/internal/index"
-	"ckb/internal/logging"
 	"ckb/internal/mcp"
 	"ckb/internal/project"
 	"ckb/internal/repos"
 	"ckb/internal/repostate"
+	"ckb/internal/slogutil"
 	"ckb/internal/version"
 
 	"github.com/spf13/cobra"
@@ -78,11 +80,7 @@ func runMCP(cmd *cobra.Command, args []string) error {
 
 	// Create logger for MCP server
 	// Use stderr for logs since stdout is used for MCP protocol
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.JSONFormat,
-		Level:  logging.InfoLevel,
-		Output: os.Stderr,
-	})
+	logger := slogutil.NewLogger(os.Stderr, slog.LevelInfo)
 
 	// Validate preset
 	if !mcp.IsValidPreset(mcpPreset) {
@@ -155,10 +153,10 @@ func runMCP(cmd *cobra.Command, args []string) error {
 	// Change to repo directory so relative paths work
 	if repoRoot != "" && repoRoot != "." {
 		if err := os.Chdir(repoRoot); err != nil {
-			logger.Error("Failed to change to repo directory", map[string]interface{}{
-				"path":  repoRoot,
-				"error": err.Error(),
-			})
+			logger.Error("Failed to change to repo directory",
+				"path", repoRoot,
+				"error", err.Error(),
+			)
 			return err
 		}
 	}
@@ -198,15 +196,11 @@ func runMCP(cmd *cobra.Command, args []string) error {
 		}
 
 		go runWatchLoop(repoRoot, watchInterval, logger)
-		logger.Info("Watch mode enabled", map[string]interface{}{
-			"pollInterval": watchInterval.String(),
-		})
+		logger.Info("Watch mode enabled", "pollInterval", watchInterval.String())
 	}
 
 	if err := server.Start(); err != nil {
-		logger.Error("MCP server error", map[string]interface{}{
-			"error": err.Error(),
-		})
+		logger.Error("MCP server error", "error", err.Error())
 		return err
 	}
 
@@ -232,7 +226,7 @@ func isRepoPath(s string) bool {
 }
 
 // runWatchLoop periodically checks index freshness and reindexes if stale
-func runWatchLoop(repoRoot string, interval time.Duration, logger *logging.Logger) {
+func runWatchLoop(repoRoot string, interval time.Duration, logger *slog.Logger) {
 	ckbDir := filepath.Join(repoRoot, ".ckb")
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -260,21 +254,19 @@ func runWatchLoop(repoRoot string, interval time.Duration, logger *logging.Logge
 			}
 		}
 
-		logger.Info("Index stale, triggering reindex", map[string]interface{}{
-			"trigger": string(trigger),
-			"reason":  freshness.Reason,
-		})
+		logger.Info("Index stale, triggering reindex",
+			"trigger", string(trigger),
+			"reason", freshness.Reason,
+		)
 
 		if err := triggerReindex(repoRoot, ckbDir, trigger, triggerInfo, logger); err != nil {
-			logger.Error("Reindex failed", map[string]interface{}{
-				"error": err.Error(),
-			})
+			logger.Error("Reindex failed", "error", err.Error())
 		}
 	}
 }
 
 // triggerReindex runs the SCIP indexer and updates metadata
-func triggerReindex(repoRoot, ckbDir string, trigger index.RefreshTrigger, triggerInfo string, logger *logging.Logger) error {
+func triggerReindex(repoRoot, ckbDir string, trigger index.RefreshTrigger, triggerInfo string, logger *slog.Logger) error {
 	// Load project config to get language and indexer
 	config, err := project.LoadConfig(repoRoot)
 	if err != nil {
@@ -291,7 +283,7 @@ func triggerReindex(repoRoot, ckbDir string, trigger index.RefreshTrigger, trigg
 	lock, err := index.AcquireLock(ckbDir)
 	if err != nil {
 		// Another process is indexing, skip
-		logger.Debug("Skipping reindex, locked by another process", nil)
+		logger.Debug("Skipping reindex, locked by another process")
 		return nil
 	}
 	defer lock.Release()
@@ -310,10 +302,10 @@ func triggerReindex(repoRoot, ckbDir string, trigger index.RefreshTrigger, trigg
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		logger.Error("Indexer failed", map[string]interface{}{
-			"error":  err.Error(),
-			"stderr": stderr.String(),
-		})
+		logger.Error("Indexer failed",
+			"error", err.Error(),
+			"stderr", stderr.String(),
+		)
 		return err
 	}
 
@@ -340,27 +332,22 @@ func triggerReindex(repoRoot, ckbDir string, trigger index.RefreshTrigger, trigg
 	}
 
 	if err := newMeta.Save(ckbDir); err != nil {
-		logger.Error("Failed to save index metadata", map[string]interface{}{
-			"error": err.Error(),
-		})
+		logger.Error("Failed to save index metadata", "error", err.Error())
 	}
 
-	logger.Info("Reindex complete", map[string]interface{}{
-		"trigger":  string(trigger),
-		"duration": duration.String(),
-		"files":    newMeta.FileCount,
-	})
+	logger.Info("Reindex complete",
+		"trigger", string(trigger),
+		"duration", duration.String(),
+		"files", newMeta.FileCount,
+	)
 
 	return nil
 }
 
 // listPresets prints available presets with tool counts and token estimates
 func listPresets() error {
-	// Create a minimal logger for server initialization
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Output: os.Stderr,
-	})
+	// Create a minimal logger for server initialization (silent)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Create server to get tool definitions
 	server := mcp.NewMCPServer(version.Version, nil, logger)

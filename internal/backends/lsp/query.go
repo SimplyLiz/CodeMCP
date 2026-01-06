@@ -239,18 +239,18 @@ func (s *LspSupervisor) executeRequest(languageId string, req *LspRequest) *LspR
 	// Track success/failure
 	if err != nil {
 		proc.RecordFailure()
-		s.logger.Error("LSP request failed", map[string]interface{}{
-			"languageId": languageId,
-			"method":     req.Method,
-			"error":      err.Error(),
-		})
+		s.logger.Error("LSP request failed",
+			"languageId", languageId,
+			"method", req.Method,
+			"error", err.Error(),
+		)
 	} else {
 		proc.RecordSuccess()
-		s.logger.Debug("LSP request succeeded", map[string]interface{}{
-			"languageId": languageId,
-			"method":     req.Method,
-			"duration":   resp.Duration.Milliseconds(),
-		})
+		s.logger.Debug("LSP request succeeded",
+			"languageId", languageId,
+			"method", req.Method,
+			"duration", resp.Duration.Milliseconds(),
+		)
 	}
 
 	return resp

@@ -161,11 +161,11 @@ func (f *Federation) AddRemoteServer(server RemoteServer) error {
 	}
 
 	if f.logger != nil {
-		f.logger.Info("Added remote server to federation", map[string]interface{}{
-			"federation": f.config.Name,
-			"server":     server.Name,
-			"url":        server.URL,
-		})
+		f.logger.Info("Added remote server to federation",
+			"federation", f.config.Name,
+			"server", server.Name,
+			"url", server.URL,
+		)
 	}
 
 	return nil
@@ -198,18 +198,18 @@ func (f *Federation) RemoveRemoteServer(name string) error {
 	// Clear cached data for this server
 	if err := f.index.ClearRemoteCache(name); err != nil {
 		if f.logger != nil {
-			f.logger.Warn("Failed to clear remote cache", map[string]interface{}{
-				"server": name,
-				"error":  err.Error(),
-			})
+			f.logger.Warn("Failed to clear remote cache",
+				"server", name,
+				"error", err.Error(),
+			)
 		}
 	}
 
 	if f.logger != nil {
-		f.logger.Info("Removed remote server from federation", map[string]interface{}{
-			"federation": f.config.Name,
-			"server":     name,
-		})
+		f.logger.Info("Removed remote server from federation",
+			"federation", f.config.Name,
+			"server", name,
+		)
 	}
 
 	return nil
@@ -271,10 +271,10 @@ func (f *Federation) UpdateRemoteServer(name string, updates RemoteServerUpdate)
 	}
 
 	if f.logger != nil {
-		f.logger.Info("Updated remote server in federation", map[string]interface{}{
-			"federation": f.config.Name,
-			"server":     name,
-		})
+		f.logger.Info("Updated remote server in federation",
+			"federation", f.config.Name,
+			"server", name,
+		)
 	}
 
 	return nil

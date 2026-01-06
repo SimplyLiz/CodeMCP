@@ -3,13 +3,12 @@ package api
 import (
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"sync"
 	"time"
 
 	_ "modernc.org/sqlite" // Pure Go SQLite driver
-
-	"ckb/internal/logging"
 )
 
 // IndexRepoHandle holds an open connection to a repo's index database
@@ -25,7 +24,7 @@ type IndexRepoHandle struct {
 type IndexRepoManager struct {
 	repos     map[string]*IndexRepoHandle
 	config    *IndexServerConfig
-	logger    *logging.Logger
+	logger    *slog.Logger
 	cursor    *CursorManager
 	storage   *IndexStorage  // For uploaded repos (Phase 2)
 	processor *SCIPProcessor // For processing uploads (Phase 2)
@@ -33,7 +32,7 @@ type IndexRepoManager struct {
 }
 
 // NewIndexRepoManager creates a new repo manager with connections to all configured repos
-func NewIndexRepoManager(config *IndexServerConfig, logger *logging.Logger) (*IndexRepoManager, error) {
+func NewIndexRepoManager(config *IndexServerConfig, logger *slog.Logger) (*IndexRepoManager, error) {
 	m := &IndexRepoManager{
 		repos:  make(map[string]*IndexRepoHandle),
 		config: config,
@@ -53,17 +52,17 @@ func NewIndexRepoManager(config *IndexServerConfig, logger *logging.Logger) (*In
 		// Load any existing uploaded repos from storage
 		uploadedRepos, err := storage.ListRepos()
 		if err != nil {
-			logger.Warn("Failed to list uploaded repos", map[string]interface{}{
-				"error": err.Error(),
-			})
+			logger.Warn("Failed to list uploaded repos",
+				"error", err.Error(),
+			)
 		} else {
 			for _, repoID := range uploadedRepos {
 				meta, err := storage.LoadMeta(repoID)
 				if err != nil {
-					logger.Warn("Failed to load uploaded repo metadata", map[string]interface{}{
-						"repo_id": repoID,
-						"error":   err.Error(),
-					})
+					logger.Warn("Failed to load uploaded repo metadata",
+						"repo_id", repoID,
+						"error", err.Error(),
+					)
 					continue
 				}
 				repoConfig := IndexRepoConfig{
@@ -75,16 +74,16 @@ func NewIndexRepoManager(config *IndexServerConfig, logger *logging.Logger) (*In
 				}
 				handle, err := m.openUploadedRepo(repoConfig)
 				if err != nil {
-					logger.Warn("Failed to open uploaded repo", map[string]interface{}{
-						"repo_id": repoID,
-						"error":   err.Error(),
-					})
+					logger.Warn("Failed to open uploaded repo",
+						"repo_id", repoID,
+						"error", err.Error(),
+					)
 					continue
 				}
 				m.repos[repoID] = handle
-				logger.Info("Loaded uploaded repo", map[string]interface{}{
-					"repo_id": repoID,
-				})
+				logger.Info("Loaded uploaded repo",
+					"repo_id", repoID,
+				)
 			}
 		}
 	}
@@ -99,10 +98,10 @@ func NewIndexRepoManager(config *IndexServerConfig, logger *logging.Logger) (*In
 			return nil, fmt.Errorf("failed to open repo %s: %w", repoConfig.ID, err)
 		}
 		m.repos[repoConfig.ID] = handle
-		logger.Info("Opened index repo", map[string]interface{}{
-			"repo_id": repoConfig.ID,
-			"path":    repoConfig.Path,
-		})
+		logger.Info("Opened index repo",
+			"repo_id", repoConfig.ID,
+			"path", repoConfig.Path,
+		)
 	}
 
 	return m, nil
@@ -210,10 +209,10 @@ func (m *IndexRepoManager) RefreshAllMeta() error {
 
 	for id, handle := range m.repos {
 		if err := handle.refreshMeta(); err != nil {
-			m.logger.Warn("Failed to refresh metadata", map[string]interface{}{
-				"repo_id": id,
-				"error":   err.Error(),
-			})
+			m.logger.Warn("Failed to refresh metadata",
+				"repo_id", id,
+				"error", err.Error(),
+			)
 		}
 	}
 	return nil
@@ -227,10 +226,10 @@ func (m *IndexRepoManager) Close() error {
 	var lastErr error
 	for id, handle := range m.repos {
 		if err := handle.Close(); err != nil {
-			m.logger.Error("Failed to close repo", map[string]interface{}{
-				"repo_id": id,
-				"error":   err.Error(),
-			})
+			m.logger.Error("Failed to close repo",
+				"repo_id", id,
+				"error", err.Error(),
+			)
 			lastErr = err
 		}
 	}
@@ -494,9 +493,9 @@ func (m *IndexRepoManager) CreateUploadedRepo(id, name, description string) erro
 		return err
 	}
 
-	m.logger.Info("Created uploaded repo", map[string]interface{}{
-		"repo_id": id,
-	})
+	m.logger.Info("Created uploaded repo",
+		"repo_id", id,
+	)
 
 	return nil
 }
@@ -513,10 +512,10 @@ func (m *IndexRepoManager) RemoveRepo(id string) error {
 	// Close handle if open
 	if handle, exists := m.repos[id]; exists {
 		if err := handle.Close(); err != nil {
-			m.logger.Warn("Failed to close repo before removal", map[string]interface{}{
-				"repo_id": id,
-				"error":   err.Error(),
-			})
+			m.logger.Warn("Failed to close repo before removal",
+				"repo_id", id,
+				"error", err.Error(),
+			)
 		}
 		delete(m.repos, id)
 	}
@@ -526,9 +525,9 @@ func (m *IndexRepoManager) RemoveRepo(id string) error {
 		return err
 	}
 
-	m.logger.Info("Removed repo", map[string]interface{}{
-		"repo_id": id,
-	})
+	m.logger.Info("Removed repo",
+		"repo_id", id,
+	)
 
 	return nil
 }
@@ -570,10 +569,10 @@ func (m *IndexRepoManager) ReloadRepo(id string) error {
 
 	// Close existing connection
 	if err := handle.Close(); err != nil {
-		m.logger.Warn("Failed to close repo during reload", map[string]interface{}{
-			"repo_id": id,
-			"error":   err.Error(),
-		})
+		m.logger.Warn("Failed to close repo during reload",
+			"repo_id", id,
+			"error", err.Error(),
+		)
 	}
 
 	// Reopen based on source

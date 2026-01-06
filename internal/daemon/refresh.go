@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -13,7 +14,6 @@ import (
 
 	"ckb/internal/incremental"
 	"ckb/internal/index"
-	"ckb/internal/logging"
 	"ckb/internal/project"
 	"ckb/internal/repostate"
 	"ckb/internal/storage"
@@ -22,7 +22,7 @@ import (
 
 // RefreshManager handles incremental and full reindex operations
 type RefreshManager struct {
-	logger         *logging.Logger
+	logger         *slog.Logger
 	stdLogger      interface{ Printf(string, ...interface{}) }
 	webhookManager *webhooks.Manager
 
@@ -32,7 +32,7 @@ type RefreshManager struct {
 }
 
 // NewRefreshManager creates a new refresh manager
-func NewRefreshManager(logger *logging.Logger, stdLogger interface{ Printf(string, ...interface{}) }, webhookMgr *webhooks.Manager) *RefreshManager {
+func NewRefreshManager(logger *slog.Logger, stdLogger interface{ Printf(string, ...interface{}) }, webhookMgr *webhooks.Manager) *RefreshManager {
 	return &RefreshManager{
 		logger:         logger,
 		stdLogger:      stdLogger,

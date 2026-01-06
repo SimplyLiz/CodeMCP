@@ -5,22 +5,21 @@ package federation
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"sync"
 	"time"
-
-	"ckb/internal/logging"
 )
 
 // HybridEngine provides hybrid queries across local federation and remote servers.
 type HybridEngine struct {
 	federation *Federation
 	remotes    map[string]*CachedRemoteClient
-	logger     *logging.Logger
+	logger     *slog.Logger
 	mu         sync.RWMutex
 }
 
 // NewHybridEngine creates a new hybrid query engine.
-func NewHybridEngine(federation *Federation, logger *logging.Logger) *HybridEngine {
+func NewHybridEngine(federation *Federation, logger *slog.Logger) *HybridEngine {
 	return &HybridEngine{
 		federation: federation,
 		remotes:    make(map[string]*CachedRemoteClient),
@@ -201,11 +200,11 @@ func (h *HybridEngine) queryRemoteForSymbols(
 
 		if err != nil {
 			if h.logger != nil {
-				h.logger.Warn("Failed to search remote repo", map[string]interface{}{
-					"server": serverName,
-					"repo":   repo.ID,
-					"error":  err.Error(),
-				})
+				h.logger.Warn("Failed to search remote repo",
+					"server", serverName,
+					"repo", repo.ID,
+					"error", err.Error(),
+				)
 			}
 			continue
 		}
@@ -257,10 +256,10 @@ func (h *HybridEngine) SyncRemote(ctx context.Context, serverName string) error 
 	repos, err := client.ListRepos(ctx)
 	if err != nil {
 		if setErr := h.federation.SetRemoteServerError(serverName, err.Error()); setErr != nil && h.logger != nil {
-			h.logger.Warn("Failed to set server error", map[string]interface{}{
-				"server": serverName,
-				"error":  setErr.Error(),
-			})
+			h.logger.Warn("Failed to set server error",
+				"server", serverName,
+				"error", setErr.Error(),
+			)
 		}
 		return err
 	}
@@ -281,27 +280,27 @@ func (h *HybridEngine) SyncRemote(ctx context.Context, serverName string) error 
 			IndexVersion: repo.IndexVersion,
 			CachedAt:     time.Now(),
 		}); upsertErr != nil && h.logger != nil {
-			h.logger.Warn("Failed to cache repo info", map[string]interface{}{
-				"server": serverName,
-				"repo":   repo.ID,
-				"error":  upsertErr.Error(),
-			})
+			h.logger.Warn("Failed to cache repo info",
+				"server", serverName,
+				"repo", repo.ID,
+				"error", upsertErr.Error(),
+			)
 		}
 	}
 
 	// Mark server as synced
 	if setErr := h.federation.SetRemoteServerSynced(serverName); setErr != nil && h.logger != nil {
-		h.logger.Warn("Failed to set server synced", map[string]interface{}{
-			"server": serverName,
-			"error":  setErr.Error(),
-		})
+		h.logger.Warn("Failed to set server synced",
+			"server", serverName,
+			"error", setErr.Error(),
+		)
 	}
 
 	if h.logger != nil {
-		h.logger.Info("Synced remote server", map[string]interface{}{
-			"server":     serverName,
-			"repo_count": len(repos),
-		})
+		h.logger.Info("Synced remote server",
+			"server", serverName,
+			"repo_count", len(repos),
+		)
 	}
 
 	return nil

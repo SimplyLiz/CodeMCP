@@ -1,7 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"ckb/internal/config"
+	"ckb/internal/daemon"
 	"ckb/internal/index"
 	"ckb/internal/project"
 	"ckb/internal/query"
@@ -53,7 +58,8 @@ func runStatus(cmd *cobra.Command, args []string) {
 
 	// We have an active repo - show detailed status
 	repoRoot := resolved.Entry.Path
-	logger := newLogger(statusFormat)
+	// Use silent logger - status output already displays all relevant info
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	engine := mustGetEngine(repoRoot, logger)
 	ctx := newContext()
 
@@ -73,6 +79,9 @@ func runStatus(cmd *cobra.Command, args []string) {
 		Path:   resolved.Entry.Path,
 		Source: string(resolved.Source),
 	}
+
+	// Add daemon status
+	cliResponse.DaemonStatus = getDaemonStatus()
 
 	// Add index freshness status
 	ckbDir := filepath.Join(repoRoot, ".ckb")
@@ -158,10 +167,19 @@ type ActiveRepoCLI struct {
 	Source string `json:"source"` // How the repo was resolved: env, flag, cwd, default
 }
 
+// DaemonStatusCLI describes the daemon's running state
+type DaemonStatusCLI struct {
+	Running bool   `json:"running"`
+	PID     int    `json:"pid,omitempty"`
+	Port    int    `json:"port,omitempty"`
+	Uptime  string `json:"uptime,omitempty"`
+}
+
 // StatusResponseCLI contains the complete system status for CLI output
 type StatusResponseCLI struct {
 	CkbVersion         string                 `json:"ckbVersion"`
 	ActiveRepo         *ActiveRepoCLI         `json:"activeRepo,omitempty"`
+	DaemonStatus       *DaemonStatusCLI       `json:"daemonStatus,omitempty"`
 	Tier               *tier.TierInfo         `json:"tier"`
 	RepoState          *query.RepoState       `json:"repoState"`
 	IndexStatus        *IndexStatusCLI        `json:"indexStatus,omitempty"`
@@ -501,4 +519,35 @@ func formatDuration(d time.Duration) string {
 		return "1 day ago"
 	}
 	return fmt.Sprintf("%d days ago", days)
+}
+
+// getDaemonStatus checks if the daemon is running and gets its status
+func getDaemonStatus() *DaemonStatusCLI {
+	running, pid, err := daemon.IsRunning()
+	if err != nil || !running {
+		return &DaemonStatusCLI{Running: false}
+	}
+
+	status := &DaemonStatusCLI{
+		Running: true,
+		PID:     pid,
+		Port:    9120, // default port
+	}
+
+	// Try to get more info from the daemon's health endpoint
+	client := &http.Client{Timeout: 500 * time.Millisecond}
+	resp, err := client.Get("http://localhost:9120/health")
+	if err != nil {
+		return status
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		var health daemon.HealthResponse
+		if err := json.NewDecoder(resp.Body).Decode(&health); err == nil {
+			status.Uptime = health.Uptime
+		}
+	}
+
+	return status
 }

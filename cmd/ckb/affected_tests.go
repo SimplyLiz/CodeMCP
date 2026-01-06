@@ -90,10 +90,10 @@ func runAffectedTests(cmd *cobra.Command, args []string) {
 		fmt.Println(formatAffectedTestsHuman(response))
 	}
 
-	logger.Debug("Affected tests analysis completed", map[string]interface{}{
-		"testFiles": len(response.Tests),
-		"duration":  time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Affected tests analysis completed",
+		"testFiles", len(response.Tests),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // AffectedTestsResponseCLI is the CLI response format for affected tests.

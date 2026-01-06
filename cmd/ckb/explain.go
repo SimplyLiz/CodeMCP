@@ -77,8 +77,8 @@ func runExplain(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Explain completed", map[string]interface{}{
-		"symbol":   symbol,
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Explain completed",
+		"symbol", symbol,
+		"duration", time.Since(start).Milliseconds(),
+	)
 }

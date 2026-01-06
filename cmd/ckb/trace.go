@@ -69,11 +69,11 @@ func runTrace(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Trace usage completed", map[string]interface{}{
-		"symbolId":   symbolId,
-		"pathsFound": len(response.Paths),
-		"duration":   time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Trace usage completed",
+		"symbolId", symbolId,
+		"pathsFound", len(response.Paths),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // TraceResponseCLI contains trace results for CLI output

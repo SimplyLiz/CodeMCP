@@ -2,13 +2,13 @@ package lsp
 
 import (
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"sync"
 	"time"
 
 	"ckb/internal/config"
 	"ckb/internal/errors"
-	"ckb/internal/logging"
 )
 
 // Constants for supervisor behavior
@@ -47,7 +47,7 @@ type LspSupervisor struct {
 	config *config.Config
 
 	// logger for logging
-	logger *logging.Logger
+	logger *slog.Logger
 
 	// mu protects processes map
 	mu sync.RWMutex
@@ -75,7 +75,7 @@ type LspSupervisor struct {
 }
 
 // NewLspSupervisor creates a new LSP supervisor
-func NewLspSupervisor(cfg *config.Config, logger *logging.Logger) *LspSupervisor {
+func NewLspSupervisor(cfg *config.Config, logger *slog.Logger) *LspSupervisor {
 	maxProcesses := cfg.LspSupervisor.MaxTotalProcesses
 	if maxProcesses == 0 {
 		maxProcesses = MaxTotalProcesses
@@ -199,10 +199,9 @@ func (s *LspSupervisor) StartServer(languageId string) error {
 	}
 	s.queuesMu.Unlock()
 
-	s.logger.Info("Started LSP server", map[string]interface{}{
-		"languageId": languageId,
-		"command":    serverCfg.Command,
-	})
+	s.logger.Info("Started LSP server",
+		"languageId", languageId,
+		"command", serverCfg.Command)
 
 	return nil
 }
@@ -325,9 +324,7 @@ func (s *LspSupervisor) Shutdown() error {
 	// Stop all processes
 	s.mu.Lock()
 	for langId, proc := range s.processes {
-		s.logger.Info("Shutting down LSP server", map[string]interface{}{
-			"languageId": langId,
-		})
+		s.logger.Info("Shutting down LSP server", "languageId", langId)
 		_ = proc.Shutdown()
 	}
 	s.processes = make(map[string]*LspProcess)

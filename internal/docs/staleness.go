@@ -2,10 +2,10 @@ package docs
 
 import (
 	"fmt"
+	"log/slog"
 	"time"
 
 	"ckb/internal/identity"
-	"ckb/internal/logging"
 	"ckb/internal/storage"
 )
 
@@ -25,7 +25,7 @@ func NewStalenessChecker(symbolIndex SymbolIndex, store *Store) *StalenessChecke
 }
 
 // NewStalenessCheckerWithIdentity creates a staleness checker with rename detection support.
-func NewStalenessCheckerWithIdentity(symbolIndex SymbolIndex, store *Store, db *storage.DB, logger *logging.Logger) *StalenessChecker {
+func NewStalenessCheckerWithIdentity(symbolIndex SymbolIndex, store *Store, db *storage.DB, logger *slog.Logger) *StalenessChecker {
 	return &StalenessChecker{
 		symbolIndex:      symbolIndex,
 		store:            store,

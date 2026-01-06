@@ -2,19 +2,18 @@ package backends
 
 import (
 	"context"
-
-	"ckb/internal/logging"
+	"log/slog"
 )
 
 // BackendLadder implements the backend selection ladder
 // It selects backends based on preference order and availability
 type BackendLadder struct {
 	policy *QueryPolicy
-	logger *logging.Logger
+	logger *slog.Logger
 }
 
 // NewBackendLadder creates a new backend ladder
-func NewBackendLadder(policy *QueryPolicy, logger *logging.Logger) *BackendLadder {
+func NewBackendLadder(policy *QueryPolicy, logger *slog.Logger) *BackendLadder {
 	return &BackendLadder{
 		policy: policy,
 		logger: logger,
@@ -33,9 +32,7 @@ func (l *BackendLadder) SelectBackends(
 	for _, backendID := range l.policy.AlwaysUse {
 		if backend, ok := availableBackends[backendID]; ok && backend.IsAvailable() {
 			selected = append(selected, backendID)
-			l.logger.Debug("Selected always-use backend", map[string]interface{}{
-				"backend": backendID,
-			})
+			l.logger.Debug("Selected always-use backend", "backend", backendID)
 		}
 	}
 
@@ -46,10 +43,9 @@ func (l *BackendLadder) SelectBackends(
 		primary := l.selectPrimaryBackend(availableBackends, req)
 		if primary != "" && !contains(selected, primary) {
 			selected = append(selected, primary)
-			l.logger.Debug("Selected primary backend", map[string]interface{}{
-				"backend":   primary,
-				"mergeMode": l.policy.MergeMode,
-			})
+			l.logger.Debug("Selected primary backend",
+				"backend", primary,
+				"mergeMode", l.policy.MergeMode)
 		}
 
 	case MergeModeUnion:
@@ -58,19 +54,16 @@ func (l *BackendLadder) SelectBackends(
 			if backend, ok := availableBackends[backendID]; ok && backend.IsAvailable() {
 				if !contains(selected, backendID) {
 					selected = append(selected, backendID)
-					l.logger.Debug("Selected backend for union", map[string]interface{}{
-						"backend": backendID,
-					})
+					l.logger.Debug("Selected backend for union", "backend", backendID)
 				}
 			}
 		}
 	}
 
 	if len(selected) == 0 {
-		l.logger.Warn("No backends selected", map[string]interface{}{
-			"queryType":      req.Type,
-			"availableCount": len(availableBackends),
-		})
+		l.logger.Warn("No backends selected",
+			"queryType", req.Type,
+			"availableCount", len(availableBackends))
 	}
 
 	return selected
@@ -90,18 +83,15 @@ func (l *BackendLadder) selectPrimaryBackend(
 
 		// Check if backend is available
 		if !backend.IsAvailable() {
-			l.logger.Debug("Backend not available", map[string]interface{}{
-				"backend": backendID,
-			})
+			l.logger.Debug("Backend not available", "backend", backendID)
 			continue
 		}
 
 		// Check if backend supports the query type
 		if !l.supportsQueryType(backend, req.Type) {
-			l.logger.Debug("Backend doesn't support query type", map[string]interface{}{
-				"backend":   backendID,
-				"queryType": req.Type,
-			})
+			l.logger.Debug("Backend doesn't support query type",
+				"backend", backendID,
+				"queryType", req.Type)
 			continue
 		}
 
@@ -151,11 +141,10 @@ func (l *BackendLadder) SelectSupplementBackends(
 		}
 
 		selected = append(selected, backendID)
-		l.logger.Debug("Selected supplement backend", map[string]interface{}{
-			"backend":             backendID,
-			"primaryBackend":      primaryBackend,
-			"primaryCompleteness": primaryCompleteness.Score,
-		})
+		l.logger.Debug("Selected supplement backend",
+			"backend", backendID,
+			"primaryBackend", primaryBackend,
+			"primaryCompleteness", primaryCompleteness.Score)
 	}
 
 	return selected
@@ -184,18 +173,16 @@ func (l *BackendLadder) FallbackToNext(
 			continue
 		}
 
-		l.logger.Info("Falling back to backend", map[string]interface{}{
-			"backend":        backendID,
-			"failedBackends": failedBackends,
-		})
+		l.logger.Info("Falling back to backend",
+			"backend", backendID,
+			"failedBackends", failedBackends)
 
 		return backendID
 	}
 
-	l.logger.Warn("No fallback backend available", map[string]interface{}{
-		"failedBackends": failedBackends,
-		"queryType":      req.Type,
-	})
+	l.logger.Warn("No fallback backend available",
+		"failedBackends", failedBackends,
+		"queryType", req.Type)
 
 	return ""
 }

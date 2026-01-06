@@ -1,11 +1,12 @@
 package incremental
 
 import (
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"ckb/internal/logging"
 	"ckb/internal/storage"
 )
 
@@ -26,10 +27,7 @@ func setupTestUpdater(t *testing.T) (*IndexUpdater, *Store, *storage.DB, func())
 	}
 
 	// Create logger
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Open database
 	db, err := storage.Open(tmpDir, logger)

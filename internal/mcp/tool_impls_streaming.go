@@ -34,12 +34,12 @@ func (s *MCPServer) streamFindReferences(params map[string]interface{}, stream *
 		includeTests = includeVal
 	}
 
-	s.logger.Debug("Executing streaming findReferences", map[string]interface{}{
-		"symbolId":     symbolId,
-		"scope":        scope,
-		"limit":        limit,
-		"includeTests": includeTests,
-	})
+	s.logger.Debug("Executing streaming findReferences",
+		"symbolId", symbolId,
+		"scope", scope,
+		"limit", limit,
+		"includeTests", includeTests,
+	)
 
 	ctx := context.Background()
 	opts := query.FindReferencesOptions{
@@ -139,12 +139,12 @@ func (s *MCPServer) streamSearchSymbols(params map[string]interface{}, stream *s
 		}
 	}
 
-	s.logger.Debug("Executing streaming searchSymbols", map[string]interface{}{
-		"query": queryStr,
-		"scope": scope,
-		"limit": limit,
-		"kinds": kinds,
-	})
+	s.logger.Debug("Executing streaming searchSymbols",
+		"query", queryStr,
+		"scope", scope,
+		"limit", limit,
+		"kinds", kinds,
+	)
 
 	ctx := context.Background()
 	opts := query.SearchSymbolsOptions{

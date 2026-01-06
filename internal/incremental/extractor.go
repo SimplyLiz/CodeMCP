@@ -4,13 +4,13 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"ckb/internal/backends/scip"
-	"ckb/internal/logging"
 	"ckb/internal/project"
 )
 
@@ -18,12 +18,12 @@ import (
 type SCIPExtractor struct {
 	repoRoot  string
 	indexPath string
-	logger    *logging.Logger
+	logger    *slog.Logger
 }
 
 // NewSCIPExtractor creates a new SCIP extractor
 // indexPath should be the configured SCIP index path (default: .scip/index.scip)
-func NewSCIPExtractor(repoRoot string, indexPath string, logger *logging.Logger) *SCIPExtractor {
+func NewSCIPExtractor(repoRoot string, indexPath string, logger *slog.Logger) *SCIPExtractor {
 	// If indexPath is relative, make it absolute from repoRoot
 	if !filepath.IsAbs(indexPath) {
 		indexPath = filepath.Join(repoRoot, indexPath)

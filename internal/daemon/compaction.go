@@ -5,13 +5,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
-	"ckb/internal/logging"
 	"ckb/internal/scheduler"
 )
 
@@ -63,12 +63,12 @@ type CompactionResult struct {
 // Compactor handles database compaction operations
 type Compactor struct {
 	config CompactionConfig
-	logger *logging.Logger
+	logger *slog.Logger
 	ckbDir string
 }
 
 // NewCompactor creates a new compactor
-func NewCompactor(ckbDir string, config CompactionConfig, logger *logging.Logger) *Compactor {
+func NewCompactor(ckbDir string, config CompactionConfig, logger *slog.Logger) *Compactor {
 	return &Compactor{
 		config: config,
 		logger: logger,
@@ -83,11 +83,11 @@ func (c *Compactor) Run(ctx context.Context) (*CompactionResult, error) {
 		DryRun:    c.config.DryRun,
 	}
 
-	c.logger.Info("Starting compaction", map[string]interface{}{
-		"dryRun":        c.config.DryRun,
-		"keepSnapshots": c.config.KeepSnapshots,
-		"keepDays":      c.config.KeepDays,
-	})
+	c.logger.Info("Starting compaction",
+		"dryRun", c.config.DryRun,
+		"keepSnapshots", c.config.KeepSnapshots,
+		"keepDays", c.config.KeepDays,
+	)
 
 	// Step 1: Delete old snapshots
 	deleted, snapshots, err := c.deleteOldSnapshots(ctx)
@@ -119,13 +119,13 @@ func (c *Compactor) Run(ctx context.Context) (*CompactionResult, error) {
 	result.CompletedAt = time.Now()
 	result.DurationMs = result.CompletedAt.Sub(result.StartedAt).Milliseconds()
 
-	c.logger.Info("Compaction completed", map[string]interface{}{
-		"durationMs":       result.DurationMs,
-		"snapshotsDeleted": result.SnapshotsDeleted,
-		"journalPurged":    result.JournalEntriesPurged,
-		"bytesReclaimed":   result.BytesReclaimed,
-		"errors":           len(result.Errors),
-	})
+	c.logger.Info("Compaction completed",
+		"durationMs", result.DurationMs,
+		"snapshotsDeleted", result.SnapshotsDeleted,
+		"journalPurged", result.JournalEntriesPurged,
+		"bytesReclaimed", result.BytesReclaimed,
+		"errors", len(result.Errors),
+	)
 
 	return result, nil
 }
@@ -187,10 +187,10 @@ func (c *Compactor) deleteOldSnapshots(ctx context.Context) (int, []string, erro
 
 	for _, snap := range toDelete {
 		if c.config.DryRun {
-			c.logger.Info("Would delete snapshot (dry-run)", map[string]interface{}{
-				"path": snap.path,
-				"age":  time.Since(snap.modTime).String(),
-			})
+			c.logger.Info("Would delete snapshot (dry-run)",
+				"path", snap.path,
+				"age", time.Since(snap.modTime).String(),
+			)
 			deleted++
 			deletedNames = append(deletedNames, filepath.Base(snap.path))
 			continue
@@ -198,19 +198,19 @@ func (c *Compactor) deleteOldSnapshots(ctx context.Context) (int, []string, erro
 
 		// Delete the snapshot and any associated files
 		if err := c.deleteSnapshotFiles(snap.path); err != nil {
-			c.logger.Error("Failed to delete snapshot", map[string]interface{}{
-				"path":  snap.path,
-				"error": err.Error(),
-			})
+			c.logger.Error("Failed to delete snapshot",
+				"path", snap.path,
+				"error", err.Error(),
+			)
 			continue
 		}
 
 		deleted++
 		deletedNames = append(deletedNames, filepath.Base(snap.path))
-		c.logger.Info("Deleted snapshot", map[string]interface{}{
-			"path": snap.path,
-			"age":  time.Since(snap.modTime).String(),
-		})
+		c.logger.Info("Deleted snapshot",
+			"path", snap.path,
+			"age", time.Since(snap.modTime).String(),
+		)
 	}
 
 	return deleted, deletedNames, nil
@@ -227,18 +227,14 @@ func (c *Compactor) deleteSnapshotFiles(dbPath string) error {
 	walPath := dbPath + "-wal"
 	if err := os.Remove(walPath); err != nil && !os.IsNotExist(err) {
 		// Non-fatal, just log
-		c.logger.Debug("Could not delete WAL file", map[string]interface{}{
-			"path": walPath,
-		})
+		c.logger.Debug("Could not delete WAL file", "path", walPath)
 	}
 
 	// Delete SHM file if exists
 	shmPath := dbPath + "-shm"
 	if err := os.Remove(shmPath); err != nil && !os.IsNotExist(err) {
 		// Non-fatal, just log
-		c.logger.Debug("Could not delete SHM file", map[string]interface{}{
-			"path": shmPath,
-		})
+		c.logger.Debug("Could not delete SHM file", "path", shmPath)
 	}
 
 	return nil
@@ -303,7 +299,7 @@ func (c *Compactor) vacuumFTS(ctx context.Context) error {
 	defer func() { _ = db.Close() }()
 
 	if c.config.DryRun {
-		c.logger.Info("Would vacuum FTS tables (dry-run)", nil)
+		c.logger.Info("Would vacuum FTS tables (dry-run)")
 		return nil
 	}
 
@@ -323,7 +319,7 @@ func (c *Compactor) vacuumFTS(ctx context.Context) error {
 		return fmt.Errorf("failed to optimize FTS: %w", err)
 	}
 
-	c.logger.Info("FTS tables optimized", nil)
+	c.logger.Info("FTS tables optimized")
 	return nil
 }
 

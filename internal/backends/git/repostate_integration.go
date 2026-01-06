@@ -7,20 +7,20 @@ import (
 // GetRepoState returns the current repository state
 // This integrates with the existing internal/repostate package
 func (g *GitAdapter) GetRepoState() (*repostate.RepoState, error) {
-	g.logger.Debug("Computing repository state", map[string]interface{}{
-		"repoRoot": g.repoRoot,
-	})
+	g.logger.Debug("Computing repository state",
+		"repoRoot", g.repoRoot,
+	)
 
 	state, err := repostate.ComputeRepoState(g.repoRoot)
 	if err != nil {
 		return nil, err
 	}
 
-	g.logger.Debug("Repository state computed", map[string]interface{}{
-		"repoStateId": state.RepoStateID,
-		"headCommit":  state.HeadCommit,
-		"dirty":       state.Dirty,
-	})
+	g.logger.Debug("Repository state computed",
+		"repoStateId", state.RepoStateID,
+		"headCommit", state.HeadCommit,
+		"dirty", state.Dirty,
+	)
 
 	return state, nil
 }
@@ -37,7 +37,7 @@ func (g *GitAdapter) GetRepoStateID() (string, error) {
 
 // GetHeadCommit returns the current HEAD commit hash
 func (g *GitAdapter) GetHeadCommit() (string, error) {
-	g.logger.Debug("Getting HEAD commit", nil)
+	g.logger.Debug("Getting HEAD commit")
 
 	output, err := g.executeGitCommand("rev-parse", "HEAD")
 	if err != nil {
@@ -58,7 +58,7 @@ func (g *GitAdapter) IsDirty() (bool, error) {
 
 // GetCurrentBranch returns the name of the current branch
 func (g *GitAdapter) GetCurrentBranch() (string, error) {
-	g.logger.Debug("Getting current branch", nil)
+	g.logger.Debug("Getting current branch")
 
 	output, err := g.executeGitCommand("rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
@@ -71,14 +71,14 @@ func (g *GitAdapter) GetCurrentBranch() (string, error) {
 // GetRemoteURL returns the URL of the remote repository
 // Uses 'origin' as the default remote name
 func (g *GitAdapter) GetRemoteURL() (string, error) {
-	g.logger.Debug("Getting remote URL", nil)
+	g.logger.Debug("Getting remote URL")
 
 	output, err := g.executeGitCommand("remote", "get-url", "origin")
 	if err != nil {
 		// Non-fatal - repository might not have a remote
-		g.logger.Debug("No remote URL found", map[string]interface{}{
-			"error": err.Error(),
-		})
+		g.logger.Debug("No remote URL found",
+			"error", err.Error(),
+		)
 		return "", nil //nolint:nilerr // no remote is valid
 	}
 
@@ -87,7 +87,7 @@ func (g *GitAdapter) GetRemoteURL() (string, error) {
 
 // GetRepositoryInfo returns comprehensive repository information
 func (g *GitAdapter) GetRepositoryInfo() (map[string]interface{}, error) {
-	g.logger.Debug("Getting repository info", nil)
+	g.logger.Debug("Getting repository info")
 
 	// Get repo state
 	state, err := g.GetRepoState()
@@ -160,9 +160,9 @@ func (g *GitAdapter) ValidateRepoStateID(expectedID string) (bool, error) {
 
 // GetFileStatus returns the git status for a specific file
 func (g *GitAdapter) GetFileStatus(filePath string) (string, error) {
-	g.logger.Debug("Getting file status", map[string]interface{}{
-		"filePath": filePath,
-	})
+	g.logger.Debug("Getting file status",
+		"filePath", filePath,
+	)
 
 	// Use git status --porcelain to get machine-readable status
 	output, err := g.executeGitCommand("status", "--porcelain", "--", filePath)
@@ -205,9 +205,9 @@ func (g *GitAdapter) GetFileStatus(filePath string) (string, error) {
 
 // IsFileTracked checks if a file is tracked by git
 func (g *GitAdapter) IsFileTracked(filePath string) (bool, error) {
-	g.logger.Debug("Checking if file is tracked", map[string]interface{}{
-		"filePath": filePath,
-	})
+	g.logger.Debug("Checking if file is tracked",
+		"filePath", filePath,
+	)
 
 	// Use git ls-files to check if file is tracked
 	output, err := g.executeGitCommand("ls-files", "--error-unmatch", "--", filePath)

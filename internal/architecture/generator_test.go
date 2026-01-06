@@ -2,12 +2,13 @@ package architecture
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
 	"ckb/internal/modules"
 )
 
@@ -47,10 +48,7 @@ func main() {
 	cfg.ImportScan.SkipBinary = true
 
 	// Create logger
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.DebugLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Create import scanner
 	importScanner := modules.NewImportScanner(&cfg.ImportScan, logger)

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,7 +13,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"ckb/internal/auth"
-	"ckb/internal/logging"
 
 	_ "modernc.org/sqlite" // Pure Go SQLite driver
 )
@@ -324,7 +324,7 @@ func runTokenRotate(cmd *cobra.Command, args []string) {
 }
 
 // mustGetAuthManager creates an auth manager with database connection
-func mustGetAuthManager(logger *logging.Logger) *auth.Manager {
+func mustGetAuthManager(logger *slog.Logger) *auth.Manager {
 	dataDir := expandPath(tokenDataDir)
 
 	// Ensure data directory exists

@@ -2,20 +2,18 @@ package lsp
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"testing"
 	"time"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
 )
 
 // TestLspSupervisorCreation tests basic supervisor creation
 func TestLspSupervisorCreation(t *testing.T) {
 	cfg := config.DefaultConfig()
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	supervisor := NewLspSupervisor(cfg, logger)
 	if supervisor == nil {
@@ -73,10 +71,7 @@ func TestProcessLifecycle(t *testing.T) {
 // TestBackoffCalculation tests exponential backoff
 func TestBackoffCalculation(t *testing.T) {
 	cfg := config.DefaultConfig()
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	supervisor := NewLspSupervisor(cfg, logger)
 	defer func() { _ = supervisor.Shutdown() }()
@@ -108,10 +103,7 @@ func TestBackoffCalculation(t *testing.T) {
 func TestQueueManagement(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.LspSupervisor.QueueSizePerLanguage = 5
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	supervisor := NewLspSupervisor(cfg, logger)
 	defer func() { _ = supervisor.Shutdown() }()
@@ -131,10 +123,7 @@ func TestQueueManagement(t *testing.T) {
 // TestLspAdapter tests the adapter implementation
 func TestLspAdapter(t *testing.T) {
 	cfg := config.DefaultConfig()
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	supervisor := NewLspSupervisor(cfg, logger)
 	defer func() { _ = supervisor.Shutdown() }()
@@ -166,10 +155,7 @@ func TestLspAdapter(t *testing.T) {
 func TestEviction(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.LspSupervisor.MaxTotalProcesses = 2
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	supervisor := NewLspSupervisor(cfg, logger)
 	defer func() { _ = supervisor.Shutdown() }()
@@ -273,10 +259,7 @@ func TestSymbolKindConversion(t *testing.T) {
 // TestHealthChecking tests health check logic
 func TestHealthChecking(t *testing.T) {
 	cfg := config.DefaultConfig()
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	supervisor := NewLspSupervisor(cfg, logger)
 	defer func() { _ = supervisor.Shutdown() }()
@@ -297,10 +280,7 @@ func TestHealthChecking(t *testing.T) {
 // BenchmarkBackoffCalculation benchmarks backoff calculation
 func BenchmarkBackoffCalculation(b *testing.B) {
 	cfg := config.DefaultConfig()
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	supervisor := NewLspSupervisor(cfg, logger)
 	defer func() { _ = supervisor.Shutdown() }()
@@ -317,10 +297,7 @@ func ExampleLspSupervisor() {
 	cfg := config.DefaultConfig()
 
 	// Create logger
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Create supervisor
 	supervisor := NewLspSupervisor(cfg, logger)
@@ -328,9 +305,9 @@ func ExampleLspSupervisor() {
 
 	// Start a TypeScript LSP server
 	if err := supervisor.StartServer("typescript"); err != nil {
-		logger.Error("Failed to start TypeScript LSP", map[string]interface{}{
-			"error": err.Error(),
-		})
+		logger.Error("Failed to start TypeScript LSP",
+			"error", err.Error(),
+		)
 		return
 	}
 
@@ -345,13 +322,13 @@ func ExampleLspSupervisor() {
 	)
 
 	if err != nil {
-		logger.Error("Query failed", map[string]interface{}{
-			"error": err.Error(),
-		})
+		logger.Error("Query failed",
+			"error", err.Error(),
+		)
 		return
 	}
 
-	logger.Info("Query succeeded", map[string]interface{}{
-		"result": result,
-	})
+	logger.Info("Query succeeded",
+		"result", result,
+	)
 }

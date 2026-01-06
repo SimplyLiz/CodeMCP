@@ -110,11 +110,11 @@ func runImpact(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Impact analysis completed", map[string]interface{}{
-		"symbolId": symbolID,
-		"direct":   len(response.DirectImpact),
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Impact analysis completed",
+		"symbolId", symbolID,
+		"direct", len(response.DirectImpact),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // ImpactResponseCLI contains impact analysis results for CLI output
@@ -305,12 +305,12 @@ func runImpactDiff(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Change impact analysis completed", map[string]interface{}{
-		"filesChanged":   response.Summary.FilesChanged,
-		"symbolsChanged": response.Summary.SymbolsChanged,
-		"riskLevel":      response.Summary.EstimatedRisk,
-		"duration":       time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Change impact analysis completed",
+		"filesChanged", response.Summary.FilesChanged,
+		"symbolsChanged", response.Summary.SymbolsChanged,
+		"riskLevel", response.Summary.EstimatedRisk,
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // ChangeSetResponseCLI contains change set analysis results for CLI output

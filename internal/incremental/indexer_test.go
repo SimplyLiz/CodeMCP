@@ -1,6 +1,8 @@
 package incremental
 
 import (
+	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -8,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"ckb/internal/logging"
 	"ckb/internal/project"
 	"ckb/internal/storage"
 )
@@ -30,10 +31,7 @@ func setupTestIndexer(t *testing.T) (*IncrementalIndexer, string, func()) {
 	}
 
 	// Create logger
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Open database
 	db, err := storage.Open(tmpDir, logger)
@@ -86,10 +84,7 @@ func TestNewIncrementalIndexer_NilConfig(t *testing.T) {
 		t.Fatalf("failed to create .ckb dir: %v", err)
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	db, err := storage.Open(tmpDir, logger)
 	if err != nil {
@@ -894,10 +889,7 @@ func setupTestIndexerWithFixture(t *testing.T) (*IncrementalIndexer, string, fun
 	}
 
 	// Create logger
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Open database
 	db, err := storage.Open(tmpDir, logger)

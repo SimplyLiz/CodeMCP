@@ -2,6 +2,7 @@ package explain
 
 import (
 	"context"
+	"log/slog"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -10,18 +11,17 @@ import (
 	"time"
 
 	"ckb/internal/coupling"
-	"ckb/internal/logging"
 )
 
 // Explainer provides symbol explanation functionality
 type Explainer struct {
 	repoRoot         string
-	logger           *logging.Logger
+	logger           *slog.Logger
 	couplingAnalyzer *coupling.Analyzer
 }
 
 // NewExplainer creates a new symbol explainer
-func NewExplainer(repoRoot string, logger *logging.Logger) *Explainer {
+func NewExplainer(repoRoot string, logger *slog.Logger) *Explainer {
 	return &Explainer{
 		repoRoot:         repoRoot,
 		logger:           logger,
@@ -42,11 +42,10 @@ func (e *Explainer) Explain(ctx context.Context, opts ExplainOptions) (*SymbolEx
 	// Parse the symbol query (could be file:line or just a file path for now)
 	filePath, line := e.parseSymbolQuery(opts.Symbol)
 
-	e.logger.Debug("Starting symbol explanation", map[string]interface{}{
-		"symbol":   opts.Symbol,
-		"filePath": filePath,
-		"line":     line,
-	})
+	e.logger.Debug("Starting symbol explanation",
+		"symbol", opts.Symbol,
+		"filePath", filePath,
+		"line", line)
 
 	// Get file history
 	commits, err := e.getFileHistory(ctx, filePath)
