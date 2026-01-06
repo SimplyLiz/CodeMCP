@@ -135,10 +135,22 @@ Cache:
 
 ## Implementation Order
 
-### Phase 1: Quick Wins (v8.0.1)
-1. Add active repo to `ckb status` first line
-2. Add `ckb use <name>` top-level shortcut
-3. Add daemon status to `ckb status` output
+### Phase 1: Quick Wins (v8.0.1) - COMPLETED
+1. [x] Add active repo to `ckb status` first line
+2. [x] Add `ckb use <name>` top-level shortcut
+3. [x] Add daemon status to `ckb status` output
+
+**Current `ckb status` output:**
+```
+CKB v8.0.0
+──────────────────────────────────────────────────────────
+Active: ckb (/Users/lisa/Work/Ideas/CodeMCP) (from current directory)
+Daemon: running (PID 12345, port 9120, uptime 2h)
+
+◉ Analysis Tier: Standard (SCIP index) [auto-detected]
+  Available Tools: 22 of 24
+...
+```
 
 ### Phase 2: Enhanced Status (v8.0.2)
 4. Unified status with all services
