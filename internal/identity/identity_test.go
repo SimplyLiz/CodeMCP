@@ -1,9 +1,9 @@
 package identity
 
 import (
-t"io"
-t"log/slog"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"testing"
 	"time"
@@ -22,9 +22,6 @@ func setupTestDB(t *testing.T) (*storage.DB, string) {
 
 	// Create logger
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.JSONFormat,
-		Level:  logging.DebugLevel,
-	})
 
 	// Open database
 	db, err := storage.Open(tmpDir, logger)
@@ -81,9 +78,6 @@ func TestSymbolRepository(t *testing.T) {
 	defer cleanupTestDB(db, tmpDir)
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.JSONFormat,
-		Level:  logging.DebugLevel,
-	})
 
 	repo := NewSymbolRepository(db, logger)
 
@@ -176,9 +170,6 @@ func TestAliasResolution(t *testing.T) {
 	defer cleanupTestDB(db, tmpDir)
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.JSONFormat,
-		Level:  logging.DebugLevel,
-	})
 
 	repo := NewSymbolRepository(db, logger)
 	resolver := NewIdentityResolver(db, logger)
@@ -280,9 +271,6 @@ func TestAliasCreation(t *testing.T) {
 	defer cleanupTestDB(db, tmpDir)
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.JSONFormat,
-		Level:  logging.DebugLevel,
-	})
 
 	repo := NewSymbolRepository(db, logger)
 	creator := NewAliasCreator(db, logger)
@@ -399,9 +387,6 @@ func TestTombstones(t *testing.T) {
 	defer cleanupTestDB(db, tmpDir)
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.JSONFormat,
-		Level:  logging.DebugLevel,
-	})
 
 	repo := NewSymbolRepository(db, logger)
 	resolver := NewIdentityResolver(db, logger)
@@ -460,9 +445,6 @@ func TestAliasCycleDetection(t *testing.T) {
 	defer cleanupTestDB(db, tmpDir)
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.JSONFormat,
-		Level:  logging.DebugLevel,
-	})
 
 	repo := NewSymbolRepository(db, logger)
 	resolver := NewIdentityResolver(db, logger)
@@ -545,9 +527,6 @@ func TestAliasChainTooDeep(t *testing.T) {
 	defer cleanupTestDB(db, tmpDir)
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.JSONFormat,
-		Level:  logging.DebugLevel,
-	})
 
 	repo := NewSymbolRepository(db, logger)
 	resolver := NewIdentityResolver(db, logger)
@@ -616,9 +595,6 @@ func TestSymbolNotFound(t *testing.T) {
 	defer cleanupTestDB(db, tmpDir)
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.JSONFormat,
-		Level:  logging.DebugLevel,
-	})
 
 	resolver := NewIdentityResolver(db, logger)
 
@@ -643,9 +619,6 @@ func TestDirectSymbolResolution(t *testing.T) {
 	defer cleanupTestDB(db, tmpDir)
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.JSONFormat,
-		Level:  logging.DebugLevel,
-	})
 
 	repo := NewSymbolRepository(db, logger)
 	resolver := NewIdentityResolver(db, logger)

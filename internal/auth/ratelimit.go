@@ -184,10 +184,10 @@ func (r *RateLimiter) cleanup() {
 	}
 
 	if removed > 0 && r.logger != nil {
-		r.logger.Debug("Rate limit cleanup", map[string]interface{}{
-			"removed_buckets": removed,
-			"remaining":       len(r.buckets),
-		})
+		r.logger.Debug("Rate limit cleanup",
+			"removed_buckets", removed,
+			"remaining", len(r.buckets),
+		)
 	}
 }
 

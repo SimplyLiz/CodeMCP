@@ -1,9 +1,9 @@
 package query
 
 import (
-t"io"
-t"log/slog"
 	"context"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -31,9 +31,6 @@ func testEngine(t *testing.T) (*Engine, func()) {
 
 	// Create test logger (silent)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.JSONFormat,
-		Level:  logging.ErrorLevel,
-	})
 
 	// Create test database
 	db, err := storage.Open(tmpDir, logger)

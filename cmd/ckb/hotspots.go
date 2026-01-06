@@ -80,10 +80,10 @@ func runHotspots(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Hotspots query completed", map[string]interface{}{
-		"count":    len(response.Hotspots),
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Hotspots query completed",
+		"count", len(response.Hotspots),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // HotspotsResponseCLI contains hotspots list for CLI output

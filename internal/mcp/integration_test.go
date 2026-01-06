@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
-t"log/slog"
+	"log/slog"
 	"os"
 	"strings"
 	"testing"
@@ -140,10 +140,6 @@ func newTestMCPServerWithSCIP(t *testing.T, scipIndexPath string) *MCPServer {
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Level:  logging.ErrorLevel,
-		Format: logging.JSONFormat,
-		Output: io.Discard,
-	})
 
 	db, err := storage.Open(":memory:", logger)
 	if err != nil {

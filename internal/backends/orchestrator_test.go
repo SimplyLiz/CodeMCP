@@ -168,13 +168,13 @@ func (m *mockBackend) getCalls() (symbol, search, ref int) {
 
 func createTestOrchestrator(t *testing.T) *Orchestrator {
 	t.Helper()
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	policy := DefaultQueryPolicy()
 	return NewOrchestrator(policy, logger)
 }
 
 func TestNewOrchestrator(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	policy := DefaultQueryPolicy()
 
 	orch := NewOrchestrator(policy, logger)
@@ -413,7 +413,7 @@ func TestQueryReferences(t *testing.T) {
 }
 
 func TestQueryWithUnionMergeMode(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	policy := DefaultQueryPolicy()
 	policy.MergeMode = MergeModeUnion
 
@@ -774,7 +774,7 @@ func TestBuildContributionsItemCount(t *testing.T) {
 func TestFallback_UnionMode_SCIPFails_LSPSucceeds(t *testing.T) {
 	// Scenario: Union mode - SCIP fails, LSP succeeds
 	// Expected: Should return LSP results (both queried in parallel)
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	policy := DefaultQueryPolicy()
 	policy.MergeMode = MergeModeUnion
 
@@ -885,7 +885,7 @@ func TestFallback_PreferFirst_PrimaryFails_NoFallback(t *testing.T) {
 func TestFallback_UnionMode_SCIPTimeout_LSPSucceeds(t *testing.T) {
 	// Scenario: Union mode - SCIP times out, LSP responds in time
 	// Expected: Should return LSP results (both queried in parallel)
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	policy := DefaultQueryPolicy()
 	policy.MergeMode = MergeModeUnion
 
@@ -937,7 +937,7 @@ func TestFallback_UnionMode_SCIPTimeout_LSPSucceeds(t *testing.T) {
 func TestFallback_UnionMode_MultipleBackends_PartialFailure(t *testing.T) {
 	// Scenario: Union mode - SCIP fails, LSP fails, Git heuristics succeeds
 	// Expected: Should return heuristic results (all queried in parallel)
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	policy := DefaultQueryPolicy()
 	policy.MergeMode = MergeModeUnion
 
@@ -1046,7 +1046,7 @@ func TestFallback_PartialResults_PreferFirst(t *testing.T) {
 func TestFallback_UnionMode_GetSymbol_PrimaryFails(t *testing.T) {
 	// Scenario: Union mode - GetSymbol on SCIP fails, LSP succeeds
 	// Expected: Should return LSP symbol info (both queried in parallel)
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	policy := DefaultQueryPolicy()
 	policy.MergeMode = MergeModeUnion
 
@@ -1091,7 +1091,7 @@ func TestFallback_UnionMode_GetSymbol_PrimaryFails(t *testing.T) {
 func TestFallback_UnionMode_FindReferences_PrimaryFails(t *testing.T) {
 	// Scenario: Union mode - FindReferences on SCIP fails, LSP succeeds
 	// Expected: Should return LSP references (both queried in parallel)
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	policy := DefaultQueryPolicy()
 	policy.MergeMode = MergeModeUnion
 
@@ -1141,7 +1141,7 @@ func TestFallback_UnionMode_FindReferences_PrimaryFails(t *testing.T) {
 func TestFallback_EmptyResult_TriggersFallback(t *testing.T) {
 	// Scenario: SCIP returns empty result (not error), should still try LSP
 	// Expected: In union mode, both are queried; in prefer-first, empty from primary is accepted
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	policy := DefaultQueryPolicy()
 	policy.MergeMode = MergeModeUnion
 

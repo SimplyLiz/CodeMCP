@@ -84,11 +84,11 @@ func runSearch(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Search query completed", map[string]interface{}{
-		"query":    queryStr,
-		"results":  len(response.Symbols),
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Search query completed",
+		"query", queryStr,
+		"results", len(response.Symbols),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // SearchResponseCLI contains search results for CLI output

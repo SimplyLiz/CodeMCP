@@ -175,17 +175,17 @@ type toolCategory struct {
 
 func categorizeTools(tools []mcp.Tool) []toolCategory {
 	categories := map[string][]mcp.Tool{
-		"Compound (v8.0)":   {},
-		"Discovery":         {},
-		"Navigation":        {},
-		"Architecture":      {},
-		"Impact & Risk":     {},
-		"Code Review":       {},
-		"Refactoring":       {},
-		"Federation":        {},
-		"Documentation":     {},
-		"System":            {},
-		"Other":             {},
+		"Compound (v8.0)": {},
+		"Discovery":       {},
+		"Navigation":      {},
+		"Architecture":    {},
+		"Impact & Risk":   {},
+		"Code Review":     {},
+		"Refactoring":     {},
+		"Federation":      {},
+		"Documentation":   {},
+		"System":          {},
+		"Other":           {},
 	}
 
 	// Categorize based on tool name patterns

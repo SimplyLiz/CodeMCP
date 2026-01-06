@@ -1,9 +1,9 @@
 package lsp
 
 import (
-t"io"
-t"log/slog"
 	"context"
+	"io"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -14,9 +14,6 @@ t"log/slog"
 func TestLspSupervisorCreation(t *testing.T) {
 	cfg := config.DefaultConfig()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
 
 	supervisor := NewLspSupervisor(cfg, logger)
 	if supervisor == nil {
@@ -75,9 +72,6 @@ func TestProcessLifecycle(t *testing.T) {
 func TestBackoffCalculation(t *testing.T) {
 	cfg := config.DefaultConfig()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
 
 	supervisor := NewLspSupervisor(cfg, logger)
 	defer func() { _ = supervisor.Shutdown() }()
@@ -110,9 +104,6 @@ func TestQueueManagement(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.LspSupervisor.QueueSizePerLanguage = 5
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
 
 	supervisor := NewLspSupervisor(cfg, logger)
 	defer func() { _ = supervisor.Shutdown() }()
@@ -133,9 +124,6 @@ func TestQueueManagement(t *testing.T) {
 func TestLspAdapter(t *testing.T) {
 	cfg := config.DefaultConfig()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
 
 	supervisor := NewLspSupervisor(cfg, logger)
 	defer func() { _ = supervisor.Shutdown() }()
@@ -168,9 +156,6 @@ func TestEviction(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.LspSupervisor.MaxTotalProcesses = 2
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
 
 	supervisor := NewLspSupervisor(cfg, logger)
 	defer func() { _ = supervisor.Shutdown() }()
@@ -275,9 +260,6 @@ func TestSymbolKindConversion(t *testing.T) {
 func TestHealthChecking(t *testing.T) {
 	cfg := config.DefaultConfig()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
 
 	supervisor := NewLspSupervisor(cfg, logger)
 	defer func() { _ = supervisor.Shutdown() }()
@@ -299,9 +281,6 @@ func TestHealthChecking(t *testing.T) {
 func BenchmarkBackoffCalculation(b *testing.B) {
 	cfg := config.DefaultConfig()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
 
 	supervisor := NewLspSupervisor(cfg, logger)
 	defer func() { _ = supervisor.Shutdown() }()
@@ -319,9 +298,6 @@ func ExampleLspSupervisor() {
 
 	// Create logger
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
 
 	// Create supervisor
 	supervisor := NewLspSupervisor(cfg, logger)
@@ -329,9 +305,9 @@ func ExampleLspSupervisor() {
 
 	// Start a TypeScript LSP server
 	if err := supervisor.StartServer("typescript"); err != nil {
-		logger.Error("Failed to start TypeScript LSP", map[string]interface{}{
-			"error": err.Error(),
-		})
+		logger.Error("Failed to start TypeScript LSP",
+			"error", err.Error(),
+		)
 		return
 	}
 
@@ -346,13 +322,13 @@ func ExampleLspSupervisor() {
 	)
 
 	if err != nil {
-		logger.Error("Query failed", map[string]interface{}{
-			"error": err.Error(),
-		})
+		logger.Error("Query failed",
+			"error", err.Error(),
+		)
 		return
 	}
 
-	logger.Info("Query succeeded", map[string]interface{}{
-		"result": result,
-	})
+	logger.Info("Query succeeded",
+		"result", result,
+	)
 }

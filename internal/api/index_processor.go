@@ -62,10 +62,10 @@ func (p *SCIPProcessor) ProcessUpload(repoID string, scipPath string, meta Uploa
 		return nil, fmt.Errorf("failed to load SCIP index: %w", err)
 	}
 
-	p.logger.Info("Loaded SCIP index", map[string]interface{}{
-		"repo_id":   repoID,
-		"documents": len(index.Documents),
-	})
+	p.logger.Info("Loaded SCIP index",
+		"repo_id", repoID,
+		"documents", len(index.Documents),
+	)
 
 	// Open/create database
 	dbPath := p.storage.DBPath(repoID)
@@ -98,28 +98,28 @@ func (p *SCIPProcessor) ProcessUpload(repoID string, scipPath string, meta Uploa
 
 	// Update index_meta
 	if err := p.updateMeta(db, result); err != nil {
-		p.logger.Warn("Failed to update index_meta", map[string]interface{}{
-			"error": err.Error(),
-		})
+		p.logger.Warn("Failed to update index_meta",
+			"error", err.Error(),
+		)
 	}
 
 	// Update storage metadata
 	if err := p.storage.UpdateLastUpload(repoID); err != nil {
-		p.logger.Warn("Failed to update storage metadata", map[string]interface{}{
-			"error": err.Error(),
-		})
+		p.logger.Warn("Failed to update storage metadata",
+			"error", err.Error(),
+		)
 	}
 
 	result.Duration = time.Since(start)
 	result.DurationMs = result.Duration.Milliseconds()
 
-	p.logger.Info("Processed SCIP index", map[string]interface{}{
-		"repo_id":     repoID,
-		"files":       result.FileCount,
-		"symbols":     result.SymbolCount,
-		"call_edges":  result.CallEdges,
-		"duration_ms": result.DurationMs,
-	})
+	p.logger.Info("Processed SCIP index",
+		"repo_id", repoID,
+		"files", result.FileCount,
+		"symbols", result.SymbolCount,
+		"call_edges", result.CallEdges,
+		"duration_ms", result.DurationMs,
+	)
 
 	return result, nil
 }
@@ -134,11 +134,11 @@ func (p *SCIPProcessor) ProcessDeltaUpload(repoID string, scipPath string, meta 
 		return nil, fmt.Errorf("failed to load SCIP index: %w", err)
 	}
 
-	p.logger.Info("Loaded delta SCIP index", map[string]interface{}{
-		"repo_id":       repoID,
-		"documents":     len(index.Documents),
-		"changed_files": len(meta.ChangedFiles),
-	})
+	p.logger.Info("Loaded delta SCIP index",
+		"repo_id", repoID,
+		"documents", len(index.Documents),
+		"changed_files", len(meta.ChangedFiles),
+	)
 
 	// Open existing database
 	dbPath := p.storage.DBPath(repoID)
@@ -168,28 +168,28 @@ func (p *SCIPProcessor) ProcessDeltaUpload(repoID string, scipPath string, meta 
 
 	// Update index_meta with new commit
 	if err := p.updateMeta(db, result); err != nil {
-		p.logger.Warn("Failed to update index_meta", map[string]interface{}{
-			"error": err.Error(),
-		})
+		p.logger.Warn("Failed to update index_meta",
+			"error", err.Error(),
+		)
 	}
 
 	// Update storage metadata
 	if err := p.storage.UpdateLastUpload(repoID); err != nil {
-		p.logger.Warn("Failed to update storage metadata", map[string]interface{}{
-			"error": err.Error(),
-		})
+		p.logger.Warn("Failed to update storage metadata",
+			"error", err.Error(),
+		)
 	}
 
 	result.Duration = time.Since(start)
 	result.DurationMs = result.Duration.Milliseconds()
 
-	p.logger.Info("Processed delta SCIP index", map[string]interface{}{
-		"repo_id":     repoID,
-		"files":       result.FileCount,
-		"symbols":     result.SymbolCount,
-		"call_edges":  result.CallEdges,
-		"duration_ms": result.DurationMs,
-	})
+	p.logger.Info("Processed delta SCIP index",
+		"repo_id", repoID,
+		"files", result.FileCount,
+		"symbols", result.SymbolCount,
+		"call_edges", result.CallEdges,
+		"duration_ms", result.DurationMs,
+	)
 
 	return result, nil
 }
@@ -567,10 +567,10 @@ func (p *SCIPProcessor) processIndex(db *sql.DB, index *scip.SCIPIndex, result *
 					"upload",
 				)
 				if err != nil {
-					p.logger.Debug("Symbol insert error", map[string]interface{}{
-						"symbol": occ.Symbol,
-						"error":  err.Error(),
-					})
+					p.logger.Debug("Symbol insert error",
+						"symbol", occ.Symbol,
+						"error", err.Error(),
+					)
 					continue
 				}
 

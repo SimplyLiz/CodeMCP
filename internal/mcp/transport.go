@@ -30,9 +30,9 @@ func (s *MCPServer) readMessage() (*MCPMessage, error) {
 	}
 
 	line := s.scanner.Text()
-	s.logger.Debug("Received message", map[string]interface{}{
-		"raw": line,
-	})
+	s.logger.Debug("Received message",
+		"raw", line,
+	)
 
 	var msg MCPMessage
 	if err := json.Unmarshal([]byte(line), &msg); err != nil {
@@ -49,9 +49,9 @@ func (s *MCPServer) writeMessage(msg *MCPMessage) error {
 		return errors.NewOperationError("marshal JSON-RPC message", err)
 	}
 
-	s.logger.Debug("Sending message", map[string]interface{}{
-		"raw": string(data),
-	})
+	s.logger.Debug("Sending message",
+		"raw", string(data),
+	)
 
 	if _, err := fmt.Fprintf(s.stdout, "%s\n", data); err != nil {
 		return errors.NewOperationError("write to stdout", err)

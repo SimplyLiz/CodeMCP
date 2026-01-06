@@ -2,19 +2,14 @@ package modules
 
 import (
 	"io"
-t"log/slog"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
-
 )
 
 func newTestLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
-		Level:  logging.ErrorLevel,
-		Format: logging.JSONFormat,
-		Output: io.Discard,
-	})
 }
 
 func TestDetectModulesWithManifest(t *testing.T) {

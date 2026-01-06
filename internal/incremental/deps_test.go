@@ -1,10 +1,10 @@
 package incremental
 
 import (
-	"io"
-	"log/slog"
 	"database/sql"
 	"fmt"
+	"io"
+	"log/slog"
 	"path/filepath"
 	"testing"
 	"time"

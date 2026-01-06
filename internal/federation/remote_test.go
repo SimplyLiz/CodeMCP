@@ -1,16 +1,14 @@
 package federation
 
 import (
-t"io"
-t"log/slog"
 	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
-
 )
 
 func TestExpandEnvVars(t *testing.T) {
@@ -273,10 +271,6 @@ func TestRemoteClient(t *testing.T) {
 	defer mockServer.Close()
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Level:  logging.DebugLevel,
-		Format: logging.JSONFormat,
-		Output: os.Stderr,
-	})
 
 	t.Run("ListRepos", func(t *testing.T) {
 		server := &RemoteServer{

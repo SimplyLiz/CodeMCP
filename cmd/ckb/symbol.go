@@ -66,10 +66,10 @@ func runSymbol(cmd *cobra.Command, args []string) {
 	fmt.Println(output)
 
 	duration := time.Since(start).Milliseconds()
-	logger.Debug("Symbol query completed", map[string]interface{}{
-		"symbolId": symbolID,
-		"duration": duration,
-	})
+	logger.Debug("Symbol query completed",
+		"symbolId", symbolID,
+		"duration", duration,
+	)
 }
 
 // SymbolResponseCLI contains detailed symbol information for CLI output

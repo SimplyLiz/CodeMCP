@@ -80,9 +80,9 @@ func runCoupling(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Coupling analysis completed", map[string]interface{}{
-		"target":       target,
-		"correlations": len(result.Correlations),
-		"duration":     time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Coupling analysis completed",
+		"target", target,
+		"correlations", len(result.Correlations),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }

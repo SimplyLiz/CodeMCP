@@ -113,9 +113,9 @@ func (s *SCIPAdapter) LoadIndex() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.logger.Info("Loading SCIP index", map[string]interface{}{
-		"path": s.indexPath,
-	})
+	s.logger.Info("Loading SCIP index",
+		"path", s.indexPath,
+	)
 
 	index, err := LoadSCIPIndex(s.indexPath)
 	if err != nil {
@@ -124,19 +124,19 @@ func (s *SCIPAdapter) LoadIndex() error {
 
 	s.index = index
 
-	s.logger.Info("SCIP index loaded successfully", map[string]interface{}{
-		"documents": len(index.Documents),
-		"symbols":   len(index.Symbols),
-		"commit":    index.IndexedCommit,
-	})
+	s.logger.Info("SCIP index loaded successfully",
+		"documents", len(index.Documents),
+		"symbols", len(index.Symbols),
+		"commit", index.IndexedCommit,
+	)
 
 	// Compute freshness
 	if repoState, err := repostate.ComputeRepoState(s.repoRoot); err == nil {
 		s.freshness = ComputeIndexFreshness(index.IndexedCommit, repoState, s.repoRoot)
 		if s.freshness.IsStale() {
-			s.logger.Warn("SCIP index is stale", map[string]interface{}{
-				"warning": s.freshness.Warning,
-			})
+			s.logger.Warn("SCIP index is stale",
+				"warning", s.freshness.Warning,
+			)
 		}
 	}
 
@@ -421,7 +421,7 @@ func (s *SCIPAdapter) Close() error {
 	s.index = nil
 	s.freshness = nil
 
-	s.logger.Info("SCIP adapter closed", nil)
+	s.logger.Info("SCIP adapter closed")
 	return nil
 }
 

@@ -57,9 +57,9 @@ func OpenStore(ckbDir string, logger *slog.Logger) (*Store, error) {
 	}
 
 	if !dbExists {
-		logger.Info("Creating jobs database", map[string]interface{}{
-			"path": dbPath,
-		})
+		logger.Info("Creating jobs database",
+			"path", dbPath,
+		)
 		if err := store.initializeSchema(); err != nil {
 			_ = conn.Close()
 			return nil, fmt.Errorf("failed to initialize jobs schema: %w", err)
@@ -142,10 +142,10 @@ func (s *Store) CreateJob(job *Job) error {
 		return fmt.Errorf("failed to create job: %w", err)
 	}
 
-	s.logger.Debug("Created job", map[string]interface{}{
-		"jobId": job.ID,
-		"type":  job.Type,
-	})
+	s.logger.Debug("Created job",
+		"jobId", job.ID,
+		"type", job.Type,
+	)
 
 	return nil
 }

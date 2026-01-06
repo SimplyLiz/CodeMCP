@@ -109,9 +109,9 @@ func (db *DB) initializeSchema() error {
 			return err
 		}
 
-		db.logger.Info("Database schema initialized", map[string]interface{}{
-			"version": currentSchemaVersion,
-		})
+		db.logger.Info("Database schema initialized",
+			"version", currentSchemaVersion,
+		)
 
 		return nil
 	})
@@ -126,16 +126,16 @@ func (db *DB) runMigrations() error {
 	}
 
 	if version == currentSchemaVersion {
-		db.logger.Debug("Database schema is up to date", map[string]interface{}{
-			"version": version,
-		})
+		db.logger.Debug("Database schema is up to date",
+			"version", version,
+		)
 		return nil
 	}
 
-	db.logger.Info("Running database migrations", map[string]interface{}{
-		"from_version": version,
-		"to_version":   currentSchemaVersion,
-	})
+	db.logger.Info("Running database migrations",
+		"from_version", version,
+		"to_version", currentSchemaVersion,
+	)
 
 	// Run migrations sequentially
 	if version < 2 {
@@ -204,7 +204,7 @@ func (db *DB) runMigrations() error {
 // migrateToV2 migrates the database from v1 to v2 (Architectural Memory)
 func (db *DB) migrateToV2() error {
 	return db.WithTx(func(tx *sql.Tx) error {
-		db.logger.Info("Migrating database to v2 (Architectural Memory)", nil)
+		db.logger.Info("Migrating database to v2 (Architectural Memory)")
 
 		// Add new columns to modules table
 		alterStatements := []string{
@@ -221,10 +221,10 @@ func (db *DB) migrateToV2() error {
 		for _, stmt := range alterStatements {
 			if _, err := tx.Exec(stmt); err != nil {
 				// SQLite will error if column already exists, which is fine
-				db.logger.Debug("ALTER TABLE statement", map[string]interface{}{
-					"statement": stmt,
-					"error":     err.Error(),
-				})
+				db.logger.Debug("ALTER TABLE statement",
+					"statement", stmt,
+					"error", err.Error(),
+				)
 			}
 		}
 
@@ -253,7 +253,7 @@ func (db *DB) migrateToV2() error {
 			return err
 		}
 
-		db.logger.Info("Database migrated to v2", nil)
+		db.logger.Info("Database migrated to v2")
 		return nil
 	})
 }
@@ -764,7 +764,7 @@ func createDecisionsTable(tx *sql.Tx) error {
 // migrateToV3 migrates the database from v2 to v3 (Telemetry)
 func (db *DB) migrateToV3() error {
 	return db.WithTx(func(tx *sql.Tx) error {
-		db.logger.Info("Migrating database to v3 (Telemetry)", nil)
+		db.logger.Info("Migrating database to v3 (Telemetry)")
 
 		// Create new v3 telemetry tables
 		if err := createTelemetryTables(tx); err != nil {
@@ -776,7 +776,7 @@ func (db *DB) migrateToV3() error {
 			return err
 		}
 
-		db.logger.Info("Database migrated to v3", nil)
+		db.logger.Info("Database migrated to v3")
 		return nil
 	})
 }
@@ -922,7 +922,7 @@ func createModuleRenamesTable(tx *sql.Tx) error {
 // migrateToV4 migrates the database from v3 to v4 (Developer Intelligence)
 func (db *DB) migrateToV4() error {
 	return db.WithTx(func(tx *sql.Tx) error {
-		db.logger.Info("Migrating database to v4 (Developer Intelligence)", nil)
+		db.logger.Info("Migrating database to v4 (Developer Intelligence)")
 
 		// Create new v4 Developer Intelligence tables
 		if err := createDeveloperIntelligenceTables(tx); err != nil {
@@ -934,7 +934,7 @@ func (db *DB) migrateToV4() error {
 			return err
 		}
 
-		db.logger.Info("Database migrated to v4", nil)
+		db.logger.Info("Database migrated to v4")
 		return nil
 	})
 }
@@ -996,7 +996,7 @@ func createDeveloperIntelligenceTables(tx *sql.Tx) error {
 // migrateToV5 migrates the database from v4 to v5 (Doc-Symbol Linking)
 func (db *DB) migrateToV5() error {
 	return db.WithTx(func(tx *sql.Tx) error {
-		db.logger.Info("Migrating database to v5 (Doc-Symbol Linking)", nil)
+		db.logger.Info("Migrating database to v5 (Doc-Symbol Linking)")
 
 		// Create new v5 doc linking tables
 		if err := createDocsTables(tx); err != nil {
@@ -1008,7 +1008,7 @@ func (db *DB) migrateToV5() error {
 			return err
 		}
 
-		db.logger.Info("Database migrated to v5", nil)
+		db.logger.Info("Database migrated to v5")
 		return nil
 	})
 }
@@ -1102,7 +1102,7 @@ func createDocsTables(tx *sql.Tx) error {
 // migrateToV6 migrates the database from v5 to v6 (Incremental Indexing)
 func (db *DB) migrateToV6() error {
 	return db.WithTx(func(tx *sql.Tx) error {
-		db.logger.Info("Migrating database to v6 (Incremental Indexing)", nil)
+		db.logger.Info("Migrating database to v6 (Incremental Indexing)")
 
 		// Create new v6 incremental indexing tables
 		if err := createIncrementalIndexingTables(tx); err != nil {
@@ -1114,7 +1114,7 @@ func (db *DB) migrateToV6() error {
 			return err
 		}
 
-		db.logger.Info("Database migrated to v6", nil)
+		db.logger.Info("Database migrated to v6")
 		return nil
 	})
 }
@@ -1175,7 +1175,7 @@ func createIncrementalIndexingTables(tx *sql.Tx) error {
 // migrateToV7 migrates the database from v6 to v7 (Incremental Callgraph)
 func (db *DB) migrateToV7() error {
 	return db.WithTx(func(tx *sql.Tx) error {
-		db.logger.Info("Migrating database to v7 (Incremental Callgraph)", nil)
+		db.logger.Info("Migrating database to v7 (Incremental Callgraph)")
 
 		// Create new v7 callgraph table
 		if err := createCallgraphTable(tx); err != nil {
@@ -1187,7 +1187,7 @@ func (db *DB) migrateToV7() error {
 			return err
 		}
 
-		db.logger.Info("Database migrated to v7", nil)
+		db.logger.Info("Database migrated to v7")
 		return nil
 	})
 }
@@ -1238,7 +1238,7 @@ func createCallgraphTable(tx *sql.Tx) error {
 // migrateToV8 migrates the database from v7 to v8 (Transitive Invalidation)
 func (db *DB) migrateToV8() error {
 	return db.WithTx(func(tx *sql.Tx) error {
-		db.logger.Info("Migrating database to v8 (Transitive Invalidation)", nil)
+		db.logger.Info("Migrating database to v8 (Transitive Invalidation)")
 
 		// Create new v8 transitive invalidation tables
 		if err := createTransitiveInvalidationTables(tx); err != nil {
@@ -1250,7 +1250,7 @@ func (db *DB) migrateToV8() error {
 			return err
 		}
 
-		db.logger.Info("Database migrated to v8", nil)
+		db.logger.Info("Database migrated to v8")
 		return nil
 	})
 }
@@ -1310,7 +1310,7 @@ func createTransitiveInvalidationTables(tx *sql.Tx) error {
 // migrateToV9 migrates the database from v8 to v9 (FTS5 Symbol Search)
 func (db *DB) migrateToV9() error {
 	return db.WithTx(func(tx *sql.Tx) error {
-		db.logger.Info("Migrating database to v9 (FTS5 Symbol Search)", nil)
+		db.logger.Info("Migrating database to v9 (FTS5 Symbol Search)")
 
 		// Create FTS5 tables
 		if err := createSymbolFTSTables(tx); err != nil {
@@ -1322,7 +1322,7 @@ func (db *DB) migrateToV9() error {
 			return err
 		}
 
-		db.logger.Info("Database migrated to v9", nil)
+		db.logger.Info("Database migrated to v9")
 		return nil
 	})
 }
@@ -1410,7 +1410,7 @@ func createSymbolFTSTables(tx *sql.Tx) error {
 // migrateToV10 migrates the database from v9 to v10 (Wide-Result Metrics)
 func (db *DB) migrateToV10() error {
 	return db.WithTx(func(tx *sql.Tx) error {
-		db.logger.Info("Migrating database to v10 (Wide-Result Metrics)", nil)
+		db.logger.Info("Migrating database to v10 (Wide-Result Metrics)")
 
 		// Create wide_result_metrics table
 		if err := createWideResultMetricsTable(tx); err != nil {
@@ -1422,7 +1422,7 @@ func (db *DB) migrateToV10() error {
 			return err
 		}
 
-		db.logger.Info("Database migrated to v10", nil)
+		db.logger.Info("Database migrated to v10")
 		return nil
 	})
 }
@@ -1469,7 +1469,7 @@ func createWideResultMetricsTable(tx *sql.Tx) error {
 // migrateToV11 migrates the database from v10 to v11 (adds response_bytes column)
 func (db *DB) migrateToV11() error {
 	return db.WithTx(func(tx *sql.Tx) error {
-		db.logger.Info("Migrating database to v11 (Response Bytes)", nil)
+		db.logger.Info("Migrating database to v11 (Response Bytes)")
 
 		// Check if response_bytes column exists
 		var count int
@@ -1487,7 +1487,7 @@ func (db *DB) migrateToV11() error {
 			if err != nil {
 				return fmt.Errorf("failed to add response_bytes column: %w", err)
 			}
-			db.logger.Info("Added response_bytes column to wide_result_metrics", nil)
+			db.logger.Info("Added response_bytes column to wide_result_metrics")
 		}
 
 		// Update schema version
@@ -1495,7 +1495,7 @@ func (db *DB) migrateToV11() error {
 			return err
 		}
 
-		db.logger.Info("Database migrated to v11", nil)
+		db.logger.Info("Database migrated to v11")
 		return nil
 	})
 }

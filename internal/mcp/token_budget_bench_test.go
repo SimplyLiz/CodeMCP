@@ -1,11 +1,10 @@
 package mcp
 
 import (
-t"io"
-t"log/slog"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"testing"
-
 )
 
 // BenchmarkToolsListSize measures tools/list payload size per preset.

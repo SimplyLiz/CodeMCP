@@ -45,11 +45,11 @@ func (s *MCPServer) toolFederationAddRemote(params map[string]interface{}) (*env
 		}
 	}
 
-	s.logger.Debug("Executing federationAddRemote", map[string]interface{}{
-		"federation": fedName,
-		"name":       serverName,
-		"url":        serverURL,
-	})
+	s.logger.Debug("Executing federationAddRemote",
+		"federation", fedName,
+		"name", serverName,
+		"url", serverURL,
+	)
 
 	// Open federation
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -98,10 +98,10 @@ func (s *MCPServer) toolFederationRemoveRemote(params map[string]interface{}) (*
 		return nil, errors.NewInvalidParameterError("name", "")
 	}
 
-	s.logger.Debug("Executing federationRemoveRemote", map[string]interface{}{
-		"federation": fedName,
-		"name":       serverName,
-	})
+	s.logger.Debug("Executing federationRemoveRemote",
+		"federation", fedName,
+		"name", serverName,
+	)
 
 	// Open federation
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -132,9 +132,9 @@ func (s *MCPServer) toolFederationListRemote(params map[string]interface{}) (*en
 		return nil, errors.NewInvalidParameterError("federation", "")
 	}
 
-	s.logger.Debug("Executing federationListRemote", map[string]interface{}{
-		"federation": fedName,
-	})
+	s.logger.Debug("Executing federationListRemote",
+		"federation", fedName,
+	)
 
 	// Open federation
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -180,10 +180,10 @@ func (s *MCPServer) toolFederationSyncRemote(params map[string]interface{}) (*en
 
 	serverName, _ := params["name"].(string) // Optional
 
-	s.logger.Debug("Executing federationSyncRemote", map[string]interface{}{
-		"federation": fedName,
-		"name":       serverName,
-	})
+	s.logger.Debug("Executing federationSyncRemote",
+		"federation", fedName,
+		"name", serverName,
+	)
 
 	// Open federation
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -250,10 +250,10 @@ func (s *MCPServer) toolFederationStatusRemote(params map[string]interface{}) (*
 		return nil, errors.NewInvalidParameterError("name", "")
 	}
 
-	s.logger.Debug("Executing federationStatusRemote", map[string]interface{}{
-		"federation": fedName,
-		"name":       serverName,
-	})
+	s.logger.Debug("Executing federationStatusRemote",
+		"federation", fedName,
+		"name", serverName,
+	)
 
 	// Open federation
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -314,11 +314,11 @@ func (s *MCPServer) toolFederationSearchSymbolsHybrid(params map[string]interfac
 	language, _ := params["language"].(string)
 	kind, _ := params["kind"].(string)
 
-	s.logger.Debug("Executing federationSearchSymbolsHybrid", map[string]interface{}{
-		"federation": fedName,
-		"query":      query,
-		"limit":      limit,
-	})
+	s.logger.Debug("Executing federationSearchSymbolsHybrid",
+		"federation", fedName,
+		"query", query,
+		"limit", limit,
+	)
 
 	// Open federation
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -373,9 +373,9 @@ func (s *MCPServer) toolFederationListAllRepos(params map[string]interface{}) (*
 		return nil, errors.NewInvalidParameterError("federation", "")
 	}
 
-	s.logger.Debug("Executing federationListAllRepos", map[string]interface{}{
-		"federation": fedName,
-	})
+	s.logger.Debug("Executing federationListAllRepos",
+		"federation", fedName,
+	)
 
 	// Open federation
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))

@@ -32,9 +32,9 @@ type InitializeResult struct {
 
 // handleInitialize handles the initialize request
 func (s *MCPServer) handleInitialize(params map[string]interface{}) (*InitializeResult, error) {
-	s.logger.Info("MCP server initializing", map[string]interface{}{
-		"clientInfo": params["clientInfo"],
-	})
+	s.logger.Info("MCP server initializing",
+		"clientInfo", params["clientInfo"],
+	)
 
 	result := &InitializeResult{
 		ProtocolVersion: "2024-11-05",

@@ -68,9 +68,9 @@ type ReindexOutput struct {
 // toolReindex implements the reindex MCP tool.
 // It triggers a refresh of the SCIP index without restarting CKB.
 func (s *MCPServer) toolReindex(params map[string]interface{}) (*envelope.Response, error) {
-	s.logger.Debug("Executing reindex", map[string]interface{}{
-		"params": params,
-	})
+	s.logger.Debug("Executing reindex",
+		"params", params,
+	)
 
 	// Parse parameters
 	scope := "full"

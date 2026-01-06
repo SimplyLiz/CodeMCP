@@ -69,10 +69,10 @@ func (e *Exporter) Export(ctx context.Context, opts ExportOptions) (*LLMExport, 
 		// Find files in module
 		files, err := e.findFilesInModule(opts.RepoRoot, mod.RootPath)
 		if err != nil {
-			e.logger.Warn("Failed to find files in module", map[string]interface{}{
-				"module": mod.RootPath,
-				"error":  err.Error(),
-			})
+			e.logger.Warn("Failed to find files in module",
+				"module", mod.RootPath,
+				"error", err.Error(),
+			)
 			continue
 		}
 

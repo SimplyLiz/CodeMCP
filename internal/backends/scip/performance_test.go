@@ -1,8 +1,8 @@
 package scip
 
 import (
-t"io"
-t"log/slog"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -21,9 +21,6 @@ func getTestAdapter(t *testing.T) *SCIPAdapter {
 	cfg.RepoRoot = repoRoot
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
 
 	adapter, err := NewSCIPAdapter(cfg, logger)
 	if err != nil {

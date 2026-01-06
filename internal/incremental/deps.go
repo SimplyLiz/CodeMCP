@@ -230,10 +230,10 @@ func (t *DependencyTracker) InvalidateDependents(changedFiles []string) (int, er
 		enqueued += count
 	}
 
-	t.logger.Info("Enqueued dependents for rescan", map[string]interface{}{
-		"changedFiles": len(changedFiles),
-		"enqueued":     enqueued,
-	})
+	t.logger.Info("Enqueued dependents for rescan",
+		"changedFiles", len(changedFiles),
+		"enqueued", enqueued,
+	)
 
 	return enqueued, nil
 }
@@ -295,10 +295,10 @@ func (t *DependencyTracker) DrainRescanQueue(rescanFunc func(filePath string) er
 		// Check file budget
 		if t.config.MaxRescanFiles > 0 && result.FilesProcessed >= t.config.MaxRescanFiles {
 			result.BudgetExceeded = true
-			t.logger.Info("Rescan file budget exceeded", map[string]interface{}{
-				"processed": result.FilesProcessed,
-				"budget":    t.config.MaxRescanFiles,
-			})
+			t.logger.Info("Rescan file budget exceeded",
+				"processed", result.FilesProcessed,
+				"budget", t.config.MaxRescanFiles,
+			)
 			break
 		}
 
@@ -307,10 +307,10 @@ func (t *DependencyTracker) DrainRescanQueue(rescanFunc func(filePath string) er
 			elapsed := time.Since(startTime)
 			if elapsed.Milliseconds() >= int64(t.config.MaxRescanMs) {
 				result.BudgetExceeded = true
-				t.logger.Info("Rescan time budget exceeded", map[string]interface{}{
-					"elapsed":  elapsed.String(),
-					"budgetMs": t.config.MaxRescanMs,
-				})
+				t.logger.Info("Rescan time budget exceeded",
+					"elapsed", elapsed.String(),
+					"budgetMs", t.config.MaxRescanMs,
+				)
 				break
 			}
 		}
@@ -330,18 +330,18 @@ func (t *DependencyTracker) DrainRescanQueue(rescanFunc func(filePath string) er
 		// Rescan the file
 		if err := rescanFunc(entry.FilePath); err != nil {
 			// Log error but continue with other files
-			t.logger.Warn("Rescan failed", map[string]interface{}{
-				"file":  entry.FilePath,
-				"error": err.Error(),
-			})
+			t.logger.Warn("Rescan failed",
+				"file", entry.FilePath,
+				"error", err.Error(),
+			)
 			// Mark as failed this run to skip in subsequent iterations
 			failedThisRun[entry.FilePath] = true
 			// Increment attempts instead of removing
 			if err := t.IncrementAttempts(entry.FilePath); err != nil {
-				t.logger.Warn("Failed to increment attempts", map[string]interface{}{
-					"file":  entry.FilePath,
-					"error": err.Error(),
-				})
+				t.logger.Warn("Failed to increment attempts",
+					"file", entry.FilePath,
+					"error", err.Error(),
+				)
 			}
 			continue
 		}
@@ -356,12 +356,12 @@ func (t *DependencyTracker) DrainRescanQueue(rescanFunc func(filePath string) er
 
 	result.Duration = time.Since(startTime)
 
-	t.logger.Info("Rescan queue drain complete", map[string]interface{}{
-		"processed":      result.FilesProcessed,
-		"queueDrained":   result.QueueDrained,
-		"budgetExceeded": result.BudgetExceeded,
-		"duration":       result.Duration.String(),
-	})
+	t.logger.Info("Rescan queue drain complete",
+		"processed", result.FilesProcessed,
+		"queueDrained", result.QueueDrained,
+		"budgetExceeded", result.BudgetExceeded,
+		"duration", result.Duration.String(),
+	)
 
 	return result, nil
 }

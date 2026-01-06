@@ -13,9 +13,9 @@ import (
 
 // toolListFederations lists all federations
 func (s *MCPServer) toolListFederations(params map[string]interface{}) (*envelope.Response, error) {
-	s.logger.Debug("Executing listFederations", map[string]interface{}{
-		"params": params,
-	})
+	s.logger.Debug("Executing listFederations",
+		"params", params,
+	)
 
 	names, err := federation.List()
 	if err != nil {
@@ -38,9 +38,9 @@ func (s *MCPServer) toolFederationStatus(params map[string]interface{}) (*envelo
 		return nil, errors.NewInvalidParameterError("federation", "")
 	}
 
-	s.logger.Debug("Executing federationStatus", map[string]interface{}{
-		"federation": fedName,
-	})
+	s.logger.Debug("Executing federationStatus",
+		"federation", fedName,
+	)
 
 	// Check existence
 	exists, err := federation.Exists(fedName)
@@ -111,10 +111,10 @@ func (s *MCPServer) toolFederationRepos(params map[string]interface{}) (*envelop
 
 	includeCompat, _ := params["includeCompatibility"].(bool)
 
-	s.logger.Debug("Executing federationRepos", map[string]interface{}{
-		"federation":           fedName,
-		"includeCompatibility": includeCompat,
-	})
+	s.logger.Debug("Executing federationRepos",
+		"federation", fedName,
+		"includeCompatibility", includeCompat,
+	)
 
 	// Open federation
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -158,11 +158,11 @@ func (s *MCPServer) toolFederationSearchModules(params map[string]interface{}) (
 		limit = int(l)
 	}
 
-	s.logger.Debug("Executing federationSearchModules", map[string]interface{}{
-		"federation": fedName,
-		"query":      query,
-		"limit":      limit,
-	})
+	s.logger.Debug("Executing federationSearchModules",
+		"federation", fedName,
+		"query", query,
+		"limit", limit,
+	)
 
 	// Open federation
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -220,11 +220,11 @@ func (s *MCPServer) toolFederationSearchOwnership(params map[string]interface{})
 		limit = int(l)
 	}
 
-	s.logger.Debug("Executing federationSearchOwnership", map[string]interface{}{
-		"federation": fedName,
-		"path":       pathGlob,
-		"limit":      limit,
-	})
+	s.logger.Debug("Executing federationSearchOwnership",
+		"federation", fedName,
+		"path", pathGlob,
+		"limit", limit,
+	)
 
 	// Open federation
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -276,11 +276,11 @@ func (s *MCPServer) toolFederationGetHotspots(params map[string]interface{}) (*e
 		minScore = m
 	}
 
-	s.logger.Debug("Executing federationGetHotspots", map[string]interface{}{
-		"federation": fedName,
-		"top":        top,
-		"minScore":   minScore,
-	})
+	s.logger.Debug("Executing federationGetHotspots",
+		"federation", fedName,
+		"top", top,
+		"minScore", minScore,
+	)
 
 	// Open federation
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -330,12 +330,12 @@ func (s *MCPServer) toolFederationSearchDecisions(params map[string]interface{})
 		limit = int(l)
 	}
 
-	s.logger.Debug("Executing federationSearchDecisions", map[string]interface{}{
-		"federation": fedName,
-		"query":      query,
-		"module":     affectedModule,
-		"limit":      limit,
-	})
+	s.logger.Debug("Executing federationSearchDecisions",
+		"federation", fedName,
+		"query", query,
+		"module", affectedModule,
+		"limit", limit,
+	)
 
 	// Open federation
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -391,11 +391,11 @@ func (s *MCPServer) toolFederationSync(params map[string]interface{}) (*envelope
 	force, _ := params["force"].(bool)
 	dryRun, _ := params["dryRun"].(bool)
 
-	s.logger.Debug("Executing federationSync", map[string]interface{}{
-		"federation": fedName,
-		"force":      force,
-		"dryRun":     dryRun,
-	})
+	s.logger.Debug("Executing federationSync",
+		"federation", fedName,
+		"force", force,
+		"dryRun", dryRun,
+	)
 
 	// Open federation
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))

@@ -14,7 +14,7 @@ import (
 
 // toolListRepos lists all registered repositories
 func (s *MCPServer) toolListRepos(params map[string]interface{}) (*envelope.Response, error) {
-	s.logger.Debug("Executing listRepos", nil)
+	s.logger.Debug("Executing listRepos")
 
 	if !s.IsMultiRepoMode() {
 		return nil, &MCPError{
@@ -66,9 +66,9 @@ func (s *MCPServer) toolListRepos(params map[string]interface{}) (*envelope.Resp
 
 // toolSwitchRepo switches to a different repository
 func (s *MCPServer) toolSwitchRepo(params map[string]interface{}) (*envelope.Response, error) {
-	s.logger.Debug("Executing switchRepo", map[string]interface{}{
-		"params": params,
-	})
+	s.logger.Debug("Executing switchRepo",
+		"params", params,
+	)
 
 	if !s.IsMultiRepoMode() {
 		return nil, &MCPError{
@@ -122,10 +122,10 @@ func (s *MCPServer) toolSwitchRepo(params map[string]interface{}) (*envelope.Res
 		existingEntry.lastUsed = time.Now()
 		s.activeRepo = name
 		s.activeRepoPath = entry.Path
-		s.logger.Info("Switched to existing engine", map[string]interface{}{
-			"repo": name,
-			"path": entry.Path,
-		})
+		s.logger.Info("Switched to existing engine",
+			"repo", name,
+			"path", entry.Path,
+		)
 		return OperationalResponse(map[string]interface{}{
 			"success":    true,
 			"activeRepo": name,
@@ -157,11 +157,11 @@ func (s *MCPServer) toolSwitchRepo(params map[string]interface{}) (*envelope.Res
 	// Update last used in registry
 	_ = registry.TouchLastUsed(name)
 
-	s.logger.Info("Created new engine and switched", map[string]interface{}{
-		"repo":        name,
-		"path":        entry.Path,
-		"totalLoaded": len(s.engines),
-	})
+	s.logger.Info("Created new engine and switched",
+		"repo", name,
+		"path", entry.Path,
+		"totalLoaded", len(s.engines),
+	)
 
 	return OperationalResponse(map[string]interface{}{
 		"success":    true,
@@ -172,7 +172,7 @@ func (s *MCPServer) toolSwitchRepo(params map[string]interface{}) (*envelope.Res
 
 // toolGetActiveRepo returns information about the currently active repository
 func (s *MCPServer) toolGetActiveRepo(params map[string]interface{}) (*envelope.Response, error) {
-	s.logger.Debug("Executing getActiveRepo", nil)
+	s.logger.Debug("Executing getActiveRepo")
 
 	if !s.IsMultiRepoMode() {
 		return nil, &MCPError{
@@ -223,11 +223,11 @@ func (s *MCPServer) evictLRULocked() {
 
 	if victim != "" {
 		entry := s.engines[victim]
-		s.logger.Info("Evicting LRU engine", map[string]interface{}{
-			"repo":     entry.repoName,
-			"path":     entry.repoPath,
-			"lastUsed": entry.lastUsed,
-		})
+		s.logger.Info("Evicting LRU engine",
+			"repo", entry.repoName,
+			"path", entry.repoPath,
+			"lastUsed", entry.lastUsed,
+		)
 		// Wait for any in-flight operations
 		entry.activeOps.Wait()
 		// Close the engine

@@ -1,13 +1,11 @@
 package auth
 
 import (
-t"io"
-t"log/slog"
 	"database/sql"
-	"os"
+	"io"
+	"log/slog"
 	"testing"
 	"time"
-
 
 	_ "modernc.org/sqlite" // Pure Go SQLite driver
 )
@@ -15,10 +13,6 @@ t"log/slog"
 // testLogger returns a silent logger for tests
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
-		Level:  logging.DebugLevel,
-		Format: logging.JSONFormat,
-		Output: os.Stderr,
-	})
 }
 
 // testDB creates an in-memory SQLite database for testing

@@ -1,9 +1,9 @@
 package architecture
 
 import (
-t"io"
-t"log/slog"
 	"context"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -49,9 +49,6 @@ func main() {
 
 	// Create logger
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.DebugLevel,
-	})
 
 	// Create import scanner
 	importScanner := modules.NewImportScanner(&cfg.ImportScan, logger)

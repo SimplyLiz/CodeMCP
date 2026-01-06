@@ -112,7 +112,7 @@ func TestMapSymbolKind(t *testing.T) {
 }
 
 func TestNewSCIPExtractor(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Test with relative path
 	ext := NewSCIPExtractor("/repo", ".scip/index.scip", logger)
@@ -129,7 +129,7 @@ func TestNewSCIPExtractor(t *testing.T) {
 }
 
 func TestNewSCIPExtractor_AbsolutePath(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Test with absolute path
 	ext := NewSCIPExtractor("/repo", "/custom/path/index.scip", logger)
@@ -251,7 +251,7 @@ func TestExtractFileDelta(t *testing.T) {
 		t.Fatalf("failed to write test file: %v", err)
 	}
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	ext := NewSCIPExtractor(tmpDir, ".scip/index.scip", logger)
 
 	// Create a mock SCIP document
@@ -321,7 +321,7 @@ func TestExtractFileDelta_Rename(t *testing.T) {
 		t.Fatalf("failed to write test file: %v", err)
 	}
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	ext := NewSCIPExtractor(tmpDir, ".scip/index.scip", logger)
 
 	doc := &scip.Document{
@@ -498,7 +498,7 @@ func TestIsCallable(t *testing.T) {
 }
 
 func TestResolveCallerSymbol(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	ext := NewSCIPExtractor("/repo", ".scip/index.scip", logger)
 
 	symbols := []Symbol{
@@ -533,7 +533,7 @@ func TestResolveCallerSymbol(t *testing.T) {
 }
 
 func TestResolveCallerSymbol_InferredEndLine(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	ext := NewSCIPExtractor("/repo", ".scip/index.scip", logger)
 
 	// Symbols without explicit EndLine (EndLine == StartLine or 0)
@@ -576,7 +576,7 @@ func TestExtractFileDelta_CallEdges(t *testing.T) {
 		t.Fatalf("failed to write test file: %v", err)
 	}
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	ext := NewSCIPExtractor(tmpDir, ".scip/index.scip", logger)
 
 	// Create a document with a function definition and a call
@@ -628,7 +628,7 @@ func TestExtractFileDelta_CallEdges(t *testing.T) {
 // Multi-language support tests (v7.6)
 
 func TestIsIndexerInstalled(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	ext := NewSCIPExtractor("/repo", ".scip/index.scip", logger)
 
 	tests := []struct {
@@ -669,7 +669,7 @@ func TestRunIndexer_CreatesOutputDirectory(t *testing.T) {
 	// Use a nested output path that doesn't exist
 	outputPath := filepath.Join(tmpDir, "nested", "deep", "index.scip")
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	ext := NewSCIPExtractor(tmpDir, outputPath, logger)
 
 	config := project.GetIndexerConfig(project.LangGo)
@@ -695,7 +695,7 @@ func TestRunSCIPGo_Deprecated(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	ext := NewSCIPExtractor(tmpDir, ".scip/index.scip", logger)
 
 	// RunSCIPGo should call RunIndexer internally
@@ -835,7 +835,7 @@ func TestRunIndexer_FixedOutputPath(t *testing.T) {
 
 	// Configure extractor to use a different output path
 	configuredOutput := filepath.Join(tmpDir, ".scip", "index.scip")
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	ext := NewSCIPExtractor(tmpDir, configuredOutput, logger)
 
 	// Create a mock IndexerConfig that simulates a fixed-output indexer
@@ -882,7 +882,7 @@ func TestRunIndexer_FixedOutputSamePath(t *testing.T) {
 		t.Fatalf("failed to create mock fixed output: %v", err)
 	}
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	ext := NewSCIPExtractor(tmpDir, fixedOutputPath, logger)
 
 	config := &project.IndexerConfig{
@@ -908,7 +908,7 @@ func TestRunIndexer_CommandFailure(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	ext := NewSCIPExtractor(tmpDir, filepath.Join(tmpDir, ".scip", "index.scip"), logger)
 
 	config := &project.IndexerConfig{
@@ -928,7 +928,7 @@ func TestRunIndexer_CommandFailure(t *testing.T) {
 
 func TestRunIndexer_OutputDirectoryCreationFailure(t *testing.T) {
 	// Test error handling when output directory can't be created
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Use a path that can't be created (nested under a file)
 	tmpDir, err := os.MkdirTemp("", "extractor-dirfail-test")

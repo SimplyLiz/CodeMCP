@@ -1,10 +1,10 @@
 package architecture_test
 
 import (
-t"io"
-t"log/slog"
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -55,9 +55,6 @@ func TestArchitectureIntegration(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
 
 	db, err := storage.Open(repoRoot, logger)
 	if err != nil {
@@ -129,9 +126,6 @@ func TestModuleDetection(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.DebugLevel,
-	})
 
 	result, err := modules.DetectModules(".", cfg.Modules.Roots, cfg.Modules.Ignore, "test", logger)
 	if err != nil {

@@ -47,11 +47,11 @@ func (c *AliasCreator) CreateAliasesOnRefresh(
 		}
 	}
 
-	c.logger.Debug("analyzing symbol changes", map[string]interface{}{
-		"old_count":  len(oldMappings),
-		"new_count":  len(newMappings),
-		"repo_state": repoStateId,
-	})
+	c.logger.Debug("analyzing symbol changes",
+		"old_count", len(oldMappings),
+		"new_count", len(newMappings),
+		"repo_state", repoStateId,
+	)
 
 	aliasCount := 0
 	tombstoneCount := 0
@@ -80,28 +80,28 @@ func (c *AliasCreator) CreateAliasesOnRefresh(
 					}
 
 					if err := c.createAlias(alias); err != nil {
-						c.logger.Error("failed to create alias", map[string]interface{}{
-							"old_id": old.StableId,
-							"new_id": newSymbol.StableId,
-							"error":  err.Error(),
-						})
+						c.logger.Error("failed to create alias",
+							"old_id", old.StableId,
+							"new_id", newSymbol.StableId,
+							"error", err.Error(),
+						)
 						return fmt.Errorf("failed to create alias: %w", err)
 					}
 
 					// Mark old symbol as deleted since it was renamed
 					repo := NewSymbolRepository(c.db, c.logger)
 					if err := repo.MarkDeleted(old.StableId, repoStateId); err != nil {
-						c.logger.Warn("failed to mark renamed symbol as deleted", map[string]interface{}{
-							"stable_id": old.StableId,
-							"error":     err.Error(),
-						})
+						c.logger.Warn("failed to mark renamed symbol as deleted",
+							"stable_id", old.StableId,
+							"error", err.Error(),
+						)
 					}
 
-					c.logger.Info("created alias (backend ID match)", map[string]interface{}{
-						"old_id":     old.StableId,
-						"new_id":     newSymbol.StableId,
-						"backend_id": old.BackendStableId,
-					})
+					c.logger.Info("created alias (backend ID match)",
+						"old_id", old.StableId,
+						"new_id", newSymbol.StableId,
+						"backend_id", old.BackendStableId,
+					)
 
 					aliasCount++
 					continue
@@ -123,29 +123,29 @@ func (c *AliasCreator) CreateAliasesOnRefresh(
 			}
 
 			if err := c.createAlias(alias); err != nil {
-				c.logger.Error("failed to create fuzzy alias", map[string]interface{}{
-					"old_id":     old.StableId,
-					"new_id":     fuzzyMatch.Mapping.StableId,
-					"confidence": fuzzyMatch.Confidence,
-					"error":      err.Error(),
-				})
+				c.logger.Error("failed to create fuzzy alias",
+					"old_id", old.StableId,
+					"new_id", fuzzyMatch.Mapping.StableId,
+					"confidence", fuzzyMatch.Confidence,
+					"error", err.Error(),
+				)
 				return fmt.Errorf("failed to create fuzzy alias: %w", err)
 			}
 
 			// Mark old symbol as deleted since it was matched
 			repo := NewSymbolRepository(c.db, c.logger)
 			if err := repo.MarkDeleted(old.StableId, repoStateId); err != nil {
-				c.logger.Warn("failed to mark fuzzy-matched symbol as deleted", map[string]interface{}{
-					"stable_id": old.StableId,
-					"error":     err.Error(),
-				})
+				c.logger.Warn("failed to mark fuzzy-matched symbol as deleted",
+					"stable_id", old.StableId,
+					"error", err.Error(),
+				)
 			}
 
-			c.logger.Info("created alias (fuzzy match)", map[string]interface{}{
-				"old_id":     old.StableId,
-				"new_id":     fuzzyMatch.Mapping.StableId,
-				"confidence": fuzzyMatch.Confidence,
-			})
+			c.logger.Info("created alias (fuzzy match)",
+				"old_id", old.StableId,
+				"new_id", fuzzyMatch.Mapping.StableId,
+				"confidence", fuzzyMatch.Confidence,
+			)
 
 			aliasCount++
 			continue
@@ -154,25 +154,25 @@ func (c *AliasCreator) CreateAliasesOnRefresh(
 		// No match found - mark as deleted (tombstone)
 		repo := NewSymbolRepository(c.db, c.logger)
 		if err := repo.MarkDeleted(old.StableId, repoStateId); err != nil {
-			c.logger.Error("failed to mark symbol as deleted", map[string]interface{}{
-				"stable_id": old.StableId,
-				"error":     err.Error(),
-			})
+			c.logger.Error("failed to mark symbol as deleted",
+				"stable_id", old.StableId,
+				"error", err.Error(),
+			)
 			return fmt.Errorf("failed to mark symbol as deleted: %w", err)
 		}
 
-		c.logger.Debug("marked symbol as deleted", map[string]interface{}{
-			"stable_id": old.StableId,
-		})
+		c.logger.Debug("marked symbol as deleted",
+			"stable_id", old.StableId,
+		)
 
 		tombstoneCount++
 	}
 
-	c.logger.Info("alias refresh complete", map[string]interface{}{
-		"aliases_created":    aliasCount,
-		"tombstones_created": tombstoneCount,
-		"repo_state":         repoStateId,
-	})
+	c.logger.Info("alias refresh complete",
+		"aliases_created", aliasCount,
+		"tombstones_created", tombstoneCount,
+		"repo_state", repoStateId,
+	)
 
 	return nil
 }

@@ -1,8 +1,8 @@
 package git
 
 import (
-t"io"
-t"log/slog"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -36,9 +36,6 @@ func setupTestAdapter(t *testing.T) *GitAdapter {
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.DebugLevel,
-	})
 
 	adapter, err := NewGitAdapter(cfg, logger)
 	if err != nil {

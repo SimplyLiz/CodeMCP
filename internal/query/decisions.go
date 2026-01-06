@@ -105,10 +105,10 @@ func (e *Engine) RecordDecision(input *RecordDecisionInput) (*DecisionResult, er
 
 	if err := decisionRepo.Create(record); err != nil {
 		// File was created, but DB failed - log warning but don't fail
-		e.logger.Warn("ADR file created but database storage failed", map[string]interface{}{
-			"id":    adr.ID,
-			"error": err.Error(),
-		})
+		e.logger.Warn("ADR file created but database storage failed",
+			"id", adr.ID,
+			"error", err.Error(),
+		)
 	}
 
 	return &DecisionResult{
@@ -353,10 +353,10 @@ func (e *Engine) UpdateDecisionStatus(id string, newStatus string) (*DecisionRes
 	record.Status = newStatus
 	record.UpdatedAt = time.Now()
 	if err := decisionRepo.Update(record); err != nil {
-		e.logger.Warn("ADR file updated but database update failed", map[string]interface{}{
-			"id":    id,
-			"error": err.Error(),
-		})
+		e.logger.Warn("ADR file updated but database update failed",
+			"id", id,
+			"error", err.Error(),
+		)
 	}
 
 	return &DecisionResult{
@@ -407,10 +407,10 @@ func (e *Engine) SyncDecisionsFromFiles() (int, error) {
 			}
 
 			if err := decisionRepo.Upsert(record); err != nil {
-				e.logger.Warn("Failed to sync ADR to database", map[string]interface{}{
-					"id":    adr.ID,
-					"error": err.Error(),
-				})
+				e.logger.Warn("Failed to sync ADR to database",
+					"id", adr.ID,
+					"error", err.Error(),
+				)
 				continue
 			}
 			synced++

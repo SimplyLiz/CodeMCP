@@ -77,19 +77,19 @@ func (g *ArchitectureGenerator) Generate(ctx context.Context, repoStateId string
 	// Check cache first unless refresh is requested
 	if !opts.Refresh {
 		if cached, found := g.cache.Get(repoStateId); found {
-			g.logger.Debug("Using cached architecture", map[string]interface{}{
-				"repoStateId": repoStateId,
-				"age":         time.Since(cached.ComputedAt).Seconds(),
-			})
+			g.logger.Debug("Using cached architecture",
+				"repoStateId", repoStateId,
+				"age", time.Since(cached.ComputedAt).Seconds(),
+			)
 			return cached.Response, nil
 		}
 	}
 
-	g.logger.Info("Generating architecture view", map[string]interface{}{
-		"repoStateId":         repoStateId,
-		"includeExternalDeps": opts.IncludeExternalDeps,
-		"depth":               opts.Depth,
-	})
+	g.logger.Info("Generating architecture view",
+		"repoStateId", repoStateId,
+		"includeExternalDeps", opts.IncludeExternalDeps,
+		"depth", opts.Depth,
+	)
 
 	// Step 1: Detect modules
 	detectionResult, err := modules.DetectModules(
@@ -103,17 +103,17 @@ func (g *ArchitectureGenerator) Generate(ctx context.Context, repoStateId string
 		return nil, fmt.Errorf("module detection failed: %w", err)
 	}
 
-	g.logger.Debug("Detected modules", map[string]interface{}{
-		"count":  len(detectionResult.Modules),
-		"method": detectionResult.DetectionMethod,
-	})
+	g.logger.Debug("Detected modules",
+		"count", len(detectionResult.Modules),
+		"method", detectionResult.DetectionMethod,
+	)
 
 	// Check module count limit
 	if limitErr := g.limits.checkModuleCount(len(detectionResult.Modules)); limitErr != nil {
-		g.logger.Warn("Module count exceeds limit, truncating", map[string]interface{}{
-			"detected": len(detectionResult.Modules),
-			"limit":    g.limits.MaxModules,
-		})
+		g.logger.Warn("Module count exceeds limit, truncating",
+			"detected", len(detectionResult.Modules),
+			"limit", g.limits.MaxModules,
+		)
 		detectionResult.Modules = detectionResult.Modules[:g.limits.MaxModules]
 	}
 
@@ -151,12 +151,12 @@ func (g *ArchitectureGenerator) Generate(ctx context.Context, repoStateId string
 	g.cache.Set(repoStateId, response)
 
 	duration := time.Since(startTime)
-	g.logger.Info("Architecture generation completed", map[string]interface{}{
-		"durationMs":   duration.Milliseconds(),
-		"modules":      len(moduleSummaries),
-		"dependencies": len(dependencyGraph),
-		"entrypoints":  len(entrypoints),
-	})
+	g.logger.Info("Architecture generation completed",
+		"durationMs", duration.Milliseconds(),
+		"modules", len(moduleSummaries),
+		"dependencies", len(dependencyGraph),
+		"entrypoints", len(entrypoints),
+	)
 
 	return response, nil
 }
@@ -180,10 +180,10 @@ func (g *ArchitectureGenerator) scanImportsForModules(ctx context.Context, mods 
 			g.config.Modules.Ignore,
 		)
 		if err != nil {
-			g.logger.Warn("Failed to scan imports for module", map[string]interface{}{
-				"moduleId": mod.ID,
-				"error":    err.Error(),
-			})
+			g.logger.Warn("Failed to scan imports for module",
+				"moduleId", mod.ID,
+				"error", err.Error(),
+			)
 			continue
 		}
 

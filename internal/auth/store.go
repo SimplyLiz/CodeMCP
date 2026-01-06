@@ -124,10 +124,10 @@ func (s *KeyStore) Save(key *APIKey) error {
 		return fmt.Errorf("insert key: %w", err)
 	}
 
-	s.logger.Debug("API key saved", map[string]interface{}{
-		"key_id":   key.ID,
-		"key_name": key.Name,
-	})
+	s.logger.Debug("API key saved",
+		"key_id", key.ID,
+		"key_name", key.Name,
+	)
 
 	return nil
 }

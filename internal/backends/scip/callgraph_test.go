@@ -1,9 +1,9 @@
 package scip
 
 import (
-t"io"
-t"log/slog"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -39,9 +39,6 @@ func TestFindCallers(t *testing.T) {
 	cfg.RepoRoot = repoRoot
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.DebugLevel,
-	})
 
 	adapter, err := NewSCIPAdapter(cfg, logger)
 	if err != nil {
@@ -161,9 +158,6 @@ func TestCallGraph(t *testing.T) {
 	cfg.RepoRoot = repoRoot
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.DebugLevel,
-	})
 
 	adapter, err := NewSCIPAdapter(cfg, logger)
 	if err != nil {
@@ -226,9 +220,6 @@ func TestCountSymbolsByPath(t *testing.T) {
 	cfg.RepoRoot = repoRoot
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.DebugLevel,
-	})
 
 	adapter, err := NewSCIPAdapter(cfg, logger)
 	if err != nil {

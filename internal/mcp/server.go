@@ -179,21 +179,21 @@ func (s *MCPServer) SetActiveRepo(name, path string, engine *query.Engine) {
 
 // Start starts the MCP server and begins processing messages
 func (s *MCPServer) Start() error {
-	s.logger.Info("MCP server starting", map[string]interface{}{
-		"version": s.version,
-	})
+	s.logger.Info("MCP server starting",
+		"version", s.version,
+	)
 
 	// Main message loop
 	for {
 		msg, err := s.readMessage()
 		if err != nil {
 			if err == io.EOF {
-				s.logger.Info("MCP server shutting down (EOF)", nil)
+				s.logger.Info("MCP server shutting down (EOF)")
 				return nil
 			}
-			s.logger.Error("Error reading message", map[string]interface{}{
-				"error": err.Error(),
-			})
+			s.logger.Error("Error reading message",
+				"error", err.Error(),
+			)
 
 			// Try to send error response if we can extract an ID
 			if msg != nil && msg.Id != nil {
@@ -208,9 +208,9 @@ func (s *MCPServer) Start() error {
 		// Write response if one was generated (notifications don't generate responses)
 		if response != nil {
 			if err := s.writeMessage(response); err != nil {
-				s.logger.Error("Error writing response", map[string]interface{}{
-					"error": err.Error(),
-				})
+				s.logger.Error("Error writing response",
+					"error", err.Error(),
+				)
 			}
 		}
 	}
@@ -239,9 +239,9 @@ func (s *MCPServer) SetPreset(preset string) error {
 	s.activePreset = preset
 	s.updateToolsetHashLocked()
 
-	s.logger.Info("Preset changed", map[string]interface{}{
-		"preset": preset,
-	})
+	s.logger.Info("Preset changed",
+		"preset", preset,
+	)
 
 	return nil
 }

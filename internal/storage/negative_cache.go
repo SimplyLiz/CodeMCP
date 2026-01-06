@@ -118,10 +118,10 @@ func (m *NegativeCacheManager) CacheError(key string, errorType NegativeCacheErr
 	// Note: Preemptive warmup was considered but not implemented.
 	// SQLite + incremental indexing makes cold-cache scenarios fast enough.
 	if ShouldTriggerWarmup(errorType) {
-		m.cache.db.logger.Info("Warmup-eligible error cached", map[string]interface{}{
-			"error_type": errorType,
-			"key":        key,
-		})
+		m.cache.db.logger.Info("Warmup-eligible error cached",
+			"error_type", errorType,
+			"key", key,
+		)
 	}
 
 	return nil
@@ -136,10 +136,10 @@ func (m *NegativeCacheManager) CheckError(key string, stateID string) (*Negative
 	}
 
 	if entry != nil {
-		m.cache.db.logger.Debug("Negative cache hit", map[string]interface{}{
-			"key":        key,
-			"error_type": entry.ErrorType,
-		})
+		m.cache.db.logger.Debug("Negative cache hit",
+			"key", key,
+			"error_type", entry.ErrorType,
+		)
 	}
 
 	return entry, nil

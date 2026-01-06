@@ -1,9 +1,9 @@
 package lsp
 
 import (
-t"io"
-t"log/slog"
 	"context"
+	"io"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -91,9 +91,6 @@ func TestSupervisorCapacity(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.LspSupervisor.MaxTotalProcesses = 3
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
 
 	supervisor := NewLspSupervisor(cfg, logger)
 	defer func() { _ = supervisor.Shutdown() }()
@@ -114,9 +111,6 @@ func TestQueueStats(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.LspSupervisor.QueueSizePerLanguage = 10
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
 
 	supervisor := NewLspSupervisor(cfg, logger)
 	defer func() { _ = supervisor.Shutdown() }()
@@ -133,9 +127,6 @@ func TestRejectFastThreshold(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.LspSupervisor.QueueSizePerLanguage = 10
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
 
 	supervisor := NewLspSupervisor(cfg, logger)
 	defer func() { _ = supervisor.Shutdown() }()
@@ -150,9 +141,6 @@ func TestRejectFastThreshold(t *testing.T) {
 func TestGetInFlightCount(t *testing.T) {
 	cfg := config.DefaultConfig()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
 
 	supervisor := NewLspSupervisor(cfg, logger)
 	defer func() { _ = supervisor.Shutdown() }()
@@ -168,9 +156,6 @@ func TestGetInFlightCount(t *testing.T) {
 func TestWaitForQueueEmpty(t *testing.T) {
 	cfg := config.DefaultConfig()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
 
 	supervisor := NewLspSupervisor(cfg, logger)
 	defer func() { _ = supervisor.Shutdown() }()
@@ -186,9 +171,6 @@ func TestWaitForQueueEmpty(t *testing.T) {
 func TestBackoffCapping(t *testing.T) {
 	cfg := config.DefaultConfig()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
 
 	supervisor := NewLspSupervisor(cfg, logger)
 	defer func() { _ = supervisor.Shutdown() }()
@@ -206,9 +188,6 @@ func TestBackoffCapping(t *testing.T) {
 func TestLspAdapterCapabilities(t *testing.T) {
 	cfg := config.DefaultConfig()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
 
 	supervisor := NewLspSupervisor(cfg, logger)
 	defer func() { _ = supervisor.Shutdown() }()
@@ -304,9 +283,6 @@ func TestSymbolKindConversionUnknown(t *testing.T) {
 func TestHealthCheckNonExistentLanguage(t *testing.T) {
 	cfg := config.DefaultConfig()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
 
 	supervisor := NewLspSupervisor(cfg, logger)
 	defer func() { _ = supervisor.Shutdown() }()
@@ -321,9 +297,6 @@ func TestHealthCheckNonExistentLanguage(t *testing.T) {
 func TestSupervisorShutdown(t *testing.T) {
 	cfg := config.DefaultConfig()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
 
 	supervisor := NewLspSupervisor(cfg, logger)
 
@@ -359,9 +332,6 @@ func TestProcessShutdown(t *testing.T) {
 func TestEvictionWithNoProcesses(t *testing.T) {
 	cfg := config.DefaultConfig()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
 
 	supervisor := NewLspSupervisor(cfg, logger)
 	defer func() { _ = supervisor.Shutdown() }()
@@ -377,9 +347,6 @@ func TestEvictionWithNoProcesses(t *testing.T) {
 func TestClearQueueNonExistent(t *testing.T) {
 	cfg := config.DefaultConfig()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
 
 	supervisor := NewLspSupervisor(cfg, logger)
 	defer func() { _ = supervisor.Shutdown() }()
@@ -392,9 +359,6 @@ func TestClearQueueNonExistent(t *testing.T) {
 func TestContextCancellation(t *testing.T) {
 	cfg := config.DefaultConfig()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
 
 	supervisor := NewLspSupervisor(cfg, logger)
 	defer func() { _ = supervisor.Shutdown() }()

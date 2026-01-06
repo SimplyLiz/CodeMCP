@@ -118,11 +118,11 @@ func runDiff(cmd *cobra.Command, args []string) {
 				fmt.Fprintf(os.Stderr, "Error writing output: %v\n", err)
 				os.Exit(1)
 			}
-			logger.Debug("Delta written", map[string]interface{}{
-				"path":     diffOutputPath,
-				"size":     len(data),
-				"duration": time.Since(start).Milliseconds(),
-			})
+			logger.Debug("Delta written",
+				"path", diffOutputPath,
+				"size", len(data),
+				"duration", time.Since(start).Milliseconds(),
+			)
 		} else {
 			fmt.Println(string(data))
 		}

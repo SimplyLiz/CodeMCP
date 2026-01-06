@@ -289,10 +289,7 @@ func setupTestDetector(t *testing.T) (*ChangeDetector, *Store, string, func()) {
 	}
 
 	// Create logger
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Open database
 	db, err := storage.Open(tmpDir, logger)
@@ -354,7 +351,7 @@ func TestNewChangeDetector_NilConfig(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Pass nil config
 	detector := NewChangeDetector(tmpDir, nil, nil, logger)

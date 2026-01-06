@@ -127,10 +127,10 @@ func (g *GitAdapter) executeGitCommand(args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = g.repoRoot
 
-	g.logger.Debug("Executing git command", map[string]interface{}{
-		"args":    args,
-		"timeout": g.queryTimeout.String(),
-	})
+	g.logger.Debug("Executing git command",
+		"args", args,
+		"timeout", g.queryTimeout.String(),
+	)
 
 	output, err := cmd.Output()
 	if err != nil {

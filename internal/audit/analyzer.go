@@ -59,10 +59,10 @@ func (a *Analyzer) Analyze(ctx context.Context, opts AuditOptions) (*RiskAnalysi
 	for _, file := range files {
 		item, err := a.analyzeFile(ctx, opts.RepoRoot, file)
 		if err != nil {
-			a.logger.Warn("Failed to analyze file", map[string]interface{}{
-				"file":  file,
-				"error": err.Error(),
-			})
+			a.logger.Warn("Failed to analyze file",
+				"file", file,
+				"error", err.Error(),
+			)
 			continue
 		}
 

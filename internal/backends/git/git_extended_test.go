@@ -1,8 +1,8 @@
 package git
 
 import (
-t"io"
-t"log/slog"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -321,9 +321,6 @@ func TestGitAdapterCreation_NonGitDirectory(t *testing.T) {
 	cfg.RepoRoot = tempDir
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
 
 	_, err = NewGitAdapter(cfg, logger)
 	if err == nil {
@@ -464,9 +461,6 @@ func TestGitAdapter_CustomTimeout(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
 
 	adapter, err := NewGitAdapter(cfg, logger)
 	if err != nil {
@@ -499,9 +493,6 @@ func BenchmarkGetRecentCommits(b *testing.B) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.ErrorLevel,
-	})
 
 	adapter, _ := NewGitAdapter(cfg, logger)
 
@@ -531,9 +522,6 @@ func BenchmarkGetHeadCommit(b *testing.B) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		Format: logging.HumanFormat,
-		Level:  logging.ErrorLevel,
-	})
 
 	adapter, _ := NewGitAdapter(cfg, logger)
 

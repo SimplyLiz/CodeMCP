@@ -1101,7 +1101,7 @@ func TestHandleIndexListRefsPagination(t *testing.T) {
 func createTestServerWithStorage(t *testing.T, tmpDir string) *Server {
 	t.Helper()
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Create actual storage
 	storage, err := NewIndexStorage(tmpDir, logger)
@@ -1561,7 +1561,7 @@ func TestHandleIndexDeltaUploadCommitMismatch(t *testing.T) {
 func TestHandleIndexDeltaUploadNoIndexManager(t *testing.T) {
 	server := &Server{
 		indexManager: nil, // No index manager
-		logger:       logging.NewLogger(logging.Config{Level: logging.ErrorLevel}),
+		logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/index/repos/test/repo/upload/delta", strings.NewReader("{}"))
