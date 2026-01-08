@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"ckb/internal/config"
 	"ckb/internal/index"
 	"ckb/internal/mcp"
 	"ckb/internal/project"
@@ -79,8 +80,10 @@ func runMCP(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create logger for MCP server
-	// Use stderr for logs since stdout is used for MCP protocol
-	logger := slogutil.NewLogger(os.Stderr, slog.LevelInfo)
+	// Writes to file (.ckb/logs/mcp.log) and stderr for errors
+	cliLevel := slogutil.LevelFromVerbosity(verbosity, quiet)
+	logger := slogutil.NewLogger(os.Stderr, cliLevel) // Default to stderr
+	var factory *slogutil.LoggerFactory
 
 	// Validate preset
 	if !mcp.IsValidPreset(mcpPreset) {
@@ -159,6 +162,20 @@ func runMCP(cmd *cobra.Command, args []string) error {
 			)
 			return err
 		}
+	}
+
+	// Set up file logging with LoggerFactory
+	cfg, _ := config.LoadConfig(repoRoot)
+	if cfg == nil {
+		cfg = config.DefaultConfig()
+	}
+	factory = slogutil.NewLoggerFactory(repoRoot, cfg, cliLevel)
+	defer factory.Close()
+
+	// Create tee logger: file + stderr (errors only to stderr)
+	if fileLogger, err := factory.MCPLogger(); err == nil {
+		stderrHandler := slogutil.NewCKBHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})
+		logger = slogutil.NewTeeLogger(fileLogger.Handler(), stderrHandler)
 	}
 
 	// Create server if not already created (legacy single-engine mode)

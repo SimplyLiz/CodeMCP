@@ -31,14 +31,17 @@ func NewDiscardLogger() *slog.Logger {
 
 // LevelFromString converts a string to a slog.Level.
 // Supports: debug, info, warn, error (case-insensitive).
+// Also supports CKB aliases: minimal (warn), standard (info), verbose (between debug and info).
 // Returns slog.LevelInfo for unrecognized strings.
 func LevelFromString(s string) slog.Level {
 	switch strings.ToLower(s) {
 	case "debug":
 		return slog.LevelDebug
-	case "info":
+	case "verbose":
+		return LevelVerbose // Between Debug and Info
+	case "info", "standard":
 		return slog.LevelInfo
-	case "warn", "warning":
+	case "warn", "warning", "minimal":
 		return slog.LevelWarn
 	case "error":
 		return slog.LevelError
@@ -46,6 +49,9 @@ func LevelFromString(s string) slog.Level {
 		return slog.LevelInfo
 	}
 }
+
+// LevelVerbose is between Debug (-4) and Info (0)
+const LevelVerbose = slog.Level(-2)
 
 // LevelFromVerbosity converts CLI verbosity flags to a slog.Level.
 // - quiet=true: returns a level that suppresses all logs

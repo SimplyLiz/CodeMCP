@@ -3,6 +3,7 @@ package paths
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -516,4 +517,101 @@ func GetDaemonInfo() (*DaemonInfo, error) {
 		DBPath:     filepath.Join(daemonDir, DaemonDBFile),
 		SocketPath: filepath.Join(daemonDir, DaemonSocketFile),
 	}, nil
+}
+
+// v8.0 Log Paths
+// These functions manage log file locations for different subsystems
+
+const (
+	// LogsSubdir is the subdirectory for log files
+	LogsSubdir = "logs"
+
+	// Log file names
+	SystemLogFile = "system.log"
+	MCPLogFile    = "mcp.log"
+	APILogFile    = "api.log"
+	IndexLogFile  = "index.log"
+)
+
+// GetGlobalLogsDir returns the global logs directory
+// Path: ~/.ckb/logs/
+func GetGlobalLogsDir() (string, error) {
+	ckbHome, err := GetCKBHome()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(ckbHome, LogsSubdir), nil
+}
+
+// EnsureGlobalLogsDir creates the global logs directory if it doesn't exist
+func EnsureGlobalLogsDir() (string, error) {
+	logsDir, err := GetGlobalLogsDir()
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(logsDir, 0755); err != nil {
+		return "", err
+	}
+	return logsDir, nil
+}
+
+// GetSystemLogPath returns the path to the global system log
+// Path: ~/.ckb/logs/system.log
+func GetSystemLogPath() (string, error) {
+	logsDir, err := GetGlobalLogsDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(logsDir, SystemLogFile), nil
+}
+
+// GetRepoLogsDir returns the logs directory for a specific repository
+// Path: <repoRoot>/.ckb/logs/
+func GetRepoLogsDir(repoRoot string) (string, error) {
+	if repoRoot == "" {
+		return "", fmt.Errorf("repoRoot is required")
+	}
+	return filepath.Join(repoRoot, ".ckb", LogsSubdir), nil
+}
+
+// EnsureRepoLogsDir creates the repo logs directory if it doesn't exist
+func EnsureRepoLogsDir(repoRoot string) (string, error) {
+	logsDir, err := GetRepoLogsDir(repoRoot)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(logsDir, 0755); err != nil {
+		return "", err
+	}
+	return logsDir, nil
+}
+
+// GetMCPLogPath returns the path to the MCP log for a repository
+// Path: <repoRoot>/.ckb/logs/mcp.log
+func GetMCPLogPath(repoRoot string) (string, error) {
+	logsDir, err := GetRepoLogsDir(repoRoot)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(logsDir, MCPLogFile), nil
+}
+
+// GetAPILogPath returns the path to the API log for a repository
+// Path: <repoRoot>/.ckb/logs/api.log
+func GetAPILogPath(repoRoot string) (string, error) {
+	logsDir, err := GetRepoLogsDir(repoRoot)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(logsDir, APILogFile), nil
+}
+
+// GetIndexLogPath returns the path to the index log for a repository
+// Path: <repoRoot>/.ckb/logs/index.log
+func GetIndexLogPath(repoRoot string) (string, error) {
+	logsDir, err := GetRepoLogsDir(repoRoot)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(logsDir, IndexLogFile), nil
 }

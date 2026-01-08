@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
@@ -10,7 +11,9 @@ import (
 	"time"
 
 	"ckb/internal/api"
+	"ckb/internal/config"
 	"ckb/internal/repos"
+	"ckb/internal/slogutil"
 	"ckb/internal/version"
 
 	"github.com/spf13/cobra"
@@ -49,8 +52,12 @@ func init() {
 }
 
 func runServe(cmd *cobra.Command, args []string) error {
-	// Create logger
-	logger := newLogger("human")
+	// Create initial logger (will be replaced with file logger after repoRoot is determined)
+	cliLevel := slogutil.LevelFromVerbosity(verbosity, quiet)
+	if os.Getenv("CKB_DEBUG") == "1" {
+		cliLevel = slog.LevelDebug
+	}
+	logger := slogutil.NewLogger(os.Stderr, cliLevel)
 
 	fmt.Printf("CKB HTTP API Server v%s\n", version.Version)
 
@@ -89,6 +96,20 @@ func runServe(cmd *cobra.Command, args []string) error {
 		if err := os.Chdir(repoRoot); err != nil {
 			return fmt.Errorf("failed to change to repo directory: %w", err)
 		}
+	}
+
+	// Set up file logging with LoggerFactory
+	cfg, _ := config.LoadConfig(repoRoot)
+	if cfg == nil {
+		cfg = config.DefaultConfig()
+	}
+	factory := slogutil.NewLoggerFactory(repoRoot, cfg, cliLevel)
+	defer factory.Close()
+
+	// Create tee logger: file + stderr
+	if fileLogger, err := factory.APILogger(); err == nil {
+		stderrHandler := slogutil.NewCKBHandler(os.Stderr, &slog.HandlerOptions{Level: cliLevel})
+		logger = slogutil.NewTeeLogger(fileLogger.Handler(), stderrHandler)
 	}
 
 	engine := mustGetEngine(repoRoot, logger)
