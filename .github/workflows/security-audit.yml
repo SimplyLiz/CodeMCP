@@ -1,0 +1,279 @@
+name: Security Audit
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop, 'feature/**']
+  schedule:
+    # Run weekly on Monday at 6:00 UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      scan_history:
+        description: 'Scan git history (slower but more thorough)'
+        required: false
+        default: 'false'
+        type: boolean
+      min_severity:
+        description: 'Minimum severity to report'
+        required: false
+        default: 'high'
+        type: choice
+        options:
+          - critical
+          - high
+          - medium
+          - low
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+
+jobs:
+  secret-scan:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: ${{ github.event.inputs.scan_history == 'true' && 0 || 1 }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Build CKB
+        run: go build -o ckb ./cmd/ckb
+
+      - name: Initialize CKB
+        run: ./ckb init
+
+      - name: Scan for secrets (working directory)
+        id: scan_workdir
+        run: |
+          # Determine minimum severity
+          MIN_SEVERITY="${{ github.event.inputs.min_severity || 'high' }}"
+
+          echo "::group::Running secret scan (min severity: $MIN_SEVERITY)"
+
+          # Run scan and capture output
+          # Exclude patterns.go (contains pattern definitions, not real secrets)
+          # Exclude test files (contain test fixtures)
+          ./ckb scan-secrets --min-severity="$MIN_SEVERITY" \
+            --exclude="internal/secrets/patterns.go" \
+            --exclude="*_test.go" \
+            --exclude="testdata/*" \
+            --output=json > secrets-report.json 2>&1 || true
+
+          # Check if any findings
+          FINDINGS=$(jq -r '.summary.totalFindings // 0' secrets-report.json 2>/dev/null || echo "0")
+          echo "findings=$FINDINGS" >> $GITHUB_OUTPUT
+
+          echo "::endgroup::"
+
+          # Display summary
+          if [ "$FINDINGS" -gt 0 ]; then
+            echo "::warning::Found $FINDINGS potential secrets in the codebase"
+            echo ""
+            echo "### Secret Scan Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            jq -r '.summary.bySeverity | to_entries[] | "| \(.key) | \(.value) |"' secrets-report.json >> $GITHUB_STEP_SUMMARY 2>/dev/null || true
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Files affected:** $(jq -r '.summary.filesWithSecrets // 0' secrets-report.json)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "<details><summary>Details</summary>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            jq '.findings[] | {file, line, type, severity, match, rule}' secrets-report.json >> $GITHUB_STEP_SUMMARY 2>/dev/null || true
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Secret Scan Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "✅ No secrets detected" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Scan git history (if enabled)
+        if: github.event.inputs.scan_history == 'true'
+        id: scan_history
+        run: |
+          echo "::group::Scanning git history"
+
+          ./ckb scan-secrets --scope=history --max-commits=100 --min-severity=high --output=json > secrets-history.json 2>&1 || true
+
+          HISTORY_FINDINGS=$(jq -r '.summary.totalFindings // 0' secrets-history.json 2>/dev/null || echo "0")
+          echo "history_findings=$HISTORY_FINDINGS" >> $GITHUB_OUTPUT
+
+          echo "::endgroup::"
+
+          if [ "$HISTORY_FINDINGS" -gt 0 ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Git History Scan" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ Found **$HISTORY_FINDINGS** secrets in git history" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Consider rotating these credentials and using [git-filter-repo](https://github.com/newren/git-filter-repo) to remove them from history." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload scan results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: secret-scan-results
+          path: |
+            secrets-report.json
+            secrets-history.json
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request' && steps.scan_workdir.outputs.findings != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = JSON.parse(fs.readFileSync('secrets-report.json', 'utf8'));
+
+            let body = `## 🔐 Secret Scan Results\n\n`;
+            body += `⚠️ **${report.summary.totalFindings} potential secret(s) detected**\n\n`;
+
+            if (report.summary.bySeverity) {
+              body += `| Severity | Count |\n|----------|-------|\n`;
+              for (const [sev, count] of Object.entries(report.summary.bySeverity)) {
+                const icon = sev === 'critical' ? '🔴' : sev === 'high' ? '🟠' : sev === 'medium' ? '🟡' : '⚪';
+                body += `| ${icon} ${sev} | ${count} |\n`;
+              }
+              body += '\n';
+            }
+
+            body += `### Files with potential secrets\n\n`;
+            const fileGroups = {};
+            for (const f of report.findings || []) {
+              if (!fileGroups[f.file]) fileGroups[f.file] = [];
+              fileGroups[f.file].push(f);
+            }
+
+            for (const [file, findings] of Object.entries(fileGroups).slice(0, 10)) {
+              body += `- \`${file}\`\n`;
+              for (const f of findings.slice(0, 3)) {
+                body += `  - Line ${f.line}: ${f.type} (${f.severity})\n`;
+              }
+              if (findings.length > 3) {
+                body += `  - ... and ${findings.length - 3} more\n`;
+              }
+            }
+
+            if (Object.keys(fileGroups).length > 10) {
+              body += `\n... and ${Object.keys(fileGroups).length - 10} more files\n`;
+            }
+
+            body += `\n---\n`;
+            body += `<sub>🤖 Scanned by CKB Secret Detection</sub>`;
+
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            });
+
+      - name: Fail on critical findings
+        if: always()
+        run: |
+          CRITICAL=$(jq -r '.summary.bySeverity.critical // 0' secrets-report.json 2>/dev/null || echo "0")
+          if [ "$CRITICAL" -gt 0 ]; then
+            echo "::error::Found $CRITICAL critical severity secrets. Please remove them before merging."
+            exit 1
+          fi
+
+  # Optional: Run external tools for comprehensive coverage
+  external-scan:
+    name: External Secret Scanners
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: true
+        continue-on-error: true
+
+      - name: Run TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified
+        continue-on-error: true
+
+  dependency-audit:
+    name: Dependency Vulnerabilities
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Run govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck -format json ./... > vuln-report.json 2>&1 || true
+
+          # Check for vulnerabilities
+          if grep -q '"vulns":' vuln-report.json && ! grep -q '"vulns": null' vuln-report.json; then
+            echo "::warning::Dependency vulnerabilities found"
+            govulncheck ./...
+          else
+            echo "✅ No known vulnerabilities in dependencies"
+          fi
+
+      - name: Upload vulnerability report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vulnerability-report
+          path: vuln-report.json
+          retention-days: 30
+
+  # Summary job that requires all checks to pass
+  security-gate:
+    name: Security Gate
+    runs-on: ubuntu-latest
+    needs: [secret-scan, external-scan, dependency-audit]
+    if: always()
+    steps:
+      - name: Check results
+        run: |
+          if [ "${{ needs.secret-scan.result }}" == "failure" ]; then
+            echo "::error::Secret scan failed - critical secrets detected"
+            exit 1
+          fi
+
+          echo "✅ Security audit passed"
+          echo ""
+          echo "### Security Audit Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Secret Scan (CKB) | ${{ needs.secret-scan.result == 'success' && '✅ Passed' || '⚠️ ' }}${{ needs.secret-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| External Scanners | ${{ needs.external-scan.result == 'success' && '✅ Passed' || '⚠️ ' }}${{ needs.external-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dependency Audit | ${{ needs.dependency-audit.result == 'success' && '✅ Passed' || '⚠️ ' }}${{ needs.dependency-audit.result }} |" >> $GITHUB_STEP_SUMMARY
