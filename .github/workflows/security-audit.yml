@@ -682,19 +682,22 @@ jobs:
             body += `[View Details](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) | `;
             body += `[Security Tab](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/security/code-scanning)</sub>`;
 
-            // Find and update existing comment
+            // ==================== POST/UPDATE COMMENT ====================
+            // Find existing security audit comment to update (avoids spam on multiple pushes)
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number
             });
 
+            // Look for our previous comment by checking for Bot user and our unique header
             const botComment = comments.find(c =>
               c.user?.type === 'Bot' &&
               c.body?.includes('🔐 Security Audit Results')
             );
 
             if (botComment) {
+              // Update existing comment instead of creating a new one
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -702,6 +705,7 @@ jobs:
                 body: body
               });
             } else {
+              // Create new comment if this is the first run
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,

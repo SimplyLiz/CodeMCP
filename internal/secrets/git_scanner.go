@@ -31,8 +31,8 @@ func (g *GitScanner) ScanHistory(ctx context.Context, opts ScanOptions) ([]Secre
 	// Build git log command
 	args := []string{
 		"log",
-		"-p",              // Show patch
-		"--all",           // All branches
+		"-p",    // Show patch
+		"--all", // All branches
 		"--full-history",
 		"--format=COMMIT:%H|%an|%aI", // Custom format for parsing
 	}

@@ -41,10 +41,10 @@ const (
 	SecretTypeSendGridAPIKey     SecretType = "sendgrid_api_key"
 
 	// Database Connection Strings (v8.1)
-	SecretTypeMongoDBURI    SecretType = "mongodb_uri"
-	SecretTypePostgresURI   SecretType = "postgres_uri"
-	SecretTypeMySQLURI      SecretType = "mysql_uri"
-	SecretTypeRedisURI      SecretType = "redis_uri"
+	SecretTypeMongoDBURI  SecretType = "mongodb_uri"
+	SecretTypePostgresURI SecretType = "postgres_uri"
+	SecretTypeMySQLURI    SecretType = "mysql_uri"
+	SecretTypeRedisURI    SecretType = "redis_uri"
 )
 
 // Severity indicates the risk level of a finding.
@@ -137,13 +137,13 @@ type ScanOptions struct {
 
 // ScanResult contains the complete scan result.
 type ScanResult struct {
-	RepoRoot  string        `json:"repoRoot"`
-	Scope     ScanScope     `json:"scope"`
-	ScannedAt time.Time     `json:"scannedAt"`
-	Duration  string        `json:"duration"`
+	RepoRoot  string          `json:"repoRoot"`
+	Scope     ScanScope       `json:"scope"`
+	ScannedAt time.Time       `json:"scannedAt"`
+	Duration  string          `json:"duration"`
 	Findings  []SecretFinding `json:"findings"`
-	Summary   ScanSummary   `json:"summary"`
-	Sources   []SourceInfo  `json:"sources"`
+	Summary   ScanSummary     `json:"summary"`
+	Sources   []SourceInfo    `json:"sources"`
 
 	// Suppression info
 	Suppressed int `json:"suppressed,omitempty"`
@@ -151,11 +151,11 @@ type ScanResult struct {
 
 // ScanSummary provides aggregate statistics.
 type ScanSummary struct {
-	TotalFindings    int                 `json:"totalFindings"`
-	BySeverity       map[Severity]int    `json:"bySeverity"`
-	ByType           map[SecretType]int  `json:"byType"`
-	FilesScanned     int                 `json:"filesScanned"`
-	FilesWithSecrets int                 `json:"filesWithSecrets"`
+	TotalFindings    int                `json:"totalFindings"`
+	BySeverity       map[Severity]int   `json:"bySeverity"`
+	ByType           map[SecretType]int `json:"byType"`
+	FilesScanned     int                `json:"filesScanned"`
+	FilesWithSecrets int                `json:"filesWithSecrets"`
 }
 
 // SourceInfo describes a detection source.

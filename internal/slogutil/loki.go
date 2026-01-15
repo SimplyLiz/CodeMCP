@@ -150,9 +150,16 @@ func (h *LokiHandler) Handle(_ context.Context, r slog.Record) error {
 
 // WithAttrs implements slog.Handler.
 func (h *LokiHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	newHandler := *h
-	newHandler.attrs = append(newHandler.attrs, attrs...)
-	return &newHandler
+	// Don't copy the handler - it contains mutexes. Create a wrapper instead.
+	newAttrs := make([]slog.Attr, len(h.attrs)+len(attrs))
+	copy(newAttrs, h.attrs)
+	copy(newAttrs[len(h.attrs):], attrs)
+
+	return &lokiHandlerWithContext{
+		parent: h,
+		attrs:  newAttrs,
+		groups: h.groups,
+	}
 }
 
 // WithGroup implements slog.Handler.
@@ -160,9 +167,60 @@ func (h *LokiHandler) WithGroup(name string) slog.Handler {
 	if name == "" {
 		return h
 	}
-	newHandler := *h
-	newHandler.groups = append(newHandler.groups, name)
-	return &newHandler
+	// Don't copy the handler - it contains mutexes. Create a wrapper instead.
+	newGroups := make([]string, len(h.groups)+1)
+	copy(newGroups, h.groups)
+	newGroups[len(h.groups)] = name
+
+	return &lokiHandlerWithContext{
+		parent: h,
+		attrs:  h.attrs,
+		groups: newGroups,
+	}
+}
+
+// lokiHandlerWithContext wraps LokiHandler to add attrs/groups without copying mutexes.
+type lokiHandlerWithContext struct {
+	parent *LokiHandler
+	attrs  []slog.Attr
+	groups []string
+}
+
+func (w *lokiHandlerWithContext) Enabled(ctx context.Context, level slog.Level) bool {
+	return w.parent.Enabled(ctx, level)
+}
+
+func (w *lokiHandlerWithContext) Handle(ctx context.Context, r slog.Record) error {
+	// Add our attrs to the record
+	for _, attr := range w.attrs {
+		r.AddAttrs(attr)
+	}
+	return w.parent.Handle(ctx, r)
+}
+
+func (w *lokiHandlerWithContext) WithAttrs(attrs []slog.Attr) slog.Handler {
+	newAttrs := make([]slog.Attr, len(w.attrs)+len(attrs))
+	copy(newAttrs, w.attrs)
+	copy(newAttrs[len(w.attrs):], attrs)
+	return &lokiHandlerWithContext{
+		parent: w.parent,
+		attrs:  newAttrs,
+		groups: w.groups,
+	}
+}
+
+func (w *lokiHandlerWithContext) WithGroup(name string) slog.Handler {
+	if name == "" {
+		return w
+	}
+	newGroups := make([]string, len(w.groups)+1)
+	copy(newGroups, w.groups)
+	newGroups[len(w.groups)] = name
+	return &lokiHandlerWithContext{
+		parent: w.parent,
+		attrs:  w.attrs,
+		groups: newGroups,
+	}
 }
 
 // formatRecord formats a slog.Record into a log line string.

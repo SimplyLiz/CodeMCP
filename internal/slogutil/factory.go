@@ -40,19 +40,19 @@ func (f *LoggerFactory) MCPLogger() (*slog.Logger, error) {
 		return NewDiscardLogger(), nil
 	}
 
-	logPath, err := paths.GetMCPLogPath(f.repoRoot)
-	if err != nil {
-		return NewDiscardLogger(), nil
+	logPath, logPathErr := paths.GetMCPLogPath(f.repoRoot)
+	if logPathErr != nil {
+		return NewDiscardLogger(), nil //nolint:nilerr // graceful degradation
 	}
 
-	if _, err := paths.EnsureRepoLogsDir(f.repoRoot); err != nil {
-		return NewDiscardLogger(), nil
+	if _, ensureErr := paths.EnsureRepoLogsDir(f.repoRoot); ensureErr != nil {
+		return NewDiscardLogger(), nil //nolint:nilerr // graceful degradation
 	}
 
 	level := f.effectiveLevel("mcp")
-	logger, closer, err := f.createFileLogger(logPath, level, "mcp")
-	if err != nil {
-		return NewDiscardLogger(), nil
+	logger, closer, createErr := f.createFileLogger(logPath, level, "mcp")
+	if createErr != nil {
+		return NewDiscardLogger(), nil //nolint:nilerr // graceful degradation
 	}
 
 	f.closers = append(f.closers, closer)
@@ -66,19 +66,19 @@ func (f *LoggerFactory) APILogger() (*slog.Logger, error) {
 		return NewDiscardLogger(), nil
 	}
 
-	logPath, err := paths.GetAPILogPath(f.repoRoot)
-	if err != nil {
-		return NewDiscardLogger(), nil
+	logPath, logPathErr := paths.GetAPILogPath(f.repoRoot)
+	if logPathErr != nil {
+		return NewDiscardLogger(), nil //nolint:nilerr // graceful degradation
 	}
 
-	if _, err := paths.EnsureRepoLogsDir(f.repoRoot); err != nil {
-		return NewDiscardLogger(), nil
+	if _, ensureErr := paths.EnsureRepoLogsDir(f.repoRoot); ensureErr != nil {
+		return NewDiscardLogger(), nil //nolint:nilerr // graceful degradation
 	}
 
 	level := f.effectiveLevel("api")
-	logger, closer, err := f.createFileLogger(logPath, level, "api")
-	if err != nil {
-		return NewDiscardLogger(), nil
+	logger, closer, createErr := f.createFileLogger(logPath, level, "api")
+	if createErr != nil {
+		return NewDiscardLogger(), nil //nolint:nilerr // graceful degradation
 	}
 
 	f.closers = append(f.closers, closer)
@@ -92,19 +92,19 @@ func (f *LoggerFactory) IndexLogger() (*slog.Logger, error) {
 		return NewDiscardLogger(), nil
 	}
 
-	logPath, err := paths.GetIndexLogPath(f.repoRoot)
-	if err != nil {
-		return NewDiscardLogger(), nil
+	logPath, logPathErr := paths.GetIndexLogPath(f.repoRoot)
+	if logPathErr != nil {
+		return NewDiscardLogger(), nil //nolint:nilerr // graceful degradation
 	}
 
-	if _, err := paths.EnsureRepoLogsDir(f.repoRoot); err != nil {
-		return NewDiscardLogger(), nil
+	if _, ensureErr := paths.EnsureRepoLogsDir(f.repoRoot); ensureErr != nil {
+		return NewDiscardLogger(), nil //nolint:nilerr // graceful degradation
 	}
 
 	level := f.effectiveLevel("index")
-	logger, closer, err := f.createFileLogger(logPath, level, "index")
-	if err != nil {
-		return NewDiscardLogger(), nil
+	logger, closer, createErr := f.createFileLogger(logPath, level, "index")
+	if createErr != nil {
+		return NewDiscardLogger(), nil //nolint:nilerr // graceful degradation
 	}
 
 	f.closers = append(f.closers, closer)
@@ -114,19 +114,19 @@ func (f *LoggerFactory) IndexLogger() (*slog.Logger, error) {
 // DaemonLogger creates a logger for the background daemon.
 // Writes to ~/.ckb/daemon/daemon.log (existing location)
 func (f *LoggerFactory) DaemonLogger() (*slog.Logger, error) {
-	logPath, err := paths.GetDaemonLogPath()
-	if err != nil {
-		return NewDiscardLogger(), nil
+	logPath, logPathErr := paths.GetDaemonLogPath()
+	if logPathErr != nil {
+		return NewDiscardLogger(), nil //nolint:nilerr // graceful degradation
 	}
 
-	if _, err := paths.EnsureDaemonDir(); err != nil {
-		return NewDiscardLogger(), nil
+	if _, ensureErr := paths.EnsureDaemonDir(); ensureErr != nil {
+		return NewDiscardLogger(), nil //nolint:nilerr // graceful degradation
 	}
 
 	level := f.effectiveLevel("daemon")
-	logger, closer, err := f.createFileLogger(logPath, level, "daemon")
-	if err != nil {
-		return NewDiscardLogger(), nil
+	logger, closer, createErr := f.createFileLogger(logPath, level, "daemon")
+	if createErr != nil {
+		return NewDiscardLogger(), nil //nolint:nilerr // graceful degradation
 	}
 
 	f.closers = append(f.closers, closer)
@@ -136,19 +136,19 @@ func (f *LoggerFactory) DaemonLogger() (*slog.Logger, error) {
 // SystemLogger creates a logger for global system operations.
 // Writes to ~/.ckb/logs/system.log
 func (f *LoggerFactory) SystemLogger() (*slog.Logger, error) {
-	logPath, err := paths.GetSystemLogPath()
-	if err != nil {
-		return NewDiscardLogger(), nil
+	logPath, logPathErr := paths.GetSystemLogPath()
+	if logPathErr != nil {
+		return NewDiscardLogger(), nil //nolint:nilerr // graceful degradation
 	}
 
-	if _, err := paths.EnsureGlobalLogsDir(); err != nil {
-		return NewDiscardLogger(), nil
+	if _, ensureErr := paths.EnsureGlobalLogsDir(); ensureErr != nil {
+		return NewDiscardLogger(), nil //nolint:nilerr // graceful degradation
 	}
 
 	level := f.effectiveLevel("system")
-	logger, closer, err := f.createFileLogger(logPath, level, "system")
-	if err != nil {
-		return NewDiscardLogger(), nil
+	logger, closer, createErr := f.createFileLogger(logPath, level, "system")
+	if createErr != nil {
+		return NewDiscardLogger(), nil //nolint:nilerr // graceful degradation
 	}
 
 	f.closers = append(f.closers, closer)

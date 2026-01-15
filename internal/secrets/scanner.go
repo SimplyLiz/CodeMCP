@@ -202,10 +202,7 @@ func (s *Scanner) findFiles(opts ScanOptions) ([]string, error) {
 	var files []string
 
 	// Build exclude patterns
-	excludePatterns := make([]string, 0, len(opts.ExcludePaths))
-	for _, p := range opts.ExcludePaths {
-		excludePatterns = append(excludePatterns, p)
-	}
+	excludePatterns := append([]string{}, opts.ExcludePaths...)
 
 	err := filepath.Walk(opts.RepoRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -226,7 +223,7 @@ func (s *Scanner) findFiles(opts ScanOptions) ([]string, error) {
 		// Get relative path
 		relPath, err := filepath.Rel(opts.RepoRoot, path)
 		if err != nil {
-			return nil
+			return nil //nolint:nilerr // skip file if relative path fails
 		}
 
 		// Check path filters

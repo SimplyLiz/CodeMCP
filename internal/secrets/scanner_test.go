@@ -15,7 +15,9 @@ func stripeTestKey() string  { return "sk_" + "test_" + "BBBBBBBBBBBBBBBBBBBBBBB
 func slackTestBot() string   { return "xoxb" + "-0000000000-0000000000-AAAAAAAAAAAAAAAAAAAAAAAA" }
 func twilioSID() string      { return "AC" + "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
 func twilioSID2() string     { return "AC" + "1234567890abcdef1234567890abcdef" }
-func sendgridKey() string    { return "SG" + ".abcdefghijklmnopqrstuv.ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefg" }
+func sendgridKey() string {
+	return "SG" + ".abcdefghijklmnopqrstuv.ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefg"
+}
 
 func TestBuiltinPatterns(t *testing.T) {
 	testCases := []struct {
@@ -737,13 +739,13 @@ func TestIsProbablySecret(t *testing.T) {
 		minEntropy float64
 		want       bool
 	}{
-		{"aB3$xY9!mNpQ", 3.0, true},                        // High entropy, 12 chars
-		{"aaaaaaaaaaaaa", 3.0, false},                      // Low entropy
-		{"Str0ngP@ss!", 2.5, true},                         // Medium entropy, 11 chars (no 'password' substring)
-		{"ghp_AbCdEfGhIjKlMnOpQrStUvWxYz1234", 3.5, true},  // Token-like
-		{"short", 2.0, false},                              // Too short (< 8 chars)
-		{"abcdefgh", 3.5, false},                           // 8 chars, entropy=3.0, below 3.5 threshold
-		{"xY9!mNpQrS", 3.0, true},                          // High entropy, 10 chars
+		{"aB3$xY9!mNpQ", 3.0, true},                       // High entropy, 12 chars
+		{"aaaaaaaaaaaaa", 3.0, false},                     // Low entropy
+		{"Str0ngP@ss!", 2.5, true},                        // Medium entropy, 11 chars (no 'password' substring)
+		{"ghp_AbCdEfGhIjKlMnOpQrStUvWxYz1234", 3.5, true}, // Token-like
+		{"short", 2.0, false},                             // Too short (< 8 chars)
+		{"abcdefgh", 3.5, false},                          // 8 chars, entropy=3.0, below 3.5 threshold
+		{"xY9!mNpQrS", 3.0, true},                         // High entropy, 10 chars
 	}
 
 	for _, tc := range testCases {

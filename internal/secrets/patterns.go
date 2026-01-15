@@ -8,7 +8,7 @@ type Pattern struct {
 	Type        SecretType
 	Severity    Severity
 	Regex       *regexp.Regexp
-	MinEntropy  float64  // Minimum entropy (0 = disabled)
+	MinEntropy  float64 // Minimum entropy (0 = disabled)
 	Description string
 	Examples    []string // For testing
 }
@@ -41,7 +41,7 @@ var BuiltinPatterns = []Pattern{
 		Severity:    SeverityCritical,
 		Regex:       regexp.MustCompile(`ghp_[A-Za-z0-9]{36,}`),
 		Description: "GitHub Personal Access Token",
-		Examples:    []string{"ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"},
+		// Note: Example omitted to avoid triggering security scanners
 	},
 	{
 		Name:        "github_oauth",

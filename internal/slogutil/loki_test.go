@@ -86,7 +86,7 @@ func TestLokiHandler_Enabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewLokiHandler failed: %v", err)
 	}
-	defer handler.Stop()
+	defer func() { _ = handler.Stop() }()
 
 	tests := []struct {
 		level   slog.Level
@@ -205,13 +205,16 @@ func TestLokiHandler_BatchFlush(t *testing.T) {
 
 func TestLokiHandler_Labels(t *testing.T) {
 	var receivedLabels map[string]string
+	var mu sync.Mutex
 
 	// Create test server to capture labels
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		var req lokiPushRequest
 		if err := json.Unmarshal(body, &req); err == nil && len(req.Streams) > 0 {
+			mu.Lock()
 			receivedLabels = req.Streams[0].Stream
+			mu.Unlock()
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}))
@@ -247,21 +250,25 @@ func TestLokiHandler_Labels(t *testing.T) {
 	// Wait for async send
 	time.Sleep(100 * time.Millisecond)
 
-	// Check labels
-	if receivedLabels == nil {
+	// Check labels with proper synchronization
+	mu.Lock()
+	labels := receivedLabels
+	mu.Unlock()
+
+	if labels == nil {
 		t.Fatal("no labels received")
 	}
-	if receivedLabels["app"] != "ckb" {
-		t.Errorf("app label = %q, want %q", receivedLabels["app"], "ckb")
+	if labels["app"] != "ckb" {
+		t.Errorf("app label = %q, want %q", labels["app"], "ckb")
 	}
-	if receivedLabels["subsystem"] != "mcp" {
-		t.Errorf("subsystem label = %q, want %q", receivedLabels["subsystem"], "mcp")
+	if labels["subsystem"] != "mcp" {
+		t.Errorf("subsystem label = %q, want %q", labels["subsystem"], "mcp")
 	}
-	if receivedLabels["env"] != "prod" {
-		t.Errorf("env label = %q, want %q", receivedLabels["env"], "prod")
+	if labels["env"] != "prod" {
+		t.Errorf("env label = %q, want %q", labels["env"], "prod")
 	}
-	if receivedLabels["level"] != "INFO" {
-		t.Errorf("level label = %q, want %q", receivedLabels["level"], "INFO")
+	if labels["level"] != "INFO" {
+		t.Errorf("level label = %q, want %q", labels["level"], "INFO")
 	}
 }
 
@@ -285,13 +292,14 @@ func TestLokiHandler_WithAttrs(t *testing.T) {
 		t.Error("WithAttrs should return a new handler")
 	}
 
-	lokiH, ok := newHandler.(*LokiHandler)
+	// Should return a wrapper type that implements slog.Handler
+	wrapper, ok := newHandler.(*lokiHandlerWithContext)
 	if !ok {
-		t.Fatal("WithAttrs should return *LokiHandler")
+		t.Fatal("WithAttrs should return *lokiHandlerWithContext")
 	}
 
-	if len(lokiH.attrs) != 1 {
-		t.Errorf("attrs length = %d, want 1", len(lokiH.attrs))
+	if len(wrapper.attrs) != 1 {
+		t.Errorf("attrs length = %d, want 1", len(wrapper.attrs))
 	}
 
 	_ = handler.Stop()
@@ -333,7 +341,7 @@ func TestLokiHandler_FormatRecord(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewLokiHandler failed: %v", err)
 	}
-	defer handler.Stop()
+	defer func() { _ = handler.Stop() }()
 
 	record := slog.Record{
 		Time:    time.Now(),

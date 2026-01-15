@@ -68,10 +68,10 @@ func (e *ExternalScanner) IsAvailable(ctx context.Context, config ExternalToolCo
 
 	// Get version
 	if len(config.VersionArgs) > 0 {
-		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		versionCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 
-		cmd := exec.CommandContext(ctx, config.Binary, config.VersionArgs...)
+		cmd := exec.CommandContext(versionCtx, config.Binary, config.VersionArgs...)
 		output, err := cmd.Output()
 		if err != nil {
 			return true, "" // Found but version unknown

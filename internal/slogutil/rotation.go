@@ -73,10 +73,9 @@ func (r *RotatingFile) Write(p []byte) (n int, err error) {
 
 	// Check if rotation is needed
 	if r.maxSize > 0 && r.size+int64(len(p)) > r.maxSize {
-		if err := r.rotate(); err != nil {
-			// Log rotation failed, but try to write anyway
-			// This prevents log loss in case of rotation issues
-		}
+		// Log rotation failed, but try to write anyway
+		// This prevents log loss in case of rotation issues
+		_ = r.rotate()
 	}
 
 	n, err = r.file.Write(p)
@@ -123,9 +122,8 @@ func (r *RotatingFile) rotate() error {
 
 	// Rename current log to .1
 	if r.maxBackups > 0 {
-		if err := os.Rename(r.path, r.backupPath(1)); err != nil && !os.IsNotExist(err) {
-			// If rename fails, try to continue anyway
-		}
+		// If rename fails, continue anyway - the old file may have already been removed
+		_ = os.Rename(r.path, r.backupPath(1))
 	} else {
 		// No backups, just truncate
 		_ = os.Remove(r.path)
