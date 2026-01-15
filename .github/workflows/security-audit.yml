@@ -126,6 +126,23 @@ jobs:
             echo "Consider rotating these credentials and using [git-filter-repo](https://github.com/newren/git-filter-repo) to remove them from history." >> $GITHUB_STEP_SUMMARY
           fi
 
+      - name: Generate SARIF report
+        if: always()
+        run: |
+          MIN_SEVERITY="${{ github.event.inputs.min_severity || 'high' }}"
+          ./ckb scan-secrets --min-severity="$MIN_SEVERITY" \
+            --exclude="internal/secrets/patterns.go" \
+            --exclude="*_test.go" \
+            --exclude="testdata/*" \
+            --output=sarif > secrets-report.sarif 2>&1 || true
+
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: secrets-report.sarif
+          category: ckb-secrets
+
       - name: Upload scan results
         uses: actions/upload-artifact@v4
         if: always()
@@ -133,60 +150,10 @@ jobs:
           name: secret-scan-results
           path: |
             secrets-report.json
+            secrets-report.sarif
             secrets-history.json
           retention-days: 30
           if-no-files-found: ignore
-
-      - name: Comment on PR
-        if: github.event_name == 'pull_request' && steps.scan_workdir.outputs.findings != '0'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const report = JSON.parse(fs.readFileSync('secrets-report.json', 'utf8'));
-
-            let body = `## 🔐 Secret Scan Results\n\n`;
-            body += `⚠️ **${report.summary.totalFindings} potential secret(s) detected**\n\n`;
-
-            if (report.summary.bySeverity) {
-              body += `| Severity | Count |\n|----------|-------|\n`;
-              for (const [sev, count] of Object.entries(report.summary.bySeverity)) {
-                const icon = sev === 'critical' ? '🔴' : sev === 'high' ? '🟠' : sev === 'medium' ? '🟡' : '⚪';
-                body += `| ${icon} ${sev} | ${count} |\n`;
-              }
-              body += '\n';
-            }
-
-            body += `### Files with potential secrets\n\n`;
-            const fileGroups = {};
-            for (const f of report.findings || []) {
-              if (!fileGroups[f.file]) fileGroups[f.file] = [];
-              fileGroups[f.file].push(f);
-            }
-
-            for (const [file, findings] of Object.entries(fileGroups).slice(0, 10)) {
-              body += `- \`${file}\`\n`;
-              for (const f of findings.slice(0, 3)) {
-                body += `  - Line ${f.line}: ${f.type} (${f.severity})\n`;
-              }
-              if (findings.length > 3) {
-                body += `  - ... and ${findings.length - 3} more\n`;
-              }
-            }
-
-            if (Object.keys(fileGroups).length > 10) {
-              body += `\n... and ${Object.keys(fileGroups).length - 10} more files\n`;
-            }
-
-            body += `\n---\n`;
-            body += `<sub>🤖 Scanned by CKB Secret Detection</sub>`;
-
-            github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: body
-            });
 
       - name: Fail on critical findings
         if: always()
@@ -208,11 +175,25 @@ jobs:
           fetch-depth: 0
 
       - name: Run Gitleaks
+        id: gitleaks
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_ENABLE_COMMENTS: true
+          GITLEAKS_ENABLE_COMMENTS: true  # Inline comments on specific lines
         continue-on-error: true
+
+      - name: Save Gitleaks result
+        if: always()
+        run: |
+          echo '${{ steps.gitleaks.outcome }}' > gitleaks-result.txt
+
+      - name: Upload external scan results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: external-scan-results
+          path: gitleaks-result.txt
+          retention-days: 1
 
       - name: Run TruffleHog
         uses: trufflesecurity/trufflehog@main
@@ -261,11 +242,26 @@ jobs:
     needs: [secret-scan, external-scan, dependency-audit]
     if: always()
     steps:
+      - name: Download secret scan results
+        uses: actions/download-artifact@v4
+        with:
+          name: secret-scan-results
+          path: results/secrets
+        continue-on-error: true
+
+      - name: Download vulnerability report
+        uses: actions/download-artifact@v4
+        with:
+          name: vulnerability-report
+          path: results/vuln
+        continue-on-error: true
+
       - name: Check results
+        id: check
         run: |
           if [ "${{ needs.secret-scan.result }}" == "failure" ]; then
             echo "::error::Secret scan failed - critical secrets detected"
-            exit 1
+            echo "failed=true" >> $GITHUB_OUTPUT
           fi
 
           echo "✅ Security audit passed"
@@ -277,3 +273,126 @@ jobs:
           echo "| Secret Scan (CKB) | ${{ needs.secret-scan.result == 'success' && '✅ Passed' || '⚠️ ' }}${{ needs.secret-scan.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| External Scanners | ${{ needs.external-scan.result == 'success' && '✅ Passed' || '⚠️ ' }}${{ needs.external-scan.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Dependency Audit | ${{ needs.dependency-audit.result == 'success' && '✅ Passed' || '⚠️ ' }}${{ needs.dependency-audit.result }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Consolidated PR Comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            // Build consolidated comment
+            let body = `## 🔐 Security Audit Results\n\n`;
+
+            // Overall status
+            const secretResult = '${{ needs.secret-scan.result }}';
+            const externalResult = '${{ needs.external-scan.result }}';
+            const vulnResult = '${{ needs.dependency-audit.result }}';
+
+            const allPassed = secretResult === 'success' && vulnResult === 'success';
+            body += allPassed
+              ? `✅ **All security checks passed**\n\n`
+              : `⚠️ **Some security checks need attention**\n\n`;
+
+            // Summary table
+            body += `| Check | Status |\n|-------|--------|\n`;
+            body += `| Secret Scan (CKB) | ${secretResult === 'success' ? '✅' : '⚠️'} ${secretResult} |\n`;
+            body += `| External Scanners | ${externalResult === 'success' ? '✅' : '⚠️'} ${externalResult} |\n`;
+            body += `| Dependency Audit | ${vulnResult === 'success' ? '✅' : '⚠️'} ${vulnResult} |\n\n`;
+
+            // Secret scan details
+            try {
+              const secretReport = JSON.parse(fs.readFileSync('results/secrets/secrets-report.json', 'utf8'));
+              if (secretReport.summary?.totalFindings > 0) {
+                body += `### 🔑 Secret Detection\n\n`;
+                body += `Found **${secretReport.summary.totalFindings}** potential secret(s)\n\n`;
+
+                if (secretReport.summary.bySeverity) {
+                  body += `| Severity | Count |\n|----------|-------|\n`;
+                  for (const [sev, count] of Object.entries(secretReport.summary.bySeverity)) {
+                    const icon = sev === 'critical' ? '🔴' : sev === 'high' ? '🟠' : sev === 'medium' ? '🟡' : '⚪';
+                    body += `| ${icon} ${sev} | ${count} |\n`;
+                  }
+                  body += '\n';
+                }
+
+                // Group by file
+                body += `<details><summary>Files with potential secrets</summary>\n\n`;
+                const fileGroups = {};
+                for (const f of secretReport.findings || []) {
+                  if (!fileGroups[f.file]) fileGroups[f.file] = [];
+                  fileGroups[f.file].push(f);
+                }
+                for (const [file, findings] of Object.entries(fileGroups).slice(0, 10)) {
+                  body += `- \`${file}\`\n`;
+                  for (const f of findings.slice(0, 3)) {
+                    body += `  - Line ${f.line}: ${f.type} (${f.severity})\n`;
+                  }
+                  if (findings.length > 3) {
+                    body += `  - ... and ${findings.length - 3} more\n`;
+                  }
+                }
+                if (Object.keys(fileGroups).length > 10) {
+                  body += `\n... and ${Object.keys(fileGroups).length - 10} more files\n`;
+                }
+                body += `</details>\n\n`;
+              }
+            } catch (e) {
+              // No secret report or empty
+            }
+
+            // Vulnerability details
+            try {
+              const vulnReport = JSON.parse(fs.readFileSync('results/vuln/vuln-report.json', 'utf8'));
+              if (vulnReport.vulns && vulnReport.vulns.length > 0) {
+                body += `### 📦 Dependency Vulnerabilities\n\n`;
+                body += `Found **${vulnReport.vulns.length}** vulnerable dependencies\n\n`;
+                body += `<details><summary>Details</summary>\n\n`;
+                for (const v of vulnReport.vulns.slice(0, 5)) {
+                  body += `- **${v.osv?.id || 'Unknown'}**: ${v.osv?.summary || 'No summary'}\n`;
+                }
+                if (vulnReport.vulns.length > 5) {
+                  body += `\n... and ${vulnReport.vulns.length - 5} more\n`;
+                }
+                body += `</details>\n\n`;
+              }
+            } catch (e) {
+              // No vuln report or parsing error
+            }
+
+            body += `---\n`;
+            body += `<sub>🤖 Generated by CKB Security Audit | [View Details](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})</sub>`;
+
+            // Find existing comment to update (avoid spam)
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+
+            const botComment = comments.find(c =>
+              c.user?.type === 'Bot' &&
+              c.body?.includes('🔐 Security Audit Results')
+            );
+
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
+
+      - name: Fail if critical issues
+        if: steps.check.outputs.failed == 'true'
+        run: exit 1
