@@ -1766,6 +1766,67 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		// v8.0 Secret Detection
+		{
+			Name:        "scanSecrets",
+			Description: "Scan for exposed secrets (API keys, tokens, passwords) in the codebase. Uses builtin patterns and optionally external tools (gitleaks, trufflehog).",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"scope": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"workdir", "staged", "history"},
+						"default":     "workdir",
+						"description": "What to scan: workdir (current files), staged (git staged only), history (git commits)",
+					},
+					"paths": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "Limit scan to these paths (glob patterns)",
+					},
+					"excludePaths": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "Skip these paths (e.g., vendor/*, node_modules/*)",
+					},
+					"minSeverity": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"critical", "high", "medium", "low"},
+						"default":     "low",
+						"description": "Minimum severity to report",
+					},
+					"sinceCommit": map[string]interface{}{
+						"type":        "string",
+						"description": "For history scope: scan commits since this ref",
+					},
+					"maxCommits": map[string]interface{}{
+						"type":        "integer",
+						"default":     100,
+						"description": "For history scope: maximum commits to scan",
+					},
+					"useGitleaks": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Use gitleaks if available (more comprehensive patterns)",
+					},
+					"useTrufflehog": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Use trufflehog if available (verified secrets detection)",
+					},
+					"preferExternal": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Prefer external tools over builtin when available",
+					},
+					"applyAllowlist": map[string]interface{}{
+						"type":        "boolean",
+						"default":     true,
+						"description": "Apply configured allowlist to filter false positives",
+					},
+				},
+			},
+		},
 		// v7.3 Doc-Symbol Linking tools
 		{
 			Name:        "getDocsForSymbol",
@@ -2116,6 +2177,8 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["analyzeCoupling"] = s.toolAnalyzeCoupling
 	s.tools["exportForLLM"] = s.toolExportForLLM
 	s.tools["auditRisk"] = s.toolAuditRisk
+	// v8.0 Secret Detection
+	s.tools["scanSecrets"] = s.toolScanSecrets
 	// v7.3 Doc-Symbol Linking tools
 	s.tools["getDocsForSymbol"] = s.toolGetDocsForSymbol
 	s.tools["getSymbolsInDoc"] = s.toolGetSymbolsInDoc

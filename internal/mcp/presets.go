@@ -78,6 +78,7 @@ var Presets = map[string][]string{
 		"getOwnership",
 		"getOwnershipDrift",
 		"recentlyRelevant",
+		"scanSecrets", // v8.0: Secret detection for PR reviews
 	},
 
 	// Refactor: core + refactoring analysis tools
@@ -97,6 +98,7 @@ var Presets = map[string][]string{
 		"compareAPI",       // v7.6: Breaking change detection
 		"auditRisk",
 		"explainOrigin",
+		"scanSecrets", // v8.0: Secret detection for security audits
 	},
 
 	// Federation: core + federation tools
