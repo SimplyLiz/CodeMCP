@@ -108,6 +108,14 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 	// v8.0: Get streaming capabilities
 	streamCaps := GetStreamCapabilities()
 
+	// v8.0: Tool usage hints for AI assistants
+	hints := []string{
+		"Use 'explore' to understand a file or directory (combines multiple queries)",
+		"Use 'understand' to deep-dive into a specific function or type",
+		"Use 'prepareChange' BEFORE modifying code to see blast radius",
+		"Use 'searchSymbols' instead of grep for semantic code search",
+	}
+
 	data := map[string]interface{}{
 		"status":        status,
 		"healthy":       statusResp.Healthy,
@@ -138,7 +146,8 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 		},
 		"index":       indexInfo,
 		"lastRefresh": statusResp.LastRefresh,
-		"suggestions": suggestions, // v8.0: actionable suggestions
+		"suggestions": suggestions, // v8.0: actionable fix suggestions
+		"hints":       hints,       // v8.0: tool usage guidance for AI
 	}
 
 	return envelope.Operational(data), nil

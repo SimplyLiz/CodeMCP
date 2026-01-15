@@ -148,6 +148,24 @@ Now Claude can answer questions like:
 - *"Who owns the internal/api module?"*
 - *"Is this legacy code still used?"*
 
+### Improve Tool Usage with CLAUDE.md
+
+Add this to your project's `CLAUDE.md` (or `.claude/CLAUDE.md`) to help Claude Code prefer CKB tools:
+
+```markdown
+## Code Intelligence
+
+This project uses CKB for code analysis. When exploring or modifying code:
+
+- Use `searchSymbols` to find functions, classes, or types (better than grep)
+- Use `explore` to understand a file or directory structure
+- Use `understand` to deep-dive into a specific symbol
+- Use `prepareChange` before modifying code to assess impact
+- Use `analyzeImpact` to see what might break
+```
+
+This ensures Claude uses semantic code intelligence instead of basic text search.
+
 ## Why CKB?
 
 | Without CKB | With CKB |

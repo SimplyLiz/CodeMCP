@@ -17,7 +17,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 	return []Tool{
 		{
 			Name:        "getStatus",
-			Description: "Get CKB system status including backend health, cache stats, and repository state",
+			Description: "Get CKB system status including backend health, cache stats, repository state, and usage hints. Check this first to see available capabilities and recommendations.",
 			InputSchema: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
@@ -101,7 +101,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "searchSymbols",
-			Description: "Search for symbols by name with optional filtering",
+			Description: "Search for symbols by name with optional filtering. USE THIS instead of grep/find for code search - provides semantic results with types, locations, and relationships.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -184,7 +184,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "analyzeImpact",
-			Description: "Analyze the impact of changing a symbol. Includes observed telemetry data when available for blended confidence scoring.",
+			Description: "Analyze the impact of changing a symbol. USE THIS to answer 'what breaks if I change X?'. Returns callers, affected modules, and risk score. For comprehensive pre-change analysis, use prepareChange instead.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -1960,7 +1960,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		// v8.0 Compound Tools - aggregate multiple queries to reduce tool calls
 		{
 			Name:        "explore",
-			Description: "Comprehensive area exploration. Aggregates: explainFile → searchSymbols → getCallGraph → getHotspots. Use for initial codebase orientation.",
+			Description: "Comprehensive area exploration. START HERE when asked about a file, directory, or module. Aggregates: explainFile → searchSymbols → getCallGraph → getHotspots. Returns structure, key symbols, and change hotspots in one call.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -1986,7 +1986,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "understand",
-			Description: "Comprehensive symbol deep-dive. Aggregates: searchSymbols → getSymbol → explainSymbol → findReferences → getCallGraph. Handles ambiguity with multiple matches.",
+			Description: "Comprehensive symbol deep-dive. USE THIS when asked 'what does X do?' or 'how does X work?'. Aggregates: searchSymbols → getSymbol → explainSymbol → findReferences → getCallGraph. Returns full context in one call.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -2015,7 +2015,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "prepareChange",
-			Description: "Pre-change impact analysis. Aggregates: analyzeImpact + getAffectedTests + analyzeCoupling + risk assessment. Use before modifying code.",
+			Description: "Pre-change impact analysis. CALL THIS BEFORE modifying, renaming, or deleting code. Shows blast radius, affected tests, coupled files, and risk score. Prevents breaking changes.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
