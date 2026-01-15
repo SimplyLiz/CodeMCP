@@ -282,6 +282,20 @@ jobs:
         run: |
           ./ckb dead-code --min-confidence=0.9 --limit=10 --format=json > deadcode.json 2>/dev/null || echo '{"candidates":[]}' > deadcode.json
 
+      - name: Telemetry Dead Code
+        id: telemetry_dead
+        run: |
+          # Check if telemetry is configured (optional feature)
+          if ./ckb telemetry status 2>/dev/null | grep -q "connected"; then
+            ./ckb dead-code --source=telemetry --days=30 --limit=10 --format=json > telemetry-deadcode.json 2>/dev/null || echo '{"candidates":[],"source":"telemetry"}' > telemetry-deadcode.json
+            echo "enabled=true" >> $GITHUB_OUTPUT
+            echo "count=$(jq '.candidates | length // 0' telemetry-deadcode.json)" >> $GITHUB_OUTPUT
+          else
+            echo '{"candidates":[],"source":"telemetry","coverage":{}}' > telemetry-deadcode.json
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "count=0" >> $GITHUB_OUTPUT
+          fi
+
       - name: Docs
         id: docs
         run: |
@@ -296,17 +310,35 @@ jobs:
         run: |
           ./ckb ownership drift --threshold=0.3 --limit=10 --format=json > drift.json 2>/dev/null || echo '{"driftedFiles":[]}' > drift.json
 
+      - name: Affected Tests
+        id: affected_tests
+        run: |
+          RANGE="origin/${{ github.base_ref }}..HEAD"
+          ./ckb affected-tests --range="$RANGE" --format=json > affected-tests.json 2>/dev/null || echo '{"tests":[],"strategy":"none"}' > affected-tests.json
+
+          echo "count=$(jq '.tests | length' affected-tests.json)" >> $GITHUB_OUTPUT
+          echo "strategy=$(jq -r '.strategy // "none"' affected-tests.json)" >> $GITHUB_OUTPUT
+
       - name: Languages
         id: languages
         run: |
-          # meta languages command doesn't exist - derive from index
-          # Check what languages are indexed from the SCIP index
-          if [ -f ".ckb/index.scip" ]; then
-            # Just report Go for now since that's what we index
-            echo '{"languages":[{"name":"Go","quality":1.0,"tier":"scip"}],"overallQuality":1}' > languages.json
-          else
-            echo '{"languages":[],"overallQuality":1}' > languages.json
-          fi
+          # Use doctor to check actual indexer status
+          ./ckb doctor --format=json > doctor.json 2>/dev/null || echo '{"languages":[]}' > doctor.json
+
+          # Derive quality from doctor output
+          jq '{
+            languages: [(.languages // [])[] | {
+              name,
+              quality: (if .status == "ready" then 1 else if .status == "partial" then 0.5 else 0 end end),
+              tier: (.tier // "unknown"),
+              status: (.status // "unknown"),
+              issues: (.issues // [])
+            }],
+            overallQuality: (
+              [(.languages // [])[] | if .status == "ready" then 1 else 0 end] |
+              if length > 0 then add / length else 1 end
+            )
+          }' doctor.json > languages.json 2>/dev/null || echo '{"languages":[],"overallQuality":1}' > languages.json
 
           echo "quality=$(jq '.overallQuality // 1' languages.json)" >> $GITHUB_OUTPUT
           echo "lowQuality=$(jq '[.languages[] | select(.quality < 0.7)] | length' languages.json)" >> $GITHUB_OUTPUT
@@ -371,11 +403,13 @@ jobs:
             const blast = read('blast.json', { affectedSymbols: [], affectedTests: [], affectedConsumers: [] });
             const audit = read('audit.json', { items: [], quickWins: [], summary: {} });
             const deadcode = read('deadcode.json', { candidates: [] });
+            const telemetryDead = read('telemetry-deadcode.json', { candidates: [], source: 'telemetry' });
             const docsCov = read('docs-coverage.json', { coverage: 0 });
             const docsStale = read('docs-stale.json', { totalStale: 0, reports: [] });
             const drift = read('drift.json', []);
             const languages = read('languages.json', { languages: [], overallQuality: 1 });
             const evalResults = read('eval.json', { passed: 0, total: 0, results: [], skipped: true });
+            const affectedTests = read('affected-tests.json', { tests: [], strategy: 'none' });
 
             // Extract data
             const s = pr.summary || {};
@@ -449,6 +483,8 @@ jobs:
             if (contracts.files?.length) stats.push(`📜 ${contracts.files.length} contract${contracts.files.length > 1 ? 's' : ''}`);
             if (docsStale.totalStale) stats.push(`📚 ${docsStale.totalStale} stale`);
             if (deadcode.candidates?.length) stats.push(`💀 ${deadcode.candidates.length} dead`);
+            if (telemetryDead.candidates?.length) stats.push(`📡 ${telemetryDead.candidates.length} telemetry`);
+            if (affectedTests.tests?.length) stats.push(`🧪 ${affectedTests.tests.length} tests`);
             if (lowQualityLangs.length) stats.push(`🌐 ${lowQualityLangs.length} lang`);
 
             if (stats.length) {
@@ -741,6 +777,41 @@ jobs:
               c.push('');
             }
 
+            // 📡 Telemetry Dead Code
+            if (telemetryDead.candidates?.length > 0) {
+              c.push('<details>');
+              c.push(`<summary>📡 Telemetry dead code · ${telemetryDead.candidates.length} never called in production</summary>`);
+              c.push('');
+              c.push('| Symbol | File | Last Called | Days Since |');
+              c.push('|:-------|:-----|:------------|:-----------|');
+              telemetryDead.candidates.slice(0, 8).forEach(d => {
+                c.push(`| \`${d.symbol || d.name}\` | ${linkedFile(d.file || '—')} | ${d.lastCalled || 'Never'} | ${d.daysSinceCall || '∞'} |`);
+              });
+              c.push('');
+              c.push('</details>');
+              c.push('');
+            }
+
+            // 🧪 Affected Tests
+            if (affectedTests.tests?.length > 0) {
+              c.push('<details>');
+              c.push(`<summary>🧪 Affected tests · ${affectedTests.tests.length} tests (${affectedTests.strategy || 'unknown'})</summary>`);
+              c.push('');
+              c.push('| Test | Reason |');
+              c.push('|:-----|:-------|');
+              affectedTests.tests.slice(0, 10).forEach(t => {
+                const name = typeof t === 'string' ? t : (t.file || t.name || t.test || '?');
+                const reason = typeof t === 'object' ? (t.reason || '—') : '—';
+                c.push(`| \`${name}\` | ${reason} |`);
+              });
+              if (affectedTests.tests.length > 10) {
+                c.push(`| … | +${affectedTests.tests.length - 10} more |`);
+              }
+              c.push('');
+              c.push('</details>');
+              c.push('');
+            }
+
             // 📚 Stale Docs
             if (docsStale.totalStale > 0) {
               c.push('<details>');
@@ -939,12 +1010,11 @@ jobs:
           ./ckb hotspots --limit=50 --format=json > reports/hotspots.json 2>/dev/null || echo '[]' > reports/hotspots.json
           ./ckb audit --min-score=40 --limit=50 --format=json > reports/audit.json 2>/dev/null || echo '{}' > reports/audit.json
           ./ckb ownership drift --format=json > reports/drift.json 2>/dev/null || echo '[]' > reports/drift.json
-          # meta languages command doesn't exist - derive from index status
-          if [ -f ".ckb/index.scip" ]; then
-            echo '{"languages":[{"name":"Go","quality":1.0,"tier":"scip"}],"overallQuality":1}' > reports/languages.json
-          else
-            echo '{"languages":[],"overallQuality":1}' > reports/languages.json
-          fi
+          ./ckb doctor --format=json > reports/doctor.json 2>/dev/null || echo '{"languages":[]}' > reports/doctor.json
+          jq '{
+            languages: [(.languages // [])[] | {name, quality: (if .status == "ready" then 1 else 0.5 end), tier, status}],
+            overallQuality: ([(.languages // [])[] | if .status == "ready" then 1 else 0 end] | if length > 0 then add / length else 1 end)
+          }' reports/doctor.json > reports/languages.json 2>/dev/null || echo '{"languages":[],"overallQuality":1}' > reports/languages.json
           ./ckb dead-code --min-confidence=0.8 --limit=20 --format=json > reports/deadcode.json 2>/dev/null || echo '{"candidates":[]}' > reports/deadcode.json
 
       - name: Summary
@@ -958,6 +1028,7 @@ jobs:
           echo "| High Risk | $(jq '.summary.high // 0' reports/audit.json) |" >> $GITHUB_STEP_SUMMARY
           echo "| Ownership Drift | $(jq 'if type == "array" then length else 0 end' reports/drift.json) |" >> $GITHUB_STEP_SUMMARY
           echo "| Dead Code | $(jq '.candidates | if type == "array" then length else 0 end' reports/deadcode.json) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Language Quality | $(jq '.overallQuality * 100 | floor' reports/languages.json)% |" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload
         uses: actions/upload-artifact@v6

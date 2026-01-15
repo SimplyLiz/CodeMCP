@@ -13,6 +13,9 @@ import (
 func stripeTestLive() string { return "sk_" + "live_" + "AAAAAAAAAAAAAAAAAAAAAAAA" }
 func stripeTestKey() string  { return "sk_" + "test_" + "BBBBBBBBBBBBBBBBBBBBBBBB" }
 func slackTestBot() string   { return "xoxb" + "-0000000000-0000000000-AAAAAAAAAAAAAAAAAAAAAAAA" }
+func twilioSID() string      { return "AC" + "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+func twilioSID2() string     { return "AC" + "1234567890abcdef1234567890abcdef" }
+func sendgridKey() string    { return "SG" + ".abcdefghijklmnopqrstuv.ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefg" }
 
 func TestBuiltinPatterns(t *testing.T) {
 	testCases := []struct {
@@ -55,6 +58,28 @@ func TestBuiltinPatterns(t *testing.T) {
 
 		// NPM (36 chars after npm_)
 		{"NPM Token", "npm_abcdefghijklmnopqrstuvwxyz12345678AB", SecretTypeNPMToken, true},
+
+		// Azure (v8.1) - Azure storage keys are 88 base64 chars
+		{"Azure Storage Key", "AccountKey=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/abcdefghijklmnopqrstuv==", SecretTypeAzureStorageKey, true},
+		{"Azure Connection String", "DefaultEndpointsProtocol=https;AccountName=mystorageaccount;AccountKey=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/abcdefghijklmnopqrstuv==", SecretTypeAzureConnectionStr, true},
+
+		// GCP (v8.1)
+		{"GCP OAuth Token", "ya29.AHES6ZRVmB7fkLtd1XTmq6mo0S1wqZZi3-Lh_s-6Uw7p8vtgSwg", SecretTypeGCPOAuthToken, true},
+
+		// Twilio (v8.1) - use helper functions to avoid push protection
+		{"Twilio Account SID", twilioSID(), SecretTypeTwilioSID, true},
+		{"Twilio Account SID 2", twilioSID2(), SecretTypeTwilioSID, true},
+
+		// SendGrid (v8.1) - format: SG.{22 chars}.{43 chars}
+		{"SendGrid API Key", sendgridKey(), SecretTypeSendGridAPIKey, true},
+
+		// Database URIs (v8.1)
+		{"MongoDB URI", "mongodb://user:secretpassword123@cluster.mongodb.net/db", SecretTypeMongoDBURI, true},
+		{"MongoDB SRV URI", "mongodb+srv://admin:myP4ssw0rd@cluster.mongodb.net/", SecretTypeMongoDBURI, true},
+		{"PostgreSQL URI", "postgres://admin:supersecret@db.example.com:5432/mydb", SecretTypePostgresURI, true},
+		{"PostgreSQL URI variant", "postgresql://user:pass123@localhost/database", SecretTypePostgresURI, true},
+		{"MySQL URI", "mysql://root:dbpassword@mysql.example.com:3306/app", SecretTypeMySQLURI, true},
+		{"Redis URI", "redis://:authpassword@redis.example.com:6379/0", SecretTypeRedisURI, true},
 	}
 
 	for _, tc := range testCases {

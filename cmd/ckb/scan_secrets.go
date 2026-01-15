@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"ckb/internal/secrets"
+	"ckb/internal/version"
 )
 
 var (
@@ -69,7 +70,7 @@ func init() {
 	scanSecretsCmd.Flags().IntVar(&secretsMaxCommits, "max-commits", 100, "For history scope: maximum commits to scan")
 	scanSecretsCmd.Flags().BoolVar(&secretsUseGitleaks, "use-gitleaks", false, "Use gitleaks if available")
 	scanSecretsCmd.Flags().BoolVar(&secretsUseTrufflehog, "use-trufflehog", false, "Use trufflehog if available")
-	scanSecretsCmd.Flags().StringVarP(&secretsFormat, "output", "o", "json", "Output format: json, human")
+	scanSecretsCmd.Flags().StringVarP(&secretsFormat, "output", "o", "json", "Output format: json, human, sarif")
 	scanSecretsCmd.Flags().BoolVar(&secretsNoAllowlist, "no-allowlist", false, "Disable allowlist suppression")
 
 	rootCmd.AddCommand(scanSecretsCmd)
@@ -138,9 +139,17 @@ func runScanSecrets(cmd *cobra.Command, args []string) {
 	}
 
 	// Output result
-	if secretsFormat == "human" {
+	switch secretsFormat {
+	case "human":
 		printHumanSecretResults(result)
-	} else {
+	case "sarif":
+		output, err := FormatSecretsAsSARIF(result, version.Version)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error formatting SARIF output: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(output)
+	default: // json
 		output, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error formatting output: %v\n", err)

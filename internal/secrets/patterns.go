@@ -239,6 +239,107 @@ var BuiltinPatterns = []Pattern{
 		MinEntropy:  3.0,
 		Description: "Bearer Token",
 	},
+
+	// ============ Azure (v8.1) ============
+	{
+		Name:        "azure_storage_key",
+		Type:        SecretTypeAzureStorageKey,
+		Severity:    SeverityCritical,
+		Regex:       regexp.MustCompile(`(?i)AccountKey\s*=\s*([A-Za-z0-9+/=]{88})`),
+		Description: "Azure Storage Account Key",
+	},
+	{
+		Name:        "azure_connection_string",
+		Type:        SecretTypeAzureConnectionStr,
+		Severity:    SeverityCritical,
+		Regex:       regexp.MustCompile(`DefaultEndpointsProtocol=https;AccountName=[^;]+;AccountKey=[A-Za-z0-9+/=]{88}`),
+		Description: "Azure Storage Connection String",
+	},
+
+	// ============ GCP (v8.1) ============
+	{
+		Name:        "gcp_service_account",
+		Type:        SecretTypeGCPServiceAccount,
+		Severity:    SeverityCritical,
+		Regex:       regexp.MustCompile(`"type"\s*:\s*"service_account"[\s\S]*"private_key"\s*:\s*"-----BEGIN`),
+		Description: "GCP Service Account Key (JSON)",
+	},
+	{
+		Name:        "gcp_oauth_token",
+		Type:        SecretTypeGCPOAuthToken,
+		Severity:    SeverityHigh,
+		Regex:       regexp.MustCompile(`ya29\.[A-Za-z0-9_-]{50,}`),
+		Description: "GCP OAuth Access Token",
+	},
+
+	// ============ Heroku (v8.1) ============
+	{
+		Name:        "heroku_api_key",
+		Type:        SecretTypeHerokuAPIKey,
+		Severity:    SeverityHigh,
+		Regex:       regexp.MustCompile(`(?i)(?:heroku[_-]?api[_-]?key|HEROKU_API_KEY)['":\s=]+['"]?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})['"]?`),
+		Description: "Heroku API Key",
+	},
+
+	// ============ Twilio (v8.1) ============
+	{
+		Name:        "twilio_account_sid",
+		Type:        SecretTypeTwilioSID,
+		Severity:    SeverityHigh,
+		Regex:       regexp.MustCompile(`AC[a-f0-9]{32}`),
+		Description: "Twilio Account SID",
+	},
+	{
+		Name:        "twilio_auth_token",
+		Type:        SecretTypeTwilioAuthToken,
+		Severity:    SeverityCritical,
+		Regex:       regexp.MustCompile(`(?i)(?:twilio[_-]?auth[_-]?token|TWILIO_AUTH_TOKEN)['":\s=]+['"]?([a-f0-9]{32})['"]?`),
+		MinEntropy:  3.0,
+		Description: "Twilio Auth Token",
+	},
+
+	// ============ SendGrid (v8.1) ============
+	{
+		Name:        "sendgrid_api_key",
+		Type:        SecretTypeSendGridAPIKey,
+		Severity:    SeverityHigh,
+		Regex:       regexp.MustCompile(`SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}`),
+		Description: "SendGrid API Key",
+	},
+
+	// ============ Database Connection Strings (v8.1) ============
+	{
+		Name:        "mongodb_uri",
+		Type:        SecretTypeMongoDBURI,
+		Severity:    SeverityHigh,
+		Regex:       regexp.MustCompile(`mongodb(?:\+srv)?://[^:]+:([^@]+)@[^/]+`),
+		MinEntropy:  2.5,
+		Description: "MongoDB Connection URI with Password",
+	},
+	{
+		Name:        "postgres_uri",
+		Type:        SecretTypePostgresURI,
+		Severity:    SeverityHigh,
+		Regex:       regexp.MustCompile(`postgres(?:ql)?://[^:]+:([^@]+)@[^/]+`),
+		MinEntropy:  2.5,
+		Description: "PostgreSQL Connection URI with Password",
+	},
+	{
+		Name:        "mysql_uri",
+		Type:        SecretTypeMySQLURI,
+		Severity:    SeverityHigh,
+		Regex:       regexp.MustCompile(`mysql://[^:]+:([^@]+)@[^/]+`),
+		MinEntropy:  2.5,
+		Description: "MySQL Connection URI with Password",
+	},
+	{
+		Name:        "redis_uri",
+		Type:        SecretTypeRedisURI,
+		Severity:    SeverityHigh,
+		Regex:       regexp.MustCompile(`redis://(?:[^:]*:)?([^@]+)@[^/]+`),
+		MinEntropy:  2.5,
+		Description: "Redis Connection URI with Password",
+	},
 }
 
 // GetPatternByName returns a pattern by name.

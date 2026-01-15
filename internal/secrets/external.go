@@ -114,20 +114,17 @@ func (e *ExternalScanner) RunGitleaks(ctx context.Context, opts ScanOptions) ([]
 	cmd := exec.CommandContext(ctx, "gitleaks", args...)
 	cmd.Dir = e.repoRoot
 
-	output, err := cmd.Output()
+	// Use CombinedOutput to capture both stdout and stderr in a single call.
+	// This avoids the bug where cmd.Output() can only be called once.
+	output, err := cmd.CombinedOutput()
 	if err != nil {
 		// gitleaks exits with 1 when findings are found, which is not an error for us
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			// Exit code 1 = leaks found (not an error)
-			if exitErr.ExitCode() == 1 {
-				output = exitErr.Stderr
-				if len(output) == 0 {
-					// Try stdout from the cmd
-					output, _ = cmd.Output()
-				}
-			} else {
-				return nil, fmt.Errorf("gitleaks failed with exit code %d: %s", exitErr.ExitCode(), string(exitErr.Stderr))
+			// Exit code 1 = leaks found (not an error, output contains JSON)
+			if exitErr.ExitCode() != 1 {
+				return nil, fmt.Errorf("gitleaks failed with exit code %d: %s", exitErr.ExitCode(), string(output))
 			}
+			// Exit code 1 means findings exist - output already captured above
 		} else {
 			return nil, fmt.Errorf("gitleaks failed: %w", err)
 		}

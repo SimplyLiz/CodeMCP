@@ -12,6 +12,7 @@ type OutputFormat string
 const (
 	FormatJSON  OutputFormat = "json"
 	FormatHuman OutputFormat = "human"
+	FormatSARIF OutputFormat = "sarif"
 )
 
 // FormatResponse formats a response according to the specified format

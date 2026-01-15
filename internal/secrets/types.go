@@ -29,6 +29,22 @@ const (
 	SecretTypeNPMToken       SecretType = "npm_token"
 	SecretTypePyPIToken      SecretType = "pypi_token"
 	SecretTypeExternal       SecretType = "external" // From external tools
+
+	// Cloud Providers (v8.1)
+	SecretTypeAzureStorageKey    SecretType = "azure_storage_key"
+	SecretTypeAzureConnectionStr SecretType = "azure_connection_string"
+	SecretTypeGCPServiceAccount  SecretType = "gcp_service_account"
+	SecretTypeGCPOAuthToken      SecretType = "gcp_oauth_token"
+	SecretTypeHerokuAPIKey       SecretType = "heroku_api_key"
+	SecretTypeTwilioSID          SecretType = "twilio_sid"
+	SecretTypeTwilioAuthToken    SecretType = "twilio_auth_token"
+	SecretTypeSendGridAPIKey     SecretType = "sendgrid_api_key"
+
+	// Database Connection Strings (v8.1)
+	SecretTypeMongoDBURI    SecretType = "mongodb_uri"
+	SecretTypePostgresURI   SecretType = "postgres_uri"
+	SecretTypeMySQLURI      SecretType = "mysql_uri"
+	SecretTypeRedisURI      SecretType = "redis_uri"
 )
 
 // Severity indicates the risk level of a finding.

@@ -174,32 +174,56 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install Gitleaks
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz | tar xz
+          chmod +x gitleaks
+          sudo mv gitleaks /usr/local/bin/
+
       - name: Run Gitleaks
         id: gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_ENABLE_COMMENTS: true  # Inline comments on specific lines
+        run: |
+          # Run gitleaks and capture JSON output
+          gitleaks detect --source . --report-format json --report-path gitleaks-report.json --exit-code 0 || true
+
+          # Count findings
+          if [ -f gitleaks-report.json ]; then
+            FINDINGS=$(jq 'length' gitleaks-report.json 2>/dev/null || echo "0")
+            echo "findings=$FINDINGS" >> $GITHUB_OUTPUT
+          else
+            echo "findings=0" >> $GITHUB_OUTPUT
+            echo "[]" > gitleaks-report.json
+          fi
         continue-on-error: true
 
-      - name: Save Gitleaks result
-        if: always()
+      - name: Run TruffleHog
+        id: trufflehog
         run: |
-          echo '${{ steps.gitleaks.outcome }}' > gitleaks-result.txt
+          # Install trufflehog
+          curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin
+
+          # Run trufflehog and capture JSON output
+          trufflehog filesystem . --only-verified --json > trufflehog-report.json 2>/dev/null || true
+
+          # Count findings
+          if [ -f trufflehog-report.json ] && [ -s trufflehog-report.json ]; then
+            FINDINGS=$(wc -l < trufflehog-report.json | tr -d ' ')
+            echo "findings=$FINDINGS" >> $GITHUB_OUTPUT
+          else
+            echo "findings=0" >> $GITHUB_OUTPUT
+            echo "" > trufflehog-report.json
+          fi
+        continue-on-error: true
 
       - name: Upload external scan results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: external-scan-results
-          path: gitleaks-result.txt
-          retention-days: 1
-
-      - name: Run TruffleHog
-        uses: trufflesecurity/trufflehog@main
-        with:
-          extra_args: --only-verified
-        continue-on-error: true
+          path: |
+            gitleaks-report.json
+            trufflehog-report.json
+          retention-days: 7
 
   dependency-audit:
     name: Dependency Vulnerabilities
@@ -256,6 +280,13 @@ jobs:
           path: results/vuln
         continue-on-error: true
 
+      - name: Download external scan results
+        uses: actions/download-artifact@v4
+        with:
+          name: external-scan-results
+          path: results/external
+        continue-on-error: true
+
       - name: Check results
         id: check
         run: |
@@ -300,11 +331,11 @@ jobs:
             body += `| External Scanners | ${externalResult === 'success' ? '✅' : '⚠️'} ${externalResult} |\n`;
             body += `| Dependency Audit | ${vulnResult === 'success' ? '✅' : '⚠️'} ${vulnResult} |\n\n`;
 
-            // Secret scan details
+            // Secret scan details (CKB)
             try {
               const secretReport = JSON.parse(fs.readFileSync('results/secrets/secrets-report.json', 'utf8'));
               if (secretReport.summary?.totalFindings > 0) {
-                body += `### 🔑 Secret Detection\n\n`;
+                body += `### 🔑 CKB Secret Detection\n\n`;
                 body += `Found **${secretReport.summary.totalFindings}** potential secret(s)\n\n`;
 
                 if (secretReport.summary.bySeverity) {
@@ -339,6 +370,66 @@ jobs:
               }
             } catch (e) {
               // No secret report or empty
+            }
+
+            // Gitleaks findings
+            try {
+              const gitleaksReport = JSON.parse(fs.readFileSync('results/external/gitleaks-report.json', 'utf8'));
+              if (Array.isArray(gitleaksReport) && gitleaksReport.length > 0) {
+                body += `### 🔍 Gitleaks Findings\n\n`;
+                body += `Found **${gitleaksReport.length}** secret(s)\n\n`;
+
+                body += `<details><summary>Details</summary>\n\n`;
+                const byFile = {};
+                for (const f of gitleaksReport) {
+                  const file = f.File || 'unknown';
+                  if (!byFile[file]) byFile[file] = [];
+                  byFile[file].push(f);
+                }
+                for (const [file, findings] of Object.entries(byFile).slice(0, 10)) {
+                  body += `- \`${file}\`\n`;
+                  for (const f of findings.slice(0, 3)) {
+                    body += `  - Line ${f.StartLine || '?'}: \`${f.RuleID || f.Rule || 'unknown'}\`\n`;
+                  }
+                  if (findings.length > 3) {
+                    body += `  - ... and ${findings.length - 3} more\n`;
+                  }
+                }
+                if (Object.keys(byFile).length > 10) {
+                  body += `\n... and ${Object.keys(byFile).length - 10} more files\n`;
+                }
+                body += `</details>\n\n`;
+              }
+            } catch (e) {
+              // No gitleaks report or empty
+            }
+
+            // TruffleHog findings (verified secrets)
+            try {
+              const thContent = fs.readFileSync('results/external/trufflehog-report.json', 'utf8').trim();
+              if (thContent) {
+                // TruffleHog outputs NDJSON (one JSON per line)
+                const lines = thContent.split('\n').filter(l => l.trim());
+                const thFindings = lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+                if (thFindings.length > 0) {
+                  body += `### 🐷 TruffleHog (Verified Secrets)\n\n`;
+                  body += `Found **${thFindings.length}** verified secret(s)\n\n`;
+
+                  body += `<details><summary>Details</summary>\n\n`;
+                  for (const f of thFindings.slice(0, 10)) {
+                    const detector = f.DetectorName || 'Unknown';
+                    const file = f.SourceMetadata?.Data?.Filesystem?.file || 'unknown';
+                    const line = f.SourceMetadata?.Data?.Filesystem?.line || '?';
+                    body += `- \`${file}:${line}\` - ${detector} ${f.Verified ? '✅ verified' : ''}\n`;
+                  }
+                  if (thFindings.length > 10) {
+                    body += `\n... and ${thFindings.length - 10} more\n`;
+                  }
+                  body += `</details>\n\n`;
+                }
+              }
+            } catch (e) {
+              // No trufflehog report or empty
             }
 
             // Vulnerability details
