@@ -200,3 +200,155 @@ func TestIndexFilePatterns(t *testing.T) {
 		t.Error("Rust should have index file patterns (mod.rs)")
 	}
 }
+
+func TestIntermediateDirectories(t *testing.T) {
+	// Create a deep nested structure where intermediate directories
+	// don't have source files and may not meet scoring threshold
+	//
+	// web/
+	//   src/
+	//     myfeature/           <- non-semantic, no files (would be filtered without fix)
+	//       components/
+	//         common/
+	//           Button.tsx
+	//           Modal.tsx
+	//           Card.tsx
+
+	tempDir, err := os.MkdirTemp("", "ckb-intermediate-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Create deep directory structure
+	deepDir := "web/src/myfeature/components/common"
+	if err := os.MkdirAll(filepath.Join(tempDir, deepDir), 0755); err != nil {
+		t.Fatalf("Failed to create dir: %v", err)
+	}
+
+	// Only add files at the deepest level
+	files := []string{
+		"web/src/myfeature/components/common/Button.tsx",
+		"web/src/myfeature/components/common/Modal.tsx",
+		"web/src/myfeature/components/common/Card.tsx",
+	}
+	for _, f := range files {
+		if err := os.WriteFile(filepath.Join(tempDir, f), []byte("export default {}"), 0644); err != nil {
+			t.Fatalf("Failed to create file %s: %v", f, err)
+		}
+	}
+
+	// Run detection
+	opts := DefaultInferOptions()
+	opts.MaxDepth = 6 // Allow deeper traversal
+	dirs, err := DetectInferredDirectories(tempDir, opts)
+	if err != nil {
+		t.Fatalf("DetectInferredDirectories failed: %v", err)
+	}
+
+	// Build a map for easy lookup
+	dirMap := make(map[string]*InferredDirectory)
+	for _, d := range dirs {
+		dirMap[d.Path] = d
+		t.Logf("Found: %s (fileCount=%d, isIntermediate=%v, score=%.1f)",
+			d.Path, d.FileCount, d.IsIntermediate, d.Score)
+	}
+
+	// Verify all intermediate directories are present
+	expectedIntermediates := []string{
+		"web",
+		"web/src",
+		"web/src/myfeature",
+		"web/src/myfeature/components",
+	}
+
+	for _, path := range expectedIntermediates {
+		dir, found := dirMap[path]
+		if !found {
+			t.Errorf("Missing intermediate directory: %s", path)
+			continue
+		}
+		// These should have no direct files (or be marked intermediate)
+		// Note: some may score high enough naturally (e.g., "src", "components" are semantic)
+		if dir.FileCount > 0 {
+			t.Errorf("%s should have fileCount=0, got %d", path, dir.FileCount)
+		}
+	}
+
+	// Verify the leaf directory with files is present and NOT intermediate
+	leafPath := "web/src/myfeature/components/common"
+	leaf, found := dirMap[leafPath]
+	if !found {
+		t.Errorf("Missing leaf directory: %s", leafPath)
+	} else {
+		if leaf.FileCount != 3 {
+			t.Errorf("%s should have fileCount=3, got %d", leafPath, leaf.FileCount)
+		}
+		if leaf.IsIntermediate {
+			t.Errorf("%s should NOT be marked as intermediate", leafPath)
+		}
+	}
+
+	// Specifically check that "myfeature" (non-semantic) is present
+	// This is the key case - it has no files and isn't a semantic name
+	myfeature, found := dirMap["web/src/myfeature"]
+	if !found {
+		t.Errorf("Missing non-semantic intermediate: web/src/myfeature")
+	} else {
+		if !myfeature.IsIntermediate {
+			// It should be marked intermediate since it was added to complete hierarchy
+			// (unless it scored high enough on its own, which it shouldn't)
+			if myfeature.Score < 2.0 {
+				t.Errorf("web/src/myfeature should be marked IsIntermediate=true")
+			}
+		}
+	}
+}
+
+func TestFillIntermediateDirectories(t *testing.T) {
+	// Unit test for fillIntermediateDirectories function directly
+	input := []*InferredDirectory{
+		{Path: "a/b/c/d", FileCount: 5, Score: 5.0},
+		{Path: "x/y/z", FileCount: 3, Score: 4.0},
+	}
+
+	result := fillIntermediateDirectories(input)
+
+	// Build map for lookup
+	resultMap := make(map[string]*InferredDirectory)
+	for _, d := range result {
+		resultMap[d.Path] = d
+	}
+
+	// Check all intermediates are present
+	expectedPaths := []string{
+		"a", "a/b", "a/b/c", "a/b/c/d",
+		"x", "x/y", "x/y/z",
+	}
+
+	for _, path := range expectedPaths {
+		if _, found := resultMap[path]; !found {
+			t.Errorf("Missing path: %s", path)
+		}
+	}
+
+	// Check intermediate flags
+	intermediates := []string{"a", "a/b", "a/b/c", "x", "x/y"}
+	for _, path := range intermediates {
+		if dir, found := resultMap[path]; found {
+			if !dir.IsIntermediate {
+				t.Errorf("%s should have IsIntermediate=true", path)
+			}
+		}
+	}
+
+	// Check non-intermediates
+	nonIntermediates := []string{"a/b/c/d", "x/y/z"}
+	for _, path := range nonIntermediates {
+		if dir, found := resultMap[path]; found {
+			if dir.IsIntermediate {
+				t.Errorf("%s should have IsIntermediate=false", path)
+			}
+		}
+	}
+}
