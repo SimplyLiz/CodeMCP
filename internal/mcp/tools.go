@@ -17,7 +17,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 	return []Tool{
 		{
 			Name:        "getStatus",
-			Description: "Get CKB system status including backend health, cache stats, repository state, and usage hints. Check this first to see available capabilities and recommendations.",
+			Description: "Get CKB system status including backend health, cache stats, repository state, and usage hints for available capabilities.",
 			InputSchema: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
@@ -62,7 +62,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		// Meta-tool for dynamic preset expansion
 		{
 			Name:        "expandToolset",
-			Description: "Add more tools for a specific workflow. ONLY call when user explicitly requests additional capabilities. Available presets: review, refactor, federation, docs, ops, full",
+			Description: "Add more tools for a specific workflow. Available presets: review, refactor, federation, docs, ops, full.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
