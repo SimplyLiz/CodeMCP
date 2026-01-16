@@ -18,6 +18,10 @@ const (
 	// ResolvedFromCWD indicates the CWD matches a registered repo.
 	ResolvedFromCWD ResolutionSource = "cwd"
 
+	// ResolvedFromCWDGit indicates the CWD is in a git repo that's not registered.
+	// This enables auto-detection of unregistered repositories.
+	ResolvedFromCWDGit ResolutionSource = "cwd_git"
+
 	// ResolvedFromDefault indicates the default repo from registry was used.
 	ResolvedFromDefault ResolutionSource = "default"
 
@@ -35,12 +39,21 @@ type ResolvedRepo struct {
 
 	// State is the current state of the resolved repo.
 	State RepoState
+
+	// DetectedGitRoot is set when CWD is in a git repo (registered or not).
+	// Used for UX warnings when falling back to default.
+	DetectedGitRoot string
+
+	// SkippedDefault is set when a default repo exists but was not used
+	// because CWD is in a different git repo. Used for UX warnings.
+	SkippedDefault string
 }
 
 // ResolveActiveRepo determines the active repository using the resolution order:
 // 1. CKB_REPO environment variable
 // 2. flagValue (--repo flag, if provided)
 // 3. Current working directory matches a registered repo
+// 3.5. Current working directory is in a git repo (auto-detect unregistered)
 // 4. Default repo from registry
 // 5. No active repo
 func ResolveActiveRepo(flagValue string) (*ResolvedRepo, error) {
@@ -54,14 +67,22 @@ func ResolveActiveRepo(flagValue string) (*ResolvedRepo, error) {
 
 // ResolveActiveRepoWithRegistry resolves using an already-loaded registry.
 func ResolveActiveRepoWithRegistry(registry *Registry, flagValue string) (*ResolvedRepo, error) {
+	// Detect git root early for UX purposes
+	cwd, _ := os.Getwd()
+	detectedGitRoot := ""
+	if cwd != "" {
+		detectedGitRoot = FindGitRoot(cwd)
+	}
+
 	// 1. Check CKB_REPO environment variable
 	if envRepo := os.Getenv("CKB_REPO"); envRepo != "" {
 		entry, state, err := registry.Get(envRepo)
 		if err == nil {
 			return &ResolvedRepo{
-				Entry:  entry,
-				Source: ResolvedFromEnv,
-				State:  state,
+				Entry:           entry,
+				Source:          ResolvedFromEnv,
+				State:           state,
+				DetectedGitRoot: detectedGitRoot,
 			}, nil
 		}
 		// If env var is set but repo doesn't exist, we still report it
@@ -73,25 +94,56 @@ func ResolveActiveRepoWithRegistry(registry *Registry, flagValue string) (*Resol
 		entry, state, err := registry.Get(flagValue)
 		if err == nil {
 			return &ResolvedRepo{
-				Entry:  entry,
-				Source: ResolvedFromFlag,
-				State:  state,
+				Entry:           entry,
+				Source:          ResolvedFromFlag,
+				State:           state,
+				DetectedGitRoot: detectedGitRoot,
 			}, nil
 		}
 		// If flag is set but repo doesn't exist, we still report it
 	}
 
 	// 3. Check if CWD is within a registered repo
-	cwd, err := os.Getwd()
-	if err == nil {
+	if cwd != "" {
 		if entry := findRepoContainingPath(registry, cwd); entry != nil {
 			state := registry.ValidateState(entry.Name)
 			return &ResolvedRepo{
-				Entry:  entry,
-				Source: ResolvedFromCWD,
-				State:  state,
+				Entry:           entry,
+				Source:          ResolvedFromCWD,
+				State:           state,
+				DetectedGitRoot: detectedGitRoot,
 			}, nil
 		}
+	}
+
+	// 3.5. Auto-detect: CWD is in a git repo but not registered
+	// This takes precedence over the default registry entry
+	if detectedGitRoot != "" {
+		// Determine state based on whether .ckb exists
+		state := RepoStateUninitialized
+		if checkCkbInitialized(detectedGitRoot) {
+			state = RepoStateValid
+		}
+
+		// Generate a friendly name from the directory
+		name := filepath.Base(detectedGitRoot)
+
+		// Track if we're skipping a default
+		skippedDefault := ""
+		if registry.Default != "" {
+			skippedDefault = registry.Default
+		}
+
+		return &ResolvedRepo{
+			Entry: &RepoEntry{
+				Name: name,
+				Path: detectedGitRoot,
+			},
+			Source:          ResolvedFromCWDGit,
+			State:           state,
+			DetectedGitRoot: detectedGitRoot,
+			SkippedDefault:  skippedDefault,
+		}, nil
 	}
 
 	// 4. Use default from registry
@@ -99,18 +151,20 @@ func ResolveActiveRepoWithRegistry(registry *Registry, flagValue string) (*Resol
 		entry, state, err := registry.Get(registry.Default)
 		if err == nil {
 			return &ResolvedRepo{
-				Entry:  entry,
-				Source: ResolvedFromDefault,
-				State:  state,
+				Entry:           entry,
+				Source:          ResolvedFromDefault,
+				State:           state,
+				DetectedGitRoot: detectedGitRoot,
 			}, nil
 		}
 	}
 
 	// 5. No active repo
 	return &ResolvedRepo{
-		Entry:  nil,
-		Source: ResolvedNone,
-		State:  "",
+		Entry:           nil,
+		Source:          ResolvedNone,
+		State:           "",
+		DetectedGitRoot: detectedGitRoot,
 	}, nil
 }
 
@@ -190,4 +244,45 @@ func GetRepoRoot(flagValue string) (string, error) {
 	}
 
 	return resolved.Entry.Path, nil
+}
+
+// FindGitRoot walks up the directory tree from the given path to find the git root.
+// Returns the path containing .git, or empty string if not in a git repo.
+func FindGitRoot(path string) string {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return ""
+	}
+
+	// Resolve symlinks (handles macOS /var -> /private/var)
+	absPath, err = filepath.EvalSymlinks(absPath)
+	if err != nil {
+		// Fall back to original path
+		absPath, _ = filepath.Abs(path)
+	}
+
+	current := absPath
+	for {
+		gitPath := filepath.Join(current, ".git")
+		if info, err := os.Stat(gitPath); err == nil {
+			// .git can be a directory (normal repo) or file (worktree/submodule)
+			if info.IsDir() || info.Mode().IsRegular() {
+				return current
+			}
+		}
+
+		parent := filepath.Dir(current)
+		if parent == current {
+			// Reached root
+			return ""
+		}
+		current = parent
+	}
+}
+
+// checkCkbInitialized checks if a directory has been initialized with ckb init.
+func checkCkbInitialized(path string) bool {
+	ckbDir := filepath.Join(path, ".ckb")
+	info, err := os.Stat(ckbDir)
+	return err == nil && info.IsDir()
 }
