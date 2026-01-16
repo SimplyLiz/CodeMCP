@@ -194,6 +194,10 @@ func (s *MCPServer) Start() error {
 		if err != nil {
 			if err == io.EOF {
 				s.logger.Info("MCP server shutting down (EOF)")
+				// Cleanup pending roots requests to prevent goroutine leaks
+				if s.roots != nil {
+					s.roots.CancelAllPending()
+				}
 				return nil
 			}
 			s.logger.Error("Error reading message",

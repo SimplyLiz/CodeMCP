@@ -3,6 +3,7 @@ package mcp
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"ckb/internal/envelope"
 	"ckb/internal/errors"
@@ -128,6 +129,7 @@ func (s *MCPServer) requestRoots() {
 		s.logger.Error("Failed to send roots/list request",
 			"error", err.Error(),
 		)
+		s.roots.CancelPendingRequest(id)
 		return
 	}
 
@@ -137,34 +139,55 @@ func (s *MCPServer) requestRoots() {
 
 	// Handle response in a goroutine to not block the message loop
 	go func() {
-		msg := <-responseCh
+		select {
+		case msg, ok := <-responseCh:
+			if !ok {
+				// Channel was closed (timeout or shutdown)
+				return
+			}
 
-		// Check for error response
-		if msg.Error != nil {
-			s.logger.Warn("roots/list request failed",
-				"error", msg.Error,
+			// Check for error response
+			if msg.Error != nil {
+				// Handle -32601 Method Not Found specially
+				if msg.Error.Code == MethodNotFound {
+					// Client doesn't actually support roots despite capability
+					s.roots.SetClientSupported(false)
+					s.logger.Info("Client does not support roots/list, disabling roots feature")
+				} else {
+					s.logger.Warn("roots/list request failed",
+						"code", msg.Error.Code,
+						"error", msg.Error.Message,
+					)
+				}
+				return
+			}
+
+			// Parse roots from result
+			roots := parseRootsResponse(msg.Result)
+			if roots == nil {
+				s.logger.Warn("Failed to parse roots/list response")
+				return
+			}
+
+			s.roots.SetRoots(roots)
+			s.logger.Info("Updated roots from client",
+				"count", len(roots),
 			)
-			return
-		}
 
-		// Parse roots from result
-		roots := parseRootsResponse(msg.Result)
-		if roots == nil {
-			s.logger.Warn("Failed to parse roots/list response")
-			return
-		}
+			// Log individual roots for debugging
+			for _, root := range roots {
+				s.logger.Debug("Root",
+					"uri", root.URI,
+					"name", root.Name,
+					"path", root.Path(),
+				)
+			}
 
-		s.roots.SetRoots(roots)
-		s.logger.Info("Updated roots from client",
-			"count", len(roots),
-		)
-
-		// Log individual roots for debugging
-		for _, root := range roots {
-			s.logger.Debug("Root",
-				"uri", root.URI,
-				"name", root.Name,
-				"path", root.Path(),
+		case <-time.After(rootsRequestTimeout):
+			// Timeout - cancel the pending request and log
+			s.roots.CancelPendingRequest(id)
+			s.logger.Warn("roots/list request timed out",
+				"timeout", rootsRequestTimeout.String(),
 			)
 		}
 	}()

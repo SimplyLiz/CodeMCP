@@ -341,4 +341,193 @@ func TestParseRootsResponse(t *testing.T) {
 			t.Errorf("expected nil roots for invalid type, got %v", roots)
 		}
 	})
+
+	t.Run("non-file URI is rejected", func(t *testing.T) {
+		result := map[string]interface{}{
+			"roots": []interface{}{
+				map[string]interface{}{
+					"uri":  "https://example.com/project",
+					"name": "Remote",
+				},
+				map[string]interface{}{
+					"uri":  "file:///valid",
+					"name": "Valid",
+				},
+			},
+		}
+		roots := parseRootsResponse(result)
+		if len(roots) != 1 {
+			t.Fatalf("expected 1 root (non-file URI rejected), got %d", len(roots))
+		}
+		if roots[0].Name != "Valid" {
+			t.Errorf("expected root name %q, got %q", "Valid", roots[0].Name)
+		}
+	})
+
+	t.Run("path traversal URI is rejected", func(t *testing.T) {
+		result := map[string]interface{}{
+			"roots": []interface{}{
+				map[string]interface{}{
+					"uri":  "file:///home/user/../../../etc/passwd",
+					"name": "Malicious",
+				},
+				map[string]interface{}{
+					"uri":  "file:///valid",
+					"name": "Valid",
+				},
+			},
+		}
+		roots := parseRootsResponse(result)
+		if len(roots) != 1 {
+			t.Fatalf("expected 1 root (path traversal rejected), got %d", len(roots))
+		}
+		if roots[0].Name != "Valid" {
+			t.Errorf("expected root name %q, got %q", "Valid", roots[0].Name)
+		}
+	})
+}
+
+func TestIsValidRootURI(t *testing.T) {
+	tests := []struct {
+		name     string
+		uri      string
+		expected bool
+	}{
+		{
+			name:     "valid file URI",
+			uri:      "file:///home/user/project",
+			expected: true,
+		},
+		{
+			name:     "valid file URI with spaces",
+			uri:      "file:///home/user/my%20project",
+			expected: true,
+		},
+		{
+			name:     "https URI rejected",
+			uri:      "https://example.com/project",
+			expected: false,
+		},
+		{
+			name:     "http URI rejected",
+			uri:      "http://localhost/project",
+			expected: false,
+		},
+		{
+			name:     "path traversal rejected",
+			uri:      "file:///home/user/../../../etc/passwd",
+			expected: false,
+		},
+		{
+			name:     "relative path rejected",
+			uri:      "file://relative/path",
+			expected: false,
+		},
+		{
+			name:     "empty URI rejected",
+			uri:      "",
+			expected: false,
+		},
+		{
+			name:     "plain path rejected",
+			uri:      "/home/user/project",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isValidRootURI(tt.uri)
+			if got != tt.expected {
+				t.Errorf("isValidRootURI(%q) = %v, want %v", tt.uri, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestCancelPendingRequest(t *testing.T) {
+	t.Run("cancel existing request", func(t *testing.T) {
+		rm := newRootsManager()
+		id := rm.NextRequestID()
+		ch := rm.RegisterPendingRequest(id)
+
+		// Cancel should succeed
+		if !rm.CancelPendingRequest(id) {
+			t.Error("expected CancelPendingRequest to return true for existing request")
+		}
+
+		// Channel should be closed
+		select {
+		case _, ok := <-ch:
+			if ok {
+				t.Error("expected channel to be closed")
+			}
+		default:
+			t.Error("expected channel to be readable (closed)")
+		}
+	})
+
+	t.Run("cancel non-existent request", func(t *testing.T) {
+		rm := newRootsManager()
+
+		// Cancel should fail for unknown ID
+		if rm.CancelPendingRequest(999) {
+			t.Error("expected CancelPendingRequest to return false for unknown ID")
+		}
+	})
+}
+
+func TestCancelAllPending(t *testing.T) {
+	rm := newRootsManager()
+
+	// Register multiple requests
+	id1 := rm.NextRequestID()
+	ch1 := rm.RegisterPendingRequest(id1)
+	id2 := rm.NextRequestID()
+	ch2 := rm.RegisterPendingRequest(id2)
+	id3 := rm.NextRequestID()
+	ch3 := rm.RegisterPendingRequest(id3)
+
+	// Cancel all
+	rm.CancelAllPending()
+
+	// All channels should be closed
+	for i, ch := range []chan *MCPMessage{ch1, ch2, ch3} {
+		select {
+		case _, ok := <-ch:
+			if ok {
+				t.Errorf("channel %d should be closed", i+1)
+			}
+		default:
+			t.Errorf("channel %d should be readable (closed)", i+1)
+		}
+	}
+
+	// New requests should still work after cleanup
+	id4 := rm.NextRequestID()
+	ch4 := rm.RegisterPendingRequest(id4)
+	if ch4 == nil {
+		t.Error("should be able to register new requests after CancelAllPending")
+	}
+}
+
+func TestListChangedEnabled(t *testing.T) {
+	rm := newRootsManager()
+
+	// Default should be false
+	if rm.IsListChangedEnabled() {
+		t.Error("expected listChangedEnabled to be false by default")
+	}
+
+	// Set to true
+	rm.SetListChangedEnabled(true)
+	if !rm.IsListChangedEnabled() {
+		t.Error("expected listChangedEnabled to be true after SetListChangedEnabled(true)")
+	}
+
+	// Set back to false
+	rm.SetListChangedEnabled(false)
+	if rm.IsListChangedEnabled() {
+		t.Error("expected listChangedEnabled to be false after SetListChangedEnabled(false)")
+	}
 }

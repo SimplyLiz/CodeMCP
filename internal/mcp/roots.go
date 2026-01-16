@@ -6,7 +6,11 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
+
+// rootsRequestTimeout is the timeout for roots/list requests to the client
+const rootsRequestTimeout = 10 * time.Second
 
 // Root represents a filesystem root provided by the MCP client
 type Root struct {
@@ -42,11 +46,12 @@ type RootsCapability struct {
 
 // rootsManager handles MCP roots from the client
 type rootsManager struct {
-	mu              sync.RWMutex
-	roots           []Root
-	clientSupported bool
-	requestID       atomic.Int64
-	pendingRequests sync.Map // map[int64]chan *MCPMessage
+	mu                 sync.RWMutex
+	roots              []Root
+	clientSupported    bool
+	listChangedEnabled bool
+	requestID          atomic.Int64
+	pendingRequests    sync.Map // map[int64]chan *MCPMessage
 }
 
 // newRootsManager creates a new roots manager
@@ -66,6 +71,38 @@ func (rm *rootsManager) IsClientSupported() bool {
 	rm.mu.RLock()
 	defer rm.mu.RUnlock()
 	return rm.clientSupported
+}
+
+// SetListChangedEnabled sets whether the client supports listChanged notifications
+func (rm *rootsManager) SetListChangedEnabled(enabled bool) {
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
+	rm.listChangedEnabled = enabled
+}
+
+// IsListChangedEnabled returns whether the client supports listChanged notifications
+func (rm *rootsManager) IsListChangedEnabled() bool {
+	rm.mu.RLock()
+	defer rm.mu.RUnlock()
+	return rm.listChangedEnabled
+}
+
+// CancelPendingRequest cancels a pending request (for timeout/cleanup)
+func (rm *rootsManager) CancelPendingRequest(id int64) bool {
+	if ch, ok := rm.pendingRequests.LoadAndDelete(id); ok {
+		close(ch.(chan *MCPMessage))
+		return true
+	}
+	return false
+}
+
+// CancelAllPending cancels all pending requests (for shutdown cleanup)
+func (rm *rootsManager) CancelAllPending() {
+	rm.pendingRequests.Range(func(key, value any) bool {
+		rm.pendingRequests.Delete(key)
+		close(value.(chan *MCPMessage))
+		return true
+	})
 }
 
 // SetRoots updates the stored roots
@@ -147,6 +184,36 @@ func parseClientCapabilities(params map[string]interface{}) *ClientCapabilities 
 	return caps
 }
 
+// isValidRootURI validates a root URI per MCP spec requirements
+// - Must be a file:// URI (file:/// for local paths)
+// - Must be an absolute path
+// - Must not contain path traversal sequences
+// - Must not have a hostname (security: reject file://hostname/path)
+func isValidRootURI(uri string) bool {
+	if !strings.HasPrefix(uri, "file://") {
+		return false
+	}
+
+	u, err := url.Parse(uri)
+	if err != nil {
+		return false
+	}
+
+	// Reject file URIs with a hostname (e.g., file://hostname/path)
+	// Valid local file URIs use file:/// (empty host)
+	if u.Host != "" {
+		return false
+	}
+
+	// Reject path traversal attempts
+	if strings.Contains(u.Path, "..") {
+		return false
+	}
+
+	// Must be absolute path
+	return filepath.IsAbs(u.Path)
+}
+
 // parseRootsResponse parses a roots/list response
 func parseRootsResponse(result interface{}) []Root {
 	resultMap, ok := result.(map[string]interface{})
@@ -174,7 +241,8 @@ func parseRootsResponse(result interface{}) []Root {
 			root.Name = name
 		}
 
-		if root.URI != "" {
+		// Validate URI per MCP spec (must be file:// URI, absolute, no traversal)
+		if root.URI != "" && isValidRootURI(root.URI) {
 			roots = append(roots, root)
 		}
 	}

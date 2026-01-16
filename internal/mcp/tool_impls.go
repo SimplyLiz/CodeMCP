@@ -149,20 +149,30 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 
 	// v8.0: Build roots info for debugging
 	var rootsInfo map[string]interface{}
+	clientSupported := s.roots != nil && s.roots.IsClientSupported()
+	listChangedEnabled := s.roots != nil && s.roots.IsListChangedEnabled()
+
 	if roots := s.GetRoots(); len(roots) > 0 {
 		rootPaths := make([]string, 0, len(roots))
 		for _, r := range roots {
 			rootPaths = append(rootPaths, r.Path())
 		}
 		rootsInfo = map[string]interface{}{
-			"available": true,
-			"count":     len(roots),
-			"paths":     rootPaths,
+			"clientSupported":    clientSupported,
+			"listChangedEnabled": listChangedEnabled,
+			"count":              len(roots),
+			"paths":              rootPaths,
 		}
 	} else {
 		rootsInfo = map[string]interface{}{
-			"available": false,
-			"note":      "Client did not provide roots. MCP roots allow automatic workspace detection.",
+			"clientSupported":    clientSupported,
+			"listChangedEnabled": listChangedEnabled,
+			"count":              0,
+		}
+		if !clientSupported {
+			rootsInfo["note"] = "Client does not support MCP roots capability."
+		} else {
+			rootsInfo["note"] = "Client supports roots but has not provided any."
 		}
 	}
 

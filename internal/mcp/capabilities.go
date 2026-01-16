@@ -40,6 +40,7 @@ func (s *MCPServer) handleInitialize(params map[string]interface{}) (*Initialize
 	clientCaps := parseClientCapabilities(params)
 	if clientCaps.Roots != nil {
 		s.roots.SetClientSupported(true)
+		s.roots.SetListChangedEnabled(clientCaps.Roots.ListChanged)
 		s.logger.Info("Client supports roots",
 			"listChanged", clientCaps.Roots.ListChanged,
 		)
