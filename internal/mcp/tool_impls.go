@@ -645,10 +645,29 @@ func (s *MCPServer) toolGetArchitecture(params map[string]interface{}) (*envelop
 		refresh = refreshVal
 	}
 
+	// v8.0: New granularity options
+	granularity := "module"
+	if granVal, ok := params["granularity"].(string); ok {
+		granularity = granVal
+	}
+
+	inferModules := true
+	if inferVal, ok := params["inferModules"].(bool); ok {
+		inferModules = inferVal
+	}
+
+	targetPath := ""
+	if targetVal, ok := params["targetPath"].(string); ok {
+		targetPath = targetVal
+	}
+
 	s.logger.Debug("Executing getArchitecture",
 		"depth", depth,
 		"includeExternalDeps", includeExternalDeps,
 		"refresh", refresh,
+		"granularity", granularity,
+		"inferModules", inferModules,
+		"targetPath", targetPath,
 	)
 
 	ctx := context.Background()
@@ -656,6 +675,9 @@ func (s *MCPServer) toolGetArchitecture(params map[string]interface{}) (*envelop
 		Depth:               depth,
 		IncludeExternalDeps: includeExternalDeps,
 		Refresh:             refresh,
+		Granularity:         granularity,
+		InferModules:        inferModules,
+		TargetPath:          targetPath,
 	}
 
 	archResp, err := s.engine().GetArchitecture(ctx, opts)
@@ -663,41 +685,121 @@ func (s *MCPServer) toolGetArchitecture(params map[string]interface{}) (*envelop
 		return nil, errors.NewOperationError("architecture analysis", err)
 	}
 
-	modules := make([]map[string]interface{}, 0, len(archResp.Modules))
-	for _, m := range archResp.Modules {
-		moduleInfo := map[string]interface{}{
-			"moduleId":    m.ModuleId,
-			"name":        m.Name,
-			"symbolCount": m.SymbolCount,
-			"fileCount":   m.FileCount,
-		}
-
-		if m.Path != "" {
-			moduleInfo["path"] = m.Path
-		}
-		if m.Language != "" {
-			moduleInfo["language"] = m.Language
-		}
-
-		modules = append(modules, moduleInfo)
-	}
-
-	// Convert dependency graph edges
-	depEdges := make([]map[string]interface{}, 0, len(archResp.DependencyGraph))
-	for _, edge := range archResp.DependencyGraph {
-		depEdges = append(depEdges, map[string]interface{}{
-			"from":     edge.From,
-			"to":       edge.To,
-			"kind":     edge.Kind,
-			"strength": edge.Strength,
-		})
-	}
-
+	// Build response based on granularity
 	data := map[string]interface{}{
-		"modules":         modules,
-		"dependencyGraph": depEdges,
+		"granularity":     archResp.Granularity,
+		"detectionMethod": archResp.DetectionMethod,
 		"confidence":      archResp.Confidence,
 		"confidenceBasis": archResp.ConfidenceBasis,
+	}
+
+	var itemCount int
+
+	switch archResp.Granularity {
+	case "directory":
+		// Directory-level response
+		directories := make([]map[string]interface{}, 0, len(archResp.Directories))
+		for _, d := range archResp.Directories {
+			dirInfo := map[string]interface{}{
+				"path":          d.Path,
+				"fileCount":     d.FileCount,
+				"hasIndexFile":  d.HasIndexFile,
+				"incomingEdges": d.IncomingEdges,
+				"outgoingEdges": d.OutgoingEdges,
+			}
+			if d.Language != "" {
+				dirInfo["language"] = d.Language
+			}
+			if d.LOC > 0 {
+				dirInfo["loc"] = d.LOC
+			}
+			directories = append(directories, dirInfo)
+		}
+
+		edges := make([]map[string]interface{}, 0, len(archResp.DirectoryDependencies))
+		for _, e := range archResp.DirectoryDependencies {
+			edges = append(edges, map[string]interface{}{
+				"from":     e.From,
+				"to":       e.To,
+				"kind":     e.Kind,
+				"strength": e.Strength,
+			})
+		}
+
+		data["directories"] = directories
+		data["directoryDependencies"] = edges
+		itemCount = len(directories)
+
+	case "file":
+		// File-level response
+		files := make([]map[string]interface{}, 0, len(archResp.Files))
+		for _, f := range archResp.Files {
+			fileInfo := map[string]interface{}{
+				"path":          f.Path,
+				"incomingEdges": f.IncomingEdges,
+				"outgoingEdges": f.OutgoingEdges,
+			}
+			if f.Language != "" {
+				fileInfo["language"] = f.Language
+			}
+			if f.LOC > 0 {
+				fileInfo["loc"] = f.LOC
+			}
+			files = append(files, fileInfo)
+		}
+
+		edges := make([]map[string]interface{}, 0, len(archResp.FileDependencies))
+		for _, e := range archResp.FileDependencies {
+			edgeInfo := map[string]interface{}{
+				"from":     e.From,
+				"to":       e.To,
+				"kind":     e.Kind,
+				"resolved": e.Resolved,
+			}
+			if e.Line > 0 {
+				edgeInfo["line"] = e.Line
+			}
+			edges = append(edges, edgeInfo)
+		}
+
+		data["files"] = files
+		data["fileDependencies"] = edges
+		itemCount = len(files)
+
+	default:
+		// Module-level response (existing behavior)
+		modules := make([]map[string]interface{}, 0, len(archResp.Modules))
+		for _, m := range archResp.Modules {
+			moduleInfo := map[string]interface{}{
+				"moduleId":    m.ModuleId,
+				"name":        m.Name,
+				"symbolCount": m.SymbolCount,
+				"fileCount":   m.FileCount,
+			}
+
+			if m.Path != "" {
+				moduleInfo["path"] = m.Path
+			}
+			if m.Language != "" {
+				moduleInfo["language"] = m.Language
+			}
+
+			modules = append(modules, moduleInfo)
+		}
+
+		depEdges := make([]map[string]interface{}, 0, len(archResp.DependencyGraph))
+		for _, edge := range archResp.DependencyGraph {
+			depEdges = append(depEdges, map[string]interface{}{
+				"from":     edge.From,
+				"to":       edge.To,
+				"kind":     edge.Kind,
+				"strength": edge.Strength,
+			})
+		}
+
+		data["modules"] = modules
+		data["dependencyGraph"] = depEdges
+		itemCount = len(modules)
 	}
 
 	if len(archResp.Limitations) > 0 {
@@ -707,7 +809,7 @@ func (s *MCPServer) toolGetArchitecture(params map[string]interface{}) (*envelop
 	resp := NewToolResponse().
 		Data(data).
 		WithProvenance(archResp.Provenance).
-		WithTruncation(archResp.Truncated, len(modules), len(modules), "max-modules").
+		WithTruncation(archResp.Truncated, itemCount, itemCount, "max-items").
 		WithDrilldowns(archResp.Drilldowns)
 
 	return resp.Build(), nil
