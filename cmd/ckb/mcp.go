@@ -124,32 +124,53 @@ func runMCP(cmd *cobra.Command, args []string) error {
 			server.SetActiveRepo(repoName, repoRoot, engine)
 		}
 	} else {
-		// No --repo flag - check CKB_REPO env var
-		repoRoot = os.Getenv("CKB_REPO")
-		if repoRoot != "" {
-			fmt.Fprintf(os.Stderr, "Repository: %s (from CKB_REPO)\n", repoRoot)
-		} else {
-			// Check if registry exists with a default
-			registry, err := repos.LoadRegistry()
-			if err == nil && registry.Default != "" {
-				entry, state, err := registry.Get(registry.Default)
-				if err == nil && state == repos.RepoStateValid {
-					// Use multi-repo mode with default
-					repoRoot = entry.Path
-					repoName = registry.Default
-					fmt.Fprintf(os.Stderr, "Repository: %s (%s) [default]\n", repoName, repoRoot)
+		// No --repo flag - use smart resolution
+		resolved, err := repos.ResolveActiveRepo("")
+		if err != nil {
+			return fmt.Errorf("failed to resolve repository: %w", err)
+		}
 
-					server = mcp.NewMCPServerWithRegistry(version.Version, registry, logger)
-					engine := mustGetEngine(repoRoot, logger)
-					server.SetActiveRepo(repoName, repoRoot, engine)
+		if resolved.Entry != nil {
+			repoRoot = resolved.Entry.Path
+			repoName = resolved.Entry.Name
+
+			// Format status message based on resolution source
+			switch resolved.Source {
+			case repos.ResolvedFromEnv:
+				fmt.Fprintf(os.Stderr, "Repository: %s (%s) [from CKB_REPO]\n", repoName, repoRoot)
+			case repos.ResolvedFromCWD:
+				fmt.Fprintf(os.Stderr, "Repository: %s (%s) [cwd match]\n", repoName, repoRoot)
+			case repos.ResolvedFromCWDGit:
+				// Auto-detected unregistered git repo
+				if resolved.State == repos.RepoStateUninitialized {
+					fmt.Fprintf(os.Stderr, "Repository: %s (%s) [auto-detected, uninitialized]\n", repoName, repoRoot)
+					fmt.Fprintf(os.Stderr, "  ⚠️  Run 'ckb init && ckb repo add %s .' to fully set up\n", repoName)
+				} else {
+					fmt.Fprintf(os.Stderr, "Repository: %s (%s) [auto-detected]\n", repoName, repoRoot)
+					fmt.Fprintf(os.Stderr, "  ℹ️  Run 'ckb repo add %s .' to register permanently\n", repoName)
+				}
+				if resolved.SkippedDefault != "" {
+					fmt.Fprintf(os.Stderr, "  Note: Default '%s' skipped (different git repo)\n", resolved.SkippedDefault)
+				}
+			case repos.ResolvedFromDefault:
+				fmt.Fprintf(os.Stderr, "Repository: %s (%s) [default]\n", repoName, repoRoot)
+				// Warn if we're in a different git repo
+				if resolved.DetectedGitRoot != "" && resolved.DetectedGitRoot != repoRoot {
+					fmt.Fprintf(os.Stderr, "  ⚠️  CWD is in '%s' but using default repo\n", filepath.Base(resolved.DetectedGitRoot))
 				}
 			}
 
-			// Fall back to current directory
-			if repoRoot == "" {
-				repoRoot = mustGetRepoRoot()
-				fmt.Fprintf(os.Stderr, "Repository: %s (current directory)\n", repoRoot)
+			// Use multi-repo mode if registry is available
+			registry, err := repos.LoadRegistry()
+			if err == nil && resolved.Source != repos.ResolvedFromCWDGit {
+				server = mcp.NewMCPServerWithRegistry(version.Version, registry, logger)
+				engine := mustGetEngine(repoRoot, logger)
+				server.SetActiveRepo(repoName, repoRoot, engine)
 			}
+		} else {
+			// No repo found - fall back to current directory
+			repoRoot = mustGetRepoRoot()
+			fmt.Fprintf(os.Stderr, "Repository: %s (current directory)\n", repoRoot)
 		}
 	}
 

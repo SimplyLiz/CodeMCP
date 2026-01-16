@@ -16,6 +16,13 @@ func TestResolveActiveRepo_Empty(t *testing.T) {
 	// Clear any CKB_REPO env var
 	t.Setenv("CKB_REPO", "")
 
+	// Change to a non-git directory so auto-detection doesn't kick in
+	origDir, _ := os.Getwd()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(origDir) }()
+
 	resolved, err := ResolveActiveRepo("")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -377,5 +384,204 @@ func TestFindRepoContainingPath_LongestMatchWins(t *testing.T) {
 
 	if entry.Name != "child" {
 		t.Errorf("expected most specific match 'child', got %q", entry.Name)
+	}
+}
+
+func TestFindGitRoot(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Resolve symlinks in tmpDir (macOS /var -> /private/var)
+	tmpDir, _ = filepath.EvalSymlinks(tmpDir)
+
+	// Create a git repo structure
+	gitDir := filepath.Join(tmpDir, "myrepo", ".git")
+	subDir := filepath.Join(tmpDir, "myrepo", "src", "pkg")
+	if err := os.MkdirAll(gitDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(subDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Test finding git root from subdirectory
+	root := FindGitRoot(subDir)
+	expected := filepath.Join(tmpDir, "myrepo")
+	if root != expected {
+		t.Errorf("expected git root %q, got %q", expected, root)
+	}
+
+	// Test finding git root from the root itself
+	root = FindGitRoot(expected)
+	if root != expected {
+		t.Errorf("expected git root %q, got %q", expected, root)
+	}
+
+	// Test not in a git repo
+	nonGitDir := filepath.Join(tmpDir, "notgit")
+	if err := os.MkdirAll(nonGitDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	root = FindGitRoot(nonGitDir)
+	if root != "" {
+		t.Errorf("expected empty string for non-git dir, got %q", root)
+	}
+}
+
+func TestFindGitRoot_WorktreeFile(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Resolve symlinks in tmpDir (macOS /var -> /private/var)
+	tmpDir, _ = filepath.EvalSymlinks(tmpDir)
+
+	// Create a git worktree structure (.git is a file, not directory)
+	repoDir := filepath.Join(tmpDir, "worktree")
+	if err := os.MkdirAll(repoDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	gitFile := filepath.Join(repoDir, ".git")
+	if err := os.WriteFile(gitFile, []byte("gitdir: /some/path/.git/worktrees/test"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	root := FindGitRoot(repoDir)
+	if root != repoDir {
+		t.Errorf("expected git root %q for worktree, got %q", repoDir, root)
+	}
+}
+
+func TestResolveActiveRepo_CWDGit(t *testing.T) {
+	// Test auto-detection of unregistered git repos
+	tmpDir := t.TempDir()
+
+	// Resolve symlinks in tmpDir (macOS /var -> /private/var)
+	tmpDir, _ = filepath.EvalSymlinks(tmpDir)
+
+	origHome := os.Getenv("HOME")
+	t.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	// Clear CKB_REPO env var
+	t.Setenv("CKB_REPO", "")
+
+	// Create a git repo that's NOT registered
+	gitRepoDir := filepath.Join(tmpDir, "unregistered-project")
+	gitDir := filepath.Join(gitRepoDir, ".git")
+	if err := os.MkdirAll(gitDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Change to the git repo directory
+	origDir, _ := os.Getwd()
+	if err := os.Chdir(gitRepoDir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(origDir) }()
+
+	// Resolve - should auto-detect the git repo
+	resolved, err := ResolveActiveRepo("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if resolved.Entry == nil {
+		t.Fatal("expected entry, got nil")
+	}
+
+	if resolved.Entry.Name != "unregistered-project" {
+		t.Errorf("expected name %q (from dir name), got %q", "unregistered-project", resolved.Entry.Name)
+	}
+
+	if resolved.Source != ResolvedFromCWDGit {
+		t.Errorf("expected source %q, got %q", ResolvedFromCWDGit, resolved.Source)
+	}
+
+	if resolved.State != RepoStateUninitialized {
+		t.Errorf("expected state %q, got %q", RepoStateUninitialized, resolved.State)
+	}
+
+	if resolved.DetectedGitRoot != gitRepoDir {
+		t.Errorf("expected DetectedGitRoot %q, got %q", gitRepoDir, resolved.DetectedGitRoot)
+	}
+}
+
+func TestResolveActiveRepo_CWDGitWithDefault(t *testing.T) {
+	// Test that auto-detected git repo takes precedence over default
+	tmpDir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	t.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	// Clear CKB_REPO env var
+	t.Setenv("CKB_REPO", "")
+
+	// Create and register a default repo
+	defaultRepo := filepath.Join(tmpDir, "default-repo")
+	if err := os.MkdirAll(defaultRepo, 0755); err != nil {
+		t.Fatal(err)
+	}
+	registry, err := LoadRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Add("default", defaultRepo); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.SetDefault("default"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create an unregistered git repo
+	gitRepoDir := filepath.Join(tmpDir, "other-project")
+	gitDir := filepath.Join(gitRepoDir, ".git")
+	if err := os.MkdirAll(gitDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Change to the git repo directory
+	origDir, _ := os.Getwd()
+	if err := os.Chdir(gitRepoDir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(origDir) }()
+
+	// Resolve - should use git repo, not default
+	resolved, err := ResolveActiveRepo("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if resolved.Entry == nil {
+		t.Fatal("expected entry, got nil")
+	}
+
+	if resolved.Entry.Name != "other-project" {
+		t.Errorf("expected git repo name, got %q", resolved.Entry.Name)
+	}
+
+	if resolved.Source != ResolvedFromCWDGit {
+		t.Errorf("expected source %q, got %q", ResolvedFromCWDGit, resolved.Source)
+	}
+
+	if resolved.SkippedDefault != "default" {
+		t.Errorf("expected SkippedDefault %q, got %q", "default", resolved.SkippedDefault)
+	}
+}
+
+func TestCheckCkbInitialized(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Not initialized
+	if checkCkbInitialized(tmpDir) {
+		t.Error("expected false for non-initialized dir")
+	}
+
+	// Initialize
+	ckbDir := filepath.Join(tmpDir, ".ckb")
+	if err := os.MkdirAll(ckbDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	if !checkCkbInitialized(tmpDir) {
+		t.Error("expected true for initialized dir")
 	}
 }
