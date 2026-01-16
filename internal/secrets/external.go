@@ -89,6 +89,11 @@ func (e *ExternalScanner) IsAvailable(ctx context.Context, config ExternalToolCo
 
 // RunGitleaks runs gitleaks and returns findings.
 func (e *ExternalScanner) RunGitleaks(ctx context.Context, opts ScanOptions) ([]SecretFinding, error) {
+	// Validate git reference to prevent argument injection
+	if err := validateGitRef(opts.SinceCommit); err != nil {
+		return nil, fmt.Errorf("invalid SinceCommit: %w", err)
+	}
+
 	args := []string{
 		"detect",
 		"--source", e.repoRoot,
@@ -187,6 +192,11 @@ type gitleaksFinding struct {
 
 // RunTrufflehog runs trufflehog and returns findings.
 func (e *ExternalScanner) RunTrufflehog(ctx context.Context, opts ScanOptions) ([]SecretFinding, error) {
+	// Validate git reference to prevent argument injection
+	if err := validateGitRef(opts.SinceCommit); err != nil {
+		return nil, fmt.Errorf("invalid SinceCommit: %w", err)
+	}
+
 	var args []string
 
 	if opts.Scope == ScopeHistory {
@@ -270,6 +280,29 @@ type trufflehogFinding struct {
 			} `json:"Git"`
 		} `json:"Data"`
 	} `json:"SourceMetadata"`
+}
+
+// validateGitRef validates that a git reference is safe to pass as a command argument.
+// This prevents command argument injection via malicious commit references.
+var validGitRefPattern = regexp.MustCompile(`^[a-zA-Z0-9._/~^@{}\-]+$`)
+
+func validateGitRef(ref string) error {
+	if ref == "" {
+		return nil
+	}
+	// Reject refs that are too long (git refs are typically under 256 chars)
+	if len(ref) > 256 {
+		return fmt.Errorf("git reference too long: %d characters", len(ref))
+	}
+	// Reject refs starting with dash (could be interpreted as flags)
+	if strings.HasPrefix(ref, "-") {
+		return fmt.Errorf("git reference cannot start with dash: %s", ref)
+	}
+	// Only allow safe characters in git refs
+	if !validGitRefPattern.MatchString(ref) {
+		return fmt.Errorf("git reference contains invalid characters: %s", ref)
+	}
+	return nil
 }
 
 // parseVersion extracts version number from output.
