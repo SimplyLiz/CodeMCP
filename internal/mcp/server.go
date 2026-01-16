@@ -50,6 +50,9 @@ type MCPServer struct {
 	activePreset string // current preset (core, review, refactor, etc.)
 	toolsetHash  string // hash of current tool definitions (for cursor invalidation)
 	expanded     bool   // true if expandToolset has been called this session
+
+	// MCP roots support (v8.0)
+	roots *rootsManager
 }
 
 // NewMCPServer creates a new MCP server in legacy single-engine mode
@@ -63,6 +66,7 @@ func NewMCPServer(version string, engine *query.Engine, logger *slog.Logger) *MC
 		tools:        make(map[string]ToolHandler),
 		resources:    make(map[string]ResourceHandler),
 		activePreset: DefaultPreset,
+		roots:        newRootsManager(),
 	}
 
 	// Register all tools
@@ -99,6 +103,7 @@ func NewMCPServerWithRegistry(version string, registry *repos.Registry, logger *
 		tools:        make(map[string]ToolHandler),
 		resources:    make(map[string]ResourceHandler),
 		activePreset: DefaultPreset,
+		roots:        newRootsManager(),
 	}
 
 	// Register all tools
@@ -324,6 +329,28 @@ func (s *MCPServer) MarkExpanded() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.expanded = true
+}
+
+// GetRoots returns the current MCP roots from the client (v8.0)
+func (s *MCPServer) GetRoots() []Root {
+	if s.roots == nil {
+		return nil
+	}
+	return s.roots.GetRoots()
+}
+
+// GetRootPaths returns the filesystem paths for all client roots (v8.0)
+func (s *MCPServer) GetRootPaths() []string {
+	if s.roots == nil {
+		return nil
+	}
+	return s.roots.GetPaths()
+}
+
+// HasClientRoots returns true if the client provided any roots (v8.0)
+func (s *MCPServer) HasClientRoots() bool {
+	roots := s.GetRoots()
+	return len(roots) > 0
 }
 
 // SendNotification sends a JSON-RPC notification to the client
