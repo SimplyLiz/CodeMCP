@@ -204,7 +204,7 @@ func (m *MetricsCollector) RecordIngestion(repo, ingestType string, duration tim
 func (m *MetricsCollector) RecordSearch(repo, searchType string, duration time.Duration, resultCount int) {
 	m.searchTotal.Inc(repo, searchType)
 	m.searchDuration.Observe(duration.Seconds(), repo, searchType)
-	m.searchResultsTotal.Add(uint64(resultCount), repo)
+	m.searchResultsTotal.Add(uint64(resultCount), repo) //nolint:gosec // G115: result count is semantically non-negative
 }
 
 // RecordRateLimitExceeded records a rate limit exceeded event
