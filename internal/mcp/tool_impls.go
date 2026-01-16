@@ -204,7 +204,7 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 		"capabilities": map[string]interface{}{
 			"streaming": streamCaps, // v8.0: streaming support
 		},
-		"roots":       rootsInfo,   // v8.0: MCP roots from client
+		"roots":       rootsInfo, // v8.0: MCP roots from client
 		"index":       indexInfo,
 		"lastRefresh": statusResp.LastRefresh,
 		"suggestions": suggestions, // v8.0: actionable fix suggestions

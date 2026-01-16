@@ -89,8 +89,10 @@ func (rm *rootsManager) IsListChangedEnabled() bool {
 
 // CancelPendingRequest cancels a pending request (for timeout/cleanup)
 func (rm *rootsManager) CancelPendingRequest(id int64) bool {
-	if ch, ok := rm.pendingRequests.LoadAndDelete(id); ok {
-		close(ch.(chan *MCPMessage))
+	if val, ok := rm.pendingRequests.LoadAndDelete(id); ok {
+		if ch, ok := val.(chan *MCPMessage); ok {
+			close(ch)
+		}
 		return true
 	}
 	return false
@@ -100,7 +102,9 @@ func (rm *rootsManager) CancelPendingRequest(id int64) bool {
 func (rm *rootsManager) CancelAllPending() {
 	rm.pendingRequests.Range(func(key, value any) bool {
 		rm.pendingRequests.Delete(key)
-		close(value.(chan *MCPMessage))
+		if ch, ok := value.(chan *MCPMessage); ok {
+			close(ch)
+		}
 		return true
 	})
 }
@@ -157,8 +161,10 @@ func (rm *rootsManager) RegisterPendingRequest(id int64) chan *MCPMessage {
 
 // ResolvePendingRequest resolves a pending request with the response
 func (rm *rootsManager) ResolvePendingRequest(id int64, msg *MCPMessage) bool {
-	if ch, ok := rm.pendingRequests.LoadAndDelete(id); ok {
-		ch.(chan *MCPMessage) <- msg
+	if val, ok := rm.pendingRequests.LoadAndDelete(id); ok {
+		if ch, ok := val.(chan *MCPMessage); ok {
+			ch <- msg
+		}
 		return true
 	}
 	return false
