@@ -22,7 +22,7 @@ type DB struct {
 func Open(repoRoot string, logger *slog.Logger) (*DB, error) {
 	// Ensure .ckb directory exists
 	ckbDir := filepath.Join(repoRoot, ".ckb")
-	if err := os.MkdirAll(ckbDir, 0755); err != nil {
+	if err := os.MkdirAll(ckbDir, 0755); err != nil { //nolint:gosec // G301: 0755 allows user access to .ckb directory
 		return nil, fmt.Errorf("failed to create .ckb directory: %w", err)
 	}
 

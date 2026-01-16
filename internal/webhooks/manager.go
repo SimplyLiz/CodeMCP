@@ -535,7 +535,7 @@ type Store struct {
 
 // OpenStore opens or creates the webhooks database
 func OpenStore(ckbDir string, logger *slog.Logger) (*Store, error) {
-	if err := os.MkdirAll(ckbDir, 0755); err != nil {
+	if err := os.MkdirAll(ckbDir, 0755); err != nil { //nolint:gosec // G301: 0755 allows user access to .ckb directory
 		return nil, fmt.Errorf("failed to create directory: %w", err)
 	}
 
@@ -888,6 +888,7 @@ func (s *Store) ListDeliveries(opts ListDeliveriesOptions) (*ListDeliveriesRespo
 	}
 
 	// Count total
+	//nolint:gosec // G201: whereClause contains only static column names and ? placeholders
 	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM deliveries %s", whereClause)
 	var totalCount int
 	if err := s.conn.QueryRow(countQuery, args...).Scan(&totalCount); err != nil {
@@ -900,6 +901,7 @@ func (s *Store) ListDeliveries(opts ListDeliveriesOptions) (*ListDeliveriesRespo
 		limit = 20
 	}
 
+	//nolint:gosec // G201: whereClause contains only static column names and ? placeholders
 	query := fmt.Sprintf(`
 		SELECT id, webhook_id, event_id, event_type, payload, status, attempts, last_attempt_at, last_error, response_code, next_retry_at, created_at, completed_at
 		FROM deliveries %s

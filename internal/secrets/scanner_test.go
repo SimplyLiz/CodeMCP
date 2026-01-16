@@ -1175,6 +1175,51 @@ func TestLoadAllowlistValid(t *testing.T) {
 	}
 }
 
+func TestLoadAllowlistWithGitleaksConfig(t *testing.T) {
+	// Create temp directory
+	tmpDir, err := os.MkdirTemp("", "secrets-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create .gitleaks.toml
+	gitleaksContent := `
+title = "Test Gitleaks Config"
+
+[allowlist]
+description = "Test allowlist"
+paths = [
+  '''internal/secrets/patterns\.go''',
+  '''.*_test\.go''',
+]
+`
+	gitleaksPath := filepath.Join(tmpDir, ".gitleaks.toml")
+	if err := os.WriteFile(gitleaksPath, []byte(gitleaksContent), 0644); err != nil {
+		t.Fatalf("Failed to write .gitleaks.toml: %v", err)
+	}
+
+	// Load allowlist - should include gitleaks entries
+	al, err := LoadAllowlist(tmpDir)
+	if err != nil {
+		t.Fatalf("LoadAllowlist failed: %v", err)
+	}
+
+	// Test that gitleaks path pattern works
+	finding := &SecretFinding{File: "scanner_test.go", Rule: "github_pat"}
+	suppressed, _ := al.IsSuppressed(finding)
+	if !suppressed {
+		t.Error("Expected file matching .*_test.go to be suppressed by gitleaks config")
+	}
+
+	// Test patterns.go suppression
+	finding2 := &SecretFinding{File: "internal/secrets/patterns.go", Rule: "private_key"}
+	suppressed2, _ := al.IsSuppressed(finding2)
+	if !suppressed2 {
+		t.Error("Expected patterns.go to be suppressed by gitleaks config")
+	}
+}
+
 func TestGenerateHash(t *testing.T) {
 	finding := &SecretFinding{
 		File:     "config.go",

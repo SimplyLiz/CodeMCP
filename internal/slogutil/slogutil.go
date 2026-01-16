@@ -16,7 +16,7 @@ func NewLogger(w io.Writer, level slog.Level) *slog.Logger {
 // NewFileLogger creates a new slog.Logger that writes to a file.
 // The file is opened in append mode and created if it doesn't exist.
 func NewFileLogger(path string, level slog.Level) (*slog.Logger, *os.File, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644) //nolint:gosec // G302,G304: 0644 is standard for log files, path from config
 	if err != nil {
 		return nil, nil, err
 	}

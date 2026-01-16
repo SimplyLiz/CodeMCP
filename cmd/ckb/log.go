@@ -146,7 +146,7 @@ func getActiveRepoRoot() (string, error) {
 }
 
 func showLogLines(path string, n int) error {
-	file, err := os.Open(path)
+	file, err := os.Open(path) //nolint:gosec // G304: Path comes from internal log path resolution
 	if err != nil {
 		return err
 	}

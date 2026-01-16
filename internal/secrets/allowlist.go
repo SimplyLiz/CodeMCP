@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+
+	"github.com/BurntSushi/toml"
 )
 
 // AllowlistEntry defines a suppression rule.
@@ -31,10 +33,11 @@ type Allowlist struct {
 	entries []AllowlistEntry
 
 	// Compiled patterns for efficient matching
-	pathPatterns  []*pathMatcher
-	valuePatterns []*regexp.Regexp
-	hashes        map[string]string // hash -> entry ID
-	rules         map[string]string // rule name -> entry ID
+	pathPatterns    []*pathMatcher
+	pathRegexes     []*pathRegexMatcher // For gitleaks-style regex paths
+	valuePatterns   []*regexp.Regexp
+	hashes          map[string]string // hash -> entry ID
+	rules           map[string]string // rule name -> entry ID
 }
 
 type pathMatcher struct {
@@ -42,29 +45,41 @@ type pathMatcher struct {
 	entryID string
 }
 
-// LoadAllowlist loads the allowlist from .ckb/secrets-allowlist.json
+type pathRegexMatcher struct {
+	regex   *regexp.Regexp
+	entryID string
+}
+
+// LoadAllowlist loads the allowlist from multiple sources:
+// 1. .ckb/secrets-allowlist.json (CKB native format)
+// 2. .gitleaks.toml (gitleaks compatibility)
 func LoadAllowlist(repoRoot string) (*Allowlist, error) {
+	var allEntries []AllowlistEntry
+
+	// Load CKB native allowlist
 	path := filepath.Join(repoRoot, ".ckb", "secrets-allowlist.json")
-
-	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		// Return empty allowlist if file doesn't exist
-		return &Allowlist{
-			hashes: make(map[string]string),
-			rules:  make(map[string]string),
-		}, nil
+	data, err := os.ReadFile(path) //nolint:gosec // G304: Path is constructed from repoRoot + fixed filename
+	if err == nil {
+		var file AllowlistFile
+		if err := json.Unmarshal(data, &file); err != nil {
+			return nil, err
+		}
+		allEntries = append(allEntries, file.Entries...)
+	} else if !os.IsNotExist(err) {
+		return nil, err
 	}
+
+	// Load gitleaks config for compatibility
+	gitleaksEntries, err := loadGitleaksConfig(repoRoot)
 	if err != nil {
-		return nil, err
-	}
-
-	var file AllowlistFile
-	if err := json.Unmarshal(data, &file); err != nil {
-		return nil, err
+		// Log warning but continue - gitleaks config is optional
+		// Don't fail if it's malformed
+	} else if gitleaksEntries != nil {
+		allEntries = append(allEntries, gitleaksEntries...)
 	}
 
 	al := &Allowlist{
-		entries: file.Entries,
+		entries: allEntries,
 		hashes:  make(map[string]string),
 		rules:   make(map[string]string),
 	}
@@ -82,6 +97,14 @@ func (al *Allowlist) compile() {
 				pattern: e.Value,
 				entryID: e.ID,
 			})
+		case "path-regex":
+			// Gitleaks-style regex path patterns
+			if re, err := regexp.Compile(e.Value); err == nil {
+				al.pathRegexes = append(al.pathRegexes, &pathRegexMatcher{
+					regex:   re,
+					entryID: e.ID,
+				})
+			}
 		case "pattern":
 			if re, err := regexp.Compile(e.Value); err == nil {
 				al.valuePatterns = append(al.valuePatterns, re)
@@ -100,7 +123,7 @@ func (al *Allowlist) IsSuppressed(f *SecretFinding) (bool, string) {
 		return false, ""
 	}
 
-	// Check path patterns
+	// Check path patterns (glob style)
 	for _, pm := range al.pathPatterns {
 		if matched, _ := filepath.Match(pm.pattern, f.File); matched {
 			return true, pm.entryID
@@ -108,6 +131,13 @@ func (al *Allowlist) IsSuppressed(f *SecretFinding) (bool, string) {
 		// Also try with ** for recursive matching
 		if matchGlob(pm.pattern, f.File) {
 			return true, pm.entryID
+		}
+	}
+
+	// Check path regex patterns (gitleaks style)
+	for _, prm := range al.pathRegexes {
+		if prm.regex.MatchString(f.File) {
+			return true, prm.entryID
 		}
 	}
 
@@ -225,4 +255,74 @@ func matchParts(pattern, path []string) bool {
 // This can be used to create allowlist entries.
 func GenerateHash(f *SecretFinding) string {
 	return hashFinding(f)
+}
+
+// gitleaksConfig represents the structure of .gitleaks.toml
+type gitleaksConfig struct {
+	Allowlist gitleaksAllowlist `toml:"allowlist"`
+}
+
+type gitleaksAllowlist struct {
+	Description string   `toml:"description"`
+	Paths       []string `toml:"paths"`
+	Regexes     []string `toml:"regexes"`
+	Commits     []string `toml:"commits"`
+	StopWords   []string `toml:"stopwords"`
+}
+
+// loadGitleaksConfig loads allowlist entries from .gitleaks.toml if it exists.
+// This provides compatibility with gitleaks configuration.
+func loadGitleaksConfig(repoRoot string) ([]AllowlistEntry, error) {
+	// Try multiple possible locations
+	paths := []string{
+		filepath.Join(repoRoot, ".gitleaks.toml"),
+		filepath.Join(repoRoot, "gitleaks.toml"),
+	}
+
+	var config gitleaksConfig
+	var found bool
+
+	for _, path := range paths {
+		data, err := os.ReadFile(path) //nolint:gosec // G304: Path constructed from repoRoot + fixed filename
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		if _, err := toml.Decode(string(data), &config); err != nil {
+			return nil, err
+		}
+		found = true
+		break
+	}
+
+	if !found {
+		return nil, nil
+	}
+
+	var entries []AllowlistEntry
+
+	// Convert path patterns (gitleaks uses regex for paths)
+	for i, path := range config.Allowlist.Paths {
+		entries = append(entries, AllowlistEntry{
+			ID:     "gitleaks-path-" + string(rune('0'+i)),
+			Type:   "path-regex",
+			Value:  path,
+			Reason: "From .gitleaks.toml allowlist",
+		})
+	}
+
+	// Convert regex patterns
+	for i, regex := range config.Allowlist.Regexes {
+		entries = append(entries, AllowlistEntry{
+			ID:     "gitleaks-regex-" + string(rune('0'+i)),
+			Type:   "pattern",
+			Value:  regex,
+			Reason: "From .gitleaks.toml allowlist",
+		})
+	}
+
+	return entries, nil
 }

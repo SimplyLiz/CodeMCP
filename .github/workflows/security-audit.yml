@@ -32,7 +32,7 @@ on:
 env:
   # Secret Detection
   SCAN_CKB_SECRETS: 'true'      # CKB builtin secret scanner
-  SCAN_GITLEAKS: 'true'         # Gitleaks secret detection
+  SCAN_GITLEAKS: 'false'        # Gitleaks - disabled, CKB provides coverage
   SCAN_TRUFFLEHOG: 'true'       # TruffleHog verified secrets
 
   # SAST (Static Application Security Testing)

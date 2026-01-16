@@ -8,6 +8,7 @@ import "time"
 // SecretType identifies the kind of secret detected.
 type SecretType string
 
+// nolint:gosec // G101: These are type identifiers for secret classification, not actual credentials
 const (
 	SecretTypeAWSAccessKey   SecretType = "aws_access_key"
 	SecretTypeAWSSecretKey   SecretType = "aws_secret_key"
