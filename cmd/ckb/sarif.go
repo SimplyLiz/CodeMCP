@@ -23,8 +23,8 @@ type SARIFReport struct {
 
 // SARIFRun represents a single analysis run.
 type SARIFRun struct {
-	Tool       SARIFTool       `json:"tool"`
-	Results    []SARIFResult   `json:"results,omitempty"`
+	Tool        SARIFTool         `json:"tool"`
+	Results     []SARIFResult     `json:"results,omitempty"`
 	Invocations []SARIFInvocation `json:"invocations,omitempty"`
 }
 
@@ -35,22 +35,22 @@ type SARIFTool struct {
 
 // SARIFDriver describes the primary analysis component.
 type SARIFDriver struct {
-	Name            string            `json:"name"`
-	Version         string            `json:"version,omitempty"`
-	InformationURI  string            `json:"informationUri,omitempty"`
-	Rules           []SARIFRule       `json:"rules,omitempty"`
-	SemanticVersion string            `json:"semanticVersion,omitempty"`
+	Name            string      `json:"name"`
+	Version         string      `json:"version,omitempty"`
+	InformationURI  string      `json:"informationUri,omitempty"`
+	Rules           []SARIFRule `json:"rules,omitempty"`
+	SemanticVersion string      `json:"semanticVersion,omitempty"`
 }
 
 // SARIFRule describes a rule that detected an issue.
 type SARIFRule struct {
-	ID               string                 `json:"id"`
-	Name             string                 `json:"name,omitempty"`
-	ShortDescription *SARIFMessage          `json:"shortDescription,omitempty"`
-	FullDescription  *SARIFMessage          `json:"fullDescription,omitempty"`
+	ID                   string                  `json:"id"`
+	Name                 string                  `json:"name,omitempty"`
+	ShortDescription     *SARIFMessage           `json:"shortDescription,omitempty"`
+	FullDescription      *SARIFMessage           `json:"fullDescription,omitempty"`
 	DefaultConfiguration *SARIFRuleConfiguration `json:"defaultConfiguration,omitempty"`
-	HelpURI          string                 `json:"helpUri,omitempty"`
-	Properties       map[string]interface{} `json:"properties,omitempty"`
+	HelpURI              string                  `json:"helpUri,omitempty"`
+	Properties           map[string]interface{}  `json:"properties,omitempty"`
 }
 
 // SARIFRuleConfiguration describes the default configuration for a rule.
@@ -60,14 +60,14 @@ type SARIFRuleConfiguration struct {
 
 // SARIFResult represents a single finding.
 type SARIFResult struct {
-	RuleID          string            `json:"ruleId"`
-	RuleIndex       int               `json:"ruleIndex,omitempty"`
-	Level           string            `json:"level,omitempty"` // error, warning, note, none
-	Message         SARIFMessage      `json:"message"`
-	Locations       []SARIFLocation   `json:"locations,omitempty"`
-	Fingerprints    map[string]string `json:"fingerprints,omitempty"`
-	PartialFingerprints map[string]string `json:"partialFingerprints,omitempty"`
-	Properties      map[string]interface{} `json:"properties,omitempty"`
+	RuleID              string                 `json:"ruleId"`
+	RuleIndex           int                    `json:"ruleIndex,omitempty"`
+	Level               string                 `json:"level,omitempty"` // error, warning, note, none
+	Message             SARIFMessage           `json:"message"`
+	Locations           []SARIFLocation        `json:"locations,omitempty"`
+	Fingerprints        map[string]string      `json:"fingerprints,omitempty"`
+	PartialFingerprints map[string]string      `json:"partialFingerprints,omitempty"`
+	Properties          map[string]interface{} `json:"properties,omitempty"`
 }
 
 // SARIFMessage contains text in various formats.
@@ -103,10 +103,10 @@ type SARIFRegion struct {
 
 // SARIFInvocation describes a single invocation of the tool.
 type SARIFInvocation struct {
-	ExecutionSuccessful bool   `json:"executionSuccessful"`
-	CommandLine         string `json:"commandLine,omitempty"`
+	ExecutionSuccessful bool                   `json:"executionSuccessful"`
+	CommandLine         string                 `json:"commandLine,omitempty"`
 	WorkingDirectory    *SARIFArtifactLocation `json:"workingDirectory,omitempty"`
-	Machine             string `json:"machine,omitempty"`
+	Machine             string                 `json:"machine,omitempty"`
 }
 
 // FormatSecretsAsSARIF converts a secrets scan result to SARIF format.

@@ -15,16 +15,16 @@ import (
 )
 
 var (
-	secretsScope        string
-	secretsPaths        []string
-	secretsExclude      []string
-	secretsMinSeverity  string
-	secretsSinceCommit  string
-	secretsMaxCommits   int
-	secretsUseGitleaks  bool
+	secretsScope         string
+	secretsPaths         []string
+	secretsExclude       []string
+	secretsMinSeverity   string
+	secretsSinceCommit   string
+	secretsMaxCommits    int
+	secretsUseGitleaks   bool
 	secretsUseTrufflehog bool
-	secretsFormat       string
-	secretsNoAllowlist  bool
+	secretsFormat        string
+	secretsNoAllowlist   bool
 )
 
 var scanSecretsCmd = &cobra.Command{

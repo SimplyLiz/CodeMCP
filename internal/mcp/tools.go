@@ -160,7 +160,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "getArchitecture",
-			Description: "Get codebase architecture with module dependencies",
+			Description: "Get codebase architecture with module dependencies. For single-module projects, use granularity='directory' or 'file' for meaningful visualization.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -178,6 +178,21 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 						"type":        "boolean",
 						"default":     false,
 						"description": "Force refresh of cached architecture",
+					},
+					"granularity": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"module", "directory", "file"},
+						"default":     "module",
+						"description": "Level of detail: 'module' (packages), 'directory' (folders), 'file' (individual files)",
+					},
+					"inferModules": map[string]interface{}{
+						"type":        "boolean",
+						"default":     true,
+						"description": "Infer modules from directory structure when no explicit package boundaries exist",
+					},
+					"targetPath": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional path to focus on (relative to repo root)",
 					},
 				},
 			},
