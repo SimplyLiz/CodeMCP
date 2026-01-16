@@ -713,6 +713,9 @@ func (s *MCPServer) toolGetArchitecture(params map[string]interface{}) (*envelop
 			if d.LOC > 0 {
 				dirInfo["loc"] = d.LOC
 			}
+			if d.IsIntermediate {
+				dirInfo["isIntermediate"] = true
+			}
 			directories = append(directories, dirInfo)
 		}
 

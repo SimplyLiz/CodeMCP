@@ -57,14 +57,15 @@ type GetArchitectureResponse struct {
 
 // DirectorySummary represents a directory in directory-level architecture views
 type DirectorySummary struct {
-	Path          string `json:"path"`
-	FileCount     int    `json:"fileCount"`
-	SymbolCount   int    `json:"symbolCount,omitempty"`
-	Language      string `json:"language,omitempty"`
-	LOC           int    `json:"loc,omitempty"`
-	HasIndexFile  bool   `json:"hasIndexFile"`
-	IncomingEdges int    `json:"incomingEdges"`
-	OutgoingEdges int    `json:"outgoingEdges"`
+	Path           string `json:"path"`
+	FileCount      int    `json:"fileCount"`
+	SymbolCount    int    `json:"symbolCount,omitempty"`
+	Language       string `json:"language,omitempty"`
+	LOC            int    `json:"loc,omitempty"`
+	HasIndexFile   bool   `json:"hasIndexFile"`
+	IncomingEdges  int    `json:"incomingEdges"`
+	OutgoingEdges  int    `json:"outgoingEdges"`
+	IsIntermediate bool   `json:"isIntermediate,omitempty"`
 }
 
 // DirectoryDependencyEdge represents a dependency between directories
@@ -432,14 +433,15 @@ func convertDirectorySummaries(archDirs []architecture.DirectorySummary) []Direc
 	result := make([]DirectorySummary, 0, len(archDirs))
 	for _, d := range archDirs {
 		result = append(result, DirectorySummary{
-			Path:          d.Path,
-			FileCount:     d.FileCount,
-			SymbolCount:   d.SymbolCount,
-			Language:      d.Language,
-			LOC:           d.LOC,
-			HasIndexFile:  d.HasIndexFile,
-			IncomingEdges: d.IncomingEdges,
-			OutgoingEdges: d.OutgoingEdges,
+			Path:           d.Path,
+			FileCount:      d.FileCount,
+			SymbolCount:    d.SymbolCount,
+			Language:       d.Language,
+			LOC:            d.LOC,
+			HasIndexFile:   d.HasIndexFile,
+			IncomingEdges:  d.IncomingEdges,
+			OutgoingEdges:  d.OutgoingEdges,
+			IsIntermediate: d.IsIntermediate,
 		})
 	}
 	return result

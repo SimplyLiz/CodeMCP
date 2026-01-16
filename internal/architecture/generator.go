@@ -234,11 +234,12 @@ func (g *ArchitectureGenerator) generateDirectoryLevel(ctx context.Context, repo
 		loc, _ := modules.AggregateDirectoryStats(g.repoRoot, dir)
 
 		summary := DirectorySummary{
-			Path:         dir.Path,
-			FileCount:    dir.FileCount,
-			Language:     dir.Language,
-			LOC:          loc,
-			HasIndexFile: dir.HasIndexFile,
+			Path:           dir.Path,
+			FileCount:      dir.FileCount,
+			Language:       dir.Language,
+			LOC:            loc,
+			HasIndexFile:   dir.HasIndexFile,
+			IsIntermediate: dir.IsIntermediate,
 		}
 		dirSummaries = append(dirSummaries, summary)
 	}

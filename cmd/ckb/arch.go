@@ -150,13 +150,14 @@ type EntrypointCLI struct {
 
 // DirectorySummaryCLI represents a directory in directory-level views
 type DirectorySummaryCLI struct {
-	Path          string `json:"path"`
-	FileCount     int    `json:"fileCount"`
-	Language      string `json:"language,omitempty"`
-	LOC           int    `json:"loc,omitempty"`
-	HasIndexFile  bool   `json:"hasIndexFile"`
-	IncomingEdges int    `json:"incomingEdges"`
-	OutgoingEdges int    `json:"outgoingEdges"`
+	Path           string `json:"path"`
+	FileCount      int    `json:"fileCount"`
+	Language       string `json:"language,omitempty"`
+	LOC            int    `json:"loc,omitempty"`
+	HasIndexFile   bool   `json:"hasIndexFile"`
+	IncomingEdges  int    `json:"incomingEdges"`
+	OutgoingEdges  int    `json:"outgoingEdges"`
+	IsIntermediate bool   `json:"isIntermediate,omitempty"`
 }
 
 // FileSummaryCLI represents a file in file-level views
@@ -189,13 +190,14 @@ func convertArchResponse(resp *query.GetArchitectureResponse) *ArchitectureRespo
 		directories := make([]DirectorySummaryCLI, 0, len(resp.Directories))
 		for _, d := range resp.Directories {
 			directories = append(directories, DirectorySummaryCLI{
-				Path:          d.Path,
-				FileCount:     d.FileCount,
-				Language:      d.Language,
-				LOC:           d.LOC,
-				HasIndexFile:  d.HasIndexFile,
-				IncomingEdges: d.IncomingEdges,
-				OutgoingEdges: d.OutgoingEdges,
+				Path:           d.Path,
+				FileCount:      d.FileCount,
+				Language:       d.Language,
+				LOC:            d.LOC,
+				HasIndexFile:   d.HasIndexFile,
+				IncomingEdges:  d.IncomingEdges,
+				OutgoingEdges:  d.OutgoingEdges,
+				IsIntermediate: d.IsIntermediate,
 			})
 		}
 		result.Directories = directories

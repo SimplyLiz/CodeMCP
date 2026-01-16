@@ -32,6 +32,10 @@ type InferredDirectory struct {
 
 	// Depth is the directory depth from the repo root (1 = top-level)
 	Depth int `json:"depth"`
+
+	// IsIntermediate indicates this directory was added to complete the hierarchy
+	// (contains no direct source files, only subdirectories)
+	IsIntermediate bool `json:"isIntermediate,omitempty"`
 }
 
 // InferOptions configures the directory inference algorithm
@@ -204,6 +208,9 @@ func DetectInferredDirectories(repoRoot string, opts InferOptions) ([]*InferredD
 	// Prune nested directories where parent is included and child doesn't have strong signals
 	directories = pruneNestedDirectories(directories)
 
+	// Fill in missing intermediate directories for complete hierarchy
+	directories = fillIntermediateDirectories(directories)
+
 	return directories, nil
 }
 
@@ -369,6 +376,54 @@ func pruneNestedDirectories(directories []*InferredDirectory) []*InferredDirecto
 	}
 
 	return result
+}
+
+// fillIntermediateDirectories adds missing parent directories to complete the hierarchy.
+// This ensures visualization tools can draw proper hierarchical trees.
+func fillIntermediateDirectories(directories []*InferredDirectory) []*InferredDirectory {
+	if len(directories) == 0 {
+		return directories
+	}
+
+	// Build a set of existing paths
+	existingPaths := make(map[string]bool)
+	for _, dir := range directories {
+		existingPaths[dir.Path] = true
+	}
+
+	// Collect all needed intermediate paths
+	intermediatePaths := make(map[string]bool)
+	for _, dir := range directories {
+		parts := strings.Split(dir.Path, string(os.PathSeparator))
+		// Add all ancestor paths that don't exist
+		for i := 1; i < len(parts); i++ {
+			ancestorPath := strings.Join(parts[:i], string(os.PathSeparator))
+			if !existingPaths[ancestorPath] && !intermediatePaths[ancestorPath] {
+				intermediatePaths[ancestorPath] = true
+			}
+		}
+	}
+
+	// Create intermediate directory entries
+	for path := range intermediatePaths {
+		depth := strings.Count(path, string(os.PathSeparator)) + 1
+		dirName := filepath.Base(path)
+		dir := &InferredDirectory{
+			Path:           path,
+			Depth:          depth,
+			FileCount:      0,
+			IsIntermediate: true,
+			IsSemantic:     SemanticDirectoryNames[strings.ToLower(dirName)],
+		}
+		directories = append(directories, dir)
+	}
+
+	// Sort by path for consistent ordering (parents before children)
+	sort.Slice(directories, func(i, j int) bool {
+		return directories[i].Path < directories[j].Path
+	})
+
+	return directories
 }
 
 // CountLinesInFile counts lines in a single file

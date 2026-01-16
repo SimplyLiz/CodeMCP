@@ -95,14 +95,15 @@ type ExternalDependency struct {
 
 // DirectorySummary represents a directory in directory-level architecture views
 type DirectorySummary struct {
-	Path          string `json:"path"`          // Relative path from repo root
-	FileCount     int    `json:"fileCount"`     // Number of source files
-	SymbolCount   int    `json:"symbolCount"`   // Symbols defined (if SCIP available)
-	Language      string `json:"language"`      // Dominant language
-	LOC           int    `json:"loc"`           // Lines of code
-	HasIndexFile  bool   `json:"hasIndexFile"`  // Contains index.ts/js, mod.rs, __init__.py
-	IncomingEdges int    `json:"incomingEdges"` // Dependencies pointing here
-	OutgoingEdges int    `json:"outgoingEdges"` // Dependencies from this directory
+	Path           string `json:"path"`                     // Relative path from repo root
+	FileCount      int    `json:"fileCount"`                // Number of source files
+	SymbolCount    int    `json:"symbolCount"`              // Symbols defined (if SCIP available)
+	Language       string `json:"language"`                 // Dominant language
+	LOC            int    `json:"loc"`                      // Lines of code
+	HasIndexFile   bool   `json:"hasIndexFile"`             // Contains index.ts/js, mod.rs, __init__.py
+	IncomingEdges  int    `json:"incomingEdges"`            // Dependencies pointing here
+	OutgoingEdges  int    `json:"outgoingEdges"`            // Dependencies from this directory
+	IsIntermediate bool   `json:"isIntermediate,omitempty"` // Added to complete hierarchy (no direct files)
 }
 
 // FileSummary represents a file in file-level architecture views

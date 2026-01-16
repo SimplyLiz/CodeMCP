@@ -175,13 +175,14 @@ type EntrypointInfo struct {
 
 // DirectoryInfo represents a directory in directory-level architecture views
 type DirectoryInfo struct {
-	Path          string `json:"path"`
-	FileCount     int    `json:"fileCount"`
-	Language      string `json:"language,omitempty"`
-	LOC           int    `json:"loc,omitempty"`
-	HasIndexFile  bool   `json:"hasIndexFile"`
-	IncomingEdges int    `json:"incomingEdges"`
-	OutgoingEdges int    `json:"outgoingEdges"`
+	Path           string `json:"path"`
+	FileCount      int    `json:"fileCount"`
+	Language       string `json:"language,omitempty"`
+	LOC            int    `json:"loc,omitempty"`
+	HasIndexFile   bool   `json:"hasIndexFile"`
+	IncomingEdges  int    `json:"incomingEdges"`
+	OutgoingEdges  int    `json:"outgoingEdges"`
+	IsIntermediate bool   `json:"isIntermediate,omitempty"`
 }
 
 // FileInfo represents a file in file-level architecture views
@@ -648,13 +649,14 @@ func (s *Server) handleGetArchitecture(w http.ResponseWriter, r *http.Request) {
 		directories := make([]DirectoryInfo, 0, len(archResp.Directories))
 		for _, d := range archResp.Directories {
 			directories = append(directories, DirectoryInfo{
-				Path:          d.Path,
-				FileCount:     d.FileCount,
-				Language:      d.Language,
-				LOC:           d.LOC,
-				HasIndexFile:  d.HasIndexFile,
-				IncomingEdges: d.IncomingEdges,
-				OutgoingEdges: d.OutgoingEdges,
+				Path:           d.Path,
+				FileCount:      d.FileCount,
+				Language:       d.Language,
+				LOC:            d.LOC,
+				HasIndexFile:   d.HasIndexFile,
+				IncomingEdges:  d.IncomingEdges,
+				OutgoingEdges:  d.OutgoingEdges,
+				IsIntermediate: d.IsIntermediate,
 			})
 		}
 		response.Directories = directories
