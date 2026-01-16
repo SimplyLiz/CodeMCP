@@ -125,11 +125,24 @@ type ReferenceResult struct {
 
 // ArchitectureResponse represents an architecture overview response
 type ArchitectureResponse struct {
-	Timestamp    time.Time        `json:"timestamp"`
-	Modules      []ModuleInfo     `json:"modules"`
-	Dependencies []DependencyInfo `json:"dependencies"`
-	Entrypoints  []EntrypointInfo `json:"entrypoints"`
-	Provenance   *ProvenanceInfo  `json:"provenance,omitempty"`
+	Timestamp       time.Time `json:"timestamp"`
+	Granularity     string    `json:"granularity"`
+	DetectionMethod string    `json:"detectionMethod,omitempty"`
+
+	// Module-level fields (granularity=module)
+	Modules      []ModuleInfo     `json:"modules,omitempty"`
+	Dependencies []DependencyInfo `json:"dependencies,omitempty"`
+	Entrypoints  []EntrypointInfo `json:"entrypoints,omitempty"`
+
+	// Directory-level fields (granularity=directory)
+	Directories           []DirectoryInfo  `json:"directories,omitempty"`
+	DirectoryDependencies []DependencyInfo `json:"directoryDependencies,omitempty"`
+
+	// File-level fields (granularity=file)
+	Files            []FileInfo           `json:"files,omitempty"`
+	FileDependencies []FileDependencyInfo `json:"fileDependencies,omitempty"`
+
+	Provenance *ProvenanceInfo `json:"provenance,omitempty"`
 }
 
 // ModuleInfo represents information about a module
@@ -158,6 +171,35 @@ type EntrypointInfo struct {
 	Name     string `json:"name"`
 	Kind     string `json:"kind"`
 	ModuleID string `json:"moduleId"`
+}
+
+// DirectoryInfo represents a directory in directory-level architecture views
+type DirectoryInfo struct {
+	Path          string `json:"path"`
+	FileCount     int    `json:"fileCount"`
+	Language      string `json:"language,omitempty"`
+	LOC           int    `json:"loc,omitempty"`
+	HasIndexFile  bool   `json:"hasIndexFile"`
+	IncomingEdges int    `json:"incomingEdges"`
+	OutgoingEdges int    `json:"outgoingEdges"`
+}
+
+// FileInfo represents a file in file-level architecture views
+type FileInfo struct {
+	Path          string `json:"path"`
+	Language      string `json:"language,omitempty"`
+	LOC           int    `json:"loc,omitempty"`
+	IncomingEdges int    `json:"incomingEdges"`
+	OutgoingEdges int    `json:"outgoingEdges"`
+}
+
+// FileDependencyInfo represents a file-level dependency
+type FileDependencyInfo struct {
+	From     string `json:"from"`
+	To       string `json:"to"`
+	Kind     string `json:"kind"`
+	Line     int    `json:"line,omitempty"`
+	Resolved bool   `json:"resolved"`
 }
 
 // ImpactResponse represents an impact analysis response
@@ -565,6 +607,9 @@ func (s *Server) handleGetArchitecture(w http.ResponseWriter, r *http.Request) {
 	depthStr := r.URL.Query().Get("depth")
 	includeExternal := r.URL.Query().Get("includeExternalDeps") == "true"
 	refresh := r.URL.Query().Get("refresh") == "true"
+	granularity := r.URL.Query().Get("granularity")
+	inferModules := r.URL.Query().Get("inferModules") != "false" // default true
+	targetPath := r.URL.Query().Get("targetPath")
 
 	depth := 2
 	if depthStr != "" {
@@ -573,10 +618,17 @@ func (s *Server) handleGetArchitecture(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if granularity == "" {
+		granularity = "module"
+	}
+
 	opts := query.GetArchitectureOptions{
 		Depth:               depth,
 		IncludeExternalDeps: includeExternal,
 		Refresh:             refresh,
+		Granularity:         granularity,
+		InferModules:        inferModules,
+		TargetPath:          targetPath,
 	}
 
 	archResp, err := s.engine.GetArchitecture(ctx, opts)
@@ -585,45 +637,102 @@ func (s *Server) handleGetArchitecture(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	modules := make([]ModuleInfo, 0, len(archResp.Modules))
-	for _, m := range archResp.Modules {
-		modules = append(modules, ModuleInfo{
-			ID:            m.ModuleId,
-			Name:          m.Name,
-			Path:          m.Path,
-			Language:      m.Language,
-			SymbolCount:   m.SymbolCount,
-			FileCount:     m.FileCount,
-			IncomingEdges: m.IncomingEdges,
-			OutgoingEdges: m.OutgoingEdges,
-		})
-	}
-
-	deps := make([]DependencyInfo, 0, len(archResp.DependencyGraph))
-	for _, d := range archResp.DependencyGraph {
-		deps = append(deps, DependencyInfo{
-			From:     d.From,
-			To:       d.To,
-			Kind:     d.Kind,
-			Strength: d.Strength,
-		})
-	}
-
-	entrypoints := make([]EntrypointInfo, 0, len(archResp.Entrypoints))
-	for _, ep := range archResp.Entrypoints {
-		entrypoints = append(entrypoints, EntrypointInfo{
-			FileID:   ep.FileId,
-			Name:     ep.Name,
-			Kind:     ep.Kind,
-			ModuleID: ep.ModuleId,
-		})
-	}
-
 	response := ArchitectureResponse{
-		Timestamp:    time.Now().UTC(),
-		Modules:      modules,
-		Dependencies: deps,
-		Entrypoints:  entrypoints,
+		Timestamp:       time.Now().UTC(),
+		Granularity:     archResp.Granularity,
+		DetectionMethod: archResp.DetectionMethod,
+	}
+
+	switch archResp.Granularity {
+	case "directory":
+		directories := make([]DirectoryInfo, 0, len(archResp.Directories))
+		for _, d := range archResp.Directories {
+			directories = append(directories, DirectoryInfo{
+				Path:          d.Path,
+				FileCount:     d.FileCount,
+				Language:      d.Language,
+				LOC:           d.LOC,
+				HasIndexFile:  d.HasIndexFile,
+				IncomingEdges: d.IncomingEdges,
+				OutgoingEdges: d.OutgoingEdges,
+			})
+		}
+		response.Directories = directories
+
+		dirDeps := make([]DependencyInfo, 0, len(archResp.DirectoryDependencies))
+		for _, d := range archResp.DirectoryDependencies {
+			dirDeps = append(dirDeps, DependencyInfo{
+				From:     d.From,
+				To:       d.To,
+				Kind:     d.Kind,
+				Strength: d.Strength,
+			})
+		}
+		response.DirectoryDependencies = dirDeps
+
+	case "file":
+		files := make([]FileInfo, 0, len(archResp.Files))
+		for _, f := range archResp.Files {
+			files = append(files, FileInfo{
+				Path:          f.Path,
+				Language:      f.Language,
+				LOC:           f.LOC,
+				IncomingEdges: f.IncomingEdges,
+				OutgoingEdges: f.OutgoingEdges,
+			})
+		}
+		response.Files = files
+
+		fileDeps := make([]FileDependencyInfo, 0, len(archResp.FileDependencies))
+		for _, d := range archResp.FileDependencies {
+			fileDeps = append(fileDeps, FileDependencyInfo{
+				From:     d.From,
+				To:       d.To,
+				Kind:     d.Kind,
+				Line:     d.Line,
+				Resolved: d.Resolved,
+			})
+		}
+		response.FileDependencies = fileDeps
+
+	default:
+		// Module-level (default)
+		modules := make([]ModuleInfo, 0, len(archResp.Modules))
+		for _, m := range archResp.Modules {
+			modules = append(modules, ModuleInfo{
+				ID:            m.ModuleId,
+				Name:          m.Name,
+				Path:          m.Path,
+				Language:      m.Language,
+				SymbolCount:   m.SymbolCount,
+				FileCount:     m.FileCount,
+				IncomingEdges: m.IncomingEdges,
+				OutgoingEdges: m.OutgoingEdges,
+			})
+		}
+		response.Modules = modules
+
+		deps := make([]DependencyInfo, 0, len(archResp.DependencyGraph))
+		for _, d := range archResp.DependencyGraph {
+			deps = append(deps, DependencyInfo{
+				From:     d.From,
+				To:       d.To,
+				Kind:     d.Kind,
+				Strength: d.Strength,
+			})
+		}
+		response.Dependencies = deps
+
+		entrypoints := make([]EntrypointInfo, 0, len(archResp.Entrypoints))
+		for _, ep := range archResp.Entrypoints {
+			entrypoints = append(entrypoints, EntrypointInfo{
+				FileID:   ep.FileId,
+				Name:     ep.Name,
+				Kind:     ep.Kind,
+				ModuleID: ep.ModuleId,
+			})
+		}
+		response.Entrypoints = entrypoints
 	}
 
 	if archResp.Provenance != nil {
