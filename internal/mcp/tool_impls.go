@@ -147,6 +147,35 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 		}
 	}
 
+	// v8.0: Build roots info for debugging
+	var rootsInfo map[string]interface{}
+	clientSupported := s.roots != nil && s.roots.IsClientSupported()
+	listChangedEnabled := s.roots != nil && s.roots.IsListChangedEnabled()
+
+	if roots := s.GetRoots(); len(roots) > 0 {
+		rootPaths := make([]string, 0, len(roots))
+		for _, r := range roots {
+			rootPaths = append(rootPaths, r.Path())
+		}
+		rootsInfo = map[string]interface{}{
+			"clientSupported":    clientSupported,
+			"listChangedEnabled": listChangedEnabled,
+			"count":              len(roots),
+			"paths":              rootPaths,
+		}
+	} else {
+		rootsInfo = map[string]interface{}{
+			"clientSupported":    clientSupported,
+			"listChangedEnabled": listChangedEnabled,
+			"count":              0,
+		}
+		if !clientSupported {
+			rootsInfo["note"] = "Client does not support MCP roots capability."
+		} else {
+			rootsInfo["note"] = "Client supports roots but has not provided any."
+		}
+	}
+
 	data := map[string]interface{}{
 		"status":        status,
 		"healthy":       statusResp.Healthy,
@@ -175,6 +204,7 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 		"capabilities": map[string]interface{}{
 			"streaming": streamCaps, // v8.0: streaming support
 		},
+		"roots":       rootsInfo,   // v8.0: MCP roots from client
 		"index":       indexInfo,
 		"lastRefresh": statusResp.LastRefresh,
 		"suggestions": suggestions, // v8.0: actionable fix suggestions

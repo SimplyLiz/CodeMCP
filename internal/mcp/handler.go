@@ -3,6 +3,7 @@ package mcp
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"ckb/internal/envelope"
 	"ckb/internal/errors"
@@ -10,6 +11,12 @@ import (
 
 // handleMessage processes an incoming MCP message and returns a response
 func (s *MCPServer) handleMessage(msg *MCPMessage) *MCPMessage {
+	// Handle responses (from client to our requests, e.g., roots/list)
+	if msg.IsResponse() {
+		s.handleResponse(msg)
+		return nil
+	}
+
 	// Handle requests
 	if msg.IsRequest() {
 		return s.handleRequest(msg)
@@ -58,11 +65,132 @@ func (s *MCPServer) handleNotification(msg *MCPMessage) {
 	switch msg.Method {
 	case "notifications/initialized":
 		s.logger.Info("Client initialized")
+		// v8.0: Request roots if client supports it
+		if s.roots.IsClientSupported() {
+			s.requestRoots()
+		}
+	case "notifications/roots/list_changed":
+		// v8.0: Client is notifying us that roots have changed
+		s.logger.Info("Client roots changed, requesting update")
+		if s.roots.IsClientSupported() {
+			s.requestRoots()
+		}
 	default:
 		s.logger.Debug("Unknown notification",
 			"method", msg.Method,
 		)
 	}
+}
+
+// handleResponse handles a JSON-RPC response (from client to our requests)
+func (s *MCPServer) handleResponse(msg *MCPMessage) {
+	// Extract the request ID
+	var id int64
+	switch v := msg.Id.(type) {
+	case float64:
+		id = int64(v)
+	case int64:
+		id = v
+	case int:
+		id = int64(v)
+	default:
+		s.logger.Warn("Received response with non-numeric ID",
+			"id", msg.Id,
+		)
+		return
+	}
+
+	// Try to resolve a pending request
+	if s.roots.ResolvePendingRequest(id, msg) {
+		s.logger.Debug("Resolved pending request",
+			"id", id,
+		)
+		return
+	}
+
+	s.logger.Warn("Received response for unknown request",
+		"id", id,
+	)
+}
+
+// requestRoots sends a roots/list request to the client
+func (s *MCPServer) requestRoots() {
+	id := s.roots.NextRequestID()
+	responseCh := s.roots.RegisterPendingRequest(id)
+
+	// Send the request
+	request := &MCPMessage{
+		Jsonrpc: "2.0",
+		Id:      id,
+		Method:  "roots/list",
+	}
+
+	if err := s.writeMessage(request); err != nil {
+		s.logger.Error("Failed to send roots/list request",
+			"error", err.Error(),
+		)
+		s.roots.CancelPendingRequest(id)
+		return
+	}
+
+	s.logger.Debug("Sent roots/list request",
+		"id", id,
+	)
+
+	// Handle response in a goroutine to not block the message loop
+	go func() {
+		select {
+		case msg, ok := <-responseCh:
+			if !ok {
+				// Channel was closed (timeout or shutdown)
+				return
+			}
+
+			// Check for error response
+			if msg.Error != nil {
+				// Handle -32601 Method Not Found specially
+				if msg.Error.Code == MethodNotFound {
+					// Client doesn't actually support roots despite capability
+					s.roots.SetClientSupported(false)
+					s.logger.Info("Client does not support roots/list, disabling roots feature")
+				} else {
+					s.logger.Warn("roots/list request failed",
+						"code", msg.Error.Code,
+						"error", msg.Error.Message,
+					)
+				}
+				return
+			}
+
+			// Parse roots from result
+			roots := parseRootsResponse(msg.Result)
+			if roots == nil {
+				s.logger.Warn("Failed to parse roots/list response")
+				return
+			}
+
+			s.roots.SetRoots(roots)
+			s.logger.Info("Updated roots from client",
+				"count", len(roots),
+			)
+
+			// Log individual roots for debugging
+			for _, root := range roots {
+				s.logger.Debug("Root",
+					"uri", root.URI,
+					"name", root.Name,
+					"path", root.Path(),
+				)
+			}
+
+		case <-time.After(rootsRequestTimeout):
+			// Timeout - cancel the pending request and log
+			s.roots.CancelPendingRequest(id)
+			s.logger.Warn("roots/list request timed out",
+				"timeout", rootsRequestTimeout.String(),
+			)
+		}
+	}()
 }
 
 // handleInitializeRequest handles the initialize request

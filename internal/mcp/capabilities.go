@@ -36,6 +36,16 @@ func (s *MCPServer) handleInitialize(params map[string]interface{}) (*Initialize
 		"clientInfo", params["clientInfo"],
 	)
 
+	// Parse client capabilities (v8.0: roots support)
+	clientCaps := parseClientCapabilities(params)
+	if clientCaps.Roots != nil {
+		s.roots.SetClientSupported(true)
+		s.roots.SetListChangedEnabled(clientCaps.Roots.ListChanged)
+		s.logger.Info("Client supports roots",
+			"listChanged", clientCaps.Roots.ListChanged,
+		)
+	}
+
 	result := &InitializeResult{
 		ProtocolVersion: "2024-11-05",
 		Capabilities: ServerCapabilities{
