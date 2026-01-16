@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"path/filepath"
+	"sort"
 	"time"
 
 	"ckb/internal/config"
@@ -314,10 +316,10 @@ func (g *ArchitectureGenerator) generateFileLevel(ctx context.Context, repoState
 }
 
 // scanAllImports scans all imports from the repository or a target path
-func (g *ArchitectureGenerator) scanAllImports(ctx context.Context, targetPath string) ([]*modules.ImportEdge, error) {
+func (g *ArchitectureGenerator) scanAllImports(_ context.Context, targetPath string) ([]*modules.ImportEdge, error) {
 	scanPath := g.repoRoot
 	if targetPath != "" {
-		scanPath = g.repoRoot + "/" + targetPath
+		scanPath = filepath.Join(g.repoRoot, targetPath)
 	}
 
 	imports, err := g.importScanner.ScanDirectory(
@@ -494,26 +496,18 @@ func detectLanguageFromPath(path string) string {
 
 // sortDirectoryEdges sorts edges by strength descending
 func sortDirectoryEdges(edges []DirectoryDependencyEdge) {
-	for i := 0; i < len(edges)-1; i++ {
-		for j := i + 1; j < len(edges); j++ {
-			if edges[j].Strength > edges[i].Strength {
-				edges[i], edges[j] = edges[j], edges[i]
-			}
-		}
-	}
+	sort.Slice(edges, func(i, j int) bool {
+		return edges[i].Strength > edges[j].Strength
+	})
 }
 
 // sortFileSummaries sorts files by total edge count descending
 func sortFileSummaries(files []FileSummary) {
-	for i := 0; i < len(files)-1; i++ {
-		for j := i + 1; j < len(files); j++ {
-			totalI := files[i].IncomingEdges + files[i].OutgoingEdges
-			totalJ := files[j].IncomingEdges + files[j].OutgoingEdges
-			if totalJ > totalI {
-				files[i], files[j] = files[j], files[i]
-			}
-		}
-	}
+	sort.Slice(files, func(i, j int) bool {
+		totalI := files[i].IncomingEdges + files[i].OutgoingEdges
+		totalJ := files[j].IncomingEdges + files[j].OutgoingEdges
+		return totalI > totalJ
+	})
 }
 
 // scanImportsForModules scans all imports for all modules
@@ -530,7 +524,7 @@ func (g *ArchitectureGenerator) scanImportsForModules(ctx context.Context, mods 
 
 		// Scan imports for this module
 		imports, err := g.importScanner.ScanDirectory(
-			g.repoRoot+"/"+mod.RootPath,
+			filepath.Join(g.repoRoot, mod.RootPath),
 			g.repoRoot,
 			g.config.Modules.Ignore,
 		)
