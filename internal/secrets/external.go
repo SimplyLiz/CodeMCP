@@ -71,7 +71,7 @@ func (e *ExternalScanner) IsAvailable(ctx context.Context, config ExternalToolCo
 		versionCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 
-		cmd := exec.CommandContext(versionCtx, config.Binary, config.VersionArgs...)
+		cmd := exec.CommandContext(versionCtx, config.Binary, config.VersionArgs...) //nolint:gosec // G204: Binary comes from hardcoded GitleaksConfig/TrufflehogConfig
 		output, err := cmd.Output()
 		if err != nil {
 			return true, "" // Found but version unknown
@@ -116,7 +116,7 @@ func (e *ExternalScanner) RunGitleaks(ctx context.Context, opts ScanOptions) ([]
 	ctx, cancel := context.WithTimeout(ctx, e.timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "gitleaks", args...)
+	cmd := exec.CommandContext(ctx, "gitleaks", args...) //nolint:gosec // G204: Binary is hardcoded, args validated by validateGitRef
 	cmd.Dir = e.repoRoot
 
 	// Use CombinedOutput to capture both stdout and stderr in a single call.
@@ -212,7 +212,7 @@ func (e *ExternalScanner) RunTrufflehog(ctx context.Context, opts ScanOptions) (
 	ctx, cancel := context.WithTimeout(ctx, e.timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "trufflehog", args...)
+	cmd := exec.CommandContext(ctx, "trufflehog", args...) //nolint:gosec // G204: Binary is hardcoded, args validated by validateGitRef
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {

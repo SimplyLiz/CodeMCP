@@ -253,7 +253,7 @@ func (w *Watcher) checkRepoChanges(rw *repoWatcher) {
 // readHead reads the current HEAD reference
 func (w *Watcher) readHead(gitDir string) string {
 	headPath := filepath.Join(gitDir, "HEAD")
-	data, err := os.ReadFile(headPath)
+	data, err := os.ReadFile(headPath) //nolint:gosec // G304: Path constructed from gitDir + "HEAD"
 	if err != nil {
 		return ""
 	}

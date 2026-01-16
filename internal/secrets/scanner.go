@@ -272,7 +272,7 @@ func (s *Scanner) findFiles(opts ScanOptions) ([]string, error) {
 
 // scanFile scans a single file for secrets.
 func (s *Scanner) scanFile(path string, minEntropy float64) ([]SecretFinding, error) {
-	file, err := os.Open(path)
+	file, err := os.Open(path) //nolint:gosec // G304: Path comes from filepath.Walk within repoRoot
 	if err != nil {
 		return nil, err
 	}
@@ -472,7 +472,7 @@ func isBinaryFile(path string) bool {
 	}
 
 	// Check file content
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // G304: Path comes from filepath.Walk within repoRoot
 	if err != nil {
 		return false
 	}

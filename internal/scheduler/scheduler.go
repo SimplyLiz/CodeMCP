@@ -480,6 +480,7 @@ func (s *Store) ListSchedules(opts ListSchedulesOptions) (*ListSchedulesResponse
 	}
 
 	// Count total
+	//nolint:gosec // G201: whereClause contains only static column names and ? placeholders
 	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM schedules %s", whereClause)
 	var totalCount int
 	if err := s.conn.QueryRow(countQuery, args...).Scan(&totalCount); err != nil {
@@ -492,6 +493,7 @@ func (s *Store) ListSchedules(opts ListSchedulesOptions) (*ListSchedulesResponse
 		limit = 20
 	}
 
+	//nolint:gosec // G201: whereClause contains only static column names and ? placeholders
 	query := fmt.Sprintf(`
 		SELECT id, task_type, target, expression, enabled, next_run, last_run, last_status, last_duration, last_error, created_at, updated_at
 		FROM schedules %s

@@ -45,11 +45,11 @@ func OpenRotatingFile(path string, maxSize int64, maxBackups int) (*RotatingFile
 func (r *RotatingFile) openFile() error {
 	// Ensure parent directory exists
 	dir := filepath.Dir(r.path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0755); err != nil { //nolint:gosec // G301: 0755 is appropriate for log directories
 		return err
 	}
 
-	f, err := os.OpenFile(r.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(r.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644) //nolint:gosec // G302,G304: 0644 is standard for log files, path from config
 	if err != nil {
 		return err
 	}
