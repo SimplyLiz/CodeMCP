@@ -194,6 +194,11 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 						"type":        "string",
 						"description": "Optional path to focus on (relative to repo root)",
 					},
+					"includeMetrics": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Include aggregate metrics (complexity, churn) per directory. Only applies to directory granularity.",
+					},
 				},
 			},
 		},

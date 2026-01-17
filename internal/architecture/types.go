@@ -93,17 +93,28 @@ type ExternalDependency struct {
 	Source  string `json:"source"` // "npm", "pub", "cargo", etc.
 }
 
+// DirectoryMetrics contains aggregate metrics for visualization
+// Added in v8.0 to support metric-based visualization (size = LOC, color = complexity)
+type DirectoryMetrics struct {
+	LOC           int     `json:"loc"`                      // Total lines of code
+	AvgComplexity float64 `json:"avgComplexity,omitempty"`  // Average cyclomatic complexity
+	MaxComplexity int     `json:"maxComplexity,omitempty"`  // Highest single-function complexity
+	LastModified  string  `json:"lastModified,omitempty"`   // ISO 8601 timestamp of most recent change
+	Churn30d      int     `json:"churn30d,omitempty"`       // Commit count in last 30 days
+}
+
 // DirectorySummary represents a directory in directory-level architecture views
 type DirectorySummary struct {
-	Path           string `json:"path"`                     // Relative path from repo root
-	FileCount      int    `json:"fileCount"`                // Number of source files
-	SymbolCount    int    `json:"symbolCount"`              // Symbols defined (if SCIP available)
-	Language       string `json:"language"`                 // Dominant language
-	LOC            int    `json:"loc"`                      // Lines of code
-	HasIndexFile   bool   `json:"hasIndexFile"`             // Contains index.ts/js, mod.rs, __init__.py
-	IncomingEdges  int    `json:"incomingEdges"`            // Dependencies pointing here
-	OutgoingEdges  int    `json:"outgoingEdges"`            // Dependencies from this directory
-	IsIntermediate bool   `json:"isIntermediate,omitempty"` // Added to complete hierarchy (no direct files)
+	Path           string            `json:"path"`                     // Relative path from repo root
+	FileCount      int               `json:"fileCount"`                // Number of source files
+	SymbolCount    int               `json:"symbolCount"`              // Symbols defined (if SCIP available)
+	Language       string            `json:"language"`                 // Dominant language
+	LOC            int               `json:"loc"`                      // Lines of code
+	HasIndexFile   bool              `json:"hasIndexFile"`             // Contains index.ts/js, mod.rs, __init__.py
+	IncomingEdges  int               `json:"incomingEdges"`            // Dependencies pointing here
+	OutgoingEdges  int               `json:"outgoingEdges"`            // Dependencies from this directory
+	IsIntermediate bool              `json:"isIntermediate,omitempty"` // Added to complete hierarchy (no direct files)
+	Metrics        *DirectoryMetrics `json:"metrics,omitempty"`        // Aggregate metrics (when includeMetrics=true)
 }
 
 // FileSummary represents a file in file-level architecture views
@@ -127,8 +138,10 @@ type FileDependencyEdge struct {
 
 // DirectoryDependencyEdge represents a dependency between directories
 type DirectoryDependencyEdge struct {
-	From     string                 `json:"from"`     // Directory path
-	To       string                 `json:"to"`       // Directory path or external package
-	Kind     modules.ImportEdgeKind `json:"kind"`     // Classification
-	Strength int                    `json:"strength"` // Count of file-level edges
+	From        string                 `json:"from"`                  // Directory path
+	To          string                 `json:"to"`                    // Directory path or external package
+	Kind        modules.ImportEdgeKind `json:"kind,omitempty"`        // Classification
+	ImportCount int                    `json:"importCount"`           // Number of import statements
+	Symbols     []string               `json:"symbols,omitempty"`     // Imported symbol names (for tooltip/detail)
+	Strength    int                    `json:"strength,omitempty"`    // Deprecated: use importCount instead
 }
