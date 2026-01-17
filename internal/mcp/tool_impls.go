@@ -661,6 +661,12 @@ func (s *MCPServer) toolGetArchitecture(params map[string]interface{}) (*envelop
 		targetPath = targetVal
 	}
 
+	// v8.0: Metrics option for directory-level views
+	includeMetrics := false
+	if metricsVal, ok := params["includeMetrics"].(bool); ok {
+		includeMetrics = metricsVal
+	}
+
 	s.logger.Debug("Executing getArchitecture",
 		"depth", depth,
 		"includeExternalDeps", includeExternalDeps,
@@ -668,6 +674,7 @@ func (s *MCPServer) toolGetArchitecture(params map[string]interface{}) (*envelop
 		"granularity", granularity,
 		"inferModules", inferModules,
 		"targetPath", targetPath,
+		"includeMetrics", includeMetrics,
 	)
 
 	ctx := context.Background()
@@ -678,6 +685,7 @@ func (s *MCPServer) toolGetArchitecture(params map[string]interface{}) (*envelop
 		Granularity:         granularity,
 		InferModules:        inferModules,
 		TargetPath:          targetPath,
+		IncludeMetrics:      includeMetrics,
 	}
 
 	archResp, err := s.engine().GetArchitecture(ctx, opts)
@@ -715,6 +723,25 @@ func (s *MCPServer) toolGetArchitecture(params map[string]interface{}) (*envelop
 			}
 			if d.IsIntermediate {
 				dirInfo["isIntermediate"] = true
+			}
+			// Include metrics if present (v8.0)
+			if d.Metrics != nil {
+				metrics := map[string]interface{}{
+					"loc": d.Metrics.LOC,
+				}
+				if d.Metrics.AvgComplexity > 0 {
+					metrics["avgComplexity"] = d.Metrics.AvgComplexity
+				}
+				if d.Metrics.MaxComplexity > 0 {
+					metrics["maxComplexity"] = d.Metrics.MaxComplexity
+				}
+				if d.Metrics.LastModified != "" {
+					metrics["lastModified"] = d.Metrics.LastModified
+				}
+				if d.Metrics.Churn30d > 0 {
+					metrics["churn30d"] = d.Metrics.Churn30d
+				}
+				dirInfo["metrics"] = metrics
 			}
 			directories = append(directories, dirInfo)
 		}

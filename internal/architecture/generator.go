@@ -8,6 +8,7 @@ import (
 	"sort"
 	"time"
 
+	"ckb/internal/backends/git"
 	"ckb/internal/config"
 	"ckb/internal/modules"
 )
@@ -20,6 +21,7 @@ type ArchitectureGenerator struct {
 	logger        *slog.Logger
 	limits        *ArchitectureLimits
 	cache         *ArchitectureCache
+	gitAdapter    *git.GitAdapter // Optional: for metrics computation
 }
 
 // GeneratorOptions contains options for architecture generation
@@ -30,10 +32,11 @@ type GeneratorOptions struct {
 	MaxFilesScanned     int  // Override default max files limit
 
 	// v8.0: Granularity options
-	Granularity  Granularity // "module", "directory", "file" (default: "module")
-	InferModules bool        // Infer modules from directory structure when no explicit modules exist (default: true)
-	TargetPath   string      // Optional path to focus on (relative to repo root)
-	MaxDepth     int         // Max directory depth for directory/file views (default: 4)
+	Granularity    Granularity // "module", "directory", "file" (default: "module")
+	InferModules   bool        // Infer modules from directory structure when no explicit modules exist (default: true)
+	TargetPath     string      // Optional path to focus on (relative to repo root)
+	MaxDepth       int         // Max directory depth for directory/file views (default: 4)
+	IncludeMetrics bool        // Include aggregate metrics per directory (complexity, churn)
 }
 
 // DefaultGeneratorOptions returns the default generator options
@@ -74,6 +77,11 @@ func NewArchitectureGenerator(
 		limits:        limits,
 		cache:         NewArchitectureCache(),
 	}
+}
+
+// SetGitAdapter sets the git adapter for metrics computation (optional)
+func (g *ArchitectureGenerator) SetGitAdapter(adapter *git.GitAdapter) {
+	g.gitAdapter = adapter
 }
 
 // Generate generates the complete architecture view
@@ -254,6 +262,17 @@ func (g *ArchitectureGenerator) generateDirectoryLevel(ctx context.Context, repo
 	for i := range dirSummaries {
 		dirSummaries[i].IncomingEdges = incomingCounts[dirSummaries[i].Path]
 		dirSummaries[i].OutgoingEdges = outgoingCounts[dirSummaries[i].Path]
+	}
+
+	// Compute aggregate metrics if requested
+	if opts.IncludeMetrics {
+		metricsCalc := NewMetricsCalculator(g.repoRoot, g.gitAdapter)
+		if err := metricsCalc.ComputeDirectoryMetrics(ctx, dirSummaries); err != nil {
+			g.logger.Warn("Failed to compute directory metrics",
+				"error", err.Error(),
+			)
+			// Continue without metrics - graceful degradation
+		}
 	}
 
 	response := &ArchitectureResponse{

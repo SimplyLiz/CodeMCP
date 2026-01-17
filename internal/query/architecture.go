@@ -21,9 +21,10 @@ type GetArchitectureOptions struct {
 	Refresh             bool
 
 	// v8.0: Granularity options
-	Granularity  string // "module" (default), "directory", "file"
-	InferModules bool   // Infer modules from directory structure (default: true)
-	TargetPath   string // Optional path to focus on (relative to repo root)
+	Granularity    string // "module" (default), "directory", "file"
+	InferModules   bool   // Infer modules from directory structure (default: true)
+	TargetPath     string // Optional path to focus on (relative to repo root)
+	IncludeMetrics bool   // Include aggregate metrics per directory (complexity, churn)
 }
 
 // GetArchitectureResponse is the response for getArchitecture.
@@ -55,17 +56,28 @@ type GetArchitectureResponse struct {
 	Limitations     []string              `json:"limitations,omitempty"`
 }
 
+// DirectoryMetrics contains aggregate metrics for visualization
+// Added in v8.0 to support metric-based visualization (size = LOC, color = complexity)
+type DirectoryMetrics struct {
+	LOC           int     `json:"loc"`                     // Total lines of code
+	AvgComplexity float64 `json:"avgComplexity,omitempty"` // Average cyclomatic complexity
+	MaxComplexity int     `json:"maxComplexity,omitempty"` // Highest single-function complexity
+	LastModified  string  `json:"lastModified,omitempty"`  // ISO 8601 timestamp of most recent change
+	Churn30d      int     `json:"churn30d,omitempty"`      // Commit count in last 30 days
+}
+
 // DirectorySummary represents a directory in directory-level architecture views
 type DirectorySummary struct {
-	Path           string `json:"path"`
-	FileCount      int    `json:"fileCount"`
-	SymbolCount    int    `json:"symbolCount,omitempty"`
-	Language       string `json:"language,omitempty"`
-	LOC            int    `json:"loc,omitempty"`
-	HasIndexFile   bool   `json:"hasIndexFile"`
-	IncomingEdges  int    `json:"incomingEdges"`
-	OutgoingEdges  int    `json:"outgoingEdges"`
-	IsIntermediate bool   `json:"isIntermediate,omitempty"`
+	Path           string            `json:"path"`
+	FileCount      int               `json:"fileCount"`
+	SymbolCount    int               `json:"symbolCount,omitempty"`
+	Language       string            `json:"language,omitempty"`
+	LOC            int               `json:"loc,omitempty"`
+	HasIndexFile   bool              `json:"hasIndexFile"`
+	IncomingEdges  int               `json:"incomingEdges"`
+	OutgoingEdges  int               `json:"outgoingEdges"`
+	IsIntermediate bool              `json:"isIntermediate,omitempty"`
+	Metrics        *DirectoryMetrics `json:"metrics,omitempty"` // Aggregate metrics (when includeMetrics=true)
 }
 
 // DirectoryDependencyEdge represents a dependency between directories
@@ -164,6 +176,11 @@ func (e *Engine) GetArchitecture(ctx context.Context, opts GetArchitectureOption
 	// Create architecture generator
 	generator := architecture.NewArchitectureGenerator(e.repoRoot, e.config, importScanner, e.logger)
 
+	// Set git adapter for metrics computation (if available and requested)
+	if opts.IncludeMetrics && e.gitAdapter != nil {
+		generator.SetGitAdapter(e.gitAdapter)
+	}
+
 	// Build generator options with v8.0 granularity support
 	genOpts := &architecture.GeneratorOptions{
 		Depth:               opts.Depth,
@@ -172,6 +189,7 @@ func (e *Engine) GetArchitecture(ctx context.Context, opts GetArchitectureOption
 		Granularity:         architecture.ParseGranularity(opts.Granularity),
 		InferModules:        opts.InferModules,
 		TargetPath:          opts.TargetPath,
+		IncludeMetrics:      opts.IncludeMetrics,
 	}
 
 	// Generate architecture
@@ -432,7 +450,7 @@ func (e *Engine) buildFileLevelResponse(arch *architecture.ArchitectureResponse,
 func convertDirectorySummaries(archDirs []architecture.DirectorySummary) []DirectorySummary {
 	result := make([]DirectorySummary, 0, len(archDirs))
 	for _, d := range archDirs {
-		result = append(result, DirectorySummary{
+		summary := DirectorySummary{
 			Path:           d.Path,
 			FileCount:      d.FileCount,
 			SymbolCount:    d.SymbolCount,
@@ -442,7 +460,18 @@ func convertDirectorySummaries(archDirs []architecture.DirectorySummary) []Direc
 			IncomingEdges:  d.IncomingEdges,
 			OutgoingEdges:  d.OutgoingEdges,
 			IsIntermediate: d.IsIntermediate,
-		})
+		}
+		// Copy metrics if present
+		if d.Metrics != nil {
+			summary.Metrics = &DirectoryMetrics{
+				LOC:           d.Metrics.LOC,
+				AvgComplexity: d.Metrics.AvgComplexity,
+				MaxComplexity: d.Metrics.MaxComplexity,
+				LastModified:  d.Metrics.LastModified,
+				Churn30d:      d.Metrics.Churn30d,
+			}
+		}
+		result = append(result, summary)
 	}
 	return result
 }
