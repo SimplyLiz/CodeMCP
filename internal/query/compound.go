@@ -87,6 +87,7 @@ type ExploreDependencies struct {
 	Exports      []ExploreDependency `json:"exports,omitempty"`
 	InternalDeps []string            `json:"internalDeps,omitempty"`
 	ExternalDeps []string            `json:"externalDeps,omitempty"`
+	Truncated    bool                `json:"truncated,omitempty"` // True if limits were applied
 }
 
 // ExploreDependency represents a single dependency.
@@ -358,7 +359,7 @@ func (e *Engine) buildExploreOverview(ctx context.Context, targetType, absPath, 
 		overview.LineCount = countFileLines(absPath)
 		overview.SymbolCount = 0 // Will be updated by symbol search
 	} else {
-		// Directory overview
+		// Directory overview - skip large generated directories
 		fileCount := 0
 		//nolint:errcheck // intentionally ignore walk errors to count accessible files
 		_ = filepath.Walk(absPath, func(path string, info os.FileInfo, walkErr error) error {
@@ -366,6 +367,9 @@ func (e *Engine) buildExploreOverview(ctx context.Context, targetType, absPath, 
 				return nil //nolint:nilerr // skip inaccessible files, continue walk
 			}
 			if info.IsDir() {
+				if skipExploreDirectory(info.Name()) {
+					return filepath.SkipDir
+				}
 				return nil
 			}
 			fileCount++
@@ -496,6 +500,21 @@ func inferImportanceReason(sym SearchResultItem, importance float64) string {
 	return ""
 }
 
+// Budget limits for explore dependencies
+const (
+	maxExploreFiles   = 100 // Maximum files to scan for imports
+	maxExploreImports = 100 // Maximum unique imports to collect
+)
+
+// skipDirectories returns true for directories that should be skipped during exploration
+func skipExploreDirectory(name string) bool {
+	switch name {
+	case "node_modules", "vendor", "dist", "build", ".git", ".next", "__pycache__", ".cache":
+		return true
+	}
+	return false
+}
+
 // getExploreDependencies extracts import/export information.
 func (e *Engine) getExploreDependencies(ctx context.Context, targetType, absPath, relTarget string) *ExploreDependencies {
 	deps := &ExploreDependencies{}
@@ -516,21 +535,50 @@ func (e *Engine) getExploreDependencies(ctx context.Context, targetType, absPath
 			}
 		}
 	} else {
-		// For directory, aggregate imports from all files
+		// For directory, aggregate imports from files with limits
 		importSet := make(map[string]bool)
+		fileCount := 0
+		truncated := false
+
 		//nolint:errcheck // intentionally ignore walk errors to collect imports from accessible files
 		_ = filepath.Walk(absPath, func(path string, info os.FileInfo, walkErr error) error {
 			if walkErr != nil {
 				return nil //nolint:nilerr // skip inaccessible files, continue walk
 			}
 			if info.IsDir() {
+				// Skip common large/generated directories
+				if skipExploreDirectory(info.Name()) {
+					return filepath.SkipDir
+				}
 				return nil
 			}
+
+			// Limit files scanned
+			if fileCount >= maxExploreFiles {
+				truncated = true
+				return filepath.SkipAll
+			}
+
+			// Limit imports collected
+			if len(importSet) >= maxExploreImports {
+				truncated = true
+				return filepath.SkipAll
+			}
+
+			fileCount++
 			for _, imp := range parseFileImports(path) {
-				importSet[imp] = true
+				if len(importSet) < maxExploreImports {
+					importSet[imp] = true
+				} else {
+					truncated = true
+					break
+				}
 			}
 			return nil
 		})
+
+		deps.Truncated = truncated
+
 		for imp := range importSet {
 			isInternal := !strings.Contains(imp, "/") || strings.HasPrefix(imp, "./") || strings.HasPrefix(imp, "../")
 			deps.Imports = append(deps.Imports, ExploreDependency{
