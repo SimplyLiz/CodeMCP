@@ -1,12 +1,12 @@
 package storage
 
 import (
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
-
-	"ckb/internal/logging"
 )
 
 func TestMetricsStore(t *testing.T) {
@@ -18,9 +18,7 @@ func TestMetricsStore(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	// Create logger
-	logger := logging.NewLogger(logging.Config{
-		Level: logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Open database (will create with v10 schema)
 	db, err := Open(tmpDir, logger)
@@ -109,9 +107,7 @@ func TestGetWideResultRecords(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	logger := logging.NewLogger(logging.Config{
-		Level: logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	db, err := Open(tmpDir, logger)
 	if err != nil {
@@ -161,9 +157,7 @@ func TestCleanupOldMetrics(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	logger := logging.NewLogger(logging.Config{
-		Level: logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	db, err := Open(tmpDir, logger)
 	if err != nil {
@@ -212,9 +206,7 @@ func TestGetWideResultStats(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	logger := logging.NewLogger(logging.Config{
-		Level: logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	db, err := Open(tmpDir, logger)
 	if err != nil {
@@ -303,9 +295,7 @@ func TestSchemaV10Migration(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	logger := logging.NewLogger(logging.Config{
-		Level: logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Create .ckb directory
 	ckbDir := filepath.Join(tmpDir, ".ckb")

@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
-	"ckb/internal/logging"
 	"ckb/internal/watcher"
 )
 
@@ -22,10 +23,7 @@ func (l *testLogger) Printf(format string, args ...interface{}) {}
 func newTestDaemonWithWatcher(t *testing.T) *Daemon {
 	t.Helper()
 
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.HumanFormat,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)

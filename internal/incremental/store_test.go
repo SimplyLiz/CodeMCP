@@ -1,12 +1,13 @@
 package incremental
 
 import (
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"ckb/internal/logging"
 	"ckb/internal/storage"
 )
 
@@ -27,10 +28,7 @@ func setupTestStore(t *testing.T) (*Store, func()) {
 	}
 
 	// Create logger
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Open database
 	db, err := storage.Open(tmpDir, logger)
@@ -283,10 +281,7 @@ func TestStoreGetIndexState_PendingAdjustsState(t *testing.T) {
 	// Create a fresh database for this test
 	tmpDir := t.TempDir()
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	db, err := storage.Open(tmpDir, logger)
 	if err != nil {

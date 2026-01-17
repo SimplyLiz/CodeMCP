@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,7 +12,6 @@ import (
 
 	"ckb/internal/backends/scip"
 	"ckb/internal/config"
-	"ckb/internal/logging"
 	"ckb/internal/repostate"
 
 	"github.com/spf13/cobra"
@@ -59,14 +60,7 @@ type RefreshResult struct {
 
 func runRefresh(cmd *cobra.Command, args []string) error {
 	start := time.Now()
-	format := logging.HumanFormat
-	if refreshFormat == "json" {
-		format = logging.JSONFormat
-	}
-	logger := logging.NewLogger(logging.Config{
-		Format: format,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	repoRoot := mustGetRepoRoot()
 
@@ -135,17 +129,17 @@ func runRefresh(cmd *cobra.Command, args []string) error {
 	// Add package pattern to index all packages
 	cmdArgs = append(cmdArgs, "./...")
 
-	logger.Info("Running scip-go indexer", map[string]interface{}{
-		"command": scipGoPath,
-		"args":    strings.Join(cmdArgs, " "),
-	})
+	logger.Info("Running scip-go indexer",
+		"command", scipGoPath,
+		"args", strings.Join(cmdArgs, " "),
+	)
 
 	if refreshFormat == "human" {
 		fmt.Println("Indexing codebase with scip-go...")
 	}
 
 	// Run scip-go
-	indexCmd := exec.Command(scipGoPath, cmdArgs...)
+	indexCmd := exec.Command(scipGoPath, cmdArgs...) // #nosec G204 //nolint:gosec // scipGoPath from exec.LookPath
 	indexCmd.Dir = repoRoot
 
 	var output []byte
@@ -217,7 +211,7 @@ func runRefresh(cmd *cobra.Command, args []string) error {
 	return outputRefreshResult(result, refreshFormat, logger)
 }
 
-func outputRefreshResult(result *RefreshResult, format string, logger *logging.Logger) error {
+func outputRefreshResult(result *RefreshResult, format string, logger *slog.Logger) error {
 	if format == "json" {
 		output, err := FormatResponse(result, FormatJSON)
 		if err != nil {

@@ -1,11 +1,12 @@
 package mcp
 
 import (
-	"fmt"
+	"io"
+	"log/slog"
 
 	"ckb/internal/envelope"
+	"ckb/internal/errors"
 	"ckb/internal/federation"
-	"ckb/internal/logging"
 )
 
 // v6.3 Contract-Aware Impact Analysis tool implementations
@@ -14,22 +15,19 @@ import (
 func (s *MCPServer) toolListContracts(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
-		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
+		return nil, errors.NewInvalidParameterError("federation", "")
 	}
 
-	s.logger.Debug("Executing listContracts", map[string]interface{}{
-		"federation": fedName,
-	})
+	s.logger.Debug("Executing listContracts",
+		"federation", fedName,
+	)
 
 	// Open federation
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open federation: %w", err)
+		return nil, errors.NewOperationError("open federation", err)
 	}
 	defer func() { _ = fed.Close() }()
 
@@ -50,7 +48,7 @@ func (s *MCPServer) toolListContracts(params map[string]interface{}) (*envelope.
 
 	result, err := fed.ListContracts(opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list contracts: %w", err)
+		return nil, errors.NewOperationError("list contracts", err)
 	}
 
 	return NewToolResponse().
@@ -63,34 +61,31 @@ func (s *MCPServer) toolListContracts(params map[string]interface{}) (*envelope.
 func (s *MCPServer) toolAnalyzeContractImpact(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
-		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
+		return nil, errors.NewInvalidParameterError("federation", "")
 	}
 
 	repoID, ok := params["repoId"].(string)
 	if !ok || repoID == "" {
-		return nil, fmt.Errorf("missing or invalid 'repoId' parameter")
+		return nil, errors.NewInvalidParameterError("repoId", "")
 	}
 
 	path, ok := params["path"].(string)
 	if !ok || path == "" {
-		return nil, fmt.Errorf("missing or invalid 'path' parameter")
+		return nil, errors.NewInvalidParameterError("path", "")
 	}
 
-	s.logger.Debug("Executing analyzeContractImpact", map[string]interface{}{
-		"federation": fedName,
-		"repoId":     repoID,
-		"path":       path,
-	})
+	s.logger.Debug("Executing analyzeContractImpact",
+		"federation", fedName,
+		"repoId", repoID,
+		"path", path,
+	)
 
 	// Open federation
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open federation: %w", err)
+		return nil, errors.NewOperationError("open federation", err)
 	}
 	defer func() { _ = fed.Close() }()
 
@@ -112,7 +107,7 @@ func (s *MCPServer) toolAnalyzeContractImpact(params map[string]interface{}) (*e
 
 	result, err := fed.AnalyzeContractImpact(opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to analyze impact: %w", err)
+		return nil, errors.NewOperationError("analyze contract impact", err)
 	}
 
 	return NewToolResponse().
@@ -125,12 +120,12 @@ func (s *MCPServer) toolAnalyzeContractImpact(params map[string]interface{}) (*e
 func (s *MCPServer) toolGetContractDependencies(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
-		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
+		return nil, errors.NewInvalidParameterError("federation", "")
 	}
 
 	repoID, ok := params["repoId"].(string)
 	if !ok || repoID == "" {
-		return nil, fmt.Errorf("missing or invalid 'repoId' parameter")
+		return nil, errors.NewInvalidParameterError("repoId", "")
 	}
 
 	direction := "both"
@@ -138,21 +133,18 @@ func (s *MCPServer) toolGetContractDependencies(params map[string]interface{}) (
 		direction = d
 	}
 
-	s.logger.Debug("Executing getContractDependencies", map[string]interface{}{
-		"federation": fedName,
-		"repoId":     repoID,
-		"direction":  direction,
-	})
+	s.logger.Debug("Executing getContractDependencies",
+		"federation", fedName,
+		"repoId", repoID,
+		"direction", direction,
+	)
 
 	// Open federation
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open federation: %w", err)
+		return nil, errors.NewOperationError("open federation", err)
 	}
 	defer func() { _ = fed.Close() }()
 
@@ -171,7 +163,7 @@ func (s *MCPServer) toolGetContractDependencies(params map[string]interface{}) (
 
 	result, err := fed.GetDependencies(opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get dependencies: %w", err)
+		return nil, errors.NewOperationError("get contract dependencies", err)
 	}
 
 	return NewToolResponse().
@@ -184,36 +176,33 @@ func (s *MCPServer) toolGetContractDependencies(params map[string]interface{}) (
 func (s *MCPServer) toolSuppressContractEdge(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
-		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
+		return nil, errors.NewInvalidParameterError("federation", "")
 	}
 
 	edgeID, ok := params["edgeId"].(float64)
 	if !ok {
-		return nil, fmt.Errorf("missing or invalid 'edgeId' parameter")
+		return nil, errors.NewInvalidParameterError("edgeId", "")
 	}
 
 	reason, _ := params["reason"].(string)
 
-	s.logger.Debug("Executing suppressContractEdge", map[string]interface{}{
-		"federation": fedName,
-		"edgeId":     edgeID,
-		"reason":     reason,
-	})
+	s.logger.Debug("Executing suppressContractEdge",
+		"federation", fedName,
+		"edgeId", edgeID,
+		"reason", reason,
+	)
 
 	// Open federation
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open federation: %w", err)
+		return nil, errors.NewOperationError("open federation", err)
 	}
 	defer func() { _ = fed.Close() }()
 
 	if err := fed.SuppressContractEdge(int64(edgeID), "user", reason); err != nil {
-		return nil, fmt.Errorf("failed to suppress edge: %w", err)
+		return nil, errors.NewOperationError("suppress contract edge", err)
 	}
 
 	return NewToolResponse().
@@ -230,33 +219,30 @@ func (s *MCPServer) toolSuppressContractEdge(params map[string]interface{}) (*en
 func (s *MCPServer) toolVerifyContractEdge(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
-		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
+		return nil, errors.NewInvalidParameterError("federation", "")
 	}
 
 	edgeID, ok := params["edgeId"].(float64)
 	if !ok {
-		return nil, fmt.Errorf("missing or invalid 'edgeId' parameter")
+		return nil, errors.NewInvalidParameterError("edgeId", "")
 	}
 
-	s.logger.Debug("Executing verifyContractEdge", map[string]interface{}{
-		"federation": fedName,
-		"edgeId":     edgeID,
-	})
+	s.logger.Debug("Executing verifyContractEdge",
+		"federation", fedName,
+		"edgeId", edgeID,
+	)
 
 	// Open federation
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open federation: %w", err)
+		return nil, errors.NewOperationError("open federation", err)
 	}
 	defer func() { _ = fed.Close() }()
 
 	if err := fed.VerifyContractEdge(int64(edgeID), "user"); err != nil {
-		return nil, fmt.Errorf("failed to verify edge: %w", err)
+		return nil, errors.NewOperationError("verify contract edge", err)
 	}
 
 	return NewToolResponse().
@@ -273,28 +259,25 @@ func (s *MCPServer) toolVerifyContractEdge(params map[string]interface{}) (*enve
 func (s *MCPServer) toolGetContractStats(params map[string]interface{}) (*envelope.Response, error) {
 	fedName, ok := params["federation"].(string)
 	if !ok || fedName == "" {
-		return nil, fmt.Errorf("missing or invalid 'federation' parameter")
+		return nil, errors.NewInvalidParameterError("federation", "")
 	}
 
-	s.logger.Debug("Executing getContractStats", map[string]interface{}{
-		"federation": fedName,
-	})
+	s.logger.Debug("Executing getContractStats",
+		"federation", fedName,
+	)
 
 	// Open federation
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open federation: %w", err)
+		return nil, errors.NewOperationError("open federation", err)
 	}
 	defer func() { _ = fed.Close() }()
 
 	stats, err := fed.GetContractStats()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get stats: %w", err)
+		return nil, errors.NewOperationError("get contract stats", err)
 	}
 
 	return NewToolResponse().

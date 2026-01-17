@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"testing"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
 	"ckb/internal/query"
 	"ckb/internal/storage"
 	"ckb/internal/version"
@@ -93,13 +93,13 @@ func TestResourcesRead(t *testing.T) {
 			name:        "invalid URI scheme",
 			uri:         "http://invalid",
 			expectError: true,
-			errorSubstr: "invalid URI scheme",
+			errorSubstr: "expected ckb://",
 		},
 		{
 			name:        "unknown resource type",
 			uri:         "ckb://unknown",
 			expectError: true,
-			errorSubstr: "unknown resource type",
+			errorSubstr: "resource type not found",
 		},
 		{
 			name:        "module without ID",
@@ -567,11 +567,7 @@ func TestMCPServerVersion(t *testing.T) {
 		},
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.JSONFormat,
-		Output: io.Discard,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	db, err := storage.Open(":memory:", logger)
 	if err != nil {
@@ -622,11 +618,7 @@ func newTestMCPServerWithVersion(t *testing.T, ver string) *MCPServer {
 		},
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.JSONFormat,
-		Output: io.Discard,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	db, err := storage.Open(":memory:", logger)
 	if err != nil {
@@ -667,11 +659,7 @@ func BenchmarkToolsList(b *testing.B) {
 		},
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.JSONFormat,
-		Output: io.Discard,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	db, _ := storage.Open(":memory:", logger)
 	engine, _ := query.NewEngine(".", db, logger, cfg)
@@ -701,11 +689,7 @@ func BenchmarkResourcesList(b *testing.B) {
 		},
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.JSONFormat,
-		Output: io.Discard,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	db, _ := storage.Open(":memory:", logger)
 	engine, _ := query.NewEngine(".", db, logger, cfg)

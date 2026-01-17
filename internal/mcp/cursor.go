@@ -3,7 +3,8 @@ package mcp
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
+
+	"ckb/internal/errors"
 )
 
 // DefaultPageSize is the default number of tools per page
@@ -49,33 +50,33 @@ func DecodeToolsCursor(cursor string, currentPreset string, currentHash string) 
 	// Decode base64
 	data, err := base64.RawURLEncoding.DecodeString(cursor)
 	if err != nil {
-		return 0, fmt.Errorf("invalid cursor encoding")
+		return 0, errors.NewInvalidParameterError("cursor", "invalid encoding")
 	}
 
 	// Parse JSON
 	var payload ToolsCursorPayload
 	if err := json.Unmarshal(data, &payload); err != nil {
-		return 0, fmt.Errorf("invalid cursor format")
+		return 0, errors.NewInvalidParameterError("cursor", "invalid format")
 	}
 
 	// Validate version
 	if payload.V != 1 {
-		return 0, fmt.Errorf("cursor version mismatch")
+		return 0, errors.NewInvalidParameterError("cursor", "version mismatch")
 	}
 
 	// Validate preset matches
 	if payload.Preset != currentPreset {
-		return 0, fmt.Errorf("preset changed since cursor was issued")
+		return 0, errors.NewInvalidParameterError("cursor", "preset changed since cursor was issued")
 	}
 
 	// Validate toolset hash matches
 	if payload.ToolsetHash != currentHash {
-		return 0, fmt.Errorf("toolset changed since cursor was issued")
+		return 0, errors.NewInvalidParameterError("cursor", "toolset changed since cursor was issued")
 	}
 
 	// Validate offset is reasonable
 	if payload.Offset < 0 {
-		return 0, fmt.Errorf("invalid cursor offset")
+		return 0, errors.NewInvalidParameterError("cursor", "invalid offset")
 	}
 
 	return payload.Offset, nil

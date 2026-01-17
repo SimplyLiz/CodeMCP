@@ -205,16 +205,15 @@ func (s *Server) HandleIndexUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = s.indexManager.Storage().CleanupUpload(streamResult.Path) }()
 
-	logFields := map[string]interface{}{
-		"repo_id":           repoID,
-		"decompressed_size": streamResult.DecompressedSize,
-		"path":              streamResult.Path,
+	logArgs := []any{
+		"repo_id", repoID,
+		"decompressed_size", streamResult.DecompressedSize,
+		"path", streamResult.Path,
 	}
 	if streamResult.Encoding != "" {
-		logFields["encoding"] = streamResult.Encoding
-		logFields["compressed_size"] = streamResult.CompressedSize
+		logArgs = append(logArgs, "encoding", streamResult.Encoding, "compressed_size", streamResult.CompressedSize)
 	}
-	s.logger.Info("Received upload", logFields)
+	s.logger.Info("Received upload", logArgs...)
 
 	// Parse upload metadata from headers
 	meta := parseUploadMetaFromHeaders(r)
@@ -229,10 +228,10 @@ func (s *Server) HandleIndexUpload(w http.ResponseWriter, r *http.Request) {
 
 	// Reload the repo handle to pick up new data
 	if err := s.indexManager.ReloadRepo(repoID); err != nil {
-		s.logger.Warn("Failed to reload repo after upload", map[string]interface{}{
-			"repo_id": repoID,
-			"error":   err.Error(),
-		})
+		s.logger.Warn("Failed to reload repo after upload",
+			"repo_id", repoID,
+			"error", err.Error(),
+		)
 	}
 
 	// Build response with compression stats
@@ -367,16 +366,15 @@ func (s *Server) streamUploadToFile(r *http.Request, maxSize int64) (*StreamResu
 		total:    contentLength,
 		interval: progressInterval,
 		callback: func(written, total int64) {
-			fields := map[string]interface{}{
-				"phase": "receiving",
-				"bytes": written,
-				"mb":    float64(written) / (1024 * 1024),
+			logArgs := []any{
+				"phase", "receiving",
+				"bytes", written,
+				"mb", float64(written) / (1024 * 1024),
 			}
 			if total > 0 {
-				fields["total"] = total
-				fields["percent"] = float64(written) / float64(total) * 100
+				logArgs = append(logArgs, "total", total, "percent", float64(written)/float64(total)*100)
 			}
-			s.logger.Info("Upload progress", fields)
+			s.logger.Info("Upload progress", logArgs...)
 		},
 	}
 

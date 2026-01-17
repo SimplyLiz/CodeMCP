@@ -2,19 +2,16 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"sync"
 	"time"
 
-	"ckb/internal/logging"
 	"ckb/internal/update"
 )
 
 func main() {
-	logger := logging.NewLogger(logging.Config{
-		Format: "human",
-		Level:  "info",
-	})
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
 	// Update check with deferred notification pattern:
 	// 1. Show cached notification immediately (non-blocking)
@@ -36,9 +33,7 @@ func main() {
 	}
 
 	if err := rootCmd.Execute(); err != nil {
-		logger.Error("Command execution failed", map[string]interface{}{
-			"error": err.Error(),
-		})
+		logger.Error("Command execution failed", "error", err.Error())
 		os.Exit(1)
 	}
 

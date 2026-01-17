@@ -17,11 +17,11 @@ func (s *LspSupervisor) handleCrash(languageId string) {
 	}
 	s.mu.Unlock()
 
-	s.logger.Error("LSP process crashed or unhealthy", map[string]interface{}{
-		"languageId":          languageId,
-		"restartCount":        proc.GetRestartCount(),
-		"consecutiveFailures": proc.GetConsecutiveFailures(),
-	})
+	s.logger.Error("LSP process crashed or unhealthy",
+		"languageId", languageId,
+		"restartCount", proc.GetRestartCount(),
+		"consecutiveFailures", proc.GetConsecutiveFailures(),
+	)
 
 	// Mark as dead
 	proc.SetState(StateDead)
@@ -31,10 +31,10 @@ func (s *LspSupervisor) handleCrash(languageId string) {
 
 	// Attempt restart with backoff
 	if err := s.restart(languageId); err != nil {
-		s.logger.Error("Failed to restart LSP process", map[string]interface{}{
-			"languageId": languageId,
-			"error":      err.Error(),
-		})
+		s.logger.Error("Failed to restart LSP process",
+			"languageId", languageId,
+			"error", err.Error(),
+		)
 	}
 }
 
@@ -51,10 +51,10 @@ func (s *LspSupervisor) restart(languageId string) error {
 	if !proc.CanRestart() {
 		s.mu.Unlock()
 		waitTime := time.Until(proc.NextRestartAt)
-		s.logger.Info("LSP restart delayed due to backoff", map[string]interface{}{
-			"languageId": languageId,
-			"waitTime":   waitTime.String(),
-		})
+		s.logger.Info("LSP restart delayed due to backoff",
+			"languageId", languageId,
+			"waitTime", waitTime.String(),
+		)
 		return errors.NewCkbError(
 			errors.BackendUnavailable,
 			fmt.Sprintf("LSP server in backoff, retry in %v", waitTime),
@@ -79,11 +79,11 @@ func (s *LspSupervisor) restart(languageId string) error {
 	// Shutdown old process
 	_ = proc.Shutdown()
 
-	s.logger.Info("Restarting LSP server", map[string]interface{}{
-		"languageId":   languageId,
-		"restartCount": restartCount,
-		"backoff":      backoff.String(),
-	})
+	s.logger.Info("Restarting LSP server",
+		"languageId", languageId,
+		"restartCount", restartCount,
+		"backoff", backoff.String(),
+	)
 
 	// Start new process
 	return s.StartServer(languageId)
@@ -106,11 +106,11 @@ func (s *LspSupervisor) checkHealth(languageId string) bool {
 	if state == StateReady {
 		lastResponse := proc.GetLastResponseTime()
 		if !lastResponse.IsZero() && time.Since(lastResponse) > ResponseTimeout {
-			s.logger.Warn("LSP process not responding", map[string]interface{}{
-				"languageId":        languageId,
-				"lastResponse":      lastResponse,
-				"timeSinceResponse": time.Since(lastResponse).String(),
-			})
+			s.logger.Warn("LSP process not responding",
+				"languageId", languageId,
+				"lastResponse", lastResponse,
+				"timeSinceResponse", time.Since(lastResponse).String(),
+			)
 			proc.SetState(StateUnhealthy)
 			return false
 		}
@@ -119,10 +119,10 @@ func (s *LspSupervisor) checkHealth(languageId string) bool {
 	// Check consecutive failures
 	failures := proc.GetConsecutiveFailures()
 	if failures >= MaxConsecutiveFailures {
-		s.logger.Warn("LSP process has too many failures", map[string]interface{}{
-			"languageId":          languageId,
-			"consecutiveFailures": failures,
-		})
+		s.logger.Warn("LSP process has too many failures",
+			"languageId", languageId,
+			"consecutiveFailures", failures,
+		)
 		proc.SetState(StateUnhealthy)
 		return false
 	}
@@ -134,10 +134,10 @@ func (s *LspSupervisor) checkHealth(languageId string) bool {
 		// This is platform-specific but works on macOS/Linux
 		// For Windows, we'd need a different approach
 		if err := proc.cmd.Process.Signal(nil); err != nil {
-			s.logger.Warn("LSP process died unexpectedly", map[string]interface{}{
-				"languageId": languageId,
-				"error":      err.Error(),
-			})
+			s.logger.Warn("LSP process died unexpectedly",
+				"languageId", languageId,
+				"error", err.Error(),
+			)
 			proc.SetState(StateDead)
 			return false
 		}
@@ -204,9 +204,9 @@ func (s *LspSupervisor) ResetFailures(languageId string) {
 	proc.ConsecutiveFailures = 0
 	proc.mu.Unlock()
 
-	s.logger.Info("Reset failure counter", map[string]interface{}{
-		"languageId": languageId,
-	})
+	s.logger.Info("Reset failure counter",
+		"languageId", languageId,
+	)
 }
 
 // ForceRestart forces a restart of an LSP process, bypassing backoff
@@ -224,9 +224,9 @@ func (s *LspSupervisor) ForceRestart(languageId string) error {
 		_ = proc.Shutdown()
 	}
 
-	s.logger.Info("Force restarting LSP server", map[string]interface{}{
-		"languageId": languageId,
-	})
+	s.logger.Info("Force restarting LSP server",
+		"languageId", languageId,
+	)
 
 	return s.StartServer(languageId)
 }
@@ -268,9 +268,9 @@ func (s *LspSupervisor) RecoverAll() map[string]error {
 
 	for _, langId := range languageIds {
 		if !s.checkHealth(langId) {
-			s.logger.Info("Recovering unhealthy LSP server", map[string]interface{}{
-				"languageId": langId,
-			})
+			s.logger.Info("Recovering unhealthy LSP server",
+				"languageId", langId,
+			)
 
 			if err := s.restart(langId); err != nil {
 				results[langId] = err

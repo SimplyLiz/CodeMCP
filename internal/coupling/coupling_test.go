@@ -2,12 +2,12 @@ package coupling
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
-
-	"ckb/internal/logging"
 )
 
 func TestGetCorrelationLevel(t *testing.T) {
@@ -36,7 +36,7 @@ func TestGetCorrelationLevel(t *testing.T) {
 }
 
 func TestNewAnalyzer(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	analyzer := NewAnalyzer("/path/to/repo", logger)
 
 	if analyzer == nil {
@@ -169,7 +169,7 @@ func TestUitoa(t *testing.T) {
 }
 
 func TestGenerateInsights(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	analyzer := NewAnalyzer("/tmp", logger)
 
 	tests := []struct {
@@ -233,7 +233,7 @@ func TestGenerateInsights(t *testing.T) {
 }
 
 func TestGenerateRecommendations(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	analyzer := NewAnalyzer("/tmp", logger)
 
 	tests := []struct {
@@ -289,7 +289,7 @@ func TestGenerateRecommendations(t *testing.T) {
 }
 
 func TestResolveToFile(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	analyzer := NewAnalyzer("/tmp", logger)
 
 	// Currently just returns the input
@@ -322,7 +322,7 @@ func TestAnalyzeWithGitRepo(t *testing.T) {
 	runGit(t, tmpDir, "commit", "-m", "initial")
 
 	// Create the analyzer
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	analyzer := NewAnalyzer(tmpDir, logger)
 
 	// Test analysis
@@ -372,7 +372,7 @@ func TestAnalyzeNoCommits(t *testing.T) {
 	runGit(t, tmpDir, "commit", "-m", "initial")
 
 	// Create analyzer
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	analyzer := NewAnalyzer(tmpDir, logger)
 
 	// Analyze a file that has no commits

@@ -8,13 +8,15 @@ import (
 
 	"ckb/internal/config"
 	"ckb/internal/errors"
-	"ckb/internal/logging"
+	"ckb/internal/repos"
 
 	"github.com/spf13/cobra"
 )
 
 var (
-	initForce bool
+	initForce      bool
+	initName       string
+	initNoActivate bool
 )
 
 var initCmd = &cobra.Command{
@@ -26,14 +28,13 @@ var initCmd = &cobra.Command{
 
 func init() {
 	initCmd.Flags().BoolVarP(&initForce, "force", "f", false, "Force reinitialization (removes existing .ckb directory)")
+	initCmd.Flags().StringVarP(&initName, "name", "n", "", "Repository name for global registry (default: directory name)")
+	initCmd.Flags().BoolVar(&initNoActivate, "no-activate", false, "Don't set as active repository after init")
 	rootCmd.AddCommand(initCmd)
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
-	logger := logging.NewLogger(logging.Config{
-		Format: "human",
-		Level:  "info",
-	})
+	logger := newLogger("human")
 
 	// Get current directory
 	cwd, err := os.Getwd()
@@ -55,7 +56,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		if removeErr := os.RemoveAll(ckbDir); removeErr != nil {
 			return errors.NewCkbError(errors.InternalError, "Failed to remove existing .ckb directory", removeErr, nil, nil)
 		}
-		logger.Info("Removed existing .ckb directory", nil)
+		logger.Info("Removed existing .ckb directory")
 	}
 
 	// Create .ckb directory
@@ -78,15 +79,64 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return errors.NewCkbError(errors.InternalError, "Failed to write config file", writeErr, nil, nil)
 	}
 
-	logger.Info("CKB initialized successfully", map[string]interface{}{
-		"config_path": configPath,
-	})
+	logger.Info("CKB initialized successfully", "config_path", configPath)
+
+	// Register in global registry
+	repoName := initName
+	if repoName == "" {
+		repoName = filepath.Base(cwd)
+	}
+
+	registry, err := repos.LoadRegistry()
+	if err != nil {
+		// Non-fatal: warn but continue
+		logger.Warn("Failed to load global registry", "error", err.Error())
+	} else {
+		// Check if already registered (possibly under different name)
+		existingEntry, _ := registry.GetByPath(cwd)
+		if existingEntry != nil {
+			logger.Info("Repository already registered", "name", existingEntry.Name)
+			repoName = existingEntry.Name
+		} else {
+			// Check if name is taken
+			if _, _, err := registry.Get(repoName); err == nil {
+				// Name exists, try to find unique name
+				baseName := repoName
+				for i := 2; i <= 99; i++ {
+					candidate := fmt.Sprintf("%s-%d", baseName, i)
+					if _, _, err := registry.Get(candidate); err != nil {
+						repoName = candidate
+						break
+					}
+				}
+			}
+
+			// Register the repo
+			if err := registry.Add(repoName, cwd); err != nil {
+				logger.Warn("Failed to register in global registry", "error", err.Error())
+			} else {
+				logger.Info("Registered in global registry", "name", repoName)
+			}
+		}
+
+		// Set as active unless --no-activate
+		if !initNoActivate {
+			if err := registry.SetDefault(repoName); err != nil {
+				logger.Warn("Failed to set as active repository", "error", err.Error())
+			}
+		}
+	}
 
 	fmt.Println("CKB initialized successfully!")
 	fmt.Printf("Configuration written to: %s\n", configPath)
+	fmt.Printf("Registered as: %s\n", repoName)
+	if !initNoActivate {
+		fmt.Printf("Active repository: %s\n", repoName)
+	}
 	fmt.Println("\nNext steps:")
-	fmt.Println("  1. Run 'ckb doctor' to check your setup")
-	fmt.Println("  2. Run 'ckb status' to see system status")
+	fmt.Println("  1. Run 'ckb index' to create SCIP index")
+	fmt.Println("  2. Run 'ckb doctor' to check your setup")
+	fmt.Println("  3. Run 'ckb status' to see system status")
 
 	return nil
 }

@@ -21,6 +21,7 @@ CKB transforms your codebase into a queryable knowledge base. Ask questions, und
 | "What tests should I run?" | Run everything (30 min) | Run affected tests only (2 min) |
 | "How does this system work?" | Read code for hours | Query architecture instantly |
 | "Who owns this code?" | Search CODEOWNERS manually | Ownership with drift detection |
+| "Are there exposed secrets?" | Manual grep for patterns | Automated scanning with 26 patterns |
 
 ---
 
@@ -31,6 +32,8 @@ CKB transforms your codebase into a queryable knowledge base. Ask questions, und
 ⚡ **Analyze** — Impact analysis, risk scoring, hotspot detection, coupling analysis
 
 🛡️ **Protect** — Affected test detection, breaking change warnings, PR risk assessment
+
+🔐 **Secure** — Secret detection, credential scanning, security-sensitive code identification
 
 👥 **Collaborate** — Ownership lookup, reviewer suggestions, architectural decisions (ADRs)
 
@@ -51,6 +54,9 @@ ckb impact diff
 
 # Find tests to run for your changes
 ckb affected-tests --output=command
+
+# Scan for exposed secrets
+ckb scan-secrets
 
 # Get reviewers for your PR
 ckb reviewers
@@ -129,7 +135,7 @@ claude mcp add --transport stdio ckb -- npx @tastehub/ckb mcp
 
 **Token efficiency shown at startup:**
 ```
-CKB MCP Server v7.5.0
+CKB MCP Server v8.0.0
   Active tools: 14 / 76 (18%)
   Estimated context: ~1k tokens
   Preset: core
@@ -236,6 +242,7 @@ See the **[Index Management Guide](https://github.com/SimplyLiz/CodeMCP/wiki/Ind
 | [**Architecture**](https://github.com/SimplyLiz/CodeMCP/wiki/Features#architectural-understanding) | Module overview, ADRs, dependency graphs, explain origin |
 | [**Ownership**](https://github.com/SimplyLiz/CodeMCP/wiki/Features#ownership--review) | CODEOWNERS + git blame, reviewer suggestions, drift detection |
 | [**Code Quality**](https://github.com/SimplyLiz/CodeMCP/wiki/Features#code-quality--risk) | Dead code detection, coupling analysis, complexity, quick wins |
+| [**Security**](https://github.com/SimplyLiz/CodeMCP/wiki/Security) | Secret detection, credential scanning, allowlists |
 | [**Documentation**](https://github.com/SimplyLiz/CodeMCP/wiki/Features#documentation-intelligence) | Doc-symbol linking, staleness detection, coverage metrics |
 | [**Multi-Repo**](https://github.com/SimplyLiz/CodeMCP/wiki/Features#multi-repo--federation) | Federation, API contracts, remote index serving |
 | [**Runtime**](https://github.com/SimplyLiz/CodeMCP/wiki/Features#runtime-intelligence) | OpenTelemetry integration, observed usage, production dead code |
@@ -547,6 +554,7 @@ See the **[Full Documentation Wiki](https://github.com/SimplyLiz/CodeMCP/wiki)**
 - [Daemon Mode](https://github.com/SimplyLiz/CodeMCP/wiki/Daemon-Mode) — Always-on service with scheduler, webhooks
 - [Configuration](https://github.com/SimplyLiz/CodeMCP/wiki/Configuration) — All options including MODULES.toml
 - [Architecture](https://github.com/SimplyLiz/CodeMCP/wiki/Architecture) — System design and components
+- [Security](https://github.com/SimplyLiz/CodeMCP/wiki/Security) — Secret detection, credential scanning
 - [Telemetry](https://github.com/SimplyLiz/CodeMCP/wiki/Telemetry) — Runtime observability, dead code detection
 - [Federation](https://github.com/SimplyLiz/CodeMCP/wiki/Federation) — Cross-repository queries
 - [CI/CD Integration](https://github.com/SimplyLiz/CodeMCP/wiki/CI-CD-Integration) — GitHub Actions, PR analysis

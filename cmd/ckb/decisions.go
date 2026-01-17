@@ -115,11 +115,11 @@ func runDecisionsList(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Decisions query completed", map[string]interface{}{
-		"total":    response.Total,
-		"returned": len(response.Decisions),
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Decisions query completed",
+		"total", response.Total,
+		"returned", len(response.Decisions),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 func runDecisionsCreate(cmd *cobra.Command, args []string) {
@@ -206,11 +206,11 @@ func runDecisionsCreate(cmd *cobra.Command, args []string) {
 		fmt.Printf("\nDecision %s created successfully!\n", response.Decision.ID)
 	}
 
-	logger.Debug("Decision created", map[string]interface{}{
-		"id":       response.Decision.ID,
-		"title":    response.Decision.Title,
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Decision created",
+		"id", response.Decision.ID,
+		"title", response.Decision.Title,
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 func promptRequired(reader *bufio.Reader, prompt string) string {

@@ -26,13 +26,22 @@ const DefaultPreset = PresetCore
 // Core must enable one complete workflow without expansion.
 // Default workflow: "Investigate & Assess Impact"
 var Presets = map[string][]string{
-	// Core: 14 tools - enables "Investigate & Assess Impact" workflow completely
+	// Core: 19 tools - enables "Investigate & Assess Impact" workflow completely
+	// v8.0: Added compound tools (explore, understand, prepareChange, batchGet, batchSearch)
+	// to reduce tool calls by 60-70% for common workflows
 	PresetCore: {
-		// Discovery & Search
+		// v8.0 Compound Tools (preferred for AI workflows)
+		"explore",       // Replaces: explainFile → searchSymbols → getCallGraph → getHotspots
+		"understand",    // Replaces: searchSymbols → getSymbol → explainSymbol → findReferences → getCallGraph
+		"prepareChange", // Replaces: analyzeImpact + getAffectedTests + analyzeCoupling + risk
+		"batchGet",      // Multiple symbols in one call
+		"batchSearch",   // Multiple searches in one call
+
+		// Discovery & Search (granular fallback)
 		"searchSymbols",
 		"getSymbol",
 
-		// Navigation & Understanding
+		// Navigation & Understanding (granular fallback)
 		"explainSymbol",
 		"explainFile",
 		"findReferences",
@@ -44,7 +53,7 @@ var Presets = map[string][]string{
 		"getModuleOverview",
 		"listKeyConcepts", // Enables architecture exploration
 
-		// Impact & Risk
+		// Impact & Risk (granular fallback)
 		"analyzeImpact",
 		"getHotspots",
 
@@ -57,7 +66,8 @@ var Presets = map[string][]string{
 
 	// Review: core + code review tools
 	PresetReview: {
-		// Core tools
+		// Core tools (v8.0: includes compound tools)
+		"explore", "understand", "prepareChange", "batchGet", "batchSearch",
 		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "listKeyConcepts",
@@ -68,11 +78,13 @@ var Presets = map[string][]string{
 		"getOwnership",
 		"getOwnershipDrift",
 		"recentlyRelevant",
+		"scanSecrets", // v8.0: Secret detection for PR reviews
 	},
 
 	// Refactor: core + refactoring analysis tools
 	PresetRefactor: {
-		// Core tools
+		// Core tools (v8.0: includes compound tools)
+		"explore", "understand", "prepareChange", "batchGet", "batchSearch",
 		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "listKeyConcepts",
@@ -86,11 +98,13 @@ var Presets = map[string][]string{
 		"compareAPI",       // v7.6: Breaking change detection
 		"auditRisk",
 		"explainOrigin",
+		"scanSecrets", // v8.0: Secret detection for security audits
 	},
 
 	// Federation: core + federation tools
 	PresetFederation: {
-		// Core tools
+		// Core tools (v8.0: includes compound tools)
+		"explore", "understand", "prepareChange", "batchGet", "batchSearch",
 		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "listKeyConcepts",
@@ -114,7 +128,8 @@ var Presets = map[string][]string{
 
 	// Docs: core + doc-symbol linking tools
 	PresetDocs: {
-		// Core tools
+		// Core tools (v8.0: includes compound tools)
+		"explore", "understand", "prepareChange", "batchGet", "batchSearch",
 		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "listKeyConcepts",
@@ -130,13 +145,15 @@ var Presets = map[string][]string{
 
 	// Ops: core + operational tools
 	PresetOps: {
-		// Core tools
+		// Core tools (v8.0: includes compound tools)
+		"explore", "understand", "prepareChange", "batchGet", "batchSearch",
 		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "listKeyConcepts",
 		"analyzeImpact", "getHotspots", "getStatus", "expandToolset",
 		// Ops-specific
 		"doctor",
+		"reindex",
 		"daemonStatus",
 		"listJobs",
 		"getJobStatus",
@@ -182,7 +199,15 @@ func GetPresetTools(preset string) []string {
 }
 
 // coreToolOrder defines the order of core tools (must appear first on page 1)
+// v8.0: Compound tools come first (preferred for AI workflows)
 var coreToolOrder = []string{
+	// v8.0 Compound Tools (preferred for AI workflows)
+	"explore",
+	"understand",
+	"prepareChange",
+	"batchGet",
+	"batchSearch",
+	// Granular tools (fallback)
 	"searchSymbols",
 	"getSymbol",
 	"explainSymbol",

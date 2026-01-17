@@ -1,12 +1,13 @@
 package incremental
 
 import (
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 
-	"ckb/internal/logging"
 	"ckb/internal/project"
 	"ckb/internal/storage"
 )
@@ -126,10 +127,7 @@ func TestIncrementalIndexerCreation(t *testing.T) {
 			defer os.RemoveAll(ckbDir)
 
 			// Create logger and database
-			logger := logging.NewLogger(logging.Config{
-				Format: logging.HumanFormat,
-				Level:  logging.ErrorLevel,
-			})
+			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 			db, err := storage.Open(fixtureDir, logger)
 			if err != nil {

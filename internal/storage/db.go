@@ -3,27 +3,26 @@ package storage
 import (
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
 	_ "modernc.org/sqlite" // Pure Go SQLite driver
-
-	"ckb/internal/logging"
 )
 
 // DB represents a database connection with transaction helpers
 type DB struct {
 	conn   *sql.DB
-	logger *logging.Logger
+	logger *slog.Logger
 	dbPath string
 }
 
 // Open opens or creates a SQLite database at .ckb/ckb.db
 // If the database doesn't exist, it will be created along with all necessary tables
-func Open(repoRoot string, logger *logging.Logger) (*DB, error) {
+func Open(repoRoot string, logger *slog.Logger) (*DB, error) {
 	// Ensure .ckb directory exists
 	ckbDir := filepath.Join(repoRoot, ".ckb")
-	if err := os.MkdirAll(ckbDir, 0755); err != nil {
+	if err := os.MkdirAll(ckbDir, 0755); err != nil { //nolint:gosec // G301: 0755 allows user access to .ckb directory
 		return nil, fmt.Errorf("failed to create .ckb directory: %w", err)
 	}
 
@@ -65,18 +64,14 @@ func Open(repoRoot string, logger *logging.Logger) (*DB, error) {
 
 	// Initialize schema if database is new
 	if !dbExists {
-		logger.Info("Creating new database", map[string]interface{}{
-			"path": dbPath,
-		})
+		logger.Info("Creating new database", "path", dbPath)
 		if err := db.initializeSchema(); err != nil {
 			_ = conn.Close()
 			return nil, fmt.Errorf("failed to initialize schema: %w", err)
 		}
 	} else {
 		// Run migrations on existing database
-		logger.Debug("Running database migrations", map[string]interface{}{
-			"path": dbPath,
-		})
+		logger.Debug("Running database migrations", "path", dbPath)
 		if err := db.runMigrations(); err != nil {
 			_ = conn.Close()
 			return nil, fmt.Errorf("failed to run migrations: %w", err)
@@ -122,10 +117,9 @@ func (db *DB) WithTx(fn func(*sql.Tx) error) error {
 
 	if err := fn(tx); err != nil {
 		if rbErr := tx.Rollback(); rbErr != nil {
-			db.logger.Error("failed to rollback transaction", map[string]interface{}{
-				"error":          err.Error(),
-				"rollback_error": rbErr.Error(),
-			})
+			db.logger.Error("failed to rollback transaction",
+				"error", err.Error(),
+				"rollback_error", rbErr.Error())
 		}
 		return err
 	}

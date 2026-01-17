@@ -4,13 +4,13 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"ckb/internal/backends/scip"
-	"ckb/internal/logging"
 	"ckb/internal/project"
 )
 
@@ -18,12 +18,12 @@ import (
 type SCIPExtractor struct {
 	repoRoot  string
 	indexPath string
-	logger    *logging.Logger
+	logger    *slog.Logger
 }
 
 // NewSCIPExtractor creates a new SCIP extractor
 // indexPath should be the configured SCIP index path (default: .scip/index.scip)
-func NewSCIPExtractor(repoRoot string, indexPath string, logger *logging.Logger) *SCIPExtractor {
+func NewSCIPExtractor(repoRoot string, indexPath string, logger *slog.Logger) *SCIPExtractor {
 	// If indexPath is relative, make it absolute from repoRoot
 	if !filepath.IsAbs(indexPath) {
 		indexPath = filepath.Join(repoRoot, indexPath)
@@ -411,19 +411,19 @@ func computeDocHash(doc *scip.Document) string {
 
 		// Properly encode int32 range values
 		for _, r := range occ.Range {
-			binary.LittleEndian.PutUint32(buf[:], uint32(r))
+			binary.LittleEndian.PutUint32(buf[:], uint32(r)) //nolint:gosec // G115: SCIP coordinates are always non-negative
 			h.Write(buf[:])
 		}
 
 		// Include role bits for stability
-		binary.LittleEndian.PutUint32(buf[:], uint32(occ.SymbolRoles))
+		binary.LittleEndian.PutUint32(buf[:], uint32(occ.SymbolRoles)) //nolint:gosec // G115: SCIP role bitmask is non-negative
 		h.Write(buf[:])
 	}
 
 	// Include symbol information (definitions, docs, kinds)
 	for _, sym := range doc.Symbols {
 		h.Write([]byte(sym.Symbol))
-		binary.LittleEndian.PutUint32(buf[:], uint32(sym.Kind))
+		binary.LittleEndian.PutUint32(buf[:], uint32(sym.Kind)) //nolint:gosec // G115: SCIP symbol kind enum is non-negative (0-26)
 		h.Write(buf[:])
 		for _, d := range sym.Documentation {
 			h.Write([]byte(d))

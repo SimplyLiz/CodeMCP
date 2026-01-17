@@ -281,9 +281,9 @@ func (c *Cache) InvalidateByStateID(stateID string) error {
 		return fmt.Errorf("failed to invalidate negative cache by state_id: %w", err)
 	}
 
-	c.db.logger.Debug("Invalidated all caches for state", map[string]interface{}{
-		"state_id": stateID,
-	})
+	c.db.logger.Debug("Invalidated all caches for state",
+		"state_id", stateID,
+	)
 
 	return nil
 }
@@ -308,7 +308,7 @@ func (c *Cache) CleanupExpiredEntries() error {
 		return fmt.Errorf("failed to cleanup negative cache: %w", err)
 	}
 
-	c.db.logger.Debug("Cleaned up expired cache entries", nil)
+	c.db.logger.Debug("Cleaned up expired cache entries")
 
 	return nil
 }

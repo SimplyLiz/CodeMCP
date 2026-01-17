@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+
+	"ckb/internal/errors"
 )
 
 // MaxMessageSize is the maximum size for a single MCP message (1MB).
@@ -22,19 +24,19 @@ func (s *MCPServer) readMessage() (*MCPMessage, error) {
 
 	if !s.scanner.Scan() {
 		if err := s.scanner.Err(); err != nil {
-			return nil, fmt.Errorf("error reading from stdin: %w", err)
+			return nil, errors.NewOperationError("read from stdin", err)
 		}
 		return nil, io.EOF
 	}
 
 	line := s.scanner.Text()
-	s.logger.Debug("Received message", map[string]interface{}{
-		"raw": line,
-	})
+	s.logger.Debug("Received message",
+		"raw", line,
+	)
 
 	var msg MCPMessage
 	if err := json.Unmarshal([]byte(line), &msg); err != nil {
-		return nil, fmt.Errorf("error parsing JSON-RPC message: %w", err)
+		return nil, errors.NewOperationError("parse JSON-RPC message", err)
 	}
 
 	return &msg, nil
@@ -44,15 +46,15 @@ func (s *MCPServer) readMessage() (*MCPMessage, error) {
 func (s *MCPServer) writeMessage(msg *MCPMessage) error {
 	data, err := json.Marshal(msg)
 	if err != nil {
-		return fmt.Errorf("error marshaling JSON-RPC message: %w", err)
+		return errors.NewOperationError("marshal JSON-RPC message", err)
 	}
 
-	s.logger.Debug("Sending message", map[string]interface{}{
-		"raw": string(data),
-	})
+	s.logger.Debug("Sending message",
+		"raw", string(data),
+	)
 
 	if _, err := fmt.Fprintf(s.stdout, "%s\n", data); err != nil {
-		return fmt.Errorf("error writing to stdout: %w", err)
+		return errors.NewOperationError("write to stdout", err)
 	}
 
 	return nil

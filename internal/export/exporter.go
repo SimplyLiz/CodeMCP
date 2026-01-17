@@ -3,24 +3,24 @@ package export
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
-	"ckb/internal/logging"
 	"ckb/internal/modules"
 )
 
 // Exporter provides LLM-friendly codebase export functionality
 type Exporter struct {
 	repoRoot string
-	logger   *logging.Logger
+	logger   *slog.Logger
 }
 
 // NewExporter creates a new exporter
-func NewExporter(repoRoot string, logger *logging.Logger) *Exporter {
+func NewExporter(repoRoot string, logger *slog.Logger) *Exporter {
 	return &Exporter{
 		repoRoot: repoRoot,
 		logger:   logger,
@@ -37,10 +37,7 @@ func (e *Exporter) Export(ctx context.Context, opts ExportOptions) (*LLMExport, 
 		opts.Format = "text"
 	}
 
-	e.logger.Debug("Starting LLM export", map[string]interface{}{
-		"repoRoot": opts.RepoRoot,
-		"format":   opts.Format,
-	})
+	e.logger.Debug("Starting LLM export", "repoRoot", opts.RepoRoot, "format", opts.Format)
 
 	// Detect modules using the modules package
 	detectionResult, err := modules.DetectModules(opts.RepoRoot, nil, nil, "", e.logger)
@@ -72,10 +69,10 @@ func (e *Exporter) Export(ctx context.Context, opts ExportOptions) (*LLMExport, 
 		// Find files in module
 		files, err := e.findFilesInModule(opts.RepoRoot, mod.RootPath)
 		if err != nil {
-			e.logger.Warn("Failed to find files in module", map[string]interface{}{
-				"module": mod.RootPath,
-				"error":  err.Error(),
-			})
+			e.logger.Warn("Failed to find files in module",
+				"module", mod.RootPath,
+				"error", err.Error(),
+			)
 			continue
 		}
 

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -17,7 +19,6 @@ import (
 	"ckb/internal/config"
 	"ckb/internal/incremental"
 	"ckb/internal/index"
-	"ckb/internal/logging"
 	"ckb/internal/project"
 	"ckb/internal/repostate"
 	"ckb/internal/storage"
@@ -88,16 +89,12 @@ func init() {
 func runIndex(cmd *cobra.Command, args []string) {
 	repoRoot := mustGetRepoRoot()
 
-	// Check if .ckb directory exists, auto-init if not
+	// Check if this is an initialized CKB project
 	ckbDir := filepath.Join(repoRoot, ".ckb")
 	if _, err := os.Stat(ckbDir); os.IsNotExist(err) {
-		fmt.Println("No .ckb directory found. Initializing...")
-		if err := os.MkdirAll(ckbDir, 0755); err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating .ckb directory: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("  Created .ckb/")
-		fmt.Println()
+		fmt.Fprintln(os.Stderr, "Error: Not a CKB project.")
+		fmt.Fprintln(os.Stderr, "Run 'ckb init' first to initialize this directory.")
+		os.Exit(1)
 	}
 
 	// Get SCIP index path from config (default: .scip/index.scip)
@@ -487,7 +484,7 @@ func runIndexerCommand(dir, command string) error {
 		return fmt.Errorf("empty command")
 	}
 
-	cmd := exec.Command(parts[0], parts[1:]...)
+	cmd := exec.Command(parts[0], parts[1:]...) // #nosec G204 //nolint:gosec // command from trusted indexer config
 	cmd.Dir = dir
 
 	// Capture stderr for error messages, stream both
@@ -658,11 +655,8 @@ func tryIncrementalIndex(repoRoot, ckbDir string, lang project.Language) bool {
 		return false
 	}
 
-	// Create logger (quiet for CLI - only errors)
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.ErrorLevel,
-	})
+	// Create logger (silent for CLI)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Open database
 	db, err := storage.Open(repoRoot, logger)
@@ -737,11 +731,8 @@ func tryIncrementalIndex(repoRoot, ckbDir string, lang project.Language) bool {
 // populateIncrementalTracking sets up tracking tables after a full index.
 // This enables subsequent incremental updates.
 func populateIncrementalTracking(repoRoot string, lang project.Language) {
-	// Create logger (quiet for CLI - only errors)
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.ErrorLevel,
-	})
+	// Create logger (silent for CLI)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Open database
 	db, err := storage.Open(repoRoot, logger)

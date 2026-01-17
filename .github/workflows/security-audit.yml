@@ -1,0 +1,844 @@
+name: Security Audit
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop, 'feature/**']
+  schedule:
+    # Run weekly on Monday at 6:00 UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      scan_history:
+        description: 'Scan git history (slower but more thorough)'
+        required: false
+        default: 'false'
+        type: boolean
+      min_severity:
+        description: 'Minimum severity to report'
+        required: false
+        default: 'high'
+        type: choice
+        options:
+          - critical
+          - high
+          - medium
+          - low
+
+# ============================================================================
+# Security Scan Configuration (opt-out: set to false to disable)
+# ============================================================================
+env:
+  # Secret Detection
+  SCAN_CKB_SECRETS: 'true'      # CKB builtin secret scanner
+  SCAN_GITLEAKS: 'false'        # Gitleaks - disabled, CKB provides coverage
+  SCAN_TRUFFLEHOG: 'true'       # TruffleHog verified secrets
+
+  # SAST (Static Application Security Testing)
+  SCAN_GOSEC: 'true'            # Go security checker
+  SCAN_SEMGREP: 'true'          # Multi-language SAST
+
+  # Dependency & Vulnerability Scanning
+  SCAN_GOVULNCHECK: 'true'      # Go vulnerability database
+  SCAN_TRIVY: 'true'            # Trivy vuln + license + SBOM
+  SCAN_OSV: 'true'              # Google OSV database
+
+  # Minimum severity for reporting (critical, high, medium, low)
+  MIN_SEVERITY: 'high'
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Per-job permissions for tighter security (principle of least privilege)
+# Each job declares only the permissions it needs
+
+jobs:
+  # ============================================================================
+  # Secret Detection
+  # ============================================================================
+  secret-scan:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    outputs:
+      ckb_findings: ${{ steps.ckb_secrets.outputs.findings }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: ${{ github.event.inputs.scan_history == 'true' && 0 || 1 }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Build CKB
+        run: go build -o ckb ./cmd/ckb
+
+      - name: Initialize CKB
+        run: ./ckb init
+
+      - name: CKB Secret Scan
+        id: ckb_secrets
+        if: env.SCAN_CKB_SECRETS == 'true'
+        run: |
+          MIN_SEV="${{ github.event.inputs.min_severity || env.MIN_SEVERITY }}"
+          echo "::group::CKB Secret Scan (min severity: $MIN_SEV)"
+
+          ./ckb scan-secrets --min-severity="$MIN_SEV" \
+            --exclude="internal/secrets/patterns.go" \
+            --exclude="*_test.go" \
+            --exclude="testdata/*" \
+            --output=json > ckb-secrets.json || true
+
+          FINDINGS=$(jq -r '.summary.totalFindings // 0' ckb-secrets.json 2>/dev/null || echo "0")
+          echo "findings=$FINDINGS" >> $GITHUB_OUTPUT
+          echo "::endgroup::"
+
+          if [ "$FINDINGS" -gt 0 ]; then
+            echo "::warning::CKB found $FINDINGS potential secrets"
+          fi
+
+      - name: CKB SARIF Report
+        if: env.SCAN_CKB_SECRETS == 'true'
+        run: |
+          MIN_SEV="${{ github.event.inputs.min_severity || env.MIN_SEVERITY }}"
+          ./ckb scan-secrets --min-severity="$MIN_SEV" \
+            --exclude="internal/secrets/patterns.go" \
+            --exclude="*_test.go" \
+            --exclude="testdata/*" \
+            --output=sarif > ckb-secrets.sarif || true
+
+      - name: Upload CKB SARIF
+        if: env.SCAN_CKB_SECRETS == 'true'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ckb-secrets.sarif
+          category: ckb-secrets
+        continue-on-error: true
+
+      - name: Upload secret scan results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: secret-scan-results
+          path: |
+            ckb-secrets.json
+            ckb-secrets.sarif
+          retention-days: 30
+          if-no-files-found: ignore
+
+  # ============================================================================
+  # External Secret Scanners (Gitleaks + TruffleHog)
+  # ============================================================================
+  external-secrets:
+    name: External Secret Scanners
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    outputs:
+      gitleaks_findings: ${{ steps.gitleaks.outputs.findings }}
+      trufflehog_findings: ${{ steps.trufflehog.outputs.findings }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Full history only when scanning history; otherwise fetch 50 commits for reasonable coverage
+          fetch-depth: ${{ github.event.inputs.scan_history == 'true' && 0 || 50 }}
+
+      - name: Install Gitleaks
+        if: env.SCAN_GITLEAKS == 'true'
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz | tar xz
+          chmod +x gitleaks
+          sudo mv gitleaks /usr/local/bin/
+
+      - name: Gitleaks Scan
+        id: gitleaks
+        if: env.SCAN_GITLEAKS == 'true'
+        run: |
+          echo "::group::Gitleaks Scan"
+          # Run without --exit-code 0 so gitleaks returns non-zero on findings
+          # || true keeps the workflow running; we gate on findings in security-gate
+          gitleaks detect --source . --report-format json --report-path gitleaks.json || true
+          gitleaks detect --source . --report-format sarif --report-path gitleaks.sarif || true
+
+          if [ -f gitleaks.json ]; then
+            FINDINGS=$(jq 'length' gitleaks.json 2>/dev/null || echo "0")
+            echo "findings=$FINDINGS" >> $GITHUB_OUTPUT
+          else
+            echo "findings=0" >> $GITHUB_OUTPUT
+            echo "[]" > gitleaks.json
+          fi
+          echo "::endgroup::"
+
+      - name: Upload Gitleaks SARIF
+        if: env.SCAN_GITLEAKS == 'true'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gitleaks.sarif
+          category: gitleaks
+        continue-on-error: true
+
+      - name: Install TruffleHog
+        if: env.SCAN_TRUFFLEHOG == 'true'
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: TruffleHog Scan
+        id: trufflehog
+        if: env.SCAN_TRUFFLEHOG == 'true'
+        run: |
+          echo "::group::TruffleHog Scan"
+          # --fail returns exit code 183 when verified secrets found
+          # || true keeps workflow running; we gate on findings in security-gate
+          trufflehog filesystem . --only-verified --json --fail > trufflehog.json 2>/dev/null || true
+
+          if [ -f trufflehog.json ] && [ -s trufflehog.json ]; then
+            FINDINGS=$(wc -l < trufflehog.json | tr -d ' ')
+            echo "findings=$FINDINGS" >> $GITHUB_OUTPUT
+          else
+            echo "findings=0" >> $GITHUB_OUTPUT
+            echo "" > trufflehog.json
+          fi
+          echo "::endgroup::"
+
+      - name: Upload external secret results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: external-secrets-results
+          path: |
+            gitleaks.json
+            gitleaks.sarif
+            trufflehog.json
+          retention-days: 30
+          if-no-files-found: ignore
+
+  # ============================================================================
+  # SAST (Static Application Security Testing)
+  # ============================================================================
+  sast-scan:
+    name: SAST Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    outputs:
+      gosec_findings: ${{ steps.gosec.outputs.findings }}
+      semgrep_findings: ${{ steps.semgrep_parse.outputs.findings }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Install Gosec
+        if: env.SCAN_GOSEC == 'true'
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+      - name: Gosec Scan
+        id: gosec
+        if: env.SCAN_GOSEC == 'true'
+        run: |
+          echo "::group::Gosec Security Scan"
+          # -track-suppressions includes #nosec annotations in SARIF for audit trail
+          gosec -fmt json -out gosec.json -stdout -verbose=text ./... || true
+          gosec -fmt sarif -out gosec.sarif -track-suppressions ./... || true
+
+          if [ -f gosec.json ]; then
+            FINDINGS=$(jq '.Issues | length' gosec.json 2>/dev/null || echo "0")
+            SUPPRESSED=$(jq '[.Issues[]? | select(.nosec == true)] | length' gosec.json 2>/dev/null || echo "0")
+            echo "findings=$FINDINGS" >> $GITHUB_OUTPUT
+            echo "suppressed=$SUPPRESSED" >> $GITHUB_OUTPUT
+            if [ "$SUPPRESSED" -gt 0 ]; then
+              echo "::notice::$SUPPRESSED finding(s) suppressed via #nosec annotations"
+            fi
+          else
+            echo "findings=0" >> $GITHUB_OUTPUT
+            echo "suppressed=0" >> $GITHUB_OUTPUT
+          fi
+          echo "::endgroup::"
+
+      - name: Upload Gosec SARIF
+        if: env.SCAN_GOSEC == 'true'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gosec.sarif
+          category: gosec
+        continue-on-error: true
+
+      - name: Semgrep Scan
+        id: semgrep
+        if: env.SCAN_SEMGREP == 'true'
+        uses: docker://semgrep/semgrep:latest
+        with:
+          args: semgrep scan --config=p/golang --config=p/security-audit --json --output=semgrep.json --sarif --sarif-output=semgrep.sarif .
+        continue-on-error: true
+
+      - name: Parse Semgrep Results
+        id: semgrep_parse
+        if: env.SCAN_SEMGREP == 'true'
+        run: |
+          if [ -f semgrep.json ]; then
+            FINDINGS=$(jq '.results | length' semgrep.json 2>/dev/null || echo "0")
+            echo "findings=$FINDINGS" >> $GITHUB_OUTPUT
+          else
+            echo "findings=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload Semgrep SARIF
+        if: env.SCAN_SEMGREP == 'true'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+        continue-on-error: true
+
+      - name: Upload SAST results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sast-results
+          path: |
+            gosec.json
+            gosec.sarif
+            semgrep.json
+            semgrep.sarif
+          retention-days: 30
+          if-no-files-found: ignore
+
+  # ============================================================================
+  # Dependency & Vulnerability Scanning
+  # ============================================================================
+  dependency-scan:
+    name: Dependency & Vulnerability Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      id-token: write      # For SBOM attestation
+      attestations: write  # For SBOM attestation
+    outputs:
+      govulncheck_findings: ${{ steps.govulncheck.outputs.findings }}
+      trivy_vuln_findings: ${{ steps.trivy_vuln.outputs.findings }}
+      trivy_critical: ${{ steps.trivy_vuln.outputs.critical }}
+      trivy_high: ${{ steps.trivy_vuln.outputs.high }}
+      trivy_license_findings: ${{ steps.trivy_license.outputs.findings }}
+      osv_findings: ${{ steps.osv.outputs.findings }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Govulncheck
+        id: govulncheck
+        if: env.SCAN_GOVULNCHECK == 'true'
+        run: |
+          echo "::group::Govulncheck"
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck -format json ./... > govulncheck.json || true
+
+          if [ -f govulncheck.json ]; then
+            # Check if vulns array exists and is not null
+            if jq -e '.vulns != null and (.vulns | length) > 0' govulncheck.json > /dev/null 2>&1; then
+              FINDINGS=$(jq '.vulns | length' govulncheck.json)
+              echo "findings=$FINDINGS" >> $GITHUB_OUTPUT
+              echo "::warning::Found $FINDINGS vulnerable dependencies"
+            else
+              echo "findings=0" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "findings=0" >> $GITHUB_OUTPUT
+          fi
+          echo "::endgroup::"
+
+      - name: Setup Trivy
+        if: env.SCAN_TRIVY == 'true'
+        uses: aquasecurity/setup-trivy@v0.2.3
+        with:
+          cache: true
+          version: latest
+
+      - name: Trivy Vulnerability Scan
+        id: trivy_vuln
+        if: env.SCAN_TRIVY == 'true'
+        run: |
+          echo "::group::Trivy Vulnerability Scan"
+          # Scan for vulnerabilities, output JSON and SARIF
+          trivy fs . --scanners vuln --format json --output trivy-vuln.json || true
+          trivy fs . --scanners vuln --format sarif --output trivy-vuln.sarif || true
+
+          if [ -f trivy-vuln.json ]; then
+            # Count total and critical findings separately for gate logic
+            TOTAL=$(jq '[.Results[]?.Vulnerabilities // [] | length] | add // 0' trivy-vuln.json 2>/dev/null || echo "0")
+            CRITICAL=$(jq '[.Results[]?.Vulnerabilities // [] | .[] | select(.Severity == "CRITICAL")] | length' trivy-vuln.json 2>/dev/null || echo "0")
+            HIGH=$(jq '[.Results[]?.Vulnerabilities // [] | .[] | select(.Severity == "HIGH")] | length' trivy-vuln.json 2>/dev/null || echo "0")
+            echo "findings=$TOTAL" >> $GITHUB_OUTPUT
+            echo "critical=$CRITICAL" >> $GITHUB_OUTPUT
+            echo "high=$HIGH" >> $GITHUB_OUTPUT
+          else
+            echo "findings=0" >> $GITHUB_OUTPUT
+            echo "critical=0" >> $GITHUB_OUTPUT
+            echo "high=0" >> $GITHUB_OUTPUT
+          fi
+          echo "::endgroup::"
+
+      - name: Trivy License Scan
+        id: trivy_license
+        if: env.SCAN_TRIVY == 'true'
+        run: |
+          echo "::group::Trivy License Scan"
+          trivy fs . --scanners license --format json --output trivy-license.json || true
+
+          if [ -f trivy-license.json ]; then
+            # Count non-permissive licenses
+            FINDINGS=$(jq '[.Results[]?.Licenses // [] | .[] | select(.Category != "permissive")] | length' trivy-license.json 2>/dev/null || echo "0")
+            echo "findings=$FINDINGS" >> $GITHUB_OUTPUT
+          else
+            echo "findings=0" >> $GITHUB_OUTPUT
+          fi
+          echo "::endgroup::"
+
+      - name: Trivy SBOM Generation
+        id: trivy_sbom
+        if: env.SCAN_TRIVY == 'true'
+        run: |
+          echo "::group::Trivy SBOM"
+          trivy fs . --format cyclonedx --output sbom.json || true
+          echo "::endgroup::"
+
+      - name: Upload Trivy SARIF
+        if: env.SCAN_TRIVY == 'true'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-vuln.sarif
+          category: trivy
+        continue-on-error: true
+
+      - name: Attest SBOM
+        if: env.SCAN_TRIVY == 'true' && github.event_name != 'pull_request'
+        uses: actions/attest-sbom@v2
+        with:
+          subject-path: 'sbom.json'
+          sbom-path: 'sbom.json'
+        continue-on-error: true
+
+      - name: OSV-Scanner
+        id: osv
+        if: env.SCAN_OSV == 'true'
+        run: |
+          echo "::group::OSV-Scanner"
+          go install github.com/google/osv-scanner/cmd/osv-scanner@latest
+          osv-scanner --format json --output osv.json . || true
+
+          if [ -f osv.json ]; then
+            FINDINGS=$(jq '.results | map(.packages | length) | add // 0' osv.json 2>/dev/null || echo "0")
+            echo "findings=$FINDINGS" >> $GITHUB_OUTPUT
+          else
+            echo "findings=0" >> $GITHUB_OUTPUT
+          fi
+          echo "::endgroup::"
+
+      - name: Upload dependency scan results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dependency-scan-results
+          path: |
+            govulncheck.json
+            trivy-vuln.json
+            trivy-vuln.sarif
+            trivy-license.json
+            sbom.json
+            osv.json
+          retention-days: 30
+          if-no-files-found: ignore
+
+  # ============================================================================
+  # Security Gate - Consolidated Results & PR Comment
+  # ============================================================================
+  security-gate:
+    name: Security Gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    needs: [secret-scan, external-secrets, sast-scan, dependency-scan]
+    if: always()
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: results
+        continue-on-error: true
+
+      - name: Evaluate Security Gate
+        id: gate
+        run: |
+          # Aggregate all findings from job outputs
+          CKB="${{ needs.secret-scan.outputs.ckb_findings || 0 }}"
+          GITLEAKS="${{ needs.external-secrets.outputs.gitleaks_findings || 0 }}"
+          TRUFFLEHOG="${{ needs.external-secrets.outputs.trufflehog_findings || 0 }}"
+          GOSEC="${{ needs.sast-scan.outputs.gosec_findings || 0 }}"
+          SEMGREP="${{ needs.sast-scan.outputs.semgrep_findings || 0 }}"
+          GOVULN="${{ needs.dependency-scan.outputs.govulncheck_findings || 0 }}"
+          TRIVY="${{ needs.dependency-scan.outputs.trivy_vuln_findings || 0 }}"
+          TRIVY_CRITICAL="${{ needs.dependency-scan.outputs.trivy_critical || 0 }}"
+          TRIVY_HIGH="${{ needs.dependency-scan.outputs.trivy_high || 0 }}"
+          LICENSE="${{ needs.dependency-scan.outputs.trivy_license_findings || 0 }}"
+          OSV="${{ needs.dependency-scan.outputs.osv_findings || 0 }}"
+
+          # Calculate totals by category
+          SECRETS=$((CKB + GITLEAKS + TRUFFLEHOG))
+          SAST=$((GOSEC + SEMGREP))
+          DEPS=$((GOVULN + TRIVY + OSV))
+          TOTAL=$((SECRETS + SAST + DEPS))
+
+          # Export counts for PR comment
+          echo "ckb=$CKB" >> $GITHUB_OUTPUT
+          echo "gitleaks=$GITLEAKS" >> $GITHUB_OUTPUT
+          echo "trufflehog=$TRUFFLEHOG" >> $GITHUB_OUTPUT
+          echo "gosec=$GOSEC" >> $GITHUB_OUTPUT
+          echo "semgrep=$SEMGREP" >> $GITHUB_OUTPUT
+          echo "govuln=$GOVULN" >> $GITHUB_OUTPUT
+          echo "trivy=$TRIVY" >> $GITHUB_OUTPUT
+          echo "trivy_critical=$TRIVY_CRITICAL" >> $GITHUB_OUTPUT
+          echo "trivy_high=$TRIVY_HIGH" >> $GITHUB_OUTPUT
+          echo "license=$LICENSE" >> $GITHUB_OUTPUT
+          echo "osv=$OSV" >> $GITHUB_OUTPUT
+          echo "secrets=$SECRETS" >> $GITHUB_OUTPUT
+          echo "sast=$SAST" >> $GITHUB_OUTPUT
+          echo "deps=$DEPS" >> $GITHUB_OUTPUT
+          echo "total=$TOTAL" >> $GITHUB_OUTPUT
+
+          # Write summary
+          echo "### Security Audit Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Category | Findings |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|----------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔑 Secrets | $SECRETS (CKB: $CKB, Gitleaks: $GITLEAKS, TruffleHog: $TRUFFLEHOG) |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🛡️ SAST | $SAST (Gosec: $GOSEC, Semgrep: $SEMGREP) |" >> $GITHUB_STEP_SUMMARY
+          echo "| 📦 Dependencies | $DEPS (govulncheck: $GOVULN, Trivy: $TRIVY [$TRIVY_CRITICAL critical, $TRIVY_HIGH high], OSV: $OSV) |" >> $GITHUB_STEP_SUMMARY
+          echo "| 📜 Licenses | $LICENSE non-permissive |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Determine gate status
+          # BLOCKING: Verified secrets OR critical vulnerabilities
+          if [ "$TRUFFLEHOG" -gt 0 ]; then
+            echo "status=failed" >> $GITHUB_OUTPUT
+            echo "reason=Verified secrets detected by TruffleHog" >> $GITHUB_OUTPUT
+            echo "::error::Security gate FAILED: $TRUFFLEHOG verified secret(s) detected"
+            echo "**❌ GATE FAILED**: Verified secrets detected" >> $GITHUB_STEP_SUMMARY
+          elif [ "$TRIVY_CRITICAL" -gt 0 ]; then
+            echo "status=failed" >> $GITHUB_OUTPUT
+            echo "reason=$TRIVY_CRITICAL CRITICAL vulnerability(ies) detected" >> $GITHUB_OUTPUT
+            echo "::error::Security gate FAILED: $TRIVY_CRITICAL CRITICAL vulnerability(ies) detected"
+            echo "**❌ GATE FAILED**: CRITICAL vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
+          elif [ "$TOTAL" -gt 0 ]; then
+            echo "status=warning" >> $GITHUB_OUTPUT
+            echo "reason=$TOTAL issue(s) found (review recommended)" >> $GITHUB_OUTPUT
+            echo "::warning::Security gate passed with warnings: $TOTAL issue(s) found"
+            echo "**⚠️ GATE PASSED WITH WARNINGS**: $TOTAL issue(s) found" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "status=passed" >> $GITHUB_OUTPUT
+            echo "reason=No security issues detected" >> $GITHUB_OUTPUT
+            echo "**✅ GATE PASSED**: No security issues detected" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Consolidated PR Comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            // Helper to safely read JSON
+            const readJSON = (path) => {
+              try {
+                return JSON.parse(fs.readFileSync(path, 'utf8'));
+              } catch { return null; }
+            };
+
+            // Helper to read file content
+            const readFile = (path) => {
+              try {
+                return fs.readFileSync(path, 'utf8').trim();
+              } catch { return ''; }
+            };
+
+            // Build consolidated comment
+            let body = `## 🔐 Security Audit Results\n\n`;
+
+            // Gate status from aggregated findings
+            const gateStatus = '${{ steps.gate.outputs.status }}';
+            const gateReason = '${{ steps.gate.outputs.reason }}';
+            const totalFindings = parseInt('${{ steps.gate.outputs.total }}') || 0;
+
+            // Overall status based on gate decision
+            if (gateStatus === 'passed') {
+              body += `✅ **Security gate passed** - No issues detected\n\n`;
+            } else if (gateStatus === 'warning') {
+              body += `⚠️ **Security gate passed with warnings** - ${gateReason}\n\n`;
+            } else {
+              body += `❌ **Security gate FAILED** - ${gateReason}\n\n`;
+            }
+
+            // Summary table with actual finding counts
+            const counts = {
+              secrets: parseInt('${{ steps.gate.outputs.secrets }}') || 0,
+              sast: parseInt('${{ steps.gate.outputs.sast }}') || 0,
+              deps: parseInt('${{ steps.gate.outputs.deps }}') || 0,
+              licenses: parseInt('${{ steps.gate.outputs.license }}') || 0
+            };
+
+            body += `| Category | Findings |\n|----------|----------|\n`;
+            body += `| 🔑 Secrets | ${counts.secrets === 0 ? '✅ 0' : '⚠️ ' + counts.secrets} |\n`;
+            body += `| 🛡️ SAST | ${counts.sast === 0 ? '✅ 0' : '⚠️ ' + counts.sast} |\n`;
+            body += `| 📦 Dependencies | ${counts.deps === 0 ? '✅ 0' : '⚠️ ' + counts.deps} |\n`;
+            body += `| 📜 Licenses | ${counts.licenses === 0 ? '✅ 0' : '⚠️ ' + counts.licenses} non-permissive |\n\n`;
+
+            // ==================== SECRET DETECTION ====================
+            let secretFindings = [];
+
+            // CKB Secrets
+            const ckbSecrets = readJSON('results/secret-scan-results/ckb-secrets.json');
+            if (ckbSecrets?.summary?.totalFindings > 0) {
+              secretFindings.push({
+                tool: 'CKB',
+                count: ckbSecrets.summary.totalFindings,
+                items: ckbSecrets.findings?.slice(0, 5).map(f =>
+                  `\`${f.file}:${f.line}\` - ${f.type} (${f.severity})`
+                ) || []
+              });
+            }
+
+            // Gitleaks
+            const gitleaks = readJSON('results/external-secrets-results/gitleaks.json');
+            if (Array.isArray(gitleaks) && gitleaks.length > 0) {
+              secretFindings.push({
+                tool: 'Gitleaks',
+                count: gitleaks.length,
+                items: gitleaks.slice(0, 5).map(f =>
+                  `\`${f.File}:${f.StartLine}\` - ${f.RuleID || 'secret'}`
+                )
+              });
+            }
+
+            // TruffleHog
+            const thContent = readFile('results/external-secrets-results/trufflehog.json');
+            if (thContent) {
+              const thFindings = thContent.split('\n').filter(l => l.trim()).map(l => {
+                try { return JSON.parse(l); } catch { return null; }
+              }).filter(Boolean);
+              if (thFindings.length > 0) {
+                secretFindings.push({
+                  tool: 'TruffleHog',
+                  count: thFindings.length,
+                  verified: true,
+                  items: thFindings.slice(0, 5).map(f => {
+                    const file = f.SourceMetadata?.Data?.Filesystem?.file || 'unknown';
+                    return `\`${file}\` - ${f.DetectorName} ${f.Verified ? '✅' : ''}`;
+                  })
+                });
+              }
+            }
+
+            if (secretFindings.length > 0) {
+              const totalSecrets = secretFindings.reduce((sum, s) => sum + s.count, 0);
+              body += `### 🔑 Secret Detection\n\n`;
+              body += `Found **${totalSecrets}** potential secret(s) across ${secretFindings.length} scanner(s)\n\n`;
+              body += `<details><summary>Details</summary>\n\n`;
+              for (const s of secretFindings) {
+                body += `**${s.tool}** (${s.count} finding${s.count > 1 ? 's' : ''})${s.verified ? ' - verified' : ''}\n`;
+                for (const item of s.items) {
+                  body += `- ${item}\n`;
+                }
+                if (s.count > 5) body += `- ... and ${s.count - 5} more\n`;
+                body += '\n';
+              }
+              body += `</details>\n\n`;
+            }
+
+            // ==================== SAST FINDINGS ====================
+            let sastFindings = [];
+
+            // Gosec
+            const gosec = readJSON('results/sast-results/gosec.json');
+            if (gosec?.Issues?.length > 0) {
+              sastFindings.push({
+                tool: 'Gosec',
+                count: gosec.Issues.length,
+                items: gosec.Issues.slice(0, 5).map(i =>
+                  `\`${i.file}:${i.line}\` - ${i.rule_id}: ${i.details?.substring(0, 60) || 'N/A'}...`
+                )
+              });
+            }
+
+            // Semgrep
+            const semgrep = readJSON('results/sast-results/semgrep.json');
+            if (semgrep?.results?.length > 0) {
+              sastFindings.push({
+                tool: 'Semgrep',
+                count: semgrep.results.length,
+                items: semgrep.results.slice(0, 5).map(r =>
+                  `\`${r.path}:${r.start?.line}\` - ${r.check_id}`
+                )
+              });
+            }
+
+            if (sastFindings.length > 0) {
+              const totalSast = sastFindings.reduce((sum, s) => sum + s.count, 0);
+              body += `### 🛡️ SAST Analysis\n\n`;
+              body += `Found **${totalSast}** issue(s) across ${sastFindings.length} scanner(s)\n\n`;
+              body += `<details><summary>Details</summary>\n\n`;
+              for (const s of sastFindings) {
+                body += `**${s.tool}** (${s.count} finding${s.count > 1 ? 's' : ''})\n`;
+                for (const item of s.items) {
+                  body += `- ${item}\n`;
+                }
+                if (s.count > 5) body += `- ... and ${s.count - 5} more\n`;
+                body += '\n';
+              }
+              body += `</details>\n\n`;
+            }
+
+            // ==================== DEPENDENCY VULNERABILITIES ====================
+            let depFindings = [];
+
+            // Govulncheck
+            const govuln = readJSON('results/dependency-scan-results/govulncheck.json');
+            if (govuln?.vulns?.length > 0) {
+              depFindings.push({
+                tool: 'govulncheck',
+                count: govuln.vulns.length,
+                items: govuln.vulns.slice(0, 5).map(v =>
+                  `**${v.osv?.id || 'Unknown'}**: ${v.osv?.summary?.substring(0, 80) || 'No summary'}...`
+                )
+              });
+            }
+
+            // Trivy Vulnerabilities
+            const trivyVuln = readJSON('results/dependency-scan-results/trivy-vuln.json');
+            if (trivyVuln?.Results) {
+              const vulns = trivyVuln.Results.flatMap(r => r.Vulnerabilities || []);
+              if (vulns.length > 0) {
+                depFindings.push({
+                  tool: 'Trivy',
+                  count: vulns.length,
+                  items: vulns.slice(0, 5).map(v =>
+                    `**${v.VulnerabilityID}** (${v.Severity}): ${v.PkgName} - ${v.Title?.substring(0, 50) || 'N/A'}...`
+                  )
+                });
+              }
+            }
+
+            // OSV-Scanner
+            const osv = readJSON('results/dependency-scan-results/osv.json');
+            if (osv?.results) {
+              const osvVulns = osv.results.flatMap(r => r.packages || []);
+              if (osvVulns.length > 0) {
+                depFindings.push({
+                  tool: 'OSV-Scanner',
+                  count: osvVulns.length,
+                  items: osvVulns.slice(0, 5).map(p =>
+                    `**${p.package?.name || 'unknown'}**: ${p.vulnerabilities?.length || 0} vulnerabilities`
+                  )
+                });
+              }
+            }
+
+            if (depFindings.length > 0) {
+              const totalDeps = depFindings.reduce((sum, s) => sum + s.count, 0);
+              body += `### 📦 Dependency Vulnerabilities\n\n`;
+              body += `Found **${totalDeps}** issue(s) across ${depFindings.length} scanner(s)\n\n`;
+              body += `<details><summary>Details</summary>\n\n`;
+              for (const s of depFindings) {
+                body += `**${s.tool}** (${s.count} finding${s.count > 1 ? 's' : ''})\n`;
+                for (const item of s.items) {
+                  body += `- ${item}\n`;
+                }
+                if (s.count > 5) body += `- ... and ${s.count - 5} more\n`;
+                body += '\n';
+              }
+              body += `</details>\n\n`;
+            }
+
+            // ==================== LICENSE COMPLIANCE ====================
+            const trivyLicense = readJSON('results/dependency-scan-results/trivy-license.json');
+            if (trivyLicense?.Results) {
+              const licenses = trivyLicense.Results.flatMap(r => r.Licenses || []);
+              const nonPermissive = licenses.filter(l => l.Category !== 'permissive');
+              if (nonPermissive.length > 0) {
+                body += `### 📜 License Compliance\n\n`;
+                body += `Found **${nonPermissive.length}** non-permissive license(s)\n\n`;
+                body += `<details><summary>Details</summary>\n\n`;
+                for (const l of nonPermissive.slice(0, 10)) {
+                  body += `- **${l.Name}** (${l.Category}): ${l.PkgName || 'N/A'}\n`;
+                }
+                if (nonPermissive.length > 10) {
+                  body += `\n... and ${nonPermissive.length - 10} more\n`;
+                }
+                body += `</details>\n\n`;
+              }
+            }
+
+            // ==================== FOOTER ====================
+            body += `---\n`;
+            body += `<sub>🤖 Generated by CKB Security Audit | `;
+            body += `[View Details](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) | `;
+            body += `[Security Tab](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/security/code-scanning)</sub>`;
+
+            // ==================== POST/UPDATE COMMENT ====================
+            // Find existing security audit comment to update (avoids spam on multiple pushes)
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+
+            // Look for our previous comment by checking for Bot user and our unique header
+            const botComment = comments.find(c =>
+              c.user?.type === 'Bot' &&
+              c.body?.includes('🔐 Security Audit Results')
+            );
+
+            if (botComment) {
+              // Update existing comment instead of creating a new one
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              // Create new comment if this is the first run
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
+
+      - name: Fail on blocking findings
+        if: steps.gate.outputs.status == 'failed'
+        run: |
+          echo "::error::Security gate failed: ${{ steps.gate.outputs.reason }}"
+          exit 1

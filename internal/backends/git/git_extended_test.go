@@ -1,12 +1,13 @@
 package git
 
 import (
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
 )
 
 // TestGitAdapter_GetFileHistory tests file history retrieval
@@ -319,10 +320,7 @@ func TestGitAdapterCreation_NonGitDirectory(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.RepoRoot = tempDir
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	_, err = NewGitAdapter(cfg, logger)
 	if err == nil {
@@ -462,10 +460,7 @@ func TestGitAdapter_CustomTimeout(t *testing.T) {
 		},
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	adapter, err := NewGitAdapter(cfg, logger)
 	if err != nil {
@@ -497,10 +492,7 @@ func BenchmarkGetRecentCommits(b *testing.B) {
 		},
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	adapter, _ := NewGitAdapter(cfg, logger)
 
@@ -529,10 +521,7 @@ func BenchmarkGetHeadCommit(b *testing.B) {
 		},
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	adapter, _ := NewGitAdapter(cfg, logger)
 

@@ -3,25 +3,24 @@ package jobs
 import (
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
-
-	"ckb/internal/logging"
 )
 
 // Store provides persistence for jobs in a separate SQLite database.
 type Store struct {
 	conn   *sql.DB
-	logger *logging.Logger
+	logger *slog.Logger
 	dbPath string
 }
 
 // OpenStore opens or creates the jobs database at .ckb/jobs.db
-func OpenStore(ckbDir string, logger *logging.Logger) (*Store, error) {
+func OpenStore(ckbDir string, logger *slog.Logger) (*Store, error) {
 	// Ensure .ckb directory exists
 	if err := os.MkdirAll(ckbDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create .ckb directory: %w", err)
@@ -58,9 +57,9 @@ func OpenStore(ckbDir string, logger *logging.Logger) (*Store, error) {
 	}
 
 	if !dbExists {
-		logger.Info("Creating jobs database", map[string]interface{}{
-			"path": dbPath,
-		})
+		logger.Info("Creating jobs database",
+			"path", dbPath,
+		)
 		if err := store.initializeSchema(); err != nil {
 			_ = conn.Close()
 			return nil, fmt.Errorf("failed to initialize jobs schema: %w", err)
@@ -143,10 +142,10 @@ func (s *Store) CreateJob(job *Job) error {
 		return fmt.Errorf("failed to create job: %w", err)
 	}
 
-	s.logger.Debug("Created job", map[string]interface{}{
-		"jobId": job.ID,
-		"type":  job.Type,
-	})
+	s.logger.Debug("Created job",
+		"jobId", job.ID,
+		"type", job.Type,
+	)
 
 	return nil
 }
@@ -226,6 +225,7 @@ func (s *Store) ListJobs(opts ListJobsOptions) (*ListJobsResponse, error) {
 	}
 
 	// Count total
+	//nolint:gosec // G201: Safe - whereClause built from hardcoded conditions with ? placeholders
 	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM jobs %s", whereClause)
 	var totalCount int
 	if err := s.conn.QueryRow(countQuery, args...).Scan(&totalCount); err != nil {
@@ -241,6 +241,7 @@ func (s *Store) ListJobs(opts ListJobsOptions) (*ListJobsResponse, error) {
 		limit = 100
 	}
 
+	//nolint:gosec // G201: Safe - whereClause built from hardcoded conditions with ? placeholders
 	query := fmt.Sprintf(`
 		SELECT id, type, scope, status, progress, created_at, started_at, completed_at, error, result
 		FROM jobs %s

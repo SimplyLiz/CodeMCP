@@ -200,6 +200,7 @@ func (h *IndexRepoHandle) BatchGetSymbols(ids []string) ([]IndexSymbol, []string
 		args[i] = id
 	}
 
+	//nolint:gosec // G201: Safe - only interpolates placeholder names ($1,$2), values passed via args
 	query := fmt.Sprintf(`
 		SELECT stable_id, fingerprint_json, location_json
 		FROM symbol_mappings

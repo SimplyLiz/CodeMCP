@@ -160,8 +160,23 @@ type PrivacyConfig struct {
 
 // LoggingConfig contains logging configuration
 type LoggingConfig struct {
-	Format string `json:"format" mapstructure:"format"`
-	Level  string `json:"level" mapstructure:"level"`
+	Format     string           `json:"format" mapstructure:"format"`
+	Level      string           `json:"level" mapstructure:"level"`
+	MCP        string           `json:"mcp,omitempty" mapstructure:"mcp"`               // per-subsystem override
+	API        string           `json:"api,omitempty" mapstructure:"api"`               // per-subsystem override
+	Index      string           `json:"index,omitempty" mapstructure:"index"`           // per-subsystem override
+	MaxSize    string           `json:"maxSize,omitempty" mapstructure:"maxSize"`       // e.g., "10MB"
+	MaxBackups int              `json:"maxBackups,omitempty" mapstructure:"maxBackups"` // rotated file count
+	Remote     *RemoteLogConfig `json:"remote,omitempty" mapstructure:"remote"`         // remote aggregator
+}
+
+// RemoteLogConfig contains remote log aggregation settings (e.g., Loki)
+type RemoteLogConfig struct {
+	Type          string            `json:"type" mapstructure:"type"`               // "loki"
+	Endpoint      string            `json:"endpoint" mapstructure:"endpoint"`       // e.g., "http://localhost:3100"
+	Labels        map[string]string `json:"labels,omitempty" mapstructure:"labels"` // static labels
+	BatchSize     int               `json:"batchSize,omitempty" mapstructure:"batchSize"`
+	FlushInterval string            `json:"flushInterval,omitempty" mapstructure:"flushInterval"` // e.g., "5s"
 }
 
 // DaemonConfig contains daemon mode configuration (v6.2.1)
@@ -509,10 +524,15 @@ type envVarDef struct {
 
 var envVarMappings = map[string]envVarDef{
 	// Logging (support both CKB_LOG_* and CKB_LOGGING_* for compatibility)
-	"CKB_LOG_LEVEL":      {path: "logging.level", varType: "string"},
-	"CKB_LOG_FORMAT":     {path: "logging.format", varType: "string"},
-	"CKB_LOGGING_LEVEL":  {path: "logging.level", varType: "string"},
-	"CKB_LOGGING_FORMAT": {path: "logging.format", varType: "string"},
+	"CKB_LOG_LEVEL":           {path: "logging.level", varType: "string"},
+	"CKB_LOG_FORMAT":          {path: "logging.format", varType: "string"},
+	"CKB_LOGGING_LEVEL":       {path: "logging.level", varType: "string"},
+	"CKB_LOGGING_FORMAT":      {path: "logging.format", varType: "string"},
+	"CKB_LOGGING_MCP":         {path: "logging.mcp", varType: "string"},
+	"CKB_LOGGING_API":         {path: "logging.api", varType: "string"},
+	"CKB_LOGGING_INDEX":       {path: "logging.index", varType: "string"},
+	"CKB_LOGGING_MAX_SIZE":    {path: "logging.maxSize", varType: "string"},
+	"CKB_LOGGING_MAX_BACKUPS": {path: "logging.maxBackups", varType: "int"},
 
 	// Tier
 	"CKB_TIER": {path: "tier", varType: "string"},
@@ -612,6 +632,31 @@ func applyOverride(cfg *Config, path string, value interface{}) bool {
 		case "format":
 			if v, ok := value.(string); ok {
 				cfg.Logging.Format = v
+				return true
+			}
+		case "mcp":
+			if v, ok := value.(string); ok {
+				cfg.Logging.MCP = v
+				return true
+			}
+		case "api":
+			if v, ok := value.(string); ok {
+				cfg.Logging.API = v
+				return true
+			}
+		case "index":
+			if v, ok := value.(string); ok {
+				cfg.Logging.Index = v
+				return true
+			}
+		case "maxSize":
+			if v, ok := value.(string); ok {
+				cfg.Logging.MaxSize = v
+				return true
+			}
+		case "maxBackups":
+			if v, ok := value.(int); ok {
+				cfg.Logging.MaxBackups = v
 				return true
 			}
 		}

@@ -28,6 +28,7 @@ func (b *Builder) Data(data interface{}) *Builder {
 }
 
 // FromProvenance populates metadata from a query.Provenance.
+// v8.0: Now generates ConfidenceFactors explaining the score.
 func (b *Builder) FromProvenance(p *query.Provenance) *Builder {
 	if p == nil {
 		return b
@@ -62,12 +63,83 @@ func (b *Builder) FromProvenance(p *query.Provenance) *Builder {
 		)
 	}
 
+	// v8.0: Generate confidence factors from backend contributions
+	factors := generateConfidenceFactors(p)
+	if len(factors) > 0 {
+		b.resp.Meta.Confidence.Factors = factors
+	}
+
+	// v8.0: Add cache info if response was cached
+	if p.CachedAt != "" {
+		b.resp.Meta.Cache = &CacheInfo{
+			Hit: true,
+			Age: p.CachedAt,
+		}
+	}
+
 	// Add warnings from provenance
 	for _, w := range p.Warnings {
 		b.resp.Warnings = append(b.resp.Warnings, Warning{Message: w})
 	}
 
 	return b
+}
+
+// generateConfidenceFactors creates ConfidenceFactor entries from provenance.
+// v8.0: Explains why confidence is what it is.
+func generateConfidenceFactors(p *query.Provenance) []ConfidenceFactor {
+	var factors []ConfidenceFactor
+
+	// Add factor for each backend
+	for _, bc := range p.Backends {
+		var status string
+		var impact float64
+
+		switch {
+		case bc.Used && bc.Available:
+			status = "available"
+			// SCIP contributes more to confidence than other backends
+			if bc.BackendId == "scip" {
+				impact = 0.3
+			} else {
+				impact = 0.1
+			}
+		case bc.Available && !bc.Used:
+			status = "available_unused"
+			impact = 0.0
+		default:
+			status = "unavailable"
+			// Missing SCIP hurts confidence more
+			if bc.BackendId == "scip" {
+				impact = -0.2
+			} else {
+				impact = -0.05
+			}
+		}
+
+		factors = append(factors, ConfidenceFactor{
+			Factor: bc.BackendId + "_backend",
+			Status: status,
+			Impact: impact,
+		})
+	}
+
+	// Add factor for repo state
+	if p.RepoStateDirty {
+		factors = append(factors, ConfidenceFactor{
+			Factor: "repo_state",
+			Status: "dirty",
+			Impact: -0.1,
+		})
+	} else {
+		factors = append(factors, ConfidenceFactor{
+			Factor: "repo_state",
+			Status: "clean",
+			Impact: 0.0,
+		})
+	}
+
+	return factors
 }
 
 // WithTruncation adds truncation metadata.
@@ -172,6 +244,54 @@ func (b *Builder) CrossRepo() *Builder {
 		b.resp.Meta.Confidence.Reasons,
 		"cross-repo-query",
 	)
+	return b
+}
+
+// WithConfidenceFactors adds detailed confidence factors to explain the score.
+// v8.0: Added for confidence transparency.
+func (b *Builder) WithConfidenceFactors(factors []ConfidenceFactor) *Builder {
+	if len(factors) == 0 {
+		return b
+	}
+
+	if b.resp.Meta == nil {
+		b.resp.Meta = &Meta{}
+	}
+	if b.resp.Meta.Confidence == nil {
+		b.resp.Meta.Confidence = &Confidence{}
+	}
+
+	b.resp.Meta.Confidence.Factors = factors
+	return b
+}
+
+// WithCache adds cache hit/miss information.
+// v8.0: Added for cache transparency.
+func (b *Builder) WithCache(hit bool, age string, stale bool) *Builder {
+	if b.resp.Meta == nil {
+		b.resp.Meta = &Meta{}
+	}
+
+	b.resp.Meta.Cache = &CacheInfo{
+		Hit:   hit,
+		Age:   age,
+		Stale: stale,
+	}
+	return b
+}
+
+// WithCacheInfo adds detailed cache information.
+// v8.0: Added for cache transparency.
+func (b *Builder) WithCacheInfo(cache *CacheInfo) *Builder {
+	if cache == nil {
+		return b
+	}
+
+	if b.resp.Meta == nil {
+		b.resp.Meta = &Meta{}
+	}
+
+	b.resp.Meta.Cache = cache
 	return b
 }
 

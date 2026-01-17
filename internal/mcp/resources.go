@@ -1,8 +1,9 @@
 package mcp
 
 import (
-	"fmt"
 	"strings"
+
+	"ckb/internal/errors"
 )
 
 // Resource represents a static resource
@@ -49,20 +50,20 @@ func (s *MCPServer) GetResourceDefinitions() ([]Resource, []ResourceTemplate) {
 
 // handleResourceRead handles reading a resource by URI
 func (s *MCPServer) handleResourceRead(uri string) (interface{}, error) {
-	s.logger.Debug("Reading resource", map[string]interface{}{
-		"uri": uri,
-	})
+	s.logger.Debug("Reading resource",
+		"uri", uri,
+	)
 
 	// Parse the URI scheme
 	if !strings.HasPrefix(uri, "ckb://") {
-		return nil, fmt.Errorf("invalid URI scheme: expected ckb://")
+		return nil, errors.NewInvalidParameterError("uri", "expected ckb:// scheme")
 	}
 
 	path := strings.TrimPrefix(uri, "ckb://")
 	parts := strings.Split(path, "/")
 
 	if len(parts) == 0 {
-		return nil, fmt.Errorf("invalid URI: empty path")
+		return nil, errors.NewInvalidParameterError("uri", "empty path")
 	}
 
 	resourceType := parts[0]
@@ -74,20 +75,20 @@ func (s *MCPServer) handleResourceRead(uri string) (interface{}, error) {
 		return s.toolGetArchitecture(map[string]interface{}{})
 	case "module":
 		if len(parts) < 2 {
-			return nil, fmt.Errorf("module URI requires module ID")
+			return nil, errors.NewInvalidParameterError("uri", "module URI requires module ID")
 		}
 		moduleId := parts[1]
 		return s.readModule(moduleId)
 	case "symbol":
 		if len(parts) < 2 {
-			return nil, fmt.Errorf("symbol URI requires symbol ID")
+			return nil, errors.NewInvalidParameterError("uri", "symbol URI requires symbol ID")
 		}
 		symbolId := parts[1]
 		return s.toolGetSymbol(map[string]interface{}{
 			"symbolId": symbolId,
 		})
 	default:
-		return nil, fmt.Errorf("unknown resource type: %s", resourceType)
+		return nil, errors.NewResourceNotFoundError("resource type", resourceType)
 	}
 }
 

@@ -3,13 +3,12 @@ package watcher
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
-
-	"ckb/internal/logging"
 )
 
 // EventType represents the type of file system event
@@ -80,7 +79,7 @@ func DefaultConfig() Config {
 // Watcher watches for file system changes in git repositories
 type Watcher struct {
 	config  Config
-	logger  *logging.Logger
+	logger  *slog.Logger
 	handler ChangeHandler
 	repos   map[string]*repoWatcher // repoPath -> watcher
 
@@ -101,7 +100,7 @@ type repoWatcher struct {
 }
 
 // New creates a new file system watcher
-func New(config Config, logger *logging.Logger, handler ChangeHandler) *Watcher {
+func New(config Config, logger *slog.Logger, handler ChangeHandler) *Watcher {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Watcher{
@@ -117,20 +116,18 @@ func New(config Config, logger *logging.Logger, handler ChangeHandler) *Watcher 
 // Start begins watching
 func (w *Watcher) Start() error {
 	if !w.config.Enabled {
-		w.logger.Info("File watcher is disabled", nil)
+		w.logger.Info("File watcher is disabled")
 		return nil
 	}
 
-	w.logger.Info("Starting file watcher", map[string]interface{}{
-		"debounceMs": w.config.DebounceMs,
-	})
+	w.logger.Info("Starting file watcher", "debounceMs", w.config.DebounceMs)
 
 	return nil
 }
 
 // Stop stops watching
 func (w *Watcher) Stop() error {
-	w.logger.Info("Stopping file watcher", nil)
+	w.logger.Info("Stopping file watcher")
 	w.cancel()
 
 	w.mu.Lock()
@@ -140,7 +137,7 @@ func (w *Watcher) Stop() error {
 	w.mu.Unlock()
 
 	w.wg.Wait()
-	w.logger.Info("File watcher stopped", nil)
+	w.logger.Info("File watcher stopped")
 	return nil
 }
 
@@ -174,9 +171,7 @@ func (w *Watcher) WatchRepo(repoPath string) error {
 	w.wg.Add(1)
 	go w.watchRepo(rw)
 
-	w.logger.Info("Watching repository", map[string]interface{}{
-		"path": repoPath,
-	})
+	w.logger.Info("Watching repository", "path", repoPath)
 
 	return nil
 }
@@ -189,9 +184,7 @@ func (w *Watcher) UnwatchRepo(repoPath string) {
 	if rw, exists := w.repos[repoPath]; exists {
 		close(rw.stopCh)
 		delete(w.repos, repoPath)
-		w.logger.Info("Stopped watching repository", map[string]interface{}{
-			"path": repoPath,
-		})
+		w.logger.Info("Stopped watching repository", "path", repoPath)
 	}
 }
 
@@ -249,10 +242,7 @@ func (w *Watcher) checkRepoChanges(rw *repoWatcher) {
 	if len(events) > 0 {
 		// Debounce the events
 		rw.debouncer.Trigger(func() {
-			w.logger.Debug("Git changes detected", map[string]interface{}{
-				"repoPath":   rw.repoPath,
-				"eventCount": len(events),
-			})
+			w.logger.Debug("Git changes detected", "repoPath", rw.repoPath, "eventCount", len(events))
 			if w.handler != nil {
 				w.handler(rw.repoPath, events)
 			}
@@ -263,7 +253,7 @@ func (w *Watcher) checkRepoChanges(rw *repoWatcher) {
 // readHead reads the current HEAD reference
 func (w *Watcher) readHead(gitDir string) string {
 	headPath := filepath.Join(gitDir, "HEAD")
-	data, err := os.ReadFile(headPath)
+	data, err := os.ReadFile(headPath) //nolint:gosec // G304: Path constructed from gitDir + "HEAD"
 	if err != nil {
 		return ""
 	}

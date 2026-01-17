@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"strings"
 	"text/tabwriter"
@@ -10,7 +12,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"ckb/internal/federation"
-	"ckb/internal/logging"
 )
 
 var contractsCmd = &cobra.Command{
@@ -151,10 +152,7 @@ func init() {
 func runContractsList(cmd *cobra.Command, args []string) error {
 	fedName := args[0]
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
@@ -198,10 +196,7 @@ func runContractsList(cmd *cobra.Command, args []string) error {
 func runContractsImpact(cmd *cobra.Command, args []string) error {
 	fedName := args[0]
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
@@ -280,10 +275,7 @@ func runContractsImpact(cmd *cobra.Command, args []string) error {
 func runContractsDeps(cmd *cobra.Command, args []string) error {
 	fedName := args[0]
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
@@ -344,10 +336,7 @@ func runContractsDeps(cmd *cobra.Command, args []string) error {
 func runContractsSuppress(cmd *cobra.Command, args []string) error {
 	fedName := args[0]
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
@@ -366,10 +355,7 @@ func runContractsSuppress(cmd *cobra.Command, args []string) error {
 func runContractsVerify(cmd *cobra.Command, args []string) error {
 	fedName := args[0]
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
@@ -388,10 +374,7 @@ func runContractsVerify(cmd *cobra.Command, args []string) error {
 func runContractsStats(cmd *cobra.Command, args []string) error {
 	fedName := args[0]
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
