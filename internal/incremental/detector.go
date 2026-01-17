@@ -102,7 +102,7 @@ func (d *ChangeDetector) detectGitChanges(since string) ([]ChangedFile, error) {
 	}
 
 	// Get diff between commits using -z for NUL-separated output
-	cmd := exec.Command("git", "diff", "--name-status", "-z", since, head)
+	cmd := exec.Command("git", "diff", "--name-status", "-z", since, head) //nolint:gosec // G204: git command with commit hashes
 	cmd.Dir = d.repoRoot
 	output, err := cmd.Output()
 	if err != nil {

@@ -148,13 +148,9 @@ func parseBlameOutput(output []byte) ([]BlameEntry, error) {
 }
 
 func parseTimestamp(s string, timestamp *int64) (int, error) {
-	n, err := exec.Command("sh", "-c", "echo "+s).Output()
-	if err != nil {
-		return 0, err
-	}
-	// Simple parsing - just convert string to int64
+	// Parse timestamp string directly without subprocess
 	var val int64
-	for _, c := range strings.TrimSpace(string(n)) {
+	for _, c := range strings.TrimSpace(s) {
 		if c >= '0' && c <= '9' {
 			val = val*10 + int64(c-'0')
 		}

@@ -484,7 +484,7 @@ func runIndexerCommand(dir, command string) error {
 		return fmt.Errorf("empty command")
 	}
 
-	cmd := exec.Command(parts[0], parts[1:]...)
+	cmd := exec.Command(parts[0], parts[1:]...) //nolint:gosec // G204: command from trusted indexer config
 	cmd.Dir = dir
 
 	// Capture stderr for error messages, stream both

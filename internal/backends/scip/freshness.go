@@ -150,7 +150,7 @@ func (f *IndexFreshness) GetCompletenessScore() float64 {
 func countCommitsBetween(repoRoot, fromCommit, toCommit string) (int, error) {
 	// Use git rev-list to count commits
 	// git rev-list --count fromCommit..toCommit
-	cmd := exec.Command("git", "rev-list", "--count", fmt.Sprintf("%s..%s", fromCommit, toCommit))
+	cmd := exec.Command("git", "rev-list", "--count", fmt.Sprintf("%s..%s", fromCommit, toCommit)) //nolint:gosec // G204: git command with validated commit hashes
 	cmd.Dir = repoRoot
 
 	output, err := cmd.Output()

@@ -551,7 +551,7 @@ func (e *Engine) checkOptionalTools(ctx context.Context) DoctorCheck {
 	// Check gh CLI (for GitHub integration)
 	if ghPath, err := exec.LookPath("gh"); err == nil {
 		// Get version
-		cmd := exec.Command(ghPath, "--version")
+		cmd := exec.Command(ghPath, "--version") //nolint:gosec // G204: ghPath from exec.LookPath
 		if output, err := cmd.Output(); err == nil {
 			lines := strings.Split(string(output), "\n")
 			if len(lines) > 0 {
@@ -574,7 +574,7 @@ func (e *Engine) checkOptionalTools(ctx context.Context) DoctorCheck {
 
 	// Check git version
 	if gitPath, err := exec.LookPath("git"); err == nil {
-		cmd := exec.Command(gitPath, "--version")
+		cmd := exec.Command(gitPath, "--version") //nolint:gosec // G204: gitPath from exec.LookPath
 		if output, err := cmd.Output(); err == nil {
 			version := strings.TrimPrefix(strings.TrimSpace(string(output)), "git version ")
 			available = append(available, fmt.Sprintf("git (%s)", version))

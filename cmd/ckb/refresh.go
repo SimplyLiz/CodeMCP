@@ -139,7 +139,7 @@ func runRefresh(cmd *cobra.Command, args []string) error {
 	}
 
 	// Run scip-go
-	indexCmd := exec.Command(scipGoPath, cmdArgs...)
+	indexCmd := exec.Command(scipGoPath, cmdArgs...) //nolint:gosec // G204: scipGoPath from exec.LookPath
 	indexCmd.Dir = repoRoot
 
 	var output []byte

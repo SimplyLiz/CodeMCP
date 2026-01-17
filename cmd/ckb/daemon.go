@@ -210,7 +210,7 @@ func runDaemonBackground() error {
 	}
 
 	// Start the process
-	cmd := exec.Command(executable, args...)
+	cmd := exec.Command(executable, args...) //nolint:gosec // G204: executable is from os.Executable(), args are hardcoded
 
 	// Detach from parent (platform-specific)
 	setDaemonSysProcAttr(cmd)

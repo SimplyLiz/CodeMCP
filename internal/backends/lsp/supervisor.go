@@ -147,7 +147,7 @@ func (s *LspSupervisor) StartServer(languageId string) error {
 	proc := NewLspProcess(languageId, s.config.RepoRoot)
 
 	// Build command
-	cmd := exec.Command(serverCfg.Command, serverCfg.Args...)
+	cmd := exec.Command(serverCfg.Command, serverCfg.Args...) //nolint:gosec // G204: command from trusted LSP config
 	cmd.Dir = s.config.RepoRoot
 
 	// Set up pipes
