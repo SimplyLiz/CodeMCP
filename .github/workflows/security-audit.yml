@@ -254,8 +254,16 @@ jobs:
         run: |
           echo "::group::Gosec Security Scan"
           # -track-suppressions includes #nosec annotations in SARIF for audit trail
-          gosec -fmt json -out gosec.json -stdout -verbose=text ./... || true
-          gosec -fmt sarif -out gosec.sarif -track-suppressions ./... || true
+          # -exclude-dir: secrets module contains secret type patterns (false positive for G101)
+          # -exclude-dir: testdata contains test fixtures
+          gosec -fmt json -out gosec.json -stdout -verbose=text \
+            -exclude-dir=internal/secrets \
+            -exclude-dir=testdata \
+            ./... || true
+          gosec -fmt sarif -out gosec.sarif -track-suppressions \
+            -exclude-dir=internal/secrets \
+            -exclude-dir=testdata \
+            ./... || true
 
           if [ -f gosec.json ]; then
             FINDINGS=$(jq '.Issues | length' gosec.json 2>/dev/null || echo "0")
