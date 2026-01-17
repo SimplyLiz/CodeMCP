@@ -14,7 +14,7 @@ const (
 	AuthScheme = "Bearer "
 
 	// DaemonTokenEnvVar is the environment variable for the daemon token
-	DaemonTokenEnvVar = "CKB_DAEMON_TOKEN" //nolint:gosec // G101: Env var name, not a credential
+	DaemonTokenEnvVar = "CKB_DAEMON_TOKEN" // #nosec G101 //nolint:gosec // Env var name, not a credential
 )
 
 // withAuth wraps a handler with authentication middleware

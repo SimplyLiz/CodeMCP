@@ -14,7 +14,7 @@ const (
 	KeyIDPrefix = "ckb_key_"
 
 	// TokenPrefix is the prefix for API tokens (secret keys)
-	TokenPrefix = "ckb_sk_" //nolint:gosec // G101: Not a credential, just a prefix pattern
+	TokenPrefix = "ckb_sk_" // #nosec G101 //nolint:gosec // Not a credential, just a prefix pattern
 
 	// TokenPrefixLength is the number of characters to store as prefix for identification
 	TokenPrefixLength = 8

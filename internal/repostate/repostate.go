@@ -108,7 +108,7 @@ func ComputeRepoState(repoRoot string) (*RepoState, error) {
 // gitRevParse executes git rev-parse
 func gitRevParse(repoRoot string, args ...string) (string, error) {
 	fullArgs := append([]string{"rev-parse"}, args...)
-	cmd := exec.Command("git", fullArgs...) //nolint:gosec // G204: git command with controlled args
+	cmd := exec.Command("git", fullArgs...) // #nosec G204 //nolint:gosec // git command with controlled args
 	cmd.Dir = repoRoot
 
 	output, err := cmd.Output()
@@ -122,7 +122,7 @@ func gitRevParse(repoRoot string, args ...string) (string, error) {
 // gitDiff executes git diff and returns the output
 func gitDiff(repoRoot string, args ...string) (string, error) {
 	fullArgs := append([]string{"diff"}, args...)
-	cmd := exec.Command("git", fullArgs...) //nolint:gosec // G204: git command with controlled args
+	cmd := exec.Command("git", fullArgs...) // #nosec G204 //nolint:gosec // git command with controlled args
 	cmd.Dir = repoRoot
 
 	output, err := cmd.Output()

@@ -222,7 +222,7 @@ func (rm *RefreshManager) RunFullReindexWithTrigger(ctx context.Context, repoPat
 		return result
 	}
 
-	cmd := exec.CommandContext(ctx, parts[0], parts[1:]...) //nolint:gosec // G204: command from trusted indexer config
+	cmd := exec.CommandContext(ctx, parts[0], parts[1:]...) // #nosec G204 //nolint:gosec // command from trusted indexer config
 	cmd.Dir = repoPath
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

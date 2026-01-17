@@ -197,7 +197,7 @@ func countCommitsBehind(repoRoot, fromCommit, toCommit string) int {
 	}
 
 	// Use git rev-list to count commits
-	cmd := exec.Command("git", "rev-list", "--count", fmt.Sprintf("%s..%s", fromCommit, toCommit)) //nolint:gosec // G204: git command with commit hashes
+	cmd := exec.Command("git", "rev-list", "--count", fmt.Sprintf("%s..%s", fromCommit, toCommit)) // #nosec G204 //nolint:gosec // git command with commit hashes
 	cmd.Dir = repoRoot
 	out, err := cmd.Output()
 	if err != nil {

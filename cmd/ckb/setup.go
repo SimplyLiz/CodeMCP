@@ -642,7 +642,7 @@ func configureVSCodeGlobal(ckbCommand string, ckbArgs []string) error {
 
 	fmt.Printf("Running: code --add-mcp '%s'\n", string(jsonBytes))
 
-	execCmd := exec.Command("code", "--add-mcp", string(jsonBytes)) //nolint:gosec // G204: hardcoded command, jsonBytes is trusted config
+	execCmd := exec.Command("code", "--add-mcp", string(jsonBytes)) // #nosec G204 //nolint:gosec // hardcoded command, jsonBytes is trusted config
 	execCmd.Stdout = os.Stdout
 	execCmd.Stderr = os.Stderr
 
