@@ -73,6 +73,7 @@ type DirectorySummary struct {
 	SymbolCount    int               `json:"symbolCount,omitempty"`
 	Language       string            `json:"language,omitempty"`
 	LOC            int               `json:"loc,omitempty"`
+	Role           string            `json:"role,omitempty"` // Inferred role: api, ui, data, util, test, config, entrypoint, core
 	HasIndexFile   bool              `json:"hasIndexFile"`
 	IncomingEdges  int               `json:"incomingEdges"`
 	OutgoingEdges  int               `json:"outgoingEdges"`
@@ -457,6 +458,7 @@ func convertDirectorySummaries(archDirs []architecture.DirectorySummary) []Direc
 			SymbolCount:    d.SymbolCount,
 			Language:       d.Language,
 			LOC:            d.LOC,
+			Role:           d.Role,
 			HasIndexFile:   d.HasIndexFile,
 			IncomingEdges:  d.IncomingEdges,
 			OutgoingEdges:  d.OutgoingEdges,

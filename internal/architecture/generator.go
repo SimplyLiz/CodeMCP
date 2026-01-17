@@ -249,6 +249,7 @@ func (g *ArchitectureGenerator) generateDirectoryLevel(ctx context.Context, repo
 			FileCount:      dir.FileCount,
 			Language:       dir.Language,
 			LOC:            loc,
+			Role:           inferDirectoryRole(dir.Path),
 			HasIndexFile:   dir.HasIndexFile,
 			IsIntermediate: dir.IsIntermediate,
 		}
@@ -720,4 +721,62 @@ func (g *ArchitectureGenerator) InvalidateCache(repoStateId string) {
 // ClearCache clears all cached architectures
 func (g *ArchitectureGenerator) ClearCache() {
 	g.cache.Clear()
+}
+
+// inferDirectoryRole determines the semantic role of a directory based on its name
+func inferDirectoryRole(path string) string {
+	name := strings.ToLower(filepath.Base(path))
+	pathLower := strings.ToLower(path)
+
+	// Test directories (check first as test dirs can be anywhere)
+	if containsAny(name, "test", "__test", "spec") || strings.Contains(pathLower, "/test/") || strings.Contains(pathLower, "/tests/") {
+		return "test"
+	}
+
+	// Entrypoint directories (check early - cmd/* is always entrypoint in Go)
+	if containsAny(name, "cmd", "bin", "main", "app") || strings.HasPrefix(pathLower, "cmd/") || strings.Contains(pathLower, "/cmd/") {
+		return "entrypoint"
+	}
+
+	// API/Backend directories
+	if containsAny(name, "api", "server", "backend", "handler", "controller", "route", "endpoint") {
+		return "api"
+	}
+
+	// UI/Frontend directories
+	if containsAny(name, "ui", "web", "frontend", "client", "component", "view", "page", "screen") {
+		return "ui"
+	}
+
+	// Data layer directories
+	if containsAny(name, "data", "db", "database", "model", "schema", "store", "repository", "entity") {
+		return "data"
+	}
+
+	// Utility directories
+	if containsAny(name, "util", "utils", "lib", "common", "shared", "helper", "tool") {
+		return "util"
+	}
+
+	// Configuration directories
+	if containsAny(name, "config", "conf", "setting") {
+		return "config"
+	}
+
+	// Internal/core by convention
+	if strings.Contains(pathLower, "/internal/") || strings.Contains(pathLower, "/pkg/") || strings.Contains(pathLower, "/src/") {
+		return "core"
+	}
+
+	return "core"
+}
+
+// containsAny checks if s contains any of the substrings
+func containsAny(s string, substrs ...string) bool {
+	for _, sub := range substrs {
+		if strings.Contains(s, sub) {
+			return true
+		}
+	}
+	return false
 }
