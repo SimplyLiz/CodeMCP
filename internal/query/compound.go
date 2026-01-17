@@ -523,7 +523,8 @@ func (e *Engine) getExploreDependencies(ctx context.Context, targetType, absPath
 		// For single file, parse imports
 		imports := parseFileImports(absPath)
 		for _, imp := range imports {
-			isInternal := !strings.Contains(imp, "/") || strings.HasPrefix(imp, "./") || strings.HasPrefix(imp, "../")
+			// Internal = relative path (starts with . or /)
+			isInternal := strings.HasPrefix(imp, ".") || strings.HasPrefix(imp, "/")
 			deps.Imports = append(deps.Imports, ExploreDependency{
 				Name:     imp,
 				Internal: isInternal,
@@ -580,7 +581,8 @@ func (e *Engine) getExploreDependencies(ctx context.Context, targetType, absPath
 		deps.Truncated = truncated
 
 		for imp := range importSet {
-			isInternal := !strings.Contains(imp, "/") || strings.HasPrefix(imp, "./") || strings.HasPrefix(imp, "../")
+			// Internal = relative path (starts with . or /)
+			isInternal := strings.HasPrefix(imp, ".") || strings.HasPrefix(imp, "/")
 			deps.Imports = append(deps.Imports, ExploreDependency{
 				Name:     imp,
 				Internal: isInternal,
@@ -603,6 +605,71 @@ func (e *Engine) getExploreDependencies(ctx context.Context, targetType, absPath
 	return deps
 }
 
+// extractQuotedString extracts a string between double quotes from a line
+func extractQuotedString(line string) string {
+	start := strings.Index(line, `"`)
+	if start < 0 {
+		return ""
+	}
+	end := strings.Index(line[start+1:], `"`)
+	if end < 0 {
+		return ""
+	}
+	return line[start+1 : start+1+end]
+}
+
+// extractModuleSpecifier extracts the module specifier from a JS/TS import line
+// Handles: import X from 'module', import 'module', import X from "module"
+func extractModuleSpecifier(line string) string {
+	// Look for 'from' keyword first (common case)
+	if idx := strings.Index(line, " from "); idx >= 0 {
+		rest := strings.TrimSpace(line[idx+6:])
+		return extractJSString(rest)
+	}
+
+	// Handle: import 'module' or import "module" (side-effect imports)
+	if strings.HasPrefix(line, "import ") {
+		rest := strings.TrimSpace(line[7:])
+		// Skip if it starts with { (destructuring) or identifier
+		if strings.HasPrefix(rest, "'") || strings.HasPrefix(rest, `"`) {
+			return extractJSString(rest)
+		}
+	}
+
+	return ""
+}
+
+// extractJSString extracts a string from JS/TS (handles both ' and ")
+func extractJSString(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) < 2 {
+		return ""
+	}
+
+	var quote byte
+	if s[0] == '\'' {
+		quote = '\''
+	} else if s[0] == '"' {
+		quote = '"'
+	} else {
+		return ""
+	}
+
+	end := strings.IndexByte(s[1:], quote)
+	if end < 0 {
+		return ""
+	}
+
+	result := s[1 : 1+end]
+
+	// Validate: module specifiers don't contain spaces or special chars
+	if strings.ContainsAny(result, " \t{}()") {
+		return ""
+	}
+
+	return result
+}
+
 // parseFileImports extracts import statements from a file.
 func parseFileImports(filePath string) []string {
 	// Only parse source code files, skip JSON, markdown, etc.
@@ -618,57 +685,43 @@ func parseFileImports(filePath string) []string {
 
 	var imports []string
 	lines := strings.Split(string(content), "\n")
+	ext := strings.ToLower(filepath.Ext(filePath))
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 
-		// Go imports
-		if strings.HasPrefix(line, "import ") || strings.HasPrefix(line, `"`) && strings.HasSuffix(line, `"`) {
-			if strings.Contains(line, `"`) {
-				// Extract quoted import
-				start := strings.Index(line, `"`)
-				end := strings.LastIndex(line, `"`)
-				if start < end {
-					imports = append(imports, line[start+1:end])
+		// Go imports (only for .go files)
+		if ext == ".go" {
+			if strings.HasPrefix(line, "import ") || (strings.HasPrefix(line, `"`) && strings.HasSuffix(line, `"`)) {
+				if imp := extractQuotedString(line); imp != "" {
+					imports = append(imports, imp)
 				}
 			}
+			continue
 		}
 
-		// TypeScript/JavaScript imports
-		if strings.HasPrefix(line, "import ") || strings.HasPrefix(line, "from ") {
-			if idx := strings.Index(line, "from "); idx >= 0 {
-				rest := line[idx+5:]
-				rest = strings.Trim(rest, `"';`)
-				if rest != "" {
-					imports = append(imports, rest)
-				}
-			} else if strings.Contains(line, `"`) || strings.Contains(line, "'") {
-				// Handle: import "module"
-				for _, sep := range []string{`"`, `'`} {
-					if strings.Contains(line, sep) {
-						parts := strings.Split(line, sep)
-						if len(parts) >= 2 {
-							imports = append(imports, parts[1])
-							break
-						}
-					}
-				}
-			}
-		}
-
-		// Python imports
-		if strings.HasPrefix(line, "import ") || strings.HasPrefix(line, "from ") {
+		// Python imports (only for .py files)
+		if ext == ".py" {
 			if strings.HasPrefix(line, "from ") {
 				parts := strings.Fields(line)
 				if len(parts) >= 2 {
 					imports = append(imports, parts[1])
 				}
-			} else {
+			} else if strings.HasPrefix(line, "import ") {
 				parts := strings.Fields(line)
 				if len(parts) >= 2 {
 					imp := strings.Split(parts[1], ",")[0]
 					imports = append(imports, strings.TrimSpace(imp))
 				}
+			}
+			continue
+		}
+
+		// JavaScript/TypeScript imports
+		if strings.HasPrefix(line, "import ") {
+			// import X from 'module' or import 'module'
+			if imp := extractModuleSpecifier(line); imp != "" {
+				imports = append(imports, imp)
 			}
 		}
 	}
