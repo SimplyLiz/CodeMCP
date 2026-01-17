@@ -51,10 +51,8 @@ concurrency:
   group: security-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-  security-events: write
-  pull-requests: write
+# Per-job permissions for tighter security (principle of least privilege)
+# Each job declares only the permissions it needs
 
 jobs:
   # ============================================================================
@@ -63,6 +61,11 @@ jobs:
   secret-scan:
     name: Secret Detection
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    outputs:
+      ckb_findings: ${{ steps.ckb_secrets.outputs.findings }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -92,7 +95,7 @@ jobs:
             --exclude="internal/secrets/patterns.go" \
             --exclude="*_test.go" \
             --exclude="testdata/*" \
-            --output=json > ckb-secrets.json 2>&1 || true
+            --output=json > ckb-secrets.json || true
 
           FINDINGS=$(jq -r '.summary.totalFindings // 0' ckb-secrets.json 2>/dev/null || echo "0")
           echo "findings=$FINDINGS" >> $GITHUB_OUTPUT
@@ -110,7 +113,7 @@ jobs:
             --exclude="internal/secrets/patterns.go" \
             --exclude="*_test.go" \
             --exclude="testdata/*" \
-            --output=sarif > ckb-secrets.sarif 2>&1 || true
+            --output=sarif > ckb-secrets.sarif || true
 
       - name: Upload CKB SARIF
         if: env.SCAN_CKB_SECRETS == 'true'
@@ -137,11 +140,18 @@ jobs:
   external-secrets:
     name: External Secret Scanners
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    outputs:
+      gitleaks_findings: ${{ steps.gitleaks.outputs.findings }}
+      trufflehog_findings: ${{ steps.trufflehog.outputs.findings }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          # Full history only when scanning history; otherwise fetch 50 commits for reasonable coverage
+          fetch-depth: ${{ github.event.inputs.scan_history == 'true' && 0 || 50 }}
 
       - name: Install Gitleaks
         if: env.SCAN_GITLEAKS == 'true'
@@ -155,8 +165,10 @@ jobs:
         if: env.SCAN_GITLEAKS == 'true'
         run: |
           echo "::group::Gitleaks Scan"
-          gitleaks detect --source . --report-format json --report-path gitleaks.json --exit-code 0 || true
-          gitleaks detect --source . --report-format sarif --report-path gitleaks.sarif --exit-code 0 || true
+          # Run without --exit-code 0 so gitleaks returns non-zero on findings
+          # || true keeps the workflow running; we gate on findings in security-gate
+          gitleaks detect --source . --report-format json --report-path gitleaks.json || true
+          gitleaks detect --source . --report-format sarif --report-path gitleaks.sarif || true
 
           if [ -f gitleaks.json ]; then
             FINDINGS=$(jq 'length' gitleaks.json 2>/dev/null || echo "0")
@@ -185,7 +197,9 @@ jobs:
         if: env.SCAN_TRUFFLEHOG == 'true'
         run: |
           echo "::group::TruffleHog Scan"
-          trufflehog filesystem . --only-verified --json > trufflehog.json 2>/dev/null || true
+          # --fail returns exit code 183 when verified secrets found
+          # || true keeps workflow running; we gate on findings in security-gate
+          trufflehog filesystem . --only-verified --json --fail > trufflehog.json 2>/dev/null || true
 
           if [ -f trufflehog.json ] && [ -s trufflehog.json ]; then
             FINDINGS=$(wc -l < trufflehog.json | tr -d ' ')
@@ -214,6 +228,12 @@ jobs:
   sast-scan:
     name: SAST Analysis
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    outputs:
+      gosec_findings: ${{ steps.gosec.outputs.findings }}
+      semgrep_findings: ${{ steps.semgrep.outputs.findings }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -233,8 +253,8 @@ jobs:
         if: env.SCAN_GOSEC == 'true'
         run: |
           echo "::group::Gosec Security Scan"
-          gosec -fmt json -out gosec.json -stdout -verbose=text ./... 2>&1 || true
-          gosec -fmt sarif -out gosec.sarif ./... 2>&1 || true
+          gosec -fmt json -out gosec.json -stdout -verbose=text ./... || true
+          gosec -fmt sarif -out gosec.sarif ./... || true
 
           if [ -f gosec.json ]; then
             FINDINGS=$(jq '.Issues | length' gosec.json 2>/dev/null || echo "0")
@@ -263,7 +283,7 @@ jobs:
           semgrep scan --config=p/golang --config=p/security-audit \
             --json --output=semgrep.json \
             --sarif --sarif-output=semgrep.sarif \
-            . 2>&1 || true
+            . || true
 
           if [ -f semgrep.json ]; then
             FINDINGS=$(jq '.results | length' semgrep.json 2>/dev/null || echo "0")
@@ -300,6 +320,14 @@ jobs:
   dependency-scan:
     name: Dependency & Vulnerability Scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    outputs:
+      govulncheck_findings: ${{ steps.govulncheck.outputs.findings }}
+      trivy_vuln_findings: ${{ steps.trivy_vuln.outputs.findings }}
+      trivy_license_findings: ${{ steps.trivy_license.outputs.findings }}
+      osv_findings: ${{ steps.osv.outputs.findings }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -316,7 +344,7 @@ jobs:
         run: |
           echo "::group::Govulncheck"
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck -format json ./... > govulncheck.json 2>&1 || true
+          govulncheck -format json ./... > govulncheck.json || true
 
           if [ -f govulncheck.json ]; then
             # Check if vulns array exists and is not null
@@ -342,8 +370,8 @@ jobs:
         if: env.SCAN_TRIVY == 'true'
         run: |
           echo "::group::Trivy Vulnerability Scan"
-          trivy fs . --scanners vuln --format json --output trivy-vuln.json 2>&1 || true
-          trivy fs . --scanners vuln --format sarif --output trivy-vuln.sarif 2>&1 || true
+          trivy fs . --scanners vuln --format json --output trivy-vuln.json || true
+          trivy fs . --scanners vuln --format sarif --output trivy-vuln.sarif || true
 
           if [ -f trivy-vuln.json ]; then
             FINDINGS=$(jq '[.Results[]?.Vulnerabilities // [] | length] | add // 0' trivy-vuln.json 2>/dev/null || echo "0")
@@ -358,7 +386,7 @@ jobs:
         if: env.SCAN_TRIVY == 'true'
         run: |
           echo "::group::Trivy License Scan"
-          trivy fs . --scanners license --format json --output trivy-license.json 2>&1 || true
+          trivy fs . --scanners license --format json --output trivy-license.json || true
 
           if [ -f trivy-license.json ]; then
             # Count non-permissive licenses
@@ -373,7 +401,7 @@ jobs:
         if: env.SCAN_TRIVY == 'true'
         run: |
           echo "::group::Trivy SBOM"
-          trivy fs . --format cyclonedx --output sbom.json 2>&1 || true
+          trivy fs . --format cyclonedx --output sbom.json || true
           echo "::endgroup::"
 
       - name: Upload Trivy SARIF
@@ -390,7 +418,7 @@ jobs:
         run: |
           echo "::group::OSV-Scanner"
           go install github.com/google/osv-scanner/cmd/osv-scanner@latest
-          osv-scanner --format json --output osv.json . 2>&1 || true
+          osv-scanner --format json --output osv.json . || true
 
           if [ -f osv.json ]; then
             FINDINGS=$(jq '.results | map(.packages | length) | add // 0' osv.json 2>/dev/null || echo "0")
@@ -421,6 +449,9 @@ jobs:
   security-gate:
     name: Security Gate
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     needs: [secret-scan, external-secrets, sast-scan, dependency-scan]
     if: always()
     steps:
@@ -430,21 +461,68 @@ jobs:
           path: results
         continue-on-error: true
 
-      - name: Check results
-        id: check
+      - name: Evaluate Security Gate
+        id: gate
         run: |
+          # Aggregate all findings from job outputs
+          CKB="${{ needs.secret-scan.outputs.ckb_findings || 0 }}"
+          GITLEAKS="${{ needs.external-secrets.outputs.gitleaks_findings || 0 }}"
+          TRUFFLEHOG="${{ needs.external-secrets.outputs.trufflehog_findings || 0 }}"
+          GOSEC="${{ needs.sast-scan.outputs.gosec_findings || 0 }}"
+          SEMGREP="${{ needs.sast-scan.outputs.semgrep_findings || 0 }}"
+          GOVULN="${{ needs.dependency-scan.outputs.govulncheck_findings || 0 }}"
+          TRIVY="${{ needs.dependency-scan.outputs.trivy_vuln_findings || 0 }}"
+          LICENSE="${{ needs.dependency-scan.outputs.trivy_license_findings || 0 }}"
+          OSV="${{ needs.dependency-scan.outputs.osv_findings || 0 }}"
+
+          # Calculate totals by category
+          SECRETS=$((CKB + GITLEAKS + TRUFFLEHOG))
+          SAST=$((GOSEC + SEMGREP))
+          DEPS=$((GOVULN + TRIVY + OSV))
+          TOTAL=$((SECRETS + SAST + DEPS))
+
+          # Export counts for PR comment
+          echo "ckb=$CKB" >> $GITHUB_OUTPUT
+          echo "gitleaks=$GITLEAKS" >> $GITHUB_OUTPUT
+          echo "trufflehog=$TRUFFLEHOG" >> $GITHUB_OUTPUT
+          echo "gosec=$GOSEC" >> $GITHUB_OUTPUT
+          echo "semgrep=$SEMGREP" >> $GITHUB_OUTPUT
+          echo "govuln=$GOVULN" >> $GITHUB_OUTPUT
+          echo "trivy=$TRIVY" >> $GITHUB_OUTPUT
+          echo "license=$LICENSE" >> $GITHUB_OUTPUT
+          echo "osv=$OSV" >> $GITHUB_OUTPUT
+          echo "secrets=$SECRETS" >> $GITHUB_OUTPUT
+          echo "sast=$SAST" >> $GITHUB_OUTPUT
+          echo "deps=$DEPS" >> $GITHUB_OUTPUT
+          echo "total=$TOTAL" >> $GITHUB_OUTPUT
+
+          # Write summary
           echo "### Security Audit Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Secret Scan | ${{ needs.secret-scan.result == 'success' && '✅' || '⚠️' }} ${{ needs.secret-scan.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| External Secrets | ${{ needs.external-secrets.result == 'success' && '✅' || '⚠️' }} ${{ needs.external-secrets.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| SAST Analysis | ${{ needs.sast-scan.result == 'success' && '✅' || '⚠️' }} ${{ needs.sast-scan.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Dependency Scan | ${{ needs.dependency-scan.result == 'success' && '✅' || '⚠️' }} ${{ needs.dependency-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Category | Findings |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|----------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔑 Secrets | $SECRETS (CKB: $CKB, Gitleaks: $GITLEAKS, TruffleHog: $TRUFFLEHOG) |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🛡️ SAST | $SAST (Gosec: $GOSEC, Semgrep: $SEMGREP) |" >> $GITHUB_STEP_SUMMARY
+          echo "| 📦 Dependencies | $DEPS (govulncheck: $GOVULN, Trivy: $TRIVY, OSV: $OSV) |" >> $GITHUB_STEP_SUMMARY
+          echo "| 📜 Licenses | $LICENSE non-permissive |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Check for critical failures
-          if [ "${{ needs.secret-scan.result }}" == "failure" ]; then
-            echo "failed=true" >> $GITHUB_OUTPUT
+          # Determine gate status
+          # BLOCKING: Any verified secrets (TruffleHog only scans verified)
+          if [ "$TRUFFLEHOG" -gt 0 ]; then
+            echo "status=failed" >> $GITHUB_OUTPUT
+            echo "reason=Verified secrets detected by TruffleHog" >> $GITHUB_OUTPUT
+            echo "::error::Security gate FAILED: $TRUFFLEHOG verified secret(s) detected"
+            echo "**❌ GATE FAILED**: Verified secrets detected" >> $GITHUB_STEP_SUMMARY
+          elif [ "$TOTAL" -gt 0 ]; then
+            echo "status=warning" >> $GITHUB_OUTPUT
+            echo "reason=$TOTAL issue(s) found (review recommended)" >> $GITHUB_OUTPUT
+            echo "::warning::Security gate passed with warnings: $TOTAL issue(s) found"
+            echo "**⚠️ GATE PASSED WITH WARNINGS**: $TOTAL issue(s) found" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "status=passed" >> $GITHUB_OUTPUT
+            echo "reason=No security issues detected" >> $GITHUB_OUTPUT
+            echo "**✅ GATE PASSED**: No security issues detected" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Consolidated PR Comment
@@ -471,25 +549,33 @@ jobs:
             // Build consolidated comment
             let body = `## 🔐 Security Audit Results\n\n`;
 
-            // Overall status
-            const jobs = {
-              secrets: '${{ needs.secret-scan.result }}',
-              external: '${{ needs.external-secrets.result }}',
-              sast: '${{ needs.sast-scan.result }}',
-              deps: '${{ needs.dependency-scan.result }}'
+            // Gate status from aggregated findings
+            const gateStatus = '${{ steps.gate.outputs.status }}';
+            const gateReason = '${{ steps.gate.outputs.reason }}';
+            const totalFindings = parseInt('${{ steps.gate.outputs.total }}') || 0;
+
+            // Overall status based on gate decision
+            if (gateStatus === 'passed') {
+              body += `✅ **Security gate passed** - No issues detected\n\n`;
+            } else if (gateStatus === 'warning') {
+              body += `⚠️ **Security gate passed with warnings** - ${gateReason}\n\n`;
+            } else {
+              body += `❌ **Security gate FAILED** - ${gateReason}\n\n`;
+            }
+
+            // Summary table with actual finding counts
+            const counts = {
+              secrets: parseInt('${{ steps.gate.outputs.secrets }}') || 0,
+              sast: parseInt('${{ steps.gate.outputs.sast }}') || 0,
+              deps: parseInt('${{ steps.gate.outputs.deps }}') || 0,
+              licenses: parseInt('${{ steps.gate.outputs.license }}') || 0
             };
 
-            const allPassed = Object.values(jobs).every(r => r === 'success');
-            body += allPassed
-              ? `✅ **All security checks passed**\n\n`
-              : `⚠️ **Some security checks need attention**\n\n`;
-
-            // Summary table
-            body += `| Category | Status |\n|----------|--------|\n`;
-            body += `| 🔑 Secret Detection | ${jobs.secrets === 'success' ? '✅' : '⚠️'} ${jobs.secrets} |\n`;
-            body += `| 🔍 External Scanners | ${jobs.external === 'success' ? '✅' : '⚠️'} ${jobs.external} |\n`;
-            body += `| 🛡️ SAST Analysis | ${jobs.sast === 'success' ? '✅' : '⚠️'} ${jobs.sast} |\n`;
-            body += `| 📦 Dependencies | ${jobs.deps === 'success' ? '✅' : '⚠️'} ${jobs.deps} |\n\n`;
+            body += `| Category | Findings |\n|----------|----------|\n`;
+            body += `| 🔑 Secrets | ${counts.secrets === 0 ? '✅ 0' : '⚠️ ' + counts.secrets} |\n`;
+            body += `| 🛡️ SAST | ${counts.sast === 0 ? '✅ 0' : '⚠️ ' + counts.sast} |\n`;
+            body += `| 📦 Dependencies | ${counts.deps === 0 ? '✅ 0' : '⚠️ ' + counts.deps} |\n`;
+            body += `| 📜 Licenses | ${counts.licenses === 0 ? '✅ 0' : '⚠️ ' + counts.licenses} non-permissive |\n\n`;
 
             // ==================== SECRET DETECTION ====================
             let secretFindings = [];
@@ -714,6 +800,8 @@ jobs:
               });
             }
 
-      - name: Fail if critical issues
-        if: steps.check.outputs.failed == 'true'
-        run: exit 1
+      - name: Fail on blocking findings
+        if: steps.gate.outputs.status == 'failed'
+        run: |
+          echo "::error::Security gate failed: ${{ steps.gate.outputs.reason }}"
+          exit 1
