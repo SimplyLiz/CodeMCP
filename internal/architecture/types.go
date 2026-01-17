@@ -110,6 +110,7 @@ type DirectorySummary struct {
 	SymbolCount    int               `json:"symbolCount"`              // Symbols defined (if SCIP available)
 	Language       string            `json:"language"`                 // Dominant language
 	LOC            int               `json:"loc"`                      // Lines of code
+	Role           string            `json:"role,omitempty"`           // Inferred role: api, ui, data, util, test, config, entrypoint, core
 	HasIndexFile   bool              `json:"hasIndexFile"`             // Contains index.ts/js, mod.rs, __init__.py
 	IncomingEdges  int               `json:"incomingEdges"`            // Dependencies pointing here
 	OutgoingEdges  int               `json:"outgoingEdges"`            // Dependencies from this directory
