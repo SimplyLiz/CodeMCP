@@ -225,6 +225,7 @@ func (s *Store) ListJobs(opts ListJobsOptions) (*ListJobsResponse, error) {
 	}
 
 	// Count total
+	//nolint:gosec // G201: Safe - whereClause built from hardcoded conditions with ? placeholders
 	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM jobs %s", whereClause)
 	var totalCount int
 	if err := s.conn.QueryRow(countQuery, args...).Scan(&totalCount); err != nil {
@@ -240,6 +241,7 @@ func (s *Store) ListJobs(opts ListJobsOptions) (*ListJobsResponse, error) {
 		limit = 100
 	}
 
+	//nolint:gosec // G201: Safe - whereClause built from hardcoded conditions with ? placeholders
 	query := fmt.Sprintf(`
 		SELECT id, type, scope, status, progress, created_at, started_at, completed_at, error, result
 		FROM jobs %s
