@@ -147,6 +147,11 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 		}
 	}
 
+	// v8.0: Check for binary staleness
+	if warning := s.GetBinaryStaleWarning(); warning != "" {
+		suggestions = append([]string{warning}, suggestions...) // Prepend as highest priority
+	}
+
 	// v8.0: Build roots info for debugging
 	var rootsInfo map[string]interface{}
 	clientSupported := s.roots != nil && s.roots.IsClientSupported()

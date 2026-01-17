@@ -183,6 +183,13 @@ func (s *MCPServer) requestRoots() {
 				)
 			}
 
+			// v8.0: Switch to client's root if it differs from current repo
+			// This fixes repo confusion when using a binary from a different location
+			if len(roots) > 0 {
+				clientRoot := roots[0].Path()
+				s.switchToClientRoot(clientRoot)
+			}
+
 		case <-time.After(rootsRequestTimeout):
 			// Timeout - cancel the pending request and log
 			s.roots.CancelPendingRequest(id)

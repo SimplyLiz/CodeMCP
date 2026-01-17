@@ -6,12 +6,15 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
+	"ckb/internal/config"
 	"ckb/internal/errors"
 	"ckb/internal/query"
 	"ckb/internal/repos"
+	"ckb/internal/storage"
 )
 
 const maxEngines = 5
@@ -53,6 +56,10 @@ type MCPServer struct {
 
 	// MCP roots support (v8.0)
 	roots *rootsManager
+
+	// Binary staleness detection (v8.0)
+	binaryPath    string    // Path to the running binary
+	binaryModTime time.Time // Modification time at startup
 }
 
 // NewMCPServer creates a new MCP server in legacy single-engine mode
@@ -68,6 +75,9 @@ func NewMCPServer(version string, engine *query.Engine, logger *slog.Logger) *MC
 		activePreset: DefaultPreset,
 		roots:        newRootsManager(),
 	}
+
+	// Record binary info for staleness detection
+	server.recordBinaryInfo()
 
 	// Register all tools
 	server.RegisterTools()
@@ -105,6 +115,9 @@ func NewMCPServerWithRegistry(version string, registry *repos.Registry, logger *
 		activePreset: DefaultPreset,
 		roots:        newRootsManager(),
 	}
+
+	// Record binary info for staleness detection
+	server.recordBinaryInfo()
 
 	// Register all tools
 	server.RegisterTools()
@@ -355,6 +368,163 @@ func (s *MCPServer) GetRootPaths() []string {
 func (s *MCPServer) HasClientRoots() bool {
 	roots := s.GetRoots()
 	return len(roots) > 0
+}
+
+// createEngineForRoot creates a new query engine for the given root directory
+func (s *MCPServer) createEngineForRoot(repoRoot string) (*query.Engine, error) {
+	// Load configuration for the new root
+	cfg, err := config.LoadConfig(repoRoot)
+	if err != nil {
+		s.logger.Debug("Failed to load config for root, using defaults",
+			"root", repoRoot,
+			"error", err.Error(),
+		)
+		cfg = config.DefaultConfig()
+	}
+
+	// Open storage for the new root
+	db, err := storage.Open(repoRoot, s.logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+
+	// Create engine
+	engine, err := query.NewEngine(repoRoot, db, s.logger, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create engine: %w", err)
+	}
+
+	return engine, nil
+}
+
+// switchToClientRoot switches the engine to the client's root directory if different.
+// This fixes repo confusion when using a binary from a different location.
+//
+// IMPORTANT: Only switches in legacy single-engine mode. In multi-repo mode,
+// users have explicit control via switchRepo tool, so we don't override that.
+func (s *MCPServer) switchToClientRoot(clientRoot string) {
+	if clientRoot == "" {
+		return
+	}
+
+	// Only switch in legacy single-engine mode
+	// Multi-repo mode users have explicit control via switchRepo
+	if s.legacyEngine == nil {
+		s.logger.Debug("Multi-repo mode active, not auto-switching to client root",
+			"clientRoot", clientRoot,
+		)
+		return
+	}
+
+	currentRoot := s.legacyEngine.GetRepoRoot()
+
+	// Normalize paths for comparison
+	clientRootClean := filepath.Clean(clientRoot)
+	currentRootClean := filepath.Clean(currentRoot)
+
+	// Check if they're the same
+	if clientRootClean == currentRootClean {
+		s.logger.Debug("Client root matches current repo, no switch needed",
+			"root", clientRootClean,
+		)
+		return
+	}
+
+	s.logger.Info("Client root differs from server repo, switching to client's project",
+		"clientRoot", clientRootClean,
+		"serverRoot", currentRootClean,
+	)
+
+	// Create a new engine for the client's root
+	newEngine, err := s.createEngineForRoot(clientRootClean)
+	if err != nil {
+		s.logger.Warn("Failed to create engine for client root, keeping current repo",
+			"clientRoot", clientRootClean,
+			"error", err.Error(),
+		)
+		return
+	}
+
+	// Close the old engine's database to avoid resource leaks
+	oldEngine := s.legacyEngine
+	if oldEngine != nil && oldEngine.DB() != nil {
+		if err := oldEngine.DB().Close(); err != nil {
+			s.logger.Warn("Failed to close old engine database",
+				"error", err.Error(),
+			)
+		}
+	}
+
+	// Switch to the new engine
+	s.mu.Lock()
+	s.legacyEngine = newEngine
+	s.mu.Unlock()
+
+	// Wire up metrics persistence for the new engine
+	if newEngine.DB() != nil {
+		SetMetricsDB(newEngine.DB())
+	}
+
+	s.logger.Info("Switched to client root",
+		"root", clientRootClean,
+	)
+}
+
+// recordBinaryInfo records the current binary's path and modification time
+func (s *MCPServer) recordBinaryInfo() {
+	execPath, err := os.Executable()
+	if err != nil {
+		if s.logger != nil {
+			s.logger.Debug("Failed to get executable path", "error", err.Error())
+		}
+		return
+	}
+
+	// Resolve symlinks to get the actual binary
+	realPath, err := filepath.EvalSymlinks(execPath)
+	if err != nil {
+		realPath = execPath
+	}
+
+	info, err := os.Stat(realPath)
+	if err != nil {
+		if s.logger != nil {
+			s.logger.Debug("Failed to stat binary", "path", realPath, "error", err.Error())
+		}
+		return
+	}
+
+	s.binaryPath = realPath
+	s.binaryModTime = info.ModTime()
+
+	if s.logger != nil {
+		s.logger.Debug("Recorded binary info",
+			"path", s.binaryPath,
+			"modTime", s.binaryModTime.Format(time.RFC3339),
+		)
+	}
+}
+
+// IsBinaryStale checks if the binary on disk is newer than when this process started
+func (s *MCPServer) IsBinaryStale() bool {
+	if s.binaryPath == "" || s.binaryModTime.IsZero() {
+		return false
+	}
+
+	info, err := os.Stat(s.binaryPath)
+	if err != nil {
+		return false
+	}
+
+	return info.ModTime().After(s.binaryModTime)
+}
+
+// GetBinaryStaleWarning returns a warning message if the binary is stale, or empty string if not
+func (s *MCPServer) GetBinaryStaleWarning() string {
+	if !s.IsBinaryStale() {
+		return ""
+	}
+	return "CKB binary has been updated. Restart Claude Code or run /clear for changes to take effect."
 }
 
 // SendNotification sends a JSON-RPC notification to the client
