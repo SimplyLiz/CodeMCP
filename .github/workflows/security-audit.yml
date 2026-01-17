@@ -233,7 +233,7 @@ jobs:
       security-events: write
     outputs:
       gosec_findings: ${{ steps.gosec.outputs.findings }}
-      semgrep_findings: ${{ steps.semgrep.outputs.findings }}
+      semgrep_findings: ${{ steps.semgrep_parse.outputs.findings }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -253,14 +253,21 @@ jobs:
         if: env.SCAN_GOSEC == 'true'
         run: |
           echo "::group::Gosec Security Scan"
+          # -track-suppressions includes #nosec annotations in SARIF for audit trail
           gosec -fmt json -out gosec.json -stdout -verbose=text ./... || true
-          gosec -fmt sarif -out gosec.sarif ./... || true
+          gosec -fmt sarif -out gosec.sarif -track-suppressions ./... || true
 
           if [ -f gosec.json ]; then
             FINDINGS=$(jq '.Issues | length' gosec.json 2>/dev/null || echo "0")
+            SUPPRESSED=$(jq '[.Issues[]? | select(.nosec == true)] | length' gosec.json 2>/dev/null || echo "0")
             echo "findings=$FINDINGS" >> $GITHUB_OUTPUT
+            echo "suppressed=$SUPPRESSED" >> $GITHUB_OUTPUT
+            if [ "$SUPPRESSED" -gt 0 ]; then
+              echo "::notice::$SUPPRESSED finding(s) suppressed via #nosec annotations"
+            fi
           else
             echo "findings=0" >> $GITHUB_OUTPUT
+            echo "suppressed=0" >> $GITHUB_OUTPUT
           fi
           echo "::endgroup::"
 
@@ -275,23 +282,21 @@ jobs:
       - name: Semgrep Scan
         id: semgrep
         if: env.SCAN_SEMGREP == 'true'
+        uses: docker://semgrep/semgrep:latest
+        with:
+          args: semgrep scan --config=p/golang --config=p/security-audit --json --output=semgrep.json --sarif --sarif-output=semgrep.sarif .
+        continue-on-error: true
+
+      - name: Parse Semgrep Results
+        id: semgrep_parse
+        if: env.SCAN_SEMGREP == 'true'
         run: |
-          echo "::group::Semgrep SAST Scan"
-          pip install semgrep
-
-          # Run with Go security rules
-          semgrep scan --config=p/golang --config=p/security-audit \
-            --json --output=semgrep.json \
-            --sarif --sarif-output=semgrep.sarif \
-            . || true
-
           if [ -f semgrep.json ]; then
             FINDINGS=$(jq '.results | length' semgrep.json 2>/dev/null || echo "0")
             echo "findings=$FINDINGS" >> $GITHUB_OUTPUT
           else
             echo "findings=0" >> $GITHUB_OUTPUT
           fi
-          echo "::endgroup::"
 
       - name: Upload Semgrep SARIF
         if: env.SCAN_SEMGREP == 'true'
@@ -323,9 +328,13 @@ jobs:
     permissions:
       contents: read
       security-events: write
+      id-token: write      # For SBOM attestation
+      attestations: write  # For SBOM attestation
     outputs:
       govulncheck_findings: ${{ steps.govulncheck.outputs.findings }}
       trivy_vuln_findings: ${{ steps.trivy_vuln.outputs.findings }}
+      trivy_critical: ${{ steps.trivy_vuln.outputs.critical }}
+      trivy_high: ${{ steps.trivy_vuln.outputs.high }}
       trivy_license_findings: ${{ steps.trivy_license.outputs.findings }}
       osv_findings: ${{ steps.osv.outputs.findings }}
     steps:
@@ -360,24 +369,34 @@ jobs:
           fi
           echo "::endgroup::"
 
-      - name: Install Trivy
+      - name: Setup Trivy
         if: env.SCAN_TRIVY == 'true'
-        run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+        uses: aquasecurity/setup-trivy@v0.2.3
+        with:
+          cache: true
+          version: latest
 
       - name: Trivy Vulnerability Scan
         id: trivy_vuln
         if: env.SCAN_TRIVY == 'true'
         run: |
           echo "::group::Trivy Vulnerability Scan"
+          # Scan for vulnerabilities, output JSON and SARIF
           trivy fs . --scanners vuln --format json --output trivy-vuln.json || true
           trivy fs . --scanners vuln --format sarif --output trivy-vuln.sarif || true
 
           if [ -f trivy-vuln.json ]; then
-            FINDINGS=$(jq '[.Results[]?.Vulnerabilities // [] | length] | add // 0' trivy-vuln.json 2>/dev/null || echo "0")
-            echo "findings=$FINDINGS" >> $GITHUB_OUTPUT
+            # Count total and critical findings separately for gate logic
+            TOTAL=$(jq '[.Results[]?.Vulnerabilities // [] | length] | add // 0' trivy-vuln.json 2>/dev/null || echo "0")
+            CRITICAL=$(jq '[.Results[]?.Vulnerabilities // [] | .[] | select(.Severity == "CRITICAL")] | length' trivy-vuln.json 2>/dev/null || echo "0")
+            HIGH=$(jq '[.Results[]?.Vulnerabilities // [] | .[] | select(.Severity == "HIGH")] | length' trivy-vuln.json 2>/dev/null || echo "0")
+            echo "findings=$TOTAL" >> $GITHUB_OUTPUT
+            echo "critical=$CRITICAL" >> $GITHUB_OUTPUT
+            echo "high=$HIGH" >> $GITHUB_OUTPUT
           else
             echo "findings=0" >> $GITHUB_OUTPUT
+            echo "critical=0" >> $GITHUB_OUTPUT
+            echo "high=0" >> $GITHUB_OUTPUT
           fi
           echo "::endgroup::"
 
@@ -398,6 +417,7 @@ jobs:
           echo "::endgroup::"
 
       - name: Trivy SBOM Generation
+        id: trivy_sbom
         if: env.SCAN_TRIVY == 'true'
         run: |
           echo "::group::Trivy SBOM"
@@ -410,6 +430,14 @@ jobs:
         with:
           sarif_file: trivy-vuln.sarif
           category: trivy
+        continue-on-error: true
+
+      - name: Attest SBOM
+        if: env.SCAN_TRIVY == 'true' && github.event_name != 'pull_request'
+        uses: actions/attest-sbom@v2
+        with:
+          subject-path: 'sbom.json'
+          sbom-path: 'sbom.json'
         continue-on-error: true
 
       - name: OSV-Scanner
@@ -472,6 +500,8 @@ jobs:
           SEMGREP="${{ needs.sast-scan.outputs.semgrep_findings || 0 }}"
           GOVULN="${{ needs.dependency-scan.outputs.govulncheck_findings || 0 }}"
           TRIVY="${{ needs.dependency-scan.outputs.trivy_vuln_findings || 0 }}"
+          TRIVY_CRITICAL="${{ needs.dependency-scan.outputs.trivy_critical || 0 }}"
+          TRIVY_HIGH="${{ needs.dependency-scan.outputs.trivy_high || 0 }}"
           LICENSE="${{ needs.dependency-scan.outputs.trivy_license_findings || 0 }}"
           OSV="${{ needs.dependency-scan.outputs.osv_findings || 0 }}"
 
@@ -489,6 +519,8 @@ jobs:
           echo "semgrep=$SEMGREP" >> $GITHUB_OUTPUT
           echo "govuln=$GOVULN" >> $GITHUB_OUTPUT
           echo "trivy=$TRIVY" >> $GITHUB_OUTPUT
+          echo "trivy_critical=$TRIVY_CRITICAL" >> $GITHUB_OUTPUT
+          echo "trivy_high=$TRIVY_HIGH" >> $GITHUB_OUTPUT
           echo "license=$LICENSE" >> $GITHUB_OUTPUT
           echo "osv=$OSV" >> $GITHUB_OUTPUT
           echo "secrets=$SECRETS" >> $GITHUB_OUTPUT
@@ -503,17 +535,22 @@ jobs:
           echo "|----------|----------|" >> $GITHUB_STEP_SUMMARY
           echo "| 🔑 Secrets | $SECRETS (CKB: $CKB, Gitleaks: $GITLEAKS, TruffleHog: $TRUFFLEHOG) |" >> $GITHUB_STEP_SUMMARY
           echo "| 🛡️ SAST | $SAST (Gosec: $GOSEC, Semgrep: $SEMGREP) |" >> $GITHUB_STEP_SUMMARY
-          echo "| 📦 Dependencies | $DEPS (govulncheck: $GOVULN, Trivy: $TRIVY, OSV: $OSV) |" >> $GITHUB_STEP_SUMMARY
+          echo "| 📦 Dependencies | $DEPS (govulncheck: $GOVULN, Trivy: $TRIVY [$TRIVY_CRITICAL critical, $TRIVY_HIGH high], OSV: $OSV) |" >> $GITHUB_STEP_SUMMARY
           echo "| 📜 Licenses | $LICENSE non-permissive |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Determine gate status
-          # BLOCKING: Any verified secrets (TruffleHog only scans verified)
+          # BLOCKING: Verified secrets OR critical vulnerabilities
           if [ "$TRUFFLEHOG" -gt 0 ]; then
             echo "status=failed" >> $GITHUB_OUTPUT
             echo "reason=Verified secrets detected by TruffleHog" >> $GITHUB_OUTPUT
             echo "::error::Security gate FAILED: $TRUFFLEHOG verified secret(s) detected"
             echo "**❌ GATE FAILED**: Verified secrets detected" >> $GITHUB_STEP_SUMMARY
+          elif [ "$TRIVY_CRITICAL" -gt 0 ]; then
+            echo "status=failed" >> $GITHUB_OUTPUT
+            echo "reason=$TRIVY_CRITICAL CRITICAL vulnerability(ies) detected" >> $GITHUB_OUTPUT
+            echo "::error::Security gate FAILED: $TRIVY_CRITICAL CRITICAL vulnerability(ies) detected"
+            echo "**❌ GATE FAILED**: CRITICAL vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
           elif [ "$TOTAL" -gt 0 ]; then
             echo "status=warning" >> $GITHUB_OUTPUT
             echo "reason=$TOTAL issue(s) found (review recommended)" >> $GITHUB_OUTPUT
