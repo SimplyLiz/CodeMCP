@@ -266,5 +266,5 @@ func TestGeneratePreCommitConfigExisting(t *testing.T) {
 
 	// Read and discard stdout
 	bufOut := make([]byte, 4096)
-	rOut.Read(bufOut)
+	_, _ = rOut.Read(bufOut)
 }

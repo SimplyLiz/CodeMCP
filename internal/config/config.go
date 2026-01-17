@@ -172,9 +172,9 @@ type LoggingConfig struct {
 
 // RemoteLogConfig contains remote log aggregation settings (e.g., Loki)
 type RemoteLogConfig struct {
-	Type          string            `json:"type" mapstructure:"type"`                   // "loki"
-	Endpoint      string            `json:"endpoint" mapstructure:"endpoint"`           // e.g., "http://localhost:3100"
-	Labels        map[string]string `json:"labels,omitempty" mapstructure:"labels"`     // static labels
+	Type          string            `json:"type" mapstructure:"type"`               // "loki"
+	Endpoint      string            `json:"endpoint" mapstructure:"endpoint"`       // e.g., "http://localhost:3100"
+	Labels        map[string]string `json:"labels,omitempty" mapstructure:"labels"` // static labels
 	BatchSize     int               `json:"batchSize,omitempty" mapstructure:"batchSize"`
 	FlushInterval string            `json:"flushInterval,omitempty" mapstructure:"flushInterval"` // e.g., "5s"
 }

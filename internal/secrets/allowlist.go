@@ -33,11 +33,11 @@ type Allowlist struct {
 	entries []AllowlistEntry
 
 	// Compiled patterns for efficient matching
-	pathPatterns    []*pathMatcher
-	pathRegexes     []*pathRegexMatcher // For gitleaks-style regex paths
-	valuePatterns   []*regexp.Regexp
-	hashes          map[string]string // hash -> entry ID
-	rules           map[string]string // rule name -> entry ID
+	pathPatterns  []*pathMatcher
+	pathRegexes   []*pathRegexMatcher // For gitleaks-style regex paths
+	valuePatterns []*regexp.Regexp
+	hashes        map[string]string // hash -> entry ID
+	rules         map[string]string // rule name -> entry ID
 }
 
 type pathMatcher struct {
@@ -61,8 +61,8 @@ func LoadAllowlist(repoRoot string) (*Allowlist, error) {
 	data, err := os.ReadFile(path) //nolint:gosec // G304: Path is constructed from repoRoot + fixed filename
 	if err == nil {
 		var file AllowlistFile
-		if err := json.Unmarshal(data, &file); err != nil {
-			return nil, err
+		if unmarshalErr := json.Unmarshal(data, &file); unmarshalErr != nil {
+			return nil, unmarshalErr
 		}
 		allEntries = append(allEntries, file.Entries...)
 	} else if !os.IsNotExist(err) {
@@ -70,11 +70,9 @@ func LoadAllowlist(repoRoot string) (*Allowlist, error) {
 	}
 
 	// Load gitleaks config for compatibility
-	gitleaksEntries, err := loadGitleaksConfig(repoRoot)
-	if err != nil {
-		// Log warning but continue - gitleaks config is optional
-		// Don't fail if it's malformed
-	} else if gitleaksEntries != nil {
+	// Errors are intentionally ignored - gitleaks config is optional
+	gitleaksEntries, _ := loadGitleaksConfig(repoRoot)
+	if gitleaksEntries != nil {
 		allEntries = append(allEntries, gitleaksEntries...)
 	}
 
