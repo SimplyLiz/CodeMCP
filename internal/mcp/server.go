@@ -56,6 +56,10 @@ type MCPServer struct {
 
 	// MCP roots support (v8.0)
 	roots *rootsManager
+
+	// Binary staleness detection (v8.0)
+	binaryPath    string    // Path to the running binary
+	binaryModTime time.Time // Modification time at startup
 }
 
 // NewMCPServer creates a new MCP server in legacy single-engine mode
@@ -71,6 +75,9 @@ func NewMCPServer(version string, engine *query.Engine, logger *slog.Logger) *MC
 		activePreset: DefaultPreset,
 		roots:        newRootsManager(),
 	}
+
+	// Record binary info for staleness detection
+	server.recordBinaryInfo()
 
 	// Register all tools
 	server.RegisterTools()
@@ -108,6 +115,9 @@ func NewMCPServerWithRegistry(version string, registry *repos.Registry, logger *
 		activePreset: DefaultPreset,
 		roots:        newRootsManager(),
 	}
+
+	// Record binary info for staleness detection
+	server.recordBinaryInfo()
 
 	// Register all tools
 	server.RegisterTools()
@@ -458,6 +468,63 @@ func (s *MCPServer) switchToClientRoot(clientRoot string) {
 	s.logger.Info("Switched to client root",
 		"root", clientRootClean,
 	)
+}
+
+// recordBinaryInfo records the current binary's path and modification time
+func (s *MCPServer) recordBinaryInfo() {
+	execPath, err := os.Executable()
+	if err != nil {
+		if s.logger != nil {
+			s.logger.Debug("Failed to get executable path", "error", err.Error())
+		}
+		return
+	}
+
+	// Resolve symlinks to get the actual binary
+	realPath, err := filepath.EvalSymlinks(execPath)
+	if err != nil {
+		realPath = execPath
+	}
+
+	info, err := os.Stat(realPath)
+	if err != nil {
+		if s.logger != nil {
+			s.logger.Debug("Failed to stat binary", "path", realPath, "error", err.Error())
+		}
+		return
+	}
+
+	s.binaryPath = realPath
+	s.binaryModTime = info.ModTime()
+
+	if s.logger != nil {
+		s.logger.Debug("Recorded binary info",
+			"path", s.binaryPath,
+			"modTime", s.binaryModTime.Format(time.RFC3339),
+		)
+	}
+}
+
+// IsBinaryStale checks if the binary on disk is newer than when this process started
+func (s *MCPServer) IsBinaryStale() bool {
+	if s.binaryPath == "" || s.binaryModTime.IsZero() {
+		return false
+	}
+
+	info, err := os.Stat(s.binaryPath)
+	if err != nil {
+		return false
+	}
+
+	return info.ModTime().After(s.binaryModTime)
+}
+
+// GetBinaryStaleWarning returns a warning message if the binary is stale, or empty string if not
+func (s *MCPServer) GetBinaryStaleWarning() string {
+	if !s.IsBinaryStale() {
+		return ""
+	}
+	return "CKB binary has been updated. Restart Claude Code or run /clear for changes to take effect."
 }
 
 // SendNotification sends a JSON-RPC notification to the client
