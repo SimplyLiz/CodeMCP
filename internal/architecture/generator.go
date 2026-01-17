@@ -1,11 +1,14 @@
 package architecture
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"ckb/internal/backends/git"
@@ -354,6 +357,12 @@ func (g *ArchitectureGenerator) scanAllImports(_ context.Context, targetPath str
 	return imports, nil
 }
 
+// edgeAccumulator tracks import counts and symbols for a directory edge
+type edgeAccumulator struct {
+	edge       DirectoryDependencyEdge
+	symbolsSet map[string]bool // Track unique symbols
+}
+
 // buildDirectoryEdges aggregates file-level imports into directory-level edges
 func (g *ArchitectureGenerator) buildDirectoryEdges(directories []*modules.InferredDirectory, imports []*modules.ImportEdge, opts *GeneratorOptions) []DirectoryDependencyEdge {
 	// Build a set of known directory paths for fast lookup
@@ -362,12 +371,20 @@ func (g *ArchitectureGenerator) buildDirectoryEdges(directories []*modules.Infer
 		dirSet[dir.Path] = true
 	}
 
+	// Get Go module prefix to resolve Go package paths
+	goModulePrefix := g.getGoModulePrefix()
+
 	// Aggregate edges by (fromDir, toDir)
-	edgeMap := make(map[string]*DirectoryDependencyEdge)
+	edgeMap := make(map[string]*edgeAccumulator)
 
 	for _, imp := range imports {
 		fromDir := extractDirectoryPath(imp.From)
-		toDir := extractDirectoryPath(imp.To)
+
+		// Resolve the import target to a directory path
+		toDir := g.resolveImportToDirectory(imp, goModulePrefix, dirSet)
+		if toDir == "" {
+			continue // Could not resolve
+		}
 
 		// Skip self-references
 		if fromDir == toDir {
@@ -379,31 +396,52 @@ func (g *ArchitectureGenerator) buildDirectoryEdges(directories []*modules.Infer
 			continue
 		}
 
-		// Only include edges to known directories (or external)
-		if imp.Kind != modules.ExternalDependency && !dirSet[toDir] {
-			continue
-		}
-
 		key := fromDir + ":" + toDir
-		if edge, exists := edgeMap[key]; exists {
-			edge.Strength++
-		} else {
-			edgeMap[key] = &DirectoryDependencyEdge{
-				From:     fromDir,
-				To:       toDir,
-				Kind:     imp.Kind,
-				Strength: 1,
+		if acc, exists := edgeMap[key]; exists {
+			acc.edge.ImportCount++
+			// Track symbol (avoid duplicates)
+			symbol := extractSymbolFromImport(imp)
+			if symbol != "" && !acc.symbolsSet[symbol] {
+				acc.symbolsSet[symbol] = true
 			}
+		} else {
+			acc := &edgeAccumulator{
+				edge: DirectoryDependencyEdge{
+					From:        fromDir,
+					To:          toDir,
+					Kind:        imp.Kind,
+					ImportCount: 1,
+				},
+				symbolsSet: make(map[string]bool),
+			}
+			symbol := extractSymbolFromImport(imp)
+			if symbol != "" {
+				acc.symbolsSet[symbol] = true
+			}
+			edgeMap[key] = acc
 		}
 	}
 
-	// Convert map to slice
+	// Convert map to slice, populating symbols array
 	edges := make([]DirectoryDependencyEdge, 0, len(edgeMap))
-	for _, edge := range edgeMap {
-		edges = append(edges, *edge)
+	for _, acc := range edgeMap {
+		// Build symbols slice from set (limit to 10 for readability)
+		if len(acc.symbolsSet) > 0 {
+			acc.edge.Symbols = make([]string, 0, min(len(acc.symbolsSet), 10))
+			for symbol := range acc.symbolsSet {
+				if len(acc.edge.Symbols) >= 10 {
+					break
+				}
+				acc.edge.Symbols = append(acc.edge.Symbols, symbol)
+			}
+			sort.Strings(acc.edge.Symbols)
+		}
+		// Set deprecated Strength for backwards compatibility
+		acc.edge.Strength = acc.edge.ImportCount
+		edges = append(edges, acc.edge)
 	}
 
-	// Sort by strength descending
+	// Sort by importCount descending
 	sortDirectoryEdges(edges)
 
 	// Apply limit
@@ -413,6 +451,38 @@ func (g *ArchitectureGenerator) buildDirectoryEdges(directories []*modules.Infer
 	}
 
 	return edges
+}
+
+// extractSymbolFromImport extracts a symbol/package name from an import
+func extractSymbolFromImport(imp *modules.ImportEdge) string {
+	// For Go: extract package name from path (last segment)
+	// e.g., "ckb/internal/query" -> "query"
+	path := imp.To
+	if path == "" {
+		return ""
+	}
+
+	// Get last segment of the path
+	lastSlash := strings.LastIndex(path, "/")
+	if lastSlash >= 0 && lastSlash < len(path)-1 {
+		return path[lastSlash+1:]
+	}
+
+	// For JS/TS: RawImport might contain symbol names
+	// e.g., "{ foo, bar }" or "Foo"
+	if imp.RawImport != "" && strings.Contains(imp.RawImport, "{") {
+		// Extract names from "{ foo, bar, baz }"
+		raw := strings.Trim(imp.RawImport, "{} \t")
+		if raw != "" {
+			parts := strings.Split(raw, ",")
+			if len(parts) > 0 {
+				// Return first symbol (cleaned)
+				return strings.TrimSpace(parts[0])
+			}
+		}
+	}
+
+	return path
 }
 
 // buildFileLevelData builds file summaries and edges from imports
@@ -485,6 +555,81 @@ func extractDirectoryPath(filePath string) string {
 	return filePath[:lastSlash]
 }
 
+// getGoModulePrefix reads go.mod and returns the module path prefix (e.g., "ckb" or "github.com/user/repo")
+func (g *ArchitectureGenerator) getGoModulePrefix() string {
+	goModPath := filepath.Join(g.repoRoot, "go.mod")
+	file, err := os.Open(goModPath)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "module ") {
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				return parts[1] // e.g., "ckb" or "github.com/user/repo"
+			}
+		}
+	}
+	return ""
+}
+
+// resolveImportToDirectory resolves an import path to a known directory path
+func (g *ArchitectureGenerator) resolveImportToDirectory(imp *modules.ImportEdge, goModulePrefix string, dirSet map[string]bool) string {
+	importPath := imp.To
+
+	// For external dependencies, return as-is (they won't match dirSet anyway)
+	if imp.Kind == modules.ExternalDependency {
+		return extractDirectoryPath(importPath)
+	}
+
+	// For relative imports (./foo, ../bar), resolve relative to the importing file
+	if strings.HasPrefix(importPath, "./") || strings.HasPrefix(importPath, "../") {
+		fromDir := extractDirectoryPath(imp.From)
+		resolved := filepath.Clean(filepath.Join(fromDir, importPath))
+		// Check if it matches a known directory
+		if dirSet[resolved] {
+			return resolved
+		}
+		// Try parent directory (import might be to a file, not directory)
+		parentDir := extractDirectoryPath(resolved)
+		if dirSet[parentDir] {
+			return parentDir
+		}
+		return resolved
+	}
+
+	// For Go package imports (e.g., "ckb/internal/query"), strip the module prefix
+	if goModulePrefix != "" && strings.HasPrefix(importPath, goModulePrefix+"/") {
+		// Strip module prefix: "ckb/internal/query" -> "internal/query"
+		repoRelative := strings.TrimPrefix(importPath, goModulePrefix+"/")
+		if dirSet[repoRelative] {
+			return repoRelative
+		}
+		// The import might be to a package, try the path as-is
+		return repoRelative
+	}
+
+	// For other imports, try to match against known directories
+	// Check if any directory is a suffix match
+	for dir := range dirSet {
+		if strings.HasSuffix(importPath, "/"+dir) || importPath == dir {
+			return dir
+		}
+	}
+
+	// Fallback: extract directory from import path
+	toDir := extractDirectoryPath(importPath)
+	if dirSet[toDir] {
+		return toDir
+	}
+
+	return ""
+}
+
 // detectLanguageFromPath detects language from file extension
 func detectLanguageFromPath(path string) string {
 	for i := len(path) - 1; i >= 0; i-- {
@@ -514,10 +659,10 @@ func detectLanguageFromPath(path string) string {
 	return modules.LanguageUnknown
 }
 
-// sortDirectoryEdges sorts edges by strength descending
+// sortDirectoryEdges sorts edges by importCount descending
 func sortDirectoryEdges(edges []DirectoryDependencyEdge) {
 	sort.Slice(edges, func(i, j int) bool {
-		return edges[i].Strength > edges[j].Strength
+		return edges[i].ImportCount > edges[j].ImportCount
 	})
 }
 

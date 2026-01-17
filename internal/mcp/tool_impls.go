@@ -748,12 +748,18 @@ func (s *MCPServer) toolGetArchitecture(params map[string]interface{}) (*envelop
 
 		edges := make([]map[string]interface{}, 0, len(archResp.DirectoryDependencies))
 		for _, e := range archResp.DirectoryDependencies {
-			edges = append(edges, map[string]interface{}{
-				"from":     e.From,
-				"to":       e.To,
-				"kind":     e.Kind,
-				"strength": e.Strength,
-			})
+			edgeInfo := map[string]interface{}{
+				"from":        e.From,
+				"to":          e.To,
+				"importCount": e.ImportCount,
+			}
+			if e.Kind != "" {
+				edgeInfo["kind"] = e.Kind
+			}
+			if len(e.Symbols) > 0 {
+				edgeInfo["symbols"] = e.Symbols
+			}
+			edges = append(edges, edgeInfo)
 		}
 
 		data["directories"] = directories

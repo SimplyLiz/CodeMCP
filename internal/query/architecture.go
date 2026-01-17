@@ -82,10 +82,11 @@ type DirectorySummary struct {
 
 // DirectoryDependencyEdge represents a dependency between directories
 type DirectoryDependencyEdge struct {
-	From     string `json:"from"`
-	To       string `json:"to"`
-	Kind     string `json:"kind"`
-	Strength int    `json:"strength"`
+	From        string   `json:"from"`
+	To          string   `json:"to"`
+	Kind        string   `json:"kind,omitempty"`
+	ImportCount int      `json:"importCount"`
+	Symbols     []string `json:"symbols,omitempty"`
 }
 
 // FileSummary represents a file in file-level architecture views
@@ -481,10 +482,11 @@ func convertDirectoryEdges(archEdges []architecture.DirectoryDependencyEdge) []D
 	result := make([]DirectoryDependencyEdge, 0, len(archEdges))
 	for _, e := range archEdges {
 		result = append(result, DirectoryDependencyEdge{
-			From:     e.From,
-			To:       e.To,
-			Kind:     string(e.Kind),
-			Strength: e.Strength,
+			From:        e.From,
+			To:          e.To,
+			Kind:        string(e.Kind),
+			ImportCount: e.ImportCount,
+			Symbols:     e.Symbols,
 		})
 	}
 	return result

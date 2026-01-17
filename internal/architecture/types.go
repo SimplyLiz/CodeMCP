@@ -138,8 +138,10 @@ type FileDependencyEdge struct {
 
 // DirectoryDependencyEdge represents a dependency between directories
 type DirectoryDependencyEdge struct {
-	From     string                 `json:"from"`     // Directory path
-	To       string                 `json:"to"`       // Directory path or external package
-	Kind     modules.ImportEdgeKind `json:"kind"`     // Classification
-	Strength int                    `json:"strength"` // Count of file-level edges
+	From        string                 `json:"from"`                  // Directory path
+	To          string                 `json:"to"`                    // Directory path or external package
+	Kind        modules.ImportEdgeKind `json:"kind,omitempty"`        // Classification
+	ImportCount int                    `json:"importCount"`           // Number of import statements
+	Symbols     []string               `json:"symbols,omitempty"`     // Imported symbol names (for tooltip/detail)
+	Strength    int                    `json:"strength,omitempty"`    // Deprecated: use importCount instead
 }

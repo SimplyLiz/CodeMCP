@@ -135,8 +135,8 @@ type ArchitectureResponse struct {
 	Entrypoints  []EntrypointInfo `json:"entrypoints,omitempty"`
 
 	// Directory-level fields (granularity=directory)
-	Directories           []DirectoryInfo  `json:"directories,omitempty"`
-	DirectoryDependencies []DependencyInfo `json:"directoryDependencies,omitempty"`
+	Directories           []DirectoryInfo           `json:"directories,omitempty"`
+	DirectoryDependencies []DirectoryDependencyInfo `json:"directoryDependencies,omitempty"`
 
 	// File-level fields (granularity=file)
 	Files            []FileInfo           `json:"files,omitempty"`
@@ -163,6 +163,15 @@ type DependencyInfo struct {
 	To       string `json:"to"`
 	Kind     string `json:"kind"`
 	Strength int    `json:"strength"`
+}
+
+// DirectoryDependencyInfo represents a dependency between directories
+type DirectoryDependencyInfo struct {
+	From        string   `json:"from"`
+	To          string   `json:"to"`
+	Kind        string   `json:"kind,omitempty"`
+	ImportCount int      `json:"importCount"`
+	Symbols     []string `json:"symbols,omitempty"`
 }
 
 // EntrypointInfo represents an entry point
@@ -661,13 +670,14 @@ func (s *Server) handleGetArchitecture(w http.ResponseWriter, r *http.Request) {
 		}
 		response.Directories = directories
 
-		dirDeps := make([]DependencyInfo, 0, len(archResp.DirectoryDependencies))
+		dirDeps := make([]DirectoryDependencyInfo, 0, len(archResp.DirectoryDependencies))
 		for _, d := range archResp.DirectoryDependencies {
-			dirDeps = append(dirDeps, DependencyInfo{
-				From:     d.From,
-				To:       d.To,
-				Kind:     d.Kind,
-				Strength: d.Strength,
+			dirDeps = append(dirDeps, DirectoryDependencyInfo{
+				From:        d.From,
+				To:          d.To,
+				Kind:        d.Kind,
+				ImportCount: d.ImportCount,
+				Symbols:     d.Symbols,
 			})
 		}
 		response.DirectoryDependencies = dirDeps

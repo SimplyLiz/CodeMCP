@@ -111,7 +111,7 @@ type ArchitectureResponseCLI struct {
 
 	// Directory-level fields (granularity=directory)
 	Directories           []DirectorySummaryCLI `json:"directories,omitempty"`
-	DirectoryDependencies []DependencyEdgeCLI   `json:"directoryDependencies,omitempty"`
+	DirectoryDependencies []DirectoryEdgeCLI    `json:"directoryDependencies,omitempty"`
 
 	// File-level fields (granularity=file)
 	Files            []FileSummaryCLI        `json:"files,omitempty"`
@@ -138,6 +138,15 @@ type DependencyEdgeCLI struct {
 	To       string `json:"to"`
 	Kind     string `json:"kind"`
 	Strength int    `json:"strength"`
+}
+
+// DirectoryEdgeCLI represents a directory dependency
+type DirectoryEdgeCLI struct {
+	From        string   `json:"from"`
+	To          string   `json:"to"`
+	Kind        string   `json:"kind,omitempty"`
+	ImportCount int      `json:"importCount"`
+	Symbols     []string `json:"symbols,omitempty"`
 }
 
 // EntrypointCLI represents an entry point file
@@ -202,13 +211,14 @@ func convertArchResponse(resp *query.GetArchitectureResponse) *ArchitectureRespo
 		}
 		result.Directories = directories
 
-		dirEdges := make([]DependencyEdgeCLI, 0, len(resp.DirectoryDependencies))
+		dirEdges := make([]DirectoryEdgeCLI, 0, len(resp.DirectoryDependencies))
 		for _, e := range resp.DirectoryDependencies {
-			dirEdges = append(dirEdges, DependencyEdgeCLI{
-				From:     e.From,
-				To:       e.To,
-				Kind:     e.Kind,
-				Strength: e.Strength,
+			dirEdges = append(dirEdges, DirectoryEdgeCLI{
+				From:        e.From,
+				To:          e.To,
+				Kind:        e.Kind,
+				ImportCount: e.ImportCount,
+				Symbols:     e.Symbols,
 			})
 		}
 		result.DirectoryDependencies = dirEdges
