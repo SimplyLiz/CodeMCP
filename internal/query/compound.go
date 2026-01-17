@@ -605,6 +605,11 @@ func (e *Engine) getExploreDependencies(ctx context.Context, targetType, absPath
 
 // parseFileImports extracts import statements from a file.
 func parseFileImports(filePath string) []string {
+	// Only parse source code files, skip JSON, markdown, etc.
+	if !isSourceFile(filepath.Base(filePath)) {
+		return nil
+	}
+
 	// Simple heuristic parsing - could be enhanced with tree-sitter
 	content, err := os.ReadFile(filePath)
 	if err != nil {
