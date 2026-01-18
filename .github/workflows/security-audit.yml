@@ -233,24 +233,39 @@ jobs:
       security-events: write
     outputs:
       gosec_findings: ${{ steps.gosec.outputs.findings }}
+      gosec_high: ${{ steps.gosec.outputs.high }}
+      gosec_medium: ${{ steps.gosec.outputs.medium }}
+      is_go_repo: ${{ steps.detect_lang.outputs.is_go }}
       semgrep_findings: ${{ steps.semgrep_parse.outputs.findings }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Detect repository language
+        id: detect_lang
+        run: |
+          # Detect if this is a Go repository
+          if [ -f "go.mod" ]; then
+            echo "is_go=true" >> $GITHUB_OUTPUT
+            echo "::notice::Detected Go repository (go.mod present)"
+          else
+            echo "is_go=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Set up Go
+        if: steps.detect_lang.outputs.is_go == 'true'
         uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
           cache: true
 
       - name: Install Gosec
-        if: env.SCAN_GOSEC == 'true'
+        if: env.SCAN_GOSEC == 'true' && steps.detect_lang.outputs.is_go == 'true'
         run: go install github.com/securego/gosec/v2/cmd/gosec@latest
 
       - name: Gosec Scan
         id: gosec
-        if: env.SCAN_GOSEC == 'true'
+        if: env.SCAN_GOSEC == 'true' && steps.detect_lang.outputs.is_go == 'true'
         run: |
           echo "::group::Gosec Security Scan"
           # -track-suppressions includes #nosec annotations in SARIF for audit trail
@@ -268,19 +283,29 @@ jobs:
           if [ -f gosec.json ]; then
             FINDINGS=$(jq '.Issues | length' gosec.json 2>/dev/null || echo "0")
             SUPPRESSED=$(jq '[.Issues[]? | select(.nosec == true)] | length' gosec.json 2>/dev/null || echo "0")
+            # Parse severity levels for gate logic
+            HIGH=$(jq '[.Issues[]? | select(.severity == "HIGH")] | length' gosec.json 2>/dev/null || echo "0")
+            MEDIUM=$(jq '[.Issues[]? | select(.severity == "MEDIUM")] | length' gosec.json 2>/dev/null || echo "0")
             echo "findings=$FINDINGS" >> $GITHUB_OUTPUT
+            echo "high=$HIGH" >> $GITHUB_OUTPUT
+            echo "medium=$MEDIUM" >> $GITHUB_OUTPUT
             echo "suppressed=$SUPPRESSED" >> $GITHUB_OUTPUT
             if [ "$SUPPRESSED" -gt 0 ]; then
               echo "::notice::$SUPPRESSED finding(s) suppressed via #nosec annotations"
             fi
+            if [ "$HIGH" -gt 0 ]; then
+              echo "::warning::$HIGH HIGH severity gosec finding(s)"
+            fi
           else
             echo "findings=0" >> $GITHUB_OUTPUT
+            echo "high=0" >> $GITHUB_OUTPUT
+            echo "medium=0" >> $GITHUB_OUTPUT
             echo "suppressed=0" >> $GITHUB_OUTPUT
           fi
           echo "::endgroup::"
 
       - name: Upload Gosec SARIF
-        if: env.SCAN_GOSEC == 'true'
+        if: env.SCAN_GOSEC == 'true' && steps.detect_lang.outputs.is_go == 'true'
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: gosec.sarif
@@ -505,6 +530,9 @@ jobs:
           GITLEAKS="${{ needs.external-secrets.outputs.gitleaks_findings || 0 }}"
           TRUFFLEHOG="${{ needs.external-secrets.outputs.trufflehog_findings || 0 }}"
           GOSEC="${{ needs.sast-scan.outputs.gosec_findings || 0 }}"
+          GOSEC_HIGH="${{ needs.sast-scan.outputs.gosec_high || 0 }}"
+          GOSEC_MEDIUM="${{ needs.sast-scan.outputs.gosec_medium || 0 }}"
+          IS_GO_REPO="${{ needs.sast-scan.outputs.is_go_repo || 'false' }}"
           SEMGREP="${{ needs.sast-scan.outputs.semgrep_findings || 0 }}"
           GOVULN="${{ needs.dependency-scan.outputs.govulncheck_findings || 0 }}"
           TRIVY="${{ needs.dependency-scan.outputs.trivy_vuln_findings || 0 }}"
@@ -524,6 +552,9 @@ jobs:
           echo "gitleaks=$GITLEAKS" >> $GITHUB_OUTPUT
           echo "trufflehog=$TRUFFLEHOG" >> $GITHUB_OUTPUT
           echo "gosec=$GOSEC" >> $GITHUB_OUTPUT
+          echo "gosec_high=$GOSEC_HIGH" >> $GITHUB_OUTPUT
+          echo "gosec_medium=$GOSEC_MEDIUM" >> $GITHUB_OUTPUT
+          echo "is_go_repo=$IS_GO_REPO" >> $GITHUB_OUTPUT
           echo "semgrep=$SEMGREP" >> $GITHUB_OUTPUT
           echo "govuln=$GOVULN" >> $GITHUB_OUTPUT
           echo "trivy=$TRIVY" >> $GITHUB_OUTPUT
@@ -542,13 +573,17 @@ jobs:
           echo "| Category | Findings |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|----------|" >> $GITHUB_STEP_SUMMARY
           echo "| 🔑 Secrets | $SECRETS (CKB: $CKB, Gitleaks: $GITLEAKS, TruffleHog: $TRUFFLEHOG) |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🛡️ SAST | $SAST (Gosec: $GOSEC, Semgrep: $SEMGREP) |" >> $GITHUB_STEP_SUMMARY
+          if [ "$IS_GO_REPO" = "true" ]; then
+            echo "| 🛡️ SAST | $SAST (Gosec: $GOSEC [$GOSEC_HIGH high, $GOSEC_MEDIUM medium], Semgrep: $SEMGREP) |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| 🛡️ SAST | $SAST (Semgrep: $SEMGREP) |" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "| 📦 Dependencies | $DEPS (govulncheck: $GOVULN, Trivy: $TRIVY [$TRIVY_CRITICAL critical, $TRIVY_HIGH high], OSV: $OSV) |" >> $GITHUB_STEP_SUMMARY
           echo "| 📜 Licenses | $LICENSE non-permissive |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Determine gate status
-          # BLOCKING: Verified secrets OR critical vulnerabilities
+          # BLOCKING: Verified secrets OR critical vulnerabilities OR HIGH severity SAST (Go only)
           if [ "$TRUFFLEHOG" -gt 0 ]; then
             echo "status=failed" >> $GITHUB_OUTPUT
             echo "reason=Verified secrets detected by TruffleHog" >> $GITHUB_OUTPUT
@@ -559,6 +594,11 @@ jobs:
             echo "reason=$TRIVY_CRITICAL CRITICAL vulnerability(ies) detected" >> $GITHUB_OUTPUT
             echo "::error::Security gate FAILED: $TRIVY_CRITICAL CRITICAL vulnerability(ies) detected"
             echo "**❌ GATE FAILED**: CRITICAL vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
+          elif [ "$IS_GO_REPO" = "true" ] && [ "$GOSEC_HIGH" -gt 0 ]; then
+            echo "status=failed" >> $GITHUB_OUTPUT
+            echo "reason=$GOSEC_HIGH HIGH severity gosec finding(s) detected" >> $GITHUB_OUTPUT
+            echo "::error::Security gate FAILED: $GOSEC_HIGH HIGH severity gosec finding(s)"
+            echo "**❌ GATE FAILED**: HIGH severity SAST findings (gosec)" >> $GITHUB_STEP_SUMMARY
           elif [ "$TOTAL" -gt 0 ]; then
             echo "status=warning" >> $GITHUB_OUTPUT
             echo "reason=$TOTAL issue(s) found (review recommended)" >> $GITHUB_OUTPUT
