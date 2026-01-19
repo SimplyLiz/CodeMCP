@@ -67,7 +67,7 @@ jobs:
   # ============================================================================
   detect:
     name: Detect Languages
-    uses: ./.github/workflows/security/detect-languages.yml
+    uses: ./.github/workflows/security-detect.yml
 
   # ============================================================================
   # Step 2: Secret Detection
@@ -75,7 +75,7 @@ jobs:
   secrets:
     name: Secrets
     needs: detect
-    uses: ./.github/workflows/security/secrets.yml
+    uses: ./.github/workflows/security-secrets.yml
     with:
       scan_ckb: true
       scan_gitleaks: false
@@ -90,7 +90,7 @@ jobs:
     name: Go SAST
     needs: detect
     if: needs.detect.outputs.has_go == 'true'
-    uses: ./.github/workflows/security/sast-go.yml
+    uses: ./.github/workflows/security-sast-go.yml
     with:
       exclude_dirs: 'testdata,internal/secrets'
 
@@ -98,14 +98,14 @@ jobs:
     name: Python SAST
     needs: detect
     if: needs.detect.outputs.has_python == 'true'
-    uses: ./.github/workflows/security/sast-python.yml
+    uses: ./.github/workflows/security-sast-python.yml
     with:
       exclude_dirs: 'tests,test,venv,.venv'
 
   sast-common:
     name: Common SAST
     needs: detect
-    uses: ./.github/workflows/security/sast-common.yml
+    uses: ./.github/workflows/security-sast-common.yml
     with:
       config: 'p/security-audit'
       extra_config: ${{ needs.detect.outputs.has_go == 'true' && 'p/golang' || '' }}
@@ -116,7 +116,7 @@ jobs:
   dependencies:
     name: Dependencies
     needs: detect
-    uses: ./.github/workflows/security/dependencies.yml
+    uses: ./.github/workflows/security-dependencies.yml
     with:
       scan_trivy: true
       scan_govulncheck: ${{ needs.detect.outputs.has_go == 'true' }}
@@ -131,7 +131,7 @@ jobs:
     name: Security Gate
     needs: [detect, secrets, sast-go, sast-python, sast-common, dependencies]
     if: always()
-    uses: ./.github/workflows/security/gate.yml
+    uses: ./.github/workflows/security-gate.yml
     with:
       # Secrets
       secret_findings: ${{ needs.secrets.outputs.total_findings || 0 }}
