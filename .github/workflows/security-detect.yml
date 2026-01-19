@@ -52,7 +52,7 @@ jobs:
           # Go detection
           if [ -f "go.mod" ]; then
             echo "has_go=true" >> $GITHUB_OUTPUT
-            LANGUAGES=$(echo "$LANGUAGES" | jq '. + ["go"]')
+            LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["go"]')
             echo "::notice::Detected Go (go.mod)"
           else
             echo "has_go=false" >> $GITHUB_OUTPUT
@@ -61,7 +61,7 @@ jobs:
           # Python detection
           if [ -f "pyproject.toml" ] || [ -f "setup.py" ] || [ -f "requirements.txt" ] || [ -f "Pipfile" ]; then
             echo "has_python=true" >> $GITHUB_OUTPUT
-            LANGUAGES=$(echo "$LANGUAGES" | jq '. + ["python"]')
+            LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["python"]')
             echo "::notice::Detected Python"
           else
             echo "has_python=false" >> $GITHUB_OUTPUT
@@ -70,7 +70,7 @@ jobs:
           # Rust detection
           if [ -f "Cargo.toml" ]; then
             echo "has_rust=true" >> $GITHUB_OUTPUT
-            LANGUAGES=$(echo "$LANGUAGES" | jq '. + ["rust"]')
+            LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["rust"]')
             echo "::notice::Detected Rust (Cargo.toml)"
           else
             echo "has_rust=false" >> $GITHUB_OUTPUT
@@ -79,7 +79,7 @@ jobs:
           # JavaScript/TypeScript detection
           if [ -f "package.json" ]; then
             echo "has_js=true" >> $GITHUB_OUTPUT
-            LANGUAGES=$(echo "$LANGUAGES" | jq '. + ["javascript"]')
+            LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["javascript"]')
             echo "::notice::Detected JavaScript/TypeScript (package.json)"
           else
             echo "has_js=false" >> $GITHUB_OUTPUT
