@@ -3,50 +3,50 @@ name: Security Gate
 on:
   workflow_call:
     inputs:
-      # Secret findings
+      # Secret findings (strings - job outputs are always strings)
       secret_findings:
-        type: number
-        default: 0
+        type: string
+        default: '0'
       trufflehog_findings:
-        type: number
-        default: 0
+        type: string
+        default: '0'
 
       # SAST findings
       gosec_findings:
-        type: number
-        default: 0
+        type: string
+        default: '0'
       gosec_high:
-        type: number
-        default: 0
+        type: string
+        default: '0'
       bandit_findings:
-        type: number
-        default: 0
+        type: string
+        default: '0'
       bandit_high:
-        type: number
-        default: 0
+        type: string
+        default: '0'
       semgrep_findings:
-        type: number
-        default: 0
+        type: string
+        default: '0'
 
       # Dependency findings
       trivy_findings:
-        type: number
-        default: 0
+        type: string
+        default: '0'
       trivy_critical:
-        type: number
-        default: 0
+        type: string
+        default: '0'
       trivy_high:
-        type: number
-        default: 0
+        type: string
+        default: '0'
       trivy_licenses:
-        type: number
-        default: 0
+        type: string
+        default: '0'
       govulncheck_findings:
-        type: number
-        default: 0
+        type: string
+        default: '0'
       osv_findings:
-        type: number
-        default: 0
+        type: string
+        default: '0'
 
       # Language flags
       has_go:
