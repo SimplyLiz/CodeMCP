@@ -223,6 +223,196 @@ jobs:
             body += `| 📦 Dependencies | ${deps === 0 ? '✅ 0' : '⚠️ ' + deps} |\n`;
             body += `| 📜 Licenses | ${licenses === 0 ? '✅ 0' : '⚠️ ' + licenses + ' non-permissive'} |\n\n`;
 
+            // Helper to read file content (for line-delimited JSON like TruffleHog)
+            const readFile = (path) => {
+              try {
+                return fs.readFileSync(path, 'utf8').trim();
+              } catch { return ''; }
+            };
+
+            // ==================== SECRET DETECTION ====================
+            let secretFindings = [];
+
+            // CKB Secrets
+            const ckbSecrets = readJSON('results/secret-scan-results/ckb-secrets.json');
+            if (ckbSecrets?.summary?.totalFindings > 0) {
+              secretFindings.push({
+                tool: 'CKB',
+                count: ckbSecrets.summary.totalFindings,
+                items: ckbSecrets.findings?.slice(0, 5).map(f =>
+                  `\`${f.file}:${f.line}\` - ${f.type} (${f.severity})`
+                ) || []
+              });
+            }
+
+            // Gitleaks
+            const gitleaks = readJSON('results/secret-scan-results/gitleaks.json');
+            if (Array.isArray(gitleaks) && gitleaks.length > 0) {
+              secretFindings.push({
+                tool: 'Gitleaks',
+                count: gitleaks.length,
+                items: gitleaks.slice(0, 5).map(f =>
+                  `\`${f.File}:${f.StartLine}\` - ${f.RuleID || 'secret'}`
+                )
+              });
+            }
+
+            // TruffleHog
+            const thContent = readFile('results/secret-scan-results/trufflehog.json');
+            if (thContent) {
+              const thFindings = thContent.split('\n').filter(l => l.trim()).map(l => {
+                try { return JSON.parse(l); } catch { return null; }
+              }).filter(Boolean);
+              if (thFindings.length > 0) {
+                secretFindings.push({
+                  tool: 'TruffleHog',
+                  count: thFindings.length,
+                  verified: true,
+                  items: thFindings.slice(0, 5).map(f => {
+                    const file = f.SourceMetadata?.Data?.Filesystem?.file || 'unknown';
+                    return `\`${file}\` - ${f.DetectorName} ${f.Verified ? '✅' : ''}`;
+                  })
+                });
+              }
+            }
+
+            if (secretFindings.length > 0) {
+              const totalSecrets = secretFindings.reduce((sum, s) => sum + s.count, 0);
+              body += `### 🔑 Secret Detection\n\n`;
+              body += `Found **${totalSecrets}** potential secret(s) across ${secretFindings.length} scanner(s)\n\n`;
+              body += `<details><summary>Details</summary>\n\n`;
+              for (const s of secretFindings) {
+                body += `**${s.tool}** (${s.count} finding${s.count > 1 ? 's' : ''})${s.verified ? ' - verified' : ''}\n`;
+                for (const item of s.items) {
+                  body += `- ${item}\n`;
+                }
+                if (s.count > 5) body += `- ... and ${s.count - 5} more\n`;
+                body += '\n';
+              }
+              body += `</details>\n\n`;
+            }
+
+            // ==================== SAST FINDINGS ====================
+            let sastFindings = [];
+
+            // Gosec
+            const gosec = readJSON('results/gosec-results/gosec.json');
+            if (gosec?.Issues?.length > 0) {
+              sastFindings.push({
+                tool: 'Gosec',
+                count: gosec.Issues.length,
+                items: gosec.Issues.slice(0, 5).map(i =>
+                  `\`${i.file}:${i.line}\` - ${i.rule_id}: ${i.details?.substring(0, 60) || 'N/A'}...`
+                )
+              });
+            }
+
+            // Semgrep
+            const semgrep = readJSON('results/semgrep-results/semgrep.json');
+            if (semgrep?.results?.length > 0) {
+              sastFindings.push({
+                tool: 'Semgrep',
+                count: semgrep.results.length,
+                items: semgrep.results.slice(0, 5).map(r =>
+                  `\`${r.path}:${r.start?.line}\` - ${r.check_id}`
+                )
+              });
+            }
+
+            if (sastFindings.length > 0) {
+              const totalSast = sastFindings.reduce((sum, s) => sum + s.count, 0);
+              body += `### 🛡️ SAST Analysis\n\n`;
+              body += `Found **${totalSast}** issue(s) across ${sastFindings.length} scanner(s)\n\n`;
+              body += `<details><summary>Details</summary>\n\n`;
+              for (const s of sastFindings) {
+                body += `**${s.tool}** (${s.count} finding${s.count > 1 ? 's' : ''})\n`;
+                for (const item of s.items) {
+                  body += `- ${item}\n`;
+                }
+                if (s.count > 5) body += `- ... and ${s.count - 5} more\n`;
+                body += '\n';
+              }
+              body += `</details>\n\n`;
+            }
+
+            // ==================== DEPENDENCY VULNERABILITIES ====================
+            let depFindings = [];
+
+            // Govulncheck
+            const govuln = readJSON('results/dependency-scan-results/govulncheck.json');
+            if (govuln?.vulns?.length > 0) {
+              depFindings.push({
+                tool: 'govulncheck',
+                count: govuln.vulns.length,
+                items: govuln.vulns.slice(0, 5).map(v =>
+                  `**${v.osv?.id || 'Unknown'}**: ${v.osv?.summary?.substring(0, 80) || 'No summary'}...`
+                )
+              });
+            }
+
+            // Trivy Vulnerabilities
+            const trivyVuln = readJSON('results/dependency-scan-results/trivy-vuln.json');
+            if (trivyVuln?.Results) {
+              const vulns = trivyVuln.Results.flatMap(r => r.Vulnerabilities || []);
+              if (vulns.length > 0) {
+                depFindings.push({
+                  tool: 'Trivy',
+                  count: vulns.length,
+                  items: vulns.slice(0, 5).map(v =>
+                    `**${v.VulnerabilityID}** (${v.Severity}): ${v.PkgName} - ${v.Title?.substring(0, 50) || 'N/A'}...`
+                  )
+                });
+              }
+            }
+
+            // OSV-Scanner
+            const osv = readJSON('results/dependency-scan-results/osv.json');
+            if (osv?.results) {
+              const osvVulns = osv.results.flatMap(r => r.packages || []);
+              if (osvVulns.length > 0) {
+                depFindings.push({
+                  tool: 'OSV-Scanner',
+                  count: osvVulns.length,
+                  items: osvVulns.slice(0, 5).map(p =>
+                    `**${p.package?.name || 'unknown'}**: ${p.vulnerabilities?.length || 0} vulnerabilities`
+                  )
+                });
+              }
+            }
+
+            if (depFindings.length > 0) {
+              const totalDeps = depFindings.reduce((sum, s) => sum + s.count, 0);
+              body += `### 📦 Dependency Vulnerabilities\n\n`;
+              body += `Found **${totalDeps}** vulnerability(ies) across ${depFindings.length} scanner(s)\n\n`;
+              body += `<details><summary>Details</summary>\n\n`;
+              for (const s of depFindings) {
+                body += `**${s.tool}** (${s.count} finding${s.count > 1 ? 's' : ''})\n`;
+                for (const item of s.items) {
+                  body += `- ${item}\n`;
+                }
+                if (s.count > 5) body += `- ... and ${s.count - 5} more\n`;
+                body += '\n';
+              }
+              body += `</details>\n\n`;
+            }
+
+            // ==================== LICENSE ISSUES ====================
+            const trivyLicense = readJSON('results/dependency-scan-results/trivy-license.json');
+            if (trivyLicense?.Results) {
+              const nonPermissive = trivyLicense.Results.flatMap(r => r.Licenses || [])
+                .filter(l => l.Category !== 'permissive');
+              if (nonPermissive.length > 0) {
+                body += `### 📜 License Issues\n\n`;
+                body += `Found **${nonPermissive.length}** non-permissive license(s)\n\n`;
+                body += `<details><summary>Details</summary>\n\n`;
+                for (const l of nonPermissive.slice(0, 10)) {
+                  body += `- **${l.PkgName || 'unknown'}**: ${l.Name} (${l.Category})\n`;
+                }
+                if (nonPermissive.length > 10) body += `- ... and ${nonPermissive.length - 10} more\n`;
+                body += `\n</details>\n\n`;
+              }
+            }
+
             // Footer
             body += `---\n`;
             body += `<sub>Generated by CKB Security Audit | `;
