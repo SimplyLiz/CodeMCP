@@ -155,3 +155,6 @@ jobs:
       # Language flags
       has_go: ${{ needs.detect.outputs.has_go == 'true' }}
       has_python: ${{ needs.detect.outputs.has_python == 'true' }}
+
+      # Errors
+      secrets_errors: ${{ needs.secrets.outputs.errors || '' }}

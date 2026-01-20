@@ -56,6 +56,11 @@ on:
         type: boolean
         default: false
 
+      # Errors from scanners
+      secrets_errors:
+        type: string
+        default: ''
+
     outputs:
       status:
         description: 'Gate status: passed, warning, failed'
@@ -204,6 +209,12 @@ jobs:
               body += `**Security gate passed with warnings** - ${gateReason}\n\n`;
             } else {
               body += `**Security gate FAILED** - ${gateReason}\n\n`;
+            }
+
+            // Show errors if any
+            const secretsErrors = '${{ inputs.secrets_errors }}';
+            if (secretsErrors) {
+              body += `> ⚠️ **Scanner errors:** ${secretsErrors}\n\n`;
             }
 
             // Get detailed counts
