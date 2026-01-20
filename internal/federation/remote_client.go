@@ -68,7 +68,7 @@ func (c *RemoteClient) doRequest(ctx context.Context, method, path string, body 
 	for attempt := 0; attempt <= cfg.maxRetries; attempt++ {
 		if attempt > 0 {
 			// Calculate backoff delay with exponential increase
-			delay := cfg.baseDelay * time.Duration(1<<uint(attempt-1))
+			delay := cfg.baseDelay * time.Duration(1<<uint(attempt-1)) // #nosec G115 //nolint:gosec // attempt is always ≥1 here, so attempt-1 is non-negative
 			if delay > cfg.maxDelay {
 				delay = cfg.maxDelay
 			}

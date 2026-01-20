@@ -77,8 +77,8 @@ func NewValidator(opts ...ValidatorOption) *Validator {
 	v := &Validator{
 		mode:         ValidationStrict,
 		hasher:       NewHasher(),
-		spotCheckPct: 0.1, // Default: check 10% of entities
-		rng:          rand.New(rand.NewSource(time.Now().UnixNano())),
+		spotCheckPct: 0.1,                                             // Default: check 10% of entities
+		rng:          rand.New(rand.NewSource(time.Now().UnixNano())), // #nosec G404 -- used for sampling, not security
 	}
 
 	for _, opt := range opts {

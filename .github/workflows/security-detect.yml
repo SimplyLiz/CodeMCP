@@ -1,0 +1,92 @@
+name: Detect Languages
+
+on:
+  workflow_call:
+    outputs:
+      has_go:
+        description: 'Repository contains Go code'
+        value: ${{ jobs.detect.outputs.has_go }}
+      has_python:
+        description: 'Repository contains Python code'
+        value: ${{ jobs.detect.outputs.has_python }}
+      has_rust:
+        description: 'Repository contains Rust code'
+        value: ${{ jobs.detect.outputs.has_rust }}
+      has_js:
+        description: 'Repository contains JavaScript/TypeScript code'
+        value: ${{ jobs.detect.outputs.has_js }}
+      languages:
+        description: 'JSON array of detected languages'
+        value: ${{ jobs.detect.outputs.languages }}
+
+jobs:
+  detect:
+    name: Detect Languages
+    runs-on: ubuntu-latest
+    outputs:
+      has_go: ${{ steps.detect.outputs.has_go }}
+      has_python: ${{ steps.detect.outputs.has_python }}
+      has_rust: ${{ steps.detect.outputs.has_rust }}
+      has_js: ${{ steps.detect.outputs.has_js }}
+      languages: ${{ steps.detect.outputs.languages }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            go.mod
+            go.sum
+            pyproject.toml
+            setup.py
+            requirements.txt
+            Pipfile
+            Cargo.toml
+            package.json
+          sparse-checkout-cone-mode: false
+
+      - name: Detect repository languages
+        id: detect
+        run: |
+          LANGUAGES="[]"
+
+          # Go detection
+          if [ -f "go.mod" ]; then
+            echo "has_go=true" >> $GITHUB_OUTPUT
+            LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["go"]')
+            echo "::notice::Detected Go (go.mod)"
+          else
+            echo "has_go=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Python detection
+          if [ -f "pyproject.toml" ] || [ -f "setup.py" ] || [ -f "requirements.txt" ] || [ -f "Pipfile" ]; then
+            echo "has_python=true" >> $GITHUB_OUTPUT
+            LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["python"]')
+            echo "::notice::Detected Python"
+          else
+            echo "has_python=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Rust detection
+          if [ -f "Cargo.toml" ]; then
+            echo "has_rust=true" >> $GITHUB_OUTPUT
+            LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["rust"]')
+            echo "::notice::Detected Rust (Cargo.toml)"
+          else
+            echo "has_rust=false" >> $GITHUB_OUTPUT
+          fi
+
+          # JavaScript/TypeScript detection
+          if [ -f "package.json" ]; then
+            echo "has_js=true" >> $GITHUB_OUTPUT
+            LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["javascript"]')
+            echo "::notice::Detected JavaScript/TypeScript (package.json)"
+          else
+            echo "has_js=false" >> $GITHUB_OUTPUT
+          fi
+
+          echo "languages=$LANGUAGES" >> $GITHUB_OUTPUT
+          echo "### Detected Languages" >> $GITHUB_STEP_SUMMARY
+          echo "$LANGUAGES" | jq -r '.[]' | while read lang; do
+            echo "- $lang" >> $GITHUB_STEP_SUMMARY
+          done

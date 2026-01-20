@@ -888,6 +888,7 @@ func (s *Store) ListDeliveries(opts ListDeliveriesOptions) (*ListDeliveriesRespo
 	}
 
 	// Count total
+	// #nosec G201 -- whereClause contains only static column names and ? placeholders
 	//nolint:gosec // G201: whereClause contains only static column names and ? placeholders
 	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM deliveries %s", whereClause)
 	var totalCount int
@@ -901,6 +902,7 @@ func (s *Store) ListDeliveries(opts ListDeliveriesOptions) (*ListDeliveriesRespo
 		limit = 20
 	}
 
+	// #nosec G201 -- whereClause contains only static column names and ? placeholders
 	//nolint:gosec // G201: whereClause contains only static column names and ? placeholders
 	query := fmt.Sprintf(`
 		SELECT id, webhook_id, event_id, event_type, payload, status, attempts, last_attempt_at, last_error, response_code, next_retry_at, created_at, completed_at
