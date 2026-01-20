@@ -26,7 +26,7 @@ name: CKB
 
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [develop, main, 'feature/**']
   schedule:
     - cron: '0 3 * * *'
   workflow_dispatch:
