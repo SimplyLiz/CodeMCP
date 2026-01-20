@@ -61,7 +61,7 @@ The `--include-tests` flag now works end-to-end in `ckb impact diff`:
 - Properly sets `IsTest` flag on references based on file path
 - Filters test files from changed symbols when `--include-tests=false`
 
-## [8.0.0]
+## [8.0.0] - 2026-01-21
 
 **Theme:** Reliability, clarity, and compound operations for AI workflows.
 
