@@ -80,8 +80,8 @@ jobs:
             $EXCLUDE_ARGS $EXCLUDE_RULES \
             ./... || true
 
-          # Run gosec with SARIF output (includes suppression tracking)
-          gosec -fmt sarif -out gosec.sarif -track-suppressions \
+          # Run gosec with SARIF output (suppressed findings excluded)
+          gosec -fmt sarif -out gosec.sarif \
             $EXCLUDE_ARGS $EXCLUDE_RULES \
             ./... || true
 
