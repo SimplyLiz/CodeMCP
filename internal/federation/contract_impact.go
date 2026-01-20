@@ -171,10 +171,10 @@ func (f *Federation) AnalyzeContractImpact(opts AnalyzeContractImpactOptions) (*
 	if opts.IncludeTransitive && contract.ContractType == ContractTypeProto {
 		transitiveConsumers, err = f.findTransitiveConsumers(contractID, minTier, opts.MaxDepth)
 		if err != nil && f.logger != nil {
-			f.logger.Warn("Failed to find transitive consumers", map[string]interface{}{
-				"contract": contractID,
-				"error":    err.Error(),
-			})
+			f.logger.Warn("Failed to find transitive consumers",
+				"contract", contractID,
+				"error", err.Error(),
+			)
 		}
 	}
 

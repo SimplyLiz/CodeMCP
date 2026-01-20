@@ -1,12 +1,13 @@
 package git
 
 import (
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
 )
 
 // setupTestAdapter creates a test adapter using the current repository
@@ -34,10 +35,7 @@ func setupTestAdapter(t *testing.T) *GitAdapter {
 		},
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.DebugLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	adapter, err := NewGitAdapter(cfg, logger)
 	if err != nil {

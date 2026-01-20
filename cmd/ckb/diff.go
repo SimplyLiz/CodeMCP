@@ -2,13 +2,13 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"ckb/internal/diff"
-	"ckb/internal/logging"
 )
 
 var (
@@ -118,27 +118,27 @@ func runDiff(cmd *cobra.Command, args []string) {
 				fmt.Fprintf(os.Stderr, "Error writing output: %v\n", err)
 				os.Exit(1)
 			}
-			logger.Debug("Delta written", map[string]interface{}{
-				"path":     diffOutputPath,
-				"size":     len(data),
-				"duration": time.Since(start).Milliseconds(),
-			})
+			logger.Debug("Delta written",
+				"path", diffOutputPath,
+				"size", len(data),
+				"duration", time.Since(start).Milliseconds(),
+			)
 		} else {
 			fmt.Println(string(data))
 		}
 	}
 
-	logger.Debug("Delta generation completed", map[string]interface{}{
-		"symbols_added":    delta.Stats.SymbolsAdded,
-		"symbols_modified": delta.Stats.SymbolsModified,
-		"symbols_deleted":  delta.Stats.SymbolsDeleted,
-		"refs_added":       delta.Stats.RefsAdded,
-		"refs_deleted":     delta.Stats.RefsDeleted,
-		"duration":         time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Delta generation completed",
+		"symbols_added", delta.Stats.SymbolsAdded,
+		"symbols_modified", delta.Stats.SymbolsModified,
+		"symbols_deleted", delta.Stats.SymbolsDeleted,
+		"refs_added", delta.Stats.RefsAdded,
+		"refs_deleted", delta.Stats.RefsDeleted,
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
-func runDiffValidate(path string, logger *logging.Logger) {
+func runDiffValidate(path string, logger *slog.Logger) {
 	// Read delta file
 	data, err := os.ReadFile(path)
 	if err != nil {

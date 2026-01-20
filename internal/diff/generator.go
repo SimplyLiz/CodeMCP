@@ -276,6 +276,8 @@ func (g *Generator) loadFiles(db *sql.DB) (map[string]FileRecord, error) {
 		return nil, err
 	}
 
+	// #nosec G201 -- tableName comes from sqlite_master query, limited to 'files' or 'documents'
+	//nolint:gosec // G201: Safe - tableName comes from sqlite_master query, limited to 'files' or 'documents'
 	query := fmt.Sprintf(`
 		SELECT
 			COALESCE(id, path, ''),

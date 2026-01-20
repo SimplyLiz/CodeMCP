@@ -98,10 +98,10 @@ func runExport(cmd *cobra.Command, args []string) {
 		fmt.Println(output)
 	}
 
-	logger.Debug("Export completed", map[string]interface{}{
-		"symbols":  result.Metadata.SymbolCount,
-		"files":    result.Metadata.FileCount,
-		"modules":  result.Metadata.ModuleCount,
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Export completed",
+		"symbols", result.Metadata.SymbolCount,
+		"files", result.Metadata.FileCount,
+		"modules", result.Metadata.ModuleCount,
+		"duration", time.Since(start).Milliseconds(),
+	)
 }

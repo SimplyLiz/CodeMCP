@@ -120,10 +120,10 @@ func runJobsList(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Jobs list completed", map[string]interface{}{
-		"count":    len(response.Jobs),
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Jobs list completed",
+		"count", len(response.Jobs),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 func runJobsStatus(cmd *cobra.Command, args []string) {
@@ -150,11 +150,11 @@ func runJobsStatus(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Job status completed", map[string]interface{}{
-		"jobId":    jobId,
-		"status":   job.Status,
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Job status completed",
+		"jobId", jobId,
+		"status", job.Status,
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 func runJobsCancel(cmd *cobra.Command, args []string) {
@@ -185,10 +185,10 @@ func runJobsCancel(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Job cancel completed", map[string]interface{}{
-		"jobId":    jobId,
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Job cancel completed",
+		"jobId", jobId,
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // JobsListResponseCLI contains jobs list for CLI output

@@ -73,13 +73,13 @@ func runPrSummary(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("PR summary completed", map[string]interface{}{
-		"baseBranch": prSummaryBaseBranch,
-		"headBranch": prSummaryHeadBranch,
-		"files":      response.Summary.TotalFiles,
-		"riskLevel":  response.RiskAssessment.Level,
-		"duration":   time.Since(start).Milliseconds(),
-	})
+	logger.Debug("PR summary completed",
+		"baseBranch", prSummaryBaseBranch,
+		"headBranch", prSummaryHeadBranch,
+		"files", response.Summary.TotalFiles,
+		"riskLevel", response.RiskAssessment.Level,
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // PRSummaryResponseCLI contains PR summary for CLI output

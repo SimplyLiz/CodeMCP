@@ -71,13 +71,13 @@ func runCallgraph(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Callgraph query completed", map[string]interface{}{
-		"symbolId":  symbolId,
-		"direction": callgraphDirection,
-		"nodes":     len(response.Nodes),
-		"edges":     len(response.Edges),
-		"duration":  time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Callgraph query completed",
+		"symbolId", symbolId,
+		"direction", callgraphDirection,
+		"nodes", len(response.Nodes),
+		"edges", len(response.Edges),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // CallgraphResponseCLI contains call graph results for CLI output

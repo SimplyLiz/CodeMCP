@@ -180,7 +180,69 @@ func GenerateOpenAPISpec() map[string]interface{} {
 			"/architecture": map[string]interface{}{
 				"get": map[string]interface{}{
 					"summary":     "Architecture overview",
-					"description": "Returns an overview of the codebase architecture",
+					"description": "Returns an overview of the codebase architecture. Use granularity parameter to switch between module, directory, or file level views.",
+					"parameters": []map[string]interface{}{
+						{
+							"name":        "granularity",
+							"in":          "query",
+							"required":    false,
+							"description": "Level of detail: module (default), directory, or file",
+							"schema": map[string]interface{}{
+								"type":    "string",
+								"enum":    []string{"module", "directory", "file"},
+								"default": "module",
+							},
+						},
+						{
+							"name":        "depth",
+							"in":          "query",
+							"required":    false,
+							"description": "Maximum dependency depth to traverse",
+							"schema": map[string]interface{}{
+								"type":    "integer",
+								"default": 2,
+							},
+						},
+						{
+							"name":        "includeExternalDeps",
+							"in":          "query",
+							"required":    false,
+							"description": "Include external dependencies",
+							"schema": map[string]interface{}{
+								"type":    "boolean",
+								"default": false,
+							},
+						},
+						{
+							"name":        "inferModules",
+							"in":          "query",
+							"required":    false,
+							"description": "Infer modules from directory structure when no explicit packages exist",
+							"schema": map[string]interface{}{
+								"type":    "boolean",
+								"default": true,
+							},
+						},
+						{
+							"name":        "targetPath",
+							"in":          "query",
+							"required":    false,
+							"description": "Focus on a specific path (relative to repo root)",
+							"schema": map[string]interface{}{
+								"type": "string",
+							},
+						},
+						{
+							"name":        "refresh",
+							"in":          "query",
+							"required":    false,
+							"description": "Force refresh, bypass cache",
+							"schema": map[string]interface{}{
+								"type":    "boolean",
+								"default": false,
+							},
+						},
+					},
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{
 							"description": "Architecture information",

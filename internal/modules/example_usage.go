@@ -8,16 +8,15 @@ Example 1: Basic Module Detection
 
 	import (
 		"ckb/internal/config"
-		"ckb/internal/logging"
+		"ckb/internal/slogutil"
 		"ckb/internal/modules"
+		"log/slog"
+		"os"
 	)
 
 	func detectModulesExample() {
 		// Create logger
-		logger := logging.NewLogger(logging.Config{
-			Format: logging.HumanFormat,
-			Level:  logging.InfoLevel,
-		})
+		logger := slogutil.NewLogger(os.Stderr, slog.LevelInfo)
 
 		// Load config
 		cfg, err := config.LoadConfig("/path/to/repo")
@@ -49,10 +48,7 @@ Example 1: Basic Module Detection
 Example 2: Import Scanning
 
 	func scanImportsExample() {
-		logger := logging.NewLogger(logging.Config{
-			Format: logging.HumanFormat,
-			Level:  logging.InfoLevel,
-		})
+		logger := slogutil.NewLogger(os.Stderr, slog.LevelInfo)
 
 		cfg, err := config.LoadConfig("/path/to/repo")
 		if err != nil {
@@ -121,10 +117,7 @@ Example 3: Manual Import Classification
 Example 4: Complete Workflow
 
 	func completeWorkflowExample() {
-		logger := logging.NewLogger(logging.Config{
-			Format: logging.HumanFormat,
-			Level:  logging.InfoLevel,
-		})
+		logger := slogutil.NewLogger(os.Stderr, slog.LevelInfo)
 
 		cfg, err := config.LoadConfig("/path/to/repo")
 		if err != nil {
@@ -190,10 +183,7 @@ Example 4: Complete Workflow
 Example 5: Custom Module Detection
 
 	func customModuleDetection() {
-		logger := logging.NewLogger(logging.Config{
-			Format: logging.HumanFormat,
-			Level:  logging.InfoLevel,
-		})
+		logger := slogutil.NewLogger(os.Stderr, slog.LevelInfo)
 
 		repoRoot := "/path/to/repo"
 		stateId := "state-123"

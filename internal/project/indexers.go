@@ -133,7 +133,7 @@ func (c *IndexerConfig) BuildCommand(outputPath string) *exec.Cmd {
 
 	// Resolve the command path (check PATH and ~/go/bin)
 	cmdPath := c.resolveCmdPath()
-	return exec.Command(cmdPath, args...)
+	return exec.Command(cmdPath, args...) // #nosec G204 //nolint:gosec // command from trusted indexer config
 }
 
 // resolveCmdPath finds the full path to the indexer command.

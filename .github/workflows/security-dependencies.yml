@@ -1,0 +1,229 @@
+name: Dependency Scanning
+
+on:
+  workflow_call:
+    inputs:
+      scan_trivy:
+        description: 'Run Trivy vulnerability scanner'
+        type: boolean
+        default: true
+      scan_govulncheck:
+        description: 'Run govulncheck (Go only)'
+        type: boolean
+        default: true
+      scan_osv:
+        description: 'Run OSV-Scanner'
+        type: boolean
+        default: true
+      has_go:
+        description: 'Repository has Go code'
+        type: boolean
+        default: false
+      generate_sbom:
+        description: 'Generate SBOM'
+        type: boolean
+        default: true
+    outputs:
+      trivy_findings:
+        description: 'Trivy vulnerability findings'
+        value: ${{ jobs.deps.outputs.trivy_findings }}
+      trivy_critical:
+        description: 'Trivy CRITICAL findings'
+        value: ${{ jobs.deps.outputs.trivy_critical }}
+      trivy_high:
+        description: 'Trivy HIGH findings'
+        value: ${{ jobs.deps.outputs.trivy_high }}
+      trivy_licenses:
+        description: 'Non-permissive licenses'
+        value: ${{ jobs.deps.outputs.trivy_licenses }}
+      govulncheck_findings:
+        description: 'Govulncheck findings'
+        value: ${{ jobs.deps.outputs.govulncheck_findings }}
+      osv_findings:
+        description: 'OSV-Scanner findings'
+        value: ${{ jobs.deps.outputs.osv_findings }}
+      total_findings:
+        description: 'Total dependency findings'
+        value: ${{ jobs.deps.outputs.total_findings }}
+
+jobs:
+  deps:
+    name: Dependency Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      id-token: write
+      attestations: write
+    outputs:
+      trivy_findings: ${{ steps.trivy.outputs.findings }}
+      trivy_critical: ${{ steps.trivy.outputs.critical }}
+      trivy_high: ${{ steps.trivy.outputs.high }}
+      trivy_licenses: ${{ steps.trivy_license.outputs.findings }}
+      govulncheck_findings: ${{ steps.govulncheck.outputs.findings }}
+      osv_findings: ${{ steps.osv.outputs.findings }}
+      total_findings: ${{ steps.summary.outputs.total }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ==================== Go Setup (if needed) ====================
+      - name: Set up Go
+        if: inputs.has_go && (inputs.scan_govulncheck || inputs.scan_trivy)
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      # ==================== Trivy ====================
+      - name: Setup Trivy
+        if: inputs.scan_trivy
+        uses: aquasecurity/setup-trivy@v0.2.3
+        with:
+          cache: true
+          version: latest
+
+      - name: Trivy Vulnerability Scan
+        id: trivy
+        if: inputs.scan_trivy
+        run: |
+          echo "::group::Trivy Vulnerability Scan"
+          trivy fs . --scanners vuln --format json --output trivy-vuln.json || true
+          trivy fs . --scanners vuln --format sarif --output trivy-vuln.sarif || true
+
+          if [ -f trivy-vuln.json ]; then
+            TOTAL=$(jq '[.Results[]?.Vulnerabilities // [] | length] | add // 0' trivy-vuln.json 2>/dev/null || echo "0")
+            CRITICAL=$(jq '[.Results[]?.Vulnerabilities // [] | .[] | select(.Severity == "CRITICAL")] | length' trivy-vuln.json 2>/dev/null || echo "0")
+            HIGH=$(jq '[.Results[]?.Vulnerabilities // [] | .[] | select(.Severity == "HIGH")] | length' trivy-vuln.json 2>/dev/null || echo "0")
+
+            echo "findings=$TOTAL" >> $GITHUB_OUTPUT
+            echo "critical=$CRITICAL" >> $GITHUB_OUTPUT
+            echo "high=$HIGH" >> $GITHUB_OUTPUT
+
+            if [ "$CRITICAL" -gt 0 ]; then
+              echo "::error::$CRITICAL CRITICAL vulnerability(ies) found"
+            fi
+            if [ "$HIGH" -gt 0 ]; then
+              echo "::warning::$HIGH HIGH vulnerability(ies) found"
+            fi
+          else
+            echo "findings=0" >> $GITHUB_OUTPUT
+            echo "critical=0" >> $GITHUB_OUTPUT
+            echo "high=0" >> $GITHUB_OUTPUT
+          fi
+          echo "::endgroup::"
+
+      - name: Trivy License Scan
+        id: trivy_license
+        if: inputs.scan_trivy
+        run: |
+          echo "::group::Trivy License Scan"
+          trivy fs . --scanners license --format json --output trivy-license.json || true
+
+          if [ -f trivy-license.json ]; then
+            FINDINGS=$(jq '[.Results[]?.Licenses // [] | .[] | select(.Category != "permissive")] | length' trivy-license.json 2>/dev/null || echo "0")
+            echo "findings=$FINDINGS" >> $GITHUB_OUTPUT
+
+            if [ "$FINDINGS" -gt 0 ]; then
+              echo "::warning::$FINDINGS non-permissive license(s) found"
+            fi
+          else
+            echo "findings=0" >> $GITHUB_OUTPUT
+          fi
+          echo "::endgroup::"
+
+      - name: Trivy SBOM Generation
+        if: inputs.scan_trivy && inputs.generate_sbom
+        run: |
+          echo "::group::Trivy SBOM"
+          trivy fs . --format cyclonedx --output sbom.json || true
+          echo "::endgroup::"
+
+      - name: Upload Trivy SARIF
+        if: inputs.scan_trivy && hashFiles('trivy-vuln.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-vuln.sarif
+          category: trivy
+        continue-on-error: true
+
+      - name: Attest SBOM
+        if: inputs.scan_trivy && inputs.generate_sbom && github.event_name != 'pull_request' && hashFiles('sbom.json') != ''
+        uses: actions/attest-sbom@v2
+        with:
+          subject-path: 'sbom.json'
+          sbom-path: 'sbom.json'
+        continue-on-error: true
+
+      # ==================== Govulncheck (Go only) ====================
+      - name: Govulncheck
+        id: govulncheck
+        if: inputs.scan_govulncheck && inputs.has_go
+        run: |
+          echo "::group::Govulncheck"
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck -format json ./... > govulncheck.json || true
+
+          if [ -f govulncheck.json ]; then
+            if jq -e '.vulns != null and (.vulns | length) > 0' govulncheck.json > /dev/null 2>&1; then
+              FINDINGS=$(jq '.vulns | length' govulncheck.json)
+              echo "findings=$FINDINGS" >> $GITHUB_OUTPUT
+              echo "::warning::Found $FINDINGS vulnerable Go dependencies"
+            else
+              echo "findings=0" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "findings=0" >> $GITHUB_OUTPUT
+          fi
+          echo "::endgroup::"
+
+      # ==================== OSV-Scanner ====================
+      - name: OSV-Scanner
+        id: osv
+        if: inputs.scan_osv
+        run: |
+          echo "::group::OSV-Scanner"
+          go install github.com/google/osv-scanner/cmd/osv-scanner@latest
+          osv-scanner --format json --output osv.json . || true
+
+          if [ -f osv.json ]; then
+            FINDINGS=$(jq '.results | map(.packages | length) | add // 0' osv.json 2>/dev/null || echo "0")
+            echo "findings=$FINDINGS" >> $GITHUB_OUTPUT
+          else
+            echo "findings=0" >> $GITHUB_OUTPUT
+          fi
+          echo "::endgroup::"
+
+      # ==================== Summary ====================
+      - name: Calculate totals
+        id: summary
+        run: |
+          TRIVY="${{ steps.trivy.outputs.findings || 0 }}"
+          GOVULN="${{ steps.govulncheck.outputs.findings || 0 }}"
+          OSV="${{ steps.osv.outputs.findings || 0 }}"
+          TOTAL=$((TRIVY + GOVULN + OSV))
+          echo "total=$TOTAL" >> $GITHUB_OUTPUT
+
+          echo "### Dependency Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Scanner | Findings |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|----------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Trivy | $TRIVY (${TRIVY_CRITICAL:-0} critical, ${TRIVY_HIGH:-0} high) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Govulncheck | $GOVULN |" >> $GITHUB_STEP_SUMMARY
+          echo "| OSV-Scanner | $OSV |" >> $GITHUB_STEP_SUMMARY
+          echo "| Licenses | ${{ steps.trivy_license.outputs.findings || 0 }} non-permissive |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Total** | **$TOTAL** |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dependency-scan-results
+          path: |
+            trivy-vuln.json
+            trivy-vuln.sarif
+            trivy-license.json
+            sbom.json
+            govulncheck.json
+            osv.json
+          retention-days: 30
+          if-no-files-found: ignore

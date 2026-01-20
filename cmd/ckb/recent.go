@@ -79,10 +79,10 @@ func runRecent(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Recent query completed", map[string]interface{}{
-		"count":    len(response.Items),
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Recent query completed",
+		"count", len(response.Items),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // RecentResponseCLI contains recent items for CLI output

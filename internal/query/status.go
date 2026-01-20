@@ -49,9 +49,9 @@ func (e *Engine) GetStatus(ctx context.Context) (*StatusResponse, error) {
 	// Get repo state
 	repoState, err := e.GetRepoState(ctx, "head")
 	if err != nil {
-		e.logger.Warn("failed to get repo state", map[string]interface{}{
-			"error": err.Error(),
-		})
+		e.logger.Warn("failed to get repo state",
+			"error", err.Error(),
+		)
 	}
 
 	// Get backend statuses

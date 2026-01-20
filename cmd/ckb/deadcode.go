@@ -88,10 +88,10 @@ func runDeadCodeStatic(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Dead code analysis completed", map[string]interface{}{
-		"deadCount": len(response.DeadCode),
-		"duration":  time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Dead code analysis completed",
+		"deadCount", len(response.DeadCode),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // DeadCodeResponseCLI is the CLI response format for dead code detection.

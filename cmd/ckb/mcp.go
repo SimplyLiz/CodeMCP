@@ -3,18 +3,21 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"ckb/internal/config"
 	"ckb/internal/index"
-	"ckb/internal/logging"
 	"ckb/internal/mcp"
 	"ckb/internal/project"
 	"ckb/internal/repos"
 	"ckb/internal/repostate"
+	"ckb/internal/slogutil"
 	"ckb/internal/version"
 
 	"github.com/spf13/cobra"
@@ -77,12 +80,10 @@ func runMCP(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create logger for MCP server
-	// Use stderr for logs since stdout is used for MCP protocol
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.JSONFormat,
-		Level:  logging.InfoLevel,
-		Output: os.Stderr,
-	})
+	// Writes to file (.ckb/logs/mcp.log) and stderr for errors
+	cliLevel := slogutil.LevelFromVerbosity(verbosity, quiet)
+	logger := slogutil.NewLogger(os.Stderr, cliLevel) // Default to stderr
+	var factory *slogutil.LoggerFactory
 
 	// Validate preset
 	if !mcp.IsValidPreset(mcpPreset) {
@@ -123,44 +124,79 @@ func runMCP(cmd *cobra.Command, args []string) error {
 			server.SetActiveRepo(repoName, repoRoot, engine)
 		}
 	} else {
-		// No --repo flag - check CKB_REPO env var
-		repoRoot = os.Getenv("CKB_REPO")
-		if repoRoot != "" {
-			fmt.Fprintf(os.Stderr, "Repository: %s (from CKB_REPO)\n", repoRoot)
-		} else {
-			// Check if registry exists with a default
-			registry, err := repos.LoadRegistry()
-			if err == nil && registry.Default != "" {
-				entry, state, err := registry.Get(registry.Default)
-				if err == nil && state == repos.RepoStateValid {
-					// Use multi-repo mode with default
-					repoRoot = entry.Path
-					repoName = registry.Default
-					fmt.Fprintf(os.Stderr, "Repository: %s (%s) [default]\n", repoName, repoRoot)
+		// No --repo flag - use smart resolution
+		resolved, err := repos.ResolveActiveRepo("")
+		if err != nil {
+			return fmt.Errorf("failed to resolve repository: %w", err)
+		}
 
-					server = mcp.NewMCPServerWithRegistry(version.Version, registry, logger)
-					engine := mustGetEngine(repoRoot, logger)
-					server.SetActiveRepo(repoName, repoRoot, engine)
+		if resolved.Entry != nil {
+			repoRoot = resolved.Entry.Path
+			repoName = resolved.Entry.Name
+
+			// Format status message based on resolution source
+			switch resolved.Source {
+			case repos.ResolvedFromEnv:
+				fmt.Fprintf(os.Stderr, "Repository: %s (%s) [from CKB_REPO]\n", repoName, repoRoot)
+			case repos.ResolvedFromCWD:
+				fmt.Fprintf(os.Stderr, "Repository: %s (%s) [cwd match]\n", repoName, repoRoot)
+			case repos.ResolvedFromCWDGit:
+				// Auto-detected unregistered git repo
+				if resolved.State == repos.RepoStateUninitialized {
+					fmt.Fprintf(os.Stderr, "Repository: %s (%s) [auto-detected, uninitialized]\n", repoName, repoRoot)
+					fmt.Fprintf(os.Stderr, "  ⚠️  Run 'ckb init && ckb repo add %s .' to fully set up\n", repoName)
+				} else {
+					fmt.Fprintf(os.Stderr, "Repository: %s (%s) [auto-detected]\n", repoName, repoRoot)
+					fmt.Fprintf(os.Stderr, "  ℹ️  Run 'ckb repo add %s .' to register permanently\n", repoName)
+				}
+				if resolved.SkippedDefault != "" {
+					fmt.Fprintf(os.Stderr, "  Note: Default '%s' skipped (different git repo)\n", resolved.SkippedDefault)
+				}
+			case repos.ResolvedFromDefault:
+				fmt.Fprintf(os.Stderr, "Repository: %s (%s) [default]\n", repoName, repoRoot)
+				// Warn if we're in a different git repo
+				if resolved.DetectedGitRoot != "" && resolved.DetectedGitRoot != repoRoot {
+					fmt.Fprintf(os.Stderr, "  ⚠️  CWD is in '%s' but using default repo\n", filepath.Base(resolved.DetectedGitRoot))
 				}
 			}
 
-			// Fall back to current directory
-			if repoRoot == "" {
-				repoRoot = mustGetRepoRoot()
-				fmt.Fprintf(os.Stderr, "Repository: %s (current directory)\n", repoRoot)
+			// Use multi-repo mode if registry is available
+			registry, err := repos.LoadRegistry()
+			if err == nil && resolved.Source != repos.ResolvedFromCWDGit {
+				server = mcp.NewMCPServerWithRegistry(version.Version, registry, logger)
+				engine := mustGetEngine(repoRoot, logger)
+				server.SetActiveRepo(repoName, repoRoot, engine)
 			}
+		} else {
+			// No repo found - fall back to current directory
+			repoRoot = mustGetRepoRoot()
+			fmt.Fprintf(os.Stderr, "Repository: %s (current directory)\n", repoRoot)
 		}
 	}
 
 	// Change to repo directory so relative paths work
 	if repoRoot != "" && repoRoot != "." {
 		if err := os.Chdir(repoRoot); err != nil {
-			logger.Error("Failed to change to repo directory", map[string]interface{}{
-				"path":  repoRoot,
-				"error": err.Error(),
-			})
+			logger.Error("Failed to change to repo directory",
+				"path", repoRoot,
+				"error", err.Error(),
+			)
 			return err
 		}
+	}
+
+	// Set up file logging with LoggerFactory
+	cfg, _ := config.LoadConfig(repoRoot)
+	if cfg == nil {
+		cfg = config.DefaultConfig()
+	}
+	factory = slogutil.NewLoggerFactory(repoRoot, cfg, cliLevel)
+	defer factory.Close()
+
+	// Create tee logger: file + stderr (errors only to stderr)
+	if fileLogger, err := factory.MCPLogger(); err == nil {
+		stderrHandler := slogutil.NewCKBHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})
+		logger = slogutil.NewTeeLogger(fileLogger.Handler(), stderrHandler)
 	}
 
 	// Create server if not already created (legacy single-engine mode)
@@ -198,15 +234,11 @@ func runMCP(cmd *cobra.Command, args []string) error {
 		}
 
 		go runWatchLoop(repoRoot, watchInterval, logger)
-		logger.Info("Watch mode enabled", map[string]interface{}{
-			"pollInterval": watchInterval.String(),
-		})
+		logger.Info("Watch mode enabled", "pollInterval", watchInterval.String())
 	}
 
 	if err := server.Start(); err != nil {
-		logger.Error("MCP server error", map[string]interface{}{
-			"error": err.Error(),
-		})
+		logger.Error("MCP server error", "error", err.Error())
 		return err
 	}
 
@@ -232,7 +264,7 @@ func isRepoPath(s string) bool {
 }
 
 // runWatchLoop periodically checks index freshness and reindexes if stale
-func runWatchLoop(repoRoot string, interval time.Duration, logger *logging.Logger) {
+func runWatchLoop(repoRoot string, interval time.Duration, logger *slog.Logger) {
 	ckbDir := filepath.Join(repoRoot, ".ckb")
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -260,21 +292,19 @@ func runWatchLoop(repoRoot string, interval time.Duration, logger *logging.Logge
 			}
 		}
 
-		logger.Info("Index stale, triggering reindex", map[string]interface{}{
-			"trigger": string(trigger),
-			"reason":  freshness.Reason,
-		})
+		logger.Info("Index stale, triggering reindex",
+			"trigger", string(trigger),
+			"reason", freshness.Reason,
+		)
 
 		if err := triggerReindex(repoRoot, ckbDir, trigger, triggerInfo, logger); err != nil {
-			logger.Error("Reindex failed", map[string]interface{}{
-				"error": err.Error(),
-			})
+			logger.Error("Reindex failed", "error", err.Error())
 		}
 	}
 }
 
 // triggerReindex runs the SCIP indexer and updates metadata
-func triggerReindex(repoRoot, ckbDir string, trigger index.RefreshTrigger, triggerInfo string, logger *logging.Logger) error {
+func triggerReindex(repoRoot, ckbDir string, trigger index.RefreshTrigger, triggerInfo string, logger *slog.Logger) error {
 	// Load project config to get language and indexer
 	config, err := project.LoadConfig(repoRoot)
 	if err != nil {
@@ -291,7 +321,7 @@ func triggerReindex(repoRoot, ckbDir string, trigger index.RefreshTrigger, trigg
 	lock, err := index.AcquireLock(ckbDir)
 	if err != nil {
 		// Another process is indexing, skip
-		logger.Debug("Skipping reindex, locked by another process", nil)
+		logger.Debug("Skipping reindex, locked by another process")
 		return nil
 	}
 	defer lock.Release()
@@ -304,16 +334,16 @@ func triggerReindex(repoRoot, ckbDir string, trigger index.RefreshTrigger, trigg
 		return nil
 	}
 
-	cmd := exec.Command(parts[0], parts[1:]...)
+	cmd := exec.Command(parts[0], parts[1:]...) // #nosec G204 //nolint:gosec // command from trusted indexer config
 	cmd.Dir = repoRoot
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		logger.Error("Indexer failed", map[string]interface{}{
-			"error":  err.Error(),
-			"stderr": stderr.String(),
-		})
+		logger.Error("Indexer failed",
+			"error", err.Error(),
+			"stderr", stderr.String(),
+		)
 		return err
 	}
 
@@ -340,27 +370,22 @@ func triggerReindex(repoRoot, ckbDir string, trigger index.RefreshTrigger, trigg
 	}
 
 	if err := newMeta.Save(ckbDir); err != nil {
-		logger.Error("Failed to save index metadata", map[string]interface{}{
-			"error": err.Error(),
-		})
+		logger.Error("Failed to save index metadata", "error", err.Error())
 	}
 
-	logger.Info("Reindex complete", map[string]interface{}{
-		"trigger":  string(trigger),
-		"duration": duration.String(),
-		"files":    newMeta.FileCount,
-	})
+	logger.Info("Reindex complete",
+		"trigger", string(trigger),
+		"duration", duration.String(),
+		"files", newMeta.FileCount,
+	)
 
 	return nil
 }
 
 // listPresets prints available presets with tool counts and token estimates
 func listPresets() error {
-	// Create a minimal logger for server initialization
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Output: os.Stderr,
-	})
+	// Create a minimal logger for server initialization (silent)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Create server to get tool definitions
 	server := mcp.NewMCPServer(version.Version, nil, logger)

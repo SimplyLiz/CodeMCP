@@ -31,4 +31,8 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.log
+
+# Test fixture artifacts
 testdata/fixtures/typescript/node_modules/
+testdata/**/.dart_tool/
+testdata/**/pubspec.lock

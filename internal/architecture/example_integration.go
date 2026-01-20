@@ -7,9 +7,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
 	"ckb/internal/modules"
 )
 
@@ -32,7 +32,7 @@ func GetArchitectureHandler(
 	repoStateId string,
 	request *GetArchitectureRequest,
 	cfg *config.Config,
-	logger *logging.Logger,
+	logger *slog.Logger,
 ) (*ArchitectureResponse, error) {
 	// Create import scanner
 	importScanner := modules.NewImportScanner(&cfg.ImportScan, logger)
@@ -56,18 +56,15 @@ func GetArchitectureHandler(
 	// Generate architecture
 	response, err := generator.Generate(ctx, repoStateId, opts)
 	if err != nil {
-		logger.Error("Architecture generation failed", map[string]interface{}{
-			"error":       err.Error(),
-			"repoStateId": repoStateId,
-		})
+		logger.Error("Architecture generation failed", "error", err.Error(), "repoStateId", repoStateId)
 		return nil, fmt.Errorf("failed to generate architecture: %w", err)
 	}
 
-	logger.Info("Architecture generated successfully", map[string]interface{}{
-		"modules":      len(response.Modules),
-		"dependencies": len(response.DependencyGraph),
-		"entrypoints":  len(response.Entrypoints),
-	})
+	logger.Info("Architecture generated successfully",
+		"modules", len(response.Modules),
+		"dependencies", len(response.DependencyGraph),
+		"entrypoints", len(response.Entrypoints),
+	)
 
 	return response, nil
 }
@@ -101,10 +98,8 @@ func GetArchitectureHandler(
 func ExampleUsage() {
 	// Setup (this would be done once at application startup)
 	cfg := config.DefaultConfig()
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	// Use slogutil.NewLogger(os.Stderr, slog.LevelInfo) to create a logger
+	var logger *slog.Logger // = slogutil.NewLogger(os.Stderr, slog.LevelInfo)
 	importScanner := modules.NewImportScanner(&cfg.ImportScan, logger)
 
 	generator := NewArchitectureGenerator(
@@ -151,10 +146,8 @@ func ExampleUsage() {
 // Example: Using with cache
 func ExampleWithCache() {
 	cfg := config.DefaultConfig()
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	// Use slogutil.NewLogger(os.Stderr, slog.LevelInfo) to create a logger
+	var logger *slog.Logger // = slogutil.NewLogger(os.Stderr, slog.LevelInfo)
 	importScanner := modules.NewImportScanner(&cfg.ImportScan, logger)
 
 	generator := NewArchitectureGenerator(

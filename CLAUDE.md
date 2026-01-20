@@ -72,7 +72,7 @@ npx @tastehub/ckb setup
 
 ## MCP Integration
 
-CKB provides 58 code intelligence tools via MCP. Supports Claude Code, Cursor, Windsurf, VS Code, OpenCode, and Claude Desktop.
+CKB provides 80+ code intelligence tools via MCP. Supports Claude Code, Cursor, Windsurf, VS Code, OpenCode, and Claude Desktop.
 
 ```bash
 # Auto-configure (interactive)
@@ -108,6 +108,12 @@ claude mcp add ckb -- npx @tastehub/ckb mcp
 
 **Code Analysis (v7.6):** `findDeadCode` (static dead code detection), `getAffectedTests`, `compareAPI`
 
+**Compound Operations (v8.0):** `explore`, `understand`, `prepareChange`, `batchGet`, `batchSearch`
+
+**Streaming (v8.0):** `findReferences` and `searchSymbols` support SSE streaming with `stream: true`
+
+**Index Management (v8.0):** `reindex` (trigger index refresh), enhanced `getStatus` with health tiers
+
 ## Architecture Overview
 
 CKB is a code intelligence orchestration layer with three interfaces (CLI, HTTP API, MCP) that all flow through a central query engine.
@@ -133,7 +139,7 @@ Storage Layer (internal/storage/) - SQLite for caching and symbol mappings
 - **internal/identity/**: Stable symbol IDs that survive refactoring. Uses fingerprinting and alias chains.
 - **internal/compression/**: Response budget enforcement for LLM-optimized output.
 - **internal/impact/**: Change impact analysis with visibility detection and risk scoring.
-- **internal/mcp/**: Model Context Protocol server (58 tools).
+- **internal/mcp/**: Model Context Protocol server (80+ tools).
 - **internal/ownership/**: CODEOWNERS parsing + git-blame analysis with time decay.
 - **internal/responsibilities/**: Module responsibility extraction from READMEs and code.
 - **internal/hotspots/**: Churn tracking with trend analysis and projections.
@@ -144,6 +150,8 @@ Storage Layer (internal/storage/) - SQLite for caching and symbol mappings
 - **internal/telemetry/**: OpenTelemetry integration for runtime observability.
 - **internal/audit/**: Multi-factor risk scoring (8 weighted factors).
 - **internal/coupling/**: Co-change analysis from git history.
+- **internal/streaming/**: SSE streaming infrastructure for long-running MCP operations.
+- **internal/envelope/**: Response metadata (ConfidenceFactor, CacheInfo) for AI transparency.
 
 ### Data Flow
 

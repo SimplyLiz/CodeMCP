@@ -18,11 +18,11 @@ func (s *LspSupervisor) ensureCapacity() error {
 		return fmt.Errorf("no process available for eviction")
 	}
 
-	s.logger.Info("Evicting LSP process to make room", map[string]interface{}{
-		"languageId":    lruProc.LanguageId,
-		"lastResponse":  lruProc.GetLastResponseTime(),
-		"timeSinceUsed": time.Since(lruProc.GetLastResponseTime()).String(),
-	})
+	s.logger.Info("Evicting LSP process to make room",
+		"languageId", lruProc.LanguageId,
+		"lastResponse", lruProc.GetLastResponseTime(),
+		"timeSinceUsed", time.Since(lruProc.GetLastResponseTime()).String(),
+	)
 
 	// Shutdown the LRU process
 	return s.shutdown(lruProc.LanguageId)
@@ -83,10 +83,10 @@ func (s *LspSupervisor) shutdown(languageId string) error {
 	// Shutdown the process
 	go func() {
 		if err := proc.Shutdown(); err != nil {
-			s.logger.Error("Error shutting down LSP process", map[string]interface{}{
-				"languageId": languageId,
-				"error":      err.Error(),
-			})
+			s.logger.Error("Error shutting down LSP process",
+				"languageId", languageId,
+				"error", err.Error(),
+			)
 		}
 	}()
 
@@ -129,16 +129,16 @@ func (s *LspSupervisor) EvictIdle(idleTimeout time.Duration) int {
 
 	// Evict collected processes
 	for _, langId := range toEvict {
-		s.logger.Info("Evicting idle LSP process", map[string]interface{}{
-			"languageId":  langId,
-			"idleTimeout": idleTimeout.String(),
-		})
+		s.logger.Info("Evicting idle LSP process",
+			"languageId", langId,
+			"idleTimeout", idleTimeout.String(),
+		)
 
 		if err := s.shutdown(langId); err != nil {
-			s.logger.Error("Failed to evict idle process", map[string]interface{}{
-				"languageId": langId,
-				"error":      err.Error(),
-			})
+			s.logger.Error("Failed to evict idle process",
+				"languageId", langId,
+				"error", err.Error(),
+			)
 		} else {
 			evicted++
 		}
@@ -247,10 +247,10 @@ func (s *LspSupervisor) SetMaxProcesses(max int) error {
 	oldMax := s.maxProcesses
 	s.maxProcesses = max
 
-	s.logger.Info("Updated max processes", map[string]interface{}{
-		"oldMax": oldMax,
-		"newMax": max,
-	})
+	s.logger.Info("Updated max processes",
+		"oldMax", oldMax,
+		"newMax", max,
+	)
 
 	// If we're now over capacity, evict excess processes
 	for len(s.processes) > s.maxProcesses {
@@ -259,15 +259,15 @@ func (s *LspSupervisor) SetMaxProcesses(max int) error {
 			break
 		}
 
-		s.logger.Info("Evicting excess process", map[string]interface{}{
-			"languageId": lruProc.LanguageId,
-		})
+		s.logger.Info("Evicting excess process",
+			"languageId", lruProc.LanguageId,
+		)
 
 		if err := s.shutdown(lruProc.LanguageId); err != nil {
-			s.logger.Error("Failed to evict excess process", map[string]interface{}{
-				"languageId": lruProc.LanguageId,
-				"error":      err.Error(),
-			})
+			s.logger.Error("Failed to evict excess process",
+				"languageId", lruProc.LanguageId,
+				"error", err.Error(),
+			)
 			break
 		}
 	}

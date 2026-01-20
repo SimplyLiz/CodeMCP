@@ -3,13 +3,13 @@ package mcp
 import (
 	"encoding/json"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
 	"ckb/internal/mcp/testdata"
 	"ckb/internal/query"
 	"ckb/internal/storage"
@@ -254,11 +254,7 @@ func newTestMCPServerWithIndex(t testing.TB) *MCPServer {
 		},
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.JSONFormat,
-		Output: io.Discard,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	db, err := storage.Open(":memory:", logger)
 	if err != nil {

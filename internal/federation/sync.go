@@ -4,12 +4,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"time"
 
 	_ "modernc.org/sqlite" // Pure Go SQLite driver
-
-	"ckb/internal/logging"
 )
 
 // SyncResult contains the results of a sync operation
@@ -137,43 +136,43 @@ func (f *Federation) syncRepo(repo RepoConfig, opts SyncOptions) SyncResult {
 
 	result.ModulesSynced, syncErr = f.syncModules(repoDb, repo)
 	if syncErr != nil && f.logger != nil {
-		f.logger.Warn("Failed to sync modules", map[string]interface{}{
-			"repo":  repo.RepoID,
-			"error": syncErr.Error(),
-		})
+		f.logger.Warn("Failed to sync modules",
+			"repo", repo.RepoID,
+			"error", syncErr.Error(),
+		)
 	}
 
 	result.OwnershipSynced, syncErr = f.syncOwnership(repoDb, repo)
 	if syncErr != nil && f.logger != nil {
-		f.logger.Warn("Failed to sync ownership", map[string]interface{}{
-			"repo":  repo.RepoID,
-			"error": syncErr.Error(),
-		})
+		f.logger.Warn("Failed to sync ownership",
+			"repo", repo.RepoID,
+			"error", syncErr.Error(),
+		)
 	}
 
 	result.HotspotsSynced, syncErr = f.syncHotspots(repoDb, repo)
 	if syncErr != nil && f.logger != nil {
-		f.logger.Warn("Failed to sync hotspots", map[string]interface{}{
-			"repo":  repo.RepoID,
-			"error": syncErr.Error(),
-		})
+		f.logger.Warn("Failed to sync hotspots",
+			"repo", repo.RepoID,
+			"error", syncErr.Error(),
+		)
 	}
 
 	result.DecisionsSynced, syncErr = f.syncDecisions(repoDb, repo)
 	if syncErr != nil && f.logger != nil {
-		f.logger.Warn("Failed to sync decisions", map[string]interface{}{
-			"repo":  repo.RepoID,
-			"error": syncErr.Error(),
-		})
+		f.logger.Warn("Failed to sync decisions",
+			"repo", repo.RepoID,
+			"error", syncErr.Error(),
+		)
 	}
 
 	// Sync contracts (v6.3)
 	result.ContractsSynced, result.ReferencesSynced, syncErr = f.syncContracts(repo)
 	if syncErr != nil && f.logger != nil {
-		f.logger.Warn("Failed to sync contracts", map[string]interface{}{
-			"repo":  repo.RepoID,
-			"error": syncErr.Error(),
-		})
+		f.logger.Warn("Failed to sync contracts",
+			"repo", repo.RepoID,
+			"error", syncErr.Error(),
+		)
 	}
 
 	// Update repo entry in index
@@ -200,16 +199,16 @@ func (f *Federation) syncRepo(repo RepoConfig, opts SyncOptions) SyncResult {
 	result.Duration = time.Since(startTime)
 
 	if f.logger != nil {
-		f.logger.Info("Synced repository", map[string]interface{}{
-			"repo":       repo.RepoID,
-			"modules":    result.ModulesSynced,
-			"ownership":  result.OwnershipSynced,
-			"hotspots":   result.HotspotsSynced,
-			"decisions":  result.DecisionsSynced,
-			"contracts":  result.ContractsSynced,
-			"references": result.ReferencesSynced,
-			"durationMs": result.Duration.Milliseconds(),
-		})
+		f.logger.Info("Synced repository",
+			"repo", repo.RepoID,
+			"modules", result.ModulesSynced,
+			"ownership", result.OwnershipSynced,
+			"hotspots", result.HotspotsSynced,
+			"decisions", result.DecisionsSynced,
+			"contracts", result.ContractsSynced,
+			"references", result.ReferencesSynced,
+			"durationMs", result.Duration.Milliseconds(),
+		)
 	}
 
 	return result
@@ -224,10 +223,10 @@ func (f *Federation) syncContracts(repo RepoConfig) (int, int, error) {
 	protoDetector := NewProtoDetector()
 	protoResult, err := protoDetector.Detect(repo.Path, repo.RepoUID, repo.RepoID)
 	if err != nil && f.logger != nil {
-		f.logger.Warn("Proto detection failed", map[string]interface{}{
-			"repo":  repo.RepoID,
-			"error": err.Error(),
-		})
+		f.logger.Warn("Proto detection failed",
+			"repo", repo.RepoID,
+			"error", err.Error(),
+		)
 	}
 	if protoResult != nil {
 		for _, contract := range protoResult.Contracts {
@@ -246,10 +245,10 @@ func (f *Federation) syncContracts(repo RepoConfig) (int, int, error) {
 	openapiDetector := NewOpenAPIDetector()
 	openapiResult, err := openapiDetector.Detect(repo.Path, repo.RepoUID, repo.RepoID)
 	if err != nil && f.logger != nil {
-		f.logger.Warn("OpenAPI detection failed", map[string]interface{}{
-			"repo":  repo.RepoID,
-			"error": err.Error(),
-		})
+		f.logger.Warn("OpenAPI detection failed",
+			"repo", repo.RepoID,
+			"error", err.Error(),
+		)
 	}
 	if openapiResult != nil {
 		for _, contract := range openapiResult.Contracts {
@@ -543,28 +542,32 @@ func nullInt(i sql.NullInt64) interface{} {
 }
 
 // LogSyncResult logs a sync result
-func LogSyncResult(logger *logging.Logger, result SyncResult) {
+func LogSyncResult(logger *slog.Logger, result SyncResult) {
 	if logger == nil {
 		return
 	}
 
-	fields := map[string]interface{}{
-		"repo":   result.RepoID,
-		"status": result.Status,
-	}
-
 	if result.Status == "success" {
-		fields["modules"] = result.ModulesSynced
-		fields["ownership"] = result.OwnershipSynced
-		fields["hotspots"] = result.HotspotsSynced
-		fields["decisions"] = result.DecisionsSynced
-		fields["durationMs"] = result.Duration.Milliseconds()
-		logger.Info("Sync completed", fields)
+		logger.Info("Sync completed",
+			"repo", result.RepoID,
+			"status", result.Status,
+			"modules", result.ModulesSynced,
+			"ownership", result.OwnershipSynced,
+			"hotspots", result.HotspotsSynced,
+			"decisions", result.DecisionsSynced,
+			"durationMs", result.Duration.Milliseconds(),
+		)
 	} else if result.Status == "failed" {
-		fields["error"] = result.Error
-		logger.Error("Sync failed", fields)
+		logger.Error("Sync failed",
+			"repo", result.RepoID,
+			"status", result.Status,
+			"error", result.Error,
+		)
 	} else {
-		fields["reason"] = result.Error
-		logger.Info("Sync skipped", fields)
+		logger.Info("Sync skipped",
+			"repo", result.RepoID,
+			"status", result.Status,
+			"reason", result.Error,
+		)
 	}
 }

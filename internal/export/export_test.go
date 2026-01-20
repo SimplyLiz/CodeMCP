@@ -1,10 +1,10 @@
 package export
 
 import (
+	"io"
+	"log/slog"
 	"strings"
 	"testing"
-
-	"ckb/internal/logging"
 )
 
 func TestSymbolTypeConstants(t *testing.T) {
@@ -280,7 +280,7 @@ func TestExportMetadataStructure(t *testing.T) {
 }
 
 func TestNewExporter(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	exporter := NewExporter("/path/to/repo", logger)
 
 	if exporter == nil {
@@ -292,7 +292,7 @@ func TestNewExporter(t *testing.T) {
 }
 
 func TestParseSymbolsGo(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	exporter := NewExporter("/tmp", logger)
 
 	content := `package main
@@ -351,7 +351,7 @@ type Handler interface {
 }
 
 func TestParseSymbolsTS(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	exporter := NewExporter("/tmp", logger)
 
 	content := `
@@ -389,7 +389,7 @@ function privateHelper() {}
 }
 
 func TestParseSymbolsPy(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	exporter := NewExporter("/tmp", logger)
 
 	content := `
@@ -431,7 +431,7 @@ class _PrivateClass:
 }
 
 func TestFilterSymbols(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	exporter := NewExporter("/tmp", logger)
 
 	symbols := []ExportSymbol{
@@ -484,7 +484,7 @@ func TestFilterSymbols(t *testing.T) {
 }
 
 func TestFormatSymbolLine(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	exporter := NewExporter("/tmp", logger)
 
 	tests := []struct {
@@ -551,7 +551,7 @@ func TestFormatSymbolLine(t *testing.T) {
 }
 
 func TestFormatText(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.InfoLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	exporter := NewExporter("/tmp", logger)
 
 	export := &LLMExport{

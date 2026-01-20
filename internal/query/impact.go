@@ -970,9 +970,9 @@ func (e *Engine) AnalyzeChangeSet(ctx context.Context, opts AnalyzeChangeSetOpti
 		mapper := diff.NewDiffSymbolMapper(symbolIndex)
 		changedSymbols, err = mapper.MapToSymbols(parsedDiff)
 		if err != nil {
-			e.logger.Warn("Failed to map diff to symbols", map[string]interface{}{
-				"error": err.Error(),
-			})
+			e.logger.Warn("Failed to map diff to symbols",
+				"error", err.Error(),
+			)
 			// Continue with file-level analysis
 		}
 	} else {

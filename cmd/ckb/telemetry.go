@@ -229,9 +229,9 @@ func runTelemetryStatus(cmd *cobra.Command, args []string) {
 	}
 	fmt.Println(output)
 
-	logger.Debug("Telemetry status completed", map[string]interface{}{
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Telemetry status completed",
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 func runTelemetryUsage(cmd *cobra.Command, args []string) {
@@ -312,10 +312,10 @@ func runTelemetryUsage(cmd *cobra.Command, args []string) {
 	}
 	fmt.Println(output)
 
-	logger.Debug("Telemetry usage completed", map[string]interface{}{
-		"symbolId": symbolID,
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Telemetry usage completed",
+		"symbolId", symbolID,
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 func runTelemetryUnmapped(cmd *cobra.Command, args []string) {
@@ -356,10 +356,10 @@ func runTelemetryUnmapped(cmd *cobra.Command, args []string) {
 	}
 	fmt.Println(output)
 
-	logger.Debug("Telemetry unmapped completed", map[string]interface{}{
-		"count":    len(unmapped),
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Telemetry unmapped completed",
+		"count", len(unmapped),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 func runTelemetryTestMap(cmd *cobra.Command, args []string) {
@@ -529,11 +529,11 @@ func runDeadCode(cmd *cobra.Command, args []string) {
 	}
 	fmt.Println(output)
 
-	logger.Debug("Dead code analysis completed", map[string]interface{}{
-		"totalSymbols":    len(symbols),
-		"totalCandidates": len(candidates),
-		"duration":        time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Dead code analysis completed",
+		"totalSymbols", len(symbols),
+		"totalCandidates", len(candidates),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // CLI response types

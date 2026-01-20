@@ -61,6 +61,291 @@ The `--include-tests` flag now works end-to-end in `ckb impact diff`:
 - Properly sets `IsTest` flag on references based on file path
 - Filters test files from changed symbols when `--include-tests=false`
 
+## [8.0.0] - 2026-01-21
+
+**Theme:** Reliability, clarity, and compound operations for AI workflows.
+
+### Added
+
+#### Compound Operations (5 New Tools)
+
+Reduce AI tool calls by 60-70% with smart aggregation tools that combine multiple primitives into single, focused operations.
+
+**`explore` — Area Exploration**
+
+Comprehensive exploration of files, directories, or modules. Replaces the common pattern of `explainFile` → `searchSymbols` → `getCallGraph` → `getHotspots`.
+
+```json
+{
+  "target": "internal/query",
+  "depth": "standard",    // "shallow" | "standard" | "deep"
+  "focus": "structure"    // "structure" | "dependencies" | "changes"
+}
+```
+
+Returns: module overview, key symbols (ranked by importance), dependencies, recent changes, hotspots, and drilldown suggestions.
+
+**`understand` — Symbol Deep-Dive**
+
+Complete symbol understanding with ambiguity handling. Replaces `searchSymbols` → `getSymbol` → `explainSymbol` → `findReferences` → `getCallGraph`.
+
+```json
+{
+  "query": "HandleRequest",
+  "includeReferences": true,
+  "includeCallGraph": true,
+  "maxReferences": 50
+}
+```
+
+Returns: full symbol detail, explanation, references grouped by file, callers/callees, related tests, and disambiguation info when multiple matches exist.
+
+**`prepareChange` — Pre-Change Analysis**
+
+Impact analysis before modifying code. Combines `analyzeImpact` + `getAffectedTests` + `analyzeCoupling` + risk calculation.
+
+```json
+{
+  "target": "ckb:repo:sym:abc123",
+  "changeType": "modify"    // "modify" | "rename" | "delete" | "extract"
+}
+```
+
+Returns: direct dependents, transitive impact metrics, related tests, co-change files, and risk assessment with severity levels and mitigation suggestions.
+
+**`batchGet` — Multiple Symbols by ID**
+
+Retrieve up to 50 symbols in a single call. Returns results and errors keyed by symbol ID.
+
+**`batchSearch` — Multiple Searches**
+
+Execute up to 10 symbol searches in one call. Each query can have its own kind filter and scope.
+
+#### SSE Streaming
+
+Real-time feedback for long-running operations via Server-Sent Events.
+
+**Protocol:**
+```json
+// Request with streaming
+{
+  "name": "findReferences",
+  "arguments": {
+    "symbolId": "ckb:repo:sym:abc123",
+    "stream": true,
+    "chunkSize": 20
+  }
+}
+
+// Initial response
+{
+  "streamId": "abc123",
+  "streaming": true,
+  "meta": { "chunkSize": 20 }
+}
+
+// MCP notifications: ckb/streamMeta, ckb/streamChunk, ckb/streamProgress, ckb/streamComplete
+```
+
+**Streamable Tools:**
+- `findReferences` — Stream references in chunks with progress updates
+- `searchSymbols` — Stream symbol search results
+
+**Event Types:**
+| Event | Purpose |
+|-------|---------|
+| `meta` | Stream metadata (total count, chunk size, backends) |
+| `chunk` | Batch of items with sequence number |
+| `progress` | Phase updates with percentage |
+| `done` | Stream complete with summary |
+| `error` | Error with code and remediation |
+
+#### Enhanced `getStatus`
+
+System health with actionable remediation guidance.
+
+```json
+{
+  "backends": {
+    "scip": { "status": "available", "latencyMs": 12 },
+    "git": { "status": "available" },
+    "lsp": {
+      "status": "unavailable",
+      "reason": "No LSP server configured",
+      "remediation": "Configure LSP server in .ckb/config.json"
+    }
+  },
+  "index": {
+    "fresh": false,
+    "commitsBehind": 3,
+    "lastIndexed": "2h ago",
+    "symbolCount": 4521,
+    "fileCount": 156
+  },
+  "overallHealth": "degraded",
+  "suggestions": [
+    "Run 'ckb index' to refresh stale index",
+    "Configure LSP for enhanced code intelligence"
+  ]
+}
+```
+
+**Health Tiers:**
+- `available` — Backend working normally
+- `degraded` — Backend available but with warnings
+- `unavailable` — Backend not available, includes remediation
+
+#### `reindex` Tool
+
+Trigger index refresh via MCP with scope control.
+
+```json
+// Input
+{ "scope": "full", "async": false }
+
+// Output
+{
+  "status": "action_required",
+  "message": "Index is 3 commits behind. Run 'ckb index' to refresh."
+}
+```
+
+Status values: `skipped`, `action_required`, `started`, `completed`
+
+#### Structured Error Codes
+
+All MCP errors now include actionable remediation guidance.
+
+| Code | When | Remediation |
+|------|------|-------------|
+| `AMBIGUOUS_QUERY` | Multiple symbols match | Narrow with scope, kind, or more specific name |
+| `PARTIAL_RESULT` | Some backends failed | Result incomplete; check backend health |
+| `INVALID_PARAMETER` | Bad input | Check parameter format |
+| `RESOURCE_NOT_FOUND` | Symbol/file doesn't exist | Verify ID or path |
+| `PRECONDITION_FAILED` | Required condition not met | Check index freshness, backend availability |
+| `OPERATION_FAILED` | General failure | Check logs, retry |
+
+#### Response Metadata
+
+All tool responses now include structured metadata for AI transparency.
+
+**ConfidenceFactor:** Explains why a confidence score was assigned
+```json
+{
+  "score": 0.85,
+  "tier": "medium",
+  "factors": [
+    { "factor": "scip_exact_match", "weight": 0.9 },
+    { "factor": "index_slightly_stale", "weight": -0.05 }
+  ]
+}
+```
+
+**CacheInfo:** Cache hit/miss transparency
+```json
+{
+  "hit": true,
+  "tier": "query_cache",
+  "age": "45s",
+  "key": "findReferences:abc123"
+}
+```
+
+#### Code Analysis Tools
+
+**`findDeadCode`** — Static dead code detection
+
+Identifies symbols with no references (excluding test files, entrypoints, and interface implementations).
+
+```json
+{
+  "candidates": [
+    {
+      "symbolId": "ckb:repo:sym:abc123",
+      "name": "unusedHelper",
+      "kind": "function",
+      "file": "internal/util/helpers.go",
+      "confidence": 0.95,
+      "reason": "No references found"
+    }
+  ],
+  "excludedReasons": {
+    "entrypoint": 12,
+    "interface_impl": 8,
+    "test_only": 23
+  }
+}
+```
+
+**`getAffectedTests`** — Test coverage mapping
+
+Maps changed symbols to affected test files.
+
+```json
+{
+  "symbolId": "ckb:repo:sym:abc123",
+  "affectedTests": [
+    { "file": "auth/handler_test.go", "confidence": 0.95, "reason": "direct_reference" },
+    { "file": "api/routes_test.go", "confidence": 0.75, "reason": "transitive" }
+  ],
+  "runCommand": "go test ./internal/auth/... ./internal/api/..."
+}
+```
+
+**`compareAPI`** — Breaking change detection
+
+Compares API surface between commits/branches.
+
+```json
+{
+  "base": "main",
+  "head": "HEAD",
+  "breaking": [
+    {
+      "symbol": "ValidateToken",
+      "change": "renamed",
+      "newName": "ValidateUserToken",
+      "affectedCallers": 12
+    }
+  ],
+  "additions": [...],
+  "compatible": true
+}
+```
+
+#### Golden Test Suite
+
+Multi-language test fixtures for regression testing across Go, TypeScript, Python, and Rust.
+
+### Changed
+
+- All MCP tool handlers now use structured `CkbError` instead of raw `fmt.Errorf`
+- `getStatus` response includes streaming capabilities info
+- Confidence scores now include explanation factors via `FromProvenance()`
+- Cached responses include cache tier and age information
+
+### Files Added
+
+**Compound Operations:**
+- `internal/query/compound.go` — `Explore()`, `Understand()`, `PrepareChange()`, `BatchGet()`, `BatchSearch()`
+- `internal/query/compound_test.go` — Compound operation tests
+- `internal/mcp/tool_impls_compound.go` — MCP handlers for compound tools
+
+**Streaming:**
+- `internal/streaming/stream.go` — Core Stream type with event sending, heartbeat
+- `internal/streaming/chunker.go` — Generic chunking by count and byte size
+- `internal/streaming/mcp.go` — MCP notification writer for streams
+- `internal/mcp/streaming.go` — StreamingHandler type, registry, wrapForStreaming
+- `internal/mcp/tool_impls_streaming.go` — Streaming implementations
+
+**Error Handling:**
+- `internal/errors/codes.go` — Error code taxonomy with constructors
+- `internal/errors/remediation.go` — Remediation message generation
+
+**Metadata:**
+- `internal/envelope/confidence.go` — ConfidenceFactor type and FromProvenance()
+- `internal/envelope/cache.go` — CacheInfo type
+
 ## [7.6.0]
 
 ### Added

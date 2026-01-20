@@ -4,20 +4,19 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
-
-	"ckb/internal/logging"
 )
 
 // KeyStore provides persistence for API keys using SQLite
 type KeyStore struct {
 	db     *sql.DB
-	logger *logging.Logger
+	logger *slog.Logger
 }
 
 // NewKeyStore creates a new key store backed by SQLite
 // The caller is responsible for ensuring the database has the required tables
-func NewKeyStore(db *sql.DB, logger *logging.Logger) *KeyStore {
+func NewKeyStore(db *sql.DB, logger *slog.Logger) *KeyStore {
 	return &KeyStore{
 		db:     db,
 		logger: logger,
@@ -125,10 +124,10 @@ func (s *KeyStore) Save(key *APIKey) error {
 		return fmt.Errorf("insert key: %w", err)
 	}
 
-	s.logger.Debug("API key saved", map[string]interface{}{
-		"key_id":   key.ID,
-		"key_name": key.Name,
-	})
+	s.logger.Debug("API key saved",
+		"key_id", key.ID,
+		"key_name", key.Name,
+	)
 
 	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,9 +16,9 @@ import (
 
 	"ckb/internal/config"
 	"ckb/internal/index"
-	"ckb/internal/logging"
 	"ckb/internal/paths"
 	"ckb/internal/scheduler"
+	"ckb/internal/slogutil"
 	"ckb/internal/version"
 	"ckb/internal/watcher"
 	"ckb/internal/webhooks"
@@ -35,7 +36,7 @@ type Daemon struct {
 	watcher        *watcher.Watcher
 	webhookManager *webhooks.Manager
 	refreshManager *RefreshManager
-	structuredLog  *logging.Logger
+	structuredLog  *slog.Logger
 
 	// Shutdown coordination
 	ctx    context.Context
@@ -87,11 +88,7 @@ func New(cfg *config.DaemonConfig) (*Daemon, error) {
 	logger := log.New(logFile, "[ckb-daemon] ", log.LstdFlags|log.Lmicroseconds)
 
 	// Create structured logger for components
-	structuredLogger := logging.NewLogger(logging.Config{
-		Level:  logging.InfoLevel,
-		Format: logging.JSONFormat,
-		Output: logFile,
-	})
+	structuredLogger := slogutil.NewLogger(logFile, slog.LevelInfo)
 
 	ctx, cancel := context.WithCancel(context.Background())
 

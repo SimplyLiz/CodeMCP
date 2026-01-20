@@ -3,11 +3,12 @@ package incremental
 import (
 	"database/sql"
 	"fmt"
+	"io"
+	"log/slog"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"ckb/internal/logging"
 	"ckb/internal/storage"
 )
 
@@ -16,7 +17,7 @@ func setupTestDB(t *testing.T) (*storage.DB, func()) {
 
 	tmpDir := t.TempDir()
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	db, err := storage.Open(tmpDir, logger)
 	if err != nil {
 		t.Fatalf("Failed to create test DB: %v", err)
@@ -31,7 +32,7 @@ func TestDependencyTracker_FileDeps(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	store := NewStore(db, logger)
 	config := &TransitiveConfig{
 		Enabled: true,
@@ -151,7 +152,7 @@ func TestDependencyTracker_RescanQueue(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	store := NewStore(db, logger)
 	config := &TransitiveConfig{
 		Enabled: true,
@@ -242,7 +243,7 @@ func TestDependencyTracker_InvalidateDependents(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	store := NewStore(db, logger)
 	config := &TransitiveConfig{
 		Enabled: true,
@@ -332,7 +333,7 @@ func TestDependencyTracker_DrainRescanQueue(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	store := NewStore(db, logger)
 	config := &TransitiveConfig{
 		Enabled:        true,
@@ -449,7 +450,7 @@ func TestDependencyTracker_BuildSymbolToFileMap(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	store := NewStore(db, logger)
 	config := &TransitiveConfig{Enabled: true}
 	tracker := NewDependencyTracker(db, store, config, logger)
@@ -481,7 +482,7 @@ func TestDependencyTracker_ClearFileDeps(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	store := NewStore(db, logger)
 	config := &TransitiveConfig{Enabled: true, Mode: InvalidationLazy, Depth: 1}
 	tracker := NewDependencyTracker(db, store, config, logger)
@@ -518,7 +519,7 @@ func TestDependencyTracker_IncrementAttempts(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	store := NewStore(db, logger)
 	config := &TransitiveConfig{Enabled: true, Mode: InvalidationLazy, Depth: 1}
 	tracker := NewDependencyTracker(db, store, config, logger)
@@ -560,7 +561,7 @@ func TestDependencyTracker_EagerModeWithDepth(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	store := NewStore(db, logger)
 	config := &TransitiveConfig{
 		Enabled: true,
@@ -616,7 +617,7 @@ func TestDependencyTracker_DrainWithRescanError(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	store := NewStore(db, logger)
 	config := &TransitiveConfig{
 		Enabled:        true,
@@ -675,7 +676,7 @@ func TestDependencyTracker_MultipleChangedFiles(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	store := NewStore(db, logger)
 	config := &TransitiveConfig{
 		Enabled: true,
@@ -730,7 +731,7 @@ func TestDependencyTracker_DepthLimitRespected(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	store := NewStore(db, logger)
 	config := &TransitiveConfig{
 		Enabled: true,
@@ -780,7 +781,7 @@ func TestDependencyTracker_NilConfig(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	store := NewStore(db, logger)
 
 	// Create tracker with nil config - should use defaults

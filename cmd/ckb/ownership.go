@@ -100,11 +100,11 @@ func runOwnership(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Ownership query completed", map[string]interface{}{
-		"path":     path,
-		"owners":   len(response.Owners),
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Ownership query completed",
+		"path", path,
+		"owners", len(response.Owners),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 func runOwnershipDrift(cmd *cobra.Command, args []string) {
@@ -142,11 +142,11 @@ func runOwnershipDrift(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Ownership drift query completed", map[string]interface{}{
-		"scope":          scope,
-		"filesWithDrift": response.Summary.FilesWithDrift,
-		"duration":       time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Ownership drift query completed",
+		"scope", scope,
+		"filesWithDrift", response.Summary.FilesWithDrift,
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // OwnershipDriftResponseCLI contains ownership drift results for CLI output

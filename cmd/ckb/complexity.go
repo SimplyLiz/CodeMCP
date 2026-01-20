@@ -97,13 +97,13 @@ func runComplexity(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Complexity analysis completed", map[string]interface{}{
-		"file":          filePath,
-		"functionCount": fc.FunctionCount,
-		"maxCyclomatic": fc.MaxCyclomatic,
-		"maxCognitive":  fc.MaxCognitive,
-		"duration":      time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Complexity analysis completed",
+		"file", filePath,
+		"functionCount", fc.FunctionCount,
+		"maxCyclomatic", fc.MaxCyclomatic,
+		"maxCognitive", fc.MaxCognitive,
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // ComplexityResponseCLI contains complexity results for CLI output

@@ -37,10 +37,10 @@ func (g *GitAdapter) GetFileHistory(filePath string, limit int) (*FileHistory, e
 		)
 	}
 
-	g.logger.Debug("Getting file history", map[string]interface{}{
-		"filePath": filePath,
-		"limit":    limit,
-	})
+	g.logger.Debug("Getting file history",
+		"filePath", filePath,
+		"limit", limit,
+	)
 
 	// Build git log command
 	// Format: hash|author|timestamp|subject
@@ -80,9 +80,9 @@ func (g *GitAdapter) GetFileHistory(filePath string, limit int) (*FileHistory, e
 	for _, line := range lines {
 		parts := strings.SplitN(line, "|", 4)
 		if len(parts) != 4 {
-			g.logger.Warn("Skipping malformed git log line", map[string]interface{}{
-				"line": line,
-			})
+			g.logger.Warn("Skipping malformed git log line",
+				"line", line,
+			)
 			continue
 		}
 
@@ -115,9 +115,9 @@ func (g *GitAdapter) GetRecentCommits(limit int) ([]CommitInfo, error) {
 		limit = 10 // Default to 10 commits
 	}
 
-	g.logger.Debug("Getting recent commits", map[string]interface{}{
-		"limit": limit,
-	})
+	g.logger.Debug("Getting recent commits",
+		"limit", limit,
+	)
 
 	// Build git log command
 	args := []string{
@@ -141,9 +141,9 @@ func (g *GitAdapter) GetRecentCommits(limit int) ([]CommitInfo, error) {
 	for _, line := range lines {
 		parts := strings.SplitN(line, "|", 4)
 		if len(parts) != 4 {
-			g.logger.Warn("Skipping malformed git log line", map[string]interface{}{
-				"line": line,
-			})
+			g.logger.Warn("Skipping malformed git log line",
+				"line", line,
+			)
 			continue
 		}
 

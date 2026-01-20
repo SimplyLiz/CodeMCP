@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 
-	"ckb/internal/logging"
 	"ckb/internal/paths"
 	"ckb/internal/webhooks"
 )
@@ -86,8 +87,8 @@ func runWebhooksList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("daemon not configured: %w", err)
 	}
 
-	// Create logger
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	// Create logger (silent for CLI)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Open webhook manager
 	mgr, err := webhooks.NewManager(daemonDir, logger, webhooks.DefaultConfig())
@@ -131,8 +132,8 @@ func runWebhooksTest(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("daemon not configured: %w", err)
 	}
 
-	// Create logger
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	// Create logger (silent for CLI)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Open webhook manager
 	mgr, err := webhooks.NewManager(daemonDir, logger, webhooks.DefaultConfig())
@@ -158,8 +159,8 @@ func runWebhooksDeliveries(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("daemon not configured: %w", err)
 	}
 
-	// Create logger
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	// Create logger (silent for CLI)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Open webhook manager
 	mgr, err := webhooks.NewManager(daemonDir, logger, webhooks.DefaultConfig())

@@ -70,10 +70,10 @@ func runEntrypoints(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Entrypoints listing completed", map[string]interface{}{
-		"count":    len(response.Entrypoints),
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Entrypoints listing completed",
+		"count", len(response.Entrypoints),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // EntrypointsResponseCLI contains entrypoints list for CLI output

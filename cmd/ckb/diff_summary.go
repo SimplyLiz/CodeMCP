@@ -88,11 +88,11 @@ func runDiffSummary(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Diff summary completed", map[string]interface{}{
-		"files":    len(response.ChangedFiles),
-		"symbols":  len(response.SymbolsAffected),
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Diff summary completed",
+		"files", len(response.ChangedFiles),
+		"symbols", len(response.SymbolsAffected),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // DiffSummaryResponseCLI contains diff summary for CLI output

@@ -1,0 +1,167 @@
+name: Security Audit
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop, 'feature/**']
+  schedule:
+    # Run weekly on Monday at 6:00 UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      scan_history:
+        description: 'Scan git history (slower but more thorough)'
+        required: false
+        default: false
+        type: boolean
+      min_severity:
+        description: 'Minimum severity to report'
+        required: false
+        default: 'high'
+        type: choice
+        options:
+          - critical
+          - high
+          - medium
+          - low
+
+# ============================================================================
+# Security Scan Configuration
+# Set to false to disable specific scanners
+# ============================================================================
+env:
+  # Secret Detection
+  SCAN_CKB_SECRETS: 'true'
+  SCAN_GITLEAKS: 'false'
+  SCAN_TRUFFLEHOG: 'true'
+
+  # SAST (language-specific run automatically based on detection)
+  SCAN_GOSEC: 'true'
+  SCAN_BANDIT: 'true'
+  SCAN_SEMGREP: 'true'
+
+  # Dependency Scanning
+  SCAN_TRIVY: 'true'
+  SCAN_GOVULNCHECK: 'true'
+  SCAN_OSV: 'true'
+
+  # Minimum severity
+  MIN_SEVERITY: 'high'
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Permissions inherited by reusable workflows
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+  id-token: write
+  attestations: write
+
+jobs:
+  # ============================================================================
+  # Step 1: Detect Languages
+  # ============================================================================
+  detect:
+    name: Detect Languages
+    uses: ./.github/workflows/security-detect.yml
+
+  # ============================================================================
+  # Step 2: Secret Detection
+  # ============================================================================
+  secrets:
+    name: Secrets
+    needs: detect
+    uses: ./.github/workflows/security-secrets.yml
+    with:
+      scan_ckb: true
+      scan_gitleaks: false
+      scan_trufflehog: true
+      min_severity: ${{ inputs.min_severity || 'high' }}
+      scan_history: ${{ inputs.scan_history || false }}
+
+  # ============================================================================
+  # Step 3: Language-Specific SAST
+  # ============================================================================
+  sast-go:
+    name: Go SAST
+    needs: detect
+    if: needs.detect.outputs.has_go == 'true'
+    uses: ./.github/workflows/security-sast-go.yml
+    with:
+      exclude_dirs: 'testdata,internal/secrets'
+      # Exclude low-signal rules:
+      # G104: Unhandled errors (defer close patterns)
+      # G301: Directory permissions (0755 is intentional for user access)
+      # G302: File permissions (0644 is standard for config/log files)
+      # G304: File path from variable (paths come from trusted sources)
+      # G306: File write permissions (same as G302)
+      exclude_rules: 'G104,G301,G302,G304,G306'
+
+  sast-python:
+    name: Python SAST
+    needs: detect
+    if: needs.detect.outputs.has_python == 'true'
+    uses: ./.github/workflows/security-sast-python.yml
+    with:
+      exclude_dirs: 'tests,test,venv,.venv'
+
+  sast-common:
+    name: Common SAST
+    needs: detect
+    uses: ./.github/workflows/security-sast-common.yml
+    with:
+      config: 'p/security-audit'
+      extra_config: ${{ needs.detect.outputs.has_go == 'true' && 'p/golang' || '' }}
+
+  # ============================================================================
+  # Step 4: Dependency Scanning
+  # ============================================================================
+  dependencies:
+    name: Dependencies
+    needs: detect
+    uses: ./.github/workflows/security-dependencies.yml
+    with:
+      scan_trivy: true
+      scan_govulncheck: ${{ needs.detect.outputs.has_go == 'true' }}
+      scan_osv: true
+      has_go: ${{ needs.detect.outputs.has_go == 'true' }}
+      generate_sbom: true
+
+  # ============================================================================
+  # Step 5: Security Gate (aggregation + PR comment)
+  # ============================================================================
+  gate:
+    name: Security Gate
+    needs: [detect, secrets, sast-go, sast-python, sast-common, dependencies]
+    if: always()
+    uses: ./.github/workflows/security-gate.yml
+    with:
+      # Secrets
+      secret_findings: ${{ needs.secrets.outputs.total_findings || 0 }}
+      trufflehog_findings: ${{ needs.secrets.outputs.trufflehog_findings || 0 }}
+
+      # SAST
+      gosec_findings: ${{ needs.sast-go.outputs.findings || 0 }}
+      gosec_high: ${{ needs.sast-go.outputs.high || 0 }}
+      bandit_findings: ${{ needs.sast-python.outputs.findings || 0 }}
+      bandit_high: ${{ needs.sast-python.outputs.high || 0 }}
+      semgrep_findings: ${{ needs.sast-common.outputs.findings || 0 }}
+
+      # Dependencies
+      trivy_findings: ${{ needs.dependencies.outputs.trivy_findings || 0 }}
+      trivy_critical: ${{ needs.dependencies.outputs.trivy_critical || 0 }}
+      trivy_high: ${{ needs.dependencies.outputs.trivy_high || 0 }}
+      trivy_licenses: ${{ needs.dependencies.outputs.trivy_licenses || 0 }}
+      govulncheck_findings: ${{ needs.dependencies.outputs.govulncheck_findings || 0 }}
+      osv_findings: ${{ needs.dependencies.outputs.osv_findings || 0 }}
+
+      # Language flags
+      has_go: ${{ needs.detect.outputs.has_go == 'true' }}
+      has_python: ${{ needs.detect.outputs.has_python == 'true' }}
+
+      # Errors
+      secrets_errors: ${{ needs.secrets.outputs.errors || '' }}

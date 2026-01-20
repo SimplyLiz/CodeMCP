@@ -3,11 +3,11 @@ package backends
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
 	"ckb/internal/errors"
-	"ckb/internal/logging"
 )
 
 // Orchestrator coordinates queries across multiple backends
@@ -16,7 +16,7 @@ type Orchestrator struct {
 	policy   *QueryPolicy
 	limiter  *RateLimiter
 	ladder   *BackendLadder
-	logger   *logging.Logger
+	logger   *slog.Logger
 
 	// Merge strategies
 	preferFirstMerger *PreferFirstMerger
@@ -26,7 +26,7 @@ type Orchestrator struct {
 }
 
 // NewOrchestrator creates a new backend orchestrator
-func NewOrchestrator(policy *QueryPolicy, logger *logging.Logger) *Orchestrator {
+func NewOrchestrator(policy *QueryPolicy, logger *slog.Logger) *Orchestrator {
 	return &Orchestrator{
 		backends:          make(map[BackendID]Backend),
 		policy:            policy,
@@ -44,11 +44,10 @@ func (o *Orchestrator) RegisterBackend(backend Backend) {
 	defer o.mu.Unlock()
 
 	o.backends[backend.ID()] = backend
-	o.logger.Info("Registered backend", map[string]interface{}{
-		"backend":      backend.ID(),
-		"capabilities": backend.Capabilities(),
-		"available":    backend.IsAvailable(),
-	})
+	o.logger.Info("Registered backend",
+		"backend", backend.ID(),
+		"capabilities", backend.Capabilities(),
+		"available", backend.IsAvailable())
 }
 
 // UnregisterBackend removes a backend from the orchestrator
@@ -57,9 +56,7 @@ func (o *Orchestrator) UnregisterBackend(backendID BackendID) {
 	defer o.mu.Unlock()
 
 	delete(o.backends, backendID)
-	o.logger.Info("Unregistered backend", map[string]interface{}{
-		"backend": backendID,
-	})
+	o.logger.Info("Unregistered backend", "backend", backendID)
 }
 
 // GetAvailableBackends returns a list of currently available backends
@@ -81,10 +78,9 @@ func (o *Orchestrator) GetAvailableBackends() []BackendID {
 func (o *Orchestrator) Query(ctx context.Context, req QueryRequest) (*QueryResult, error) {
 	startTime := time.Now()
 
-	o.logger.Debug("Starting query", map[string]interface{}{
-		"queryType": req.Type,
-		"mergeMode": o.policy.MergeMode,
-	})
+	o.logger.Debug("Starting query",
+		"queryType", req.Type,
+		"mergeMode", o.policy.MergeMode)
 
 	// Get available backends
 	o.mu.RLock()
@@ -118,10 +114,9 @@ func (o *Orchestrator) Query(ctx context.Context, req QueryRequest) (*QueryResul
 		)
 	}
 
-	o.logger.Debug("Selected backends", map[string]interface{}{
-		"backends": selectedBackends,
-		"count":    len(selectedBackends),
-	})
+	o.logger.Debug("Selected backends",
+		"backends", selectedBackends,
+		"count", len(selectedBackends))
 
 	// Query selected backends in parallel
 	backendResults, err := o.queryBackends(ctx, req, selectedBackends, availableBackends)
@@ -163,11 +158,10 @@ func (o *Orchestrator) Query(ctx context.Context, req QueryRequest) (*QueryResul
 		TotalDurationMs: time.Since(startTime).Milliseconds(),
 	}
 
-	o.logger.Info("Query completed", map[string]interface{}{
-		"durationMs":        result.TotalDurationMs,
-		"completenessScore": result.Completeness.Score,
-		"primaryBackend":    result.Provenance.PrimaryBackend,
-	})
+	o.logger.Info("Query completed",
+		"durationMs", result.TotalDurationMs,
+		"completenessScore", result.Completeness.Score,
+		"primaryBackend", result.Provenance.PrimaryBackend)
 
 	return result, nil
 }
@@ -225,10 +219,9 @@ func (o *Orchestrator) queryBackends(
 			}
 
 			if err != nil {
-				o.logger.Warn("Backend query failed", map[string]interface{}{
-					"backend": id,
-					"error":   err.Error(),
-				})
+				o.logger.Warn("Backend query failed",
+					"backend", id,
+					"error", err.Error())
 			}
 		}(i, backendID)
 	}
@@ -407,10 +400,9 @@ func (o *Orchestrator) Shutdown() error {
 	for id, backend := range o.backends {
 		if closer, ok := backend.(interface{ Close() error }); ok {
 			if err := closer.Close(); err != nil {
-				o.logger.Warn("Failed to close backend", map[string]interface{}{
-					"backend": id,
-					"error":   err.Error(),
-				})
+				o.logger.Warn("Failed to close backend",
+					"backend", id,
+					"error", err.Error())
 				lastErr = err
 			}
 		}

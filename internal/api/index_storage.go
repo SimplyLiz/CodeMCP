@@ -3,14 +3,13 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
-
-	"ckb/internal/logging"
 )
 
 // IndexStorage manages the server's data directory for uploaded repos
@@ -18,7 +17,7 @@ type IndexStorage struct {
 	dataDir   string
 	uploadDir string
 	reposDir  string
-	logger    *logging.Logger
+	logger    *slog.Logger
 }
 
 // RepoMeta contains metadata for an uploaded repo
@@ -34,7 +33,7 @@ type RepoMeta struct {
 
 // NewIndexStorage creates a new storage manager
 // dataDir can be absolute or "~/.ckb-server" style
-func NewIndexStorage(dataDir string, logger *logging.Logger) (*IndexStorage, error) {
+func NewIndexStorage(dataDir string, logger *slog.Logger) (*IndexStorage, error) {
 	// Expand ~ to home directory
 	if strings.HasPrefix(dataDir, "~/") {
 		home, err := os.UserHomeDir()
@@ -59,9 +58,9 @@ func NewIndexStorage(dataDir string, logger *logging.Logger) (*IndexStorage, err
 		return nil, fmt.Errorf("failed to create repos directory: %w", err)
 	}
 
-	logger.Info("Index storage initialized", map[string]interface{}{
-		"data_dir": dataDir,
-	})
+	logger.Info("Index storage initialized",
+		"data_dir", dataDir,
+	)
 
 	return s, nil
 }
@@ -118,10 +117,10 @@ func (s *IndexStorage) CreateRepo(repoID, name, description string) error {
 		return fmt.Errorf("failed to save metadata: %w", err)
 	}
 
-	s.logger.Info("Created repo", map[string]interface{}{
-		"repo_id": repoID,
-		"path":    repoPath,
-	})
+	s.logger.Info("Created repo",
+		"repo_id", repoID,
+		"path", repoPath,
+	)
 
 	return nil
 }
@@ -140,9 +139,9 @@ func (s *IndexStorage) DeleteRepo(repoID string) error {
 		return fmt.Errorf("failed to delete repo: %w", err)
 	}
 
-	s.logger.Info("Deleted repo", map[string]interface{}{
-		"repo_id": repoID,
-	})
+	s.logger.Info("Deleted repo",
+		"repo_id", repoID,
+	)
 
 	return nil
 }
@@ -287,9 +286,9 @@ func (s *IndexStorage) CleanupOldUploads(maxAge time.Duration) (int, error) {
 	}
 
 	if cleaned > 0 {
-		s.logger.Info("Cleaned up old uploads", map[string]interface{}{
-			"count": cleaned,
-		})
+		s.logger.Info("Cleaned up old uploads",
+			"count", cleaned,
+		)
 	}
 
 	return cleaned, nil

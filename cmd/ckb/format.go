@@ -12,6 +12,7 @@ type OutputFormat string
 const (
 	FormatJSON  OutputFormat = "json"
 	FormatHuman OutputFormat = "human"
+	FormatSARIF OutputFormat = "sarif"
 )
 
 // FormatResponse formats a response according to the specified format
@@ -150,6 +151,34 @@ func formatStatusHuman(resp *StatusResponseCLI) (string, error) {
 
 	b.WriteString(fmt.Sprintf("CKB v%s\n", resp.CkbVersion))
 	b.WriteString("──────────────────────────────────────────────────────────\n")
+
+	// Active repository (if set)
+	if resp.ActiveRepo != nil {
+		sourceHint := ""
+		switch resp.ActiveRepo.Source {
+		case "env":
+			sourceHint = " (from CKB_REPO)"
+		case "cwd":
+			sourceHint = " (from current directory)"
+		case "default":
+			sourceHint = " (default - run from project directory for full status)"
+		}
+		b.WriteString(fmt.Sprintf("Active: %s (%s)%s\n", resp.ActiveRepo.Name, resp.ActiveRepo.Path, sourceHint))
+	}
+
+	// Daemon status (show on same line group as active repo)
+	if resp.DaemonStatus != nil {
+		if resp.DaemonStatus.Running {
+			uptimeInfo := ""
+			if resp.DaemonStatus.Uptime != "" {
+				uptimeInfo = fmt.Sprintf(", uptime %s", resp.DaemonStatus.Uptime)
+			}
+			b.WriteString(fmt.Sprintf("Daemon: running (PID %d, port %d%s)\n", resp.DaemonStatus.PID, resp.DaemonStatus.Port, uptimeInfo))
+		} else {
+			b.WriteString("Daemon: stopped\n")
+		}
+	}
+	b.WriteString("\n")
 
 	// Analysis Tier (prominent)
 	if resp.Tier != nil {

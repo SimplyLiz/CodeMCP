@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"strings"
 	"text/tabwriter"
@@ -12,7 +14,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"ckb/internal/federation"
-	"ckb/internal/logging"
 )
 
 // Remote server flags
@@ -122,10 +123,7 @@ func runFedAddRemote(cmd *cobra.Command, args []string) error {
 	fedName := args[0]
 	serverName := args[1]
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
@@ -179,10 +177,7 @@ func runFedRemoveRemote(cmd *cobra.Command, args []string) error {
 	fedName := args[0]
 	serverName := args[1]
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
@@ -201,10 +196,7 @@ func runFedRemoveRemote(cmd *cobra.Command, args []string) error {
 func runFedListRemote(cmd *cobra.Command, args []string) error {
 	fedName := args[0]
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
@@ -258,10 +250,7 @@ func runFedSyncRemote(cmd *cobra.Command, args []string) error {
 		serverName = args[1]
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
@@ -321,10 +310,7 @@ func runFedStatusRemote(cmd *cobra.Command, args []string) error {
 	fedName := args[0]
 	serverName := args[1]
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
@@ -382,10 +368,7 @@ func runFedEnableRemote(cmd *cobra.Command, args []string) error {
 	fedName := args[0]
 	serverName := args[1]
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {
@@ -410,10 +393,7 @@ func runFedDisableRemote(cmd *cobra.Command, args []string) error {
 	fedName := args[0]
 	serverName := args[1]
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {

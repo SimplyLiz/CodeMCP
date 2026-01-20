@@ -1,21 +1,21 @@
 package modules
 
 import (
+	"log/slog"
 	"path/filepath"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
 )
 
 // Scanner provides high-level module and import scanning functionality
 type Scanner struct {
 	config        *config.Config
-	logger        *logging.Logger
+	logger        *slog.Logger
 	importScanner *ImportScanner
 }
 
 // NewScanner creates a new module scanner
-func NewScanner(cfg *config.Config, logger *logging.Logger) *Scanner {
+func NewScanner(cfg *config.Config, logger *slog.Logger) *Scanner {
 	return &Scanner{
 		config:        cfg,
 		logger:        logger,
@@ -25,10 +25,7 @@ func NewScanner(cfg *config.Config, logger *logging.Logger) *Scanner {
 
 // ScanModules scans the repository and returns all detected modules
 func (s *Scanner) ScanModules(repoRoot string, stateId string) ([]*Module, error) {
-	s.logger.Info("Scanning modules", map[string]interface{}{
-		"repoRoot": repoRoot,
-		"stateId":  stateId,
-	})
+	s.logger.Info("Scanning modules", "repoRoot", repoRoot, "stateId", stateId)
 
 	result, err := DetectModules(
 		repoRoot,
@@ -42,10 +39,10 @@ func (s *Scanner) ScanModules(repoRoot string, stateId string) ([]*Module, error
 		return nil, err
 	}
 
-	s.logger.Info("Module detection completed", map[string]interface{}{
-		"method":      result.DetectionMethod,
-		"moduleCount": len(result.Modules),
-	})
+	s.logger.Info("Module detection completed",
+		"method", result.DetectionMethod,
+		"moduleCount", len(result.Modules),
+	)
 
 	return result.Modules, nil
 }
@@ -53,15 +50,15 @@ func (s *Scanner) ScanModules(repoRoot string, stateId string) ([]*Module, error
 // ScanImports scans a module for imports and classifies them
 func (s *Scanner) ScanImports(repoRoot string, module *Module, allModules []*Module) ([]*ImportEdge, error) {
 	if !s.config.ImportScan.Enabled {
-		s.logger.Debug("Import scanning disabled", nil)
+		s.logger.Debug("Import scanning disabled")
 		return nil, nil
 	}
 
-	s.logger.Info("Scanning imports for module", map[string]interface{}{
-		"moduleId":   module.ID,
-		"moduleName": module.Name,
-		"rootPath":   module.RootPath,
-	})
+	s.logger.Info("Scanning imports for module",
+		"moduleId", module.ID,
+		"moduleName", module.Name,
+		"rootPath", module.RootPath,
+	)
 
 	// Scan directory for imports
 	modulePath := filepath.Join(repoRoot, module.RootPath)
@@ -79,10 +76,7 @@ func (s *Scanner) ScanImports(repoRoot string, module *Module, allModules []*Mod
 		classifier.ClassifyEdge(edge)
 	}
 
-	s.logger.Info("Import scanning completed", map[string]interface{}{
-		"moduleId":     module.ID,
-		"importsFound": len(edges),
-	})
+	s.logger.Info("Import scanning completed", "moduleId", module.ID, "importsFound", len(edges))
 
 	return edges, nil
 }
@@ -90,32 +84,25 @@ func (s *Scanner) ScanImports(repoRoot string, module *Module, allModules []*Mod
 // ScanAllImports scans all modules and returns aggregated import edges
 func (s *Scanner) ScanAllImports(repoRoot string, modules []*Module) (map[string][]*ImportEdge, error) {
 	if !s.config.ImportScan.Enabled {
-		s.logger.Debug("Import scanning disabled", nil)
+		s.logger.Debug("Import scanning disabled")
 		return nil, nil
 	}
 
-	s.logger.Info("Scanning imports for all modules", map[string]interface{}{
-		"moduleCount": len(modules),
-	})
+	s.logger.Info("Scanning imports for all modules", "moduleCount", len(modules))
 
 	result := make(map[string][]*ImportEdge)
 
 	for _, module := range modules {
 		edges, err := s.ScanImports(repoRoot, module, modules)
 		if err != nil {
-			s.logger.Warn("Failed to scan imports for module", map[string]interface{}{
-				"moduleId": module.ID,
-				"error":    err.Error(),
-			})
+			s.logger.Warn("Failed to scan imports for module", "moduleId", module.ID, "error", err.Error())
 			continue
 		}
 
 		result[module.ID] = edges
 	}
 
-	s.logger.Info("Import scanning completed for all modules", map[string]interface{}{
-		"modulesScanned": len(result),
-	})
+	s.logger.Info("Import scanning completed for all modules", "modulesScanned", len(result))
 
 	return result, nil
 }

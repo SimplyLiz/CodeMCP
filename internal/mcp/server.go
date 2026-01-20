@@ -4,13 +4,17 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
-	"ckb/internal/logging"
+	"ckb/internal/config"
+	"ckb/internal/errors"
 	"ckb/internal/query"
 	"ckb/internal/repos"
+	"ckb/internal/storage"
 )
 
 const maxEngines = 5
@@ -30,7 +34,7 @@ type MCPServer struct {
 	stdin     io.Reader
 	stdout    io.Writer
 	scanner   *bufio.Scanner
-	logger    *logging.Logger
+	logger    *slog.Logger
 	version   string
 	tools     map[string]ToolHandler
 	resources map[string]ResourceHandler
@@ -49,10 +53,17 @@ type MCPServer struct {
 	activePreset string // current preset (core, review, refactor, etc.)
 	toolsetHash  string // hash of current tool definitions (for cursor invalidation)
 	expanded     bool   // true if expandToolset has been called this session
+
+	// MCP roots support (v8.0)
+	roots *rootsManager
+
+	// Binary staleness detection (v8.0)
+	binaryPath    string    // Path to the running binary
+	binaryModTime time.Time // Modification time at startup
 }
 
 // NewMCPServer creates a new MCP server in legacy single-engine mode
-func NewMCPServer(version string, engine *query.Engine, logger *logging.Logger) *MCPServer {
+func NewMCPServer(version string, engine *query.Engine, logger *slog.Logger) *MCPServer {
 	server := &MCPServer{
 		stdin:        os.Stdin,
 		stdout:       os.Stdout,
@@ -62,7 +73,11 @@ func NewMCPServer(version string, engine *query.Engine, logger *logging.Logger) 
 		tools:        make(map[string]ToolHandler),
 		resources:    make(map[string]ResourceHandler),
 		activePreset: DefaultPreset,
+		roots:        newRootsManager(),
 	}
+
+	// Record binary info for staleness detection
+	server.recordBinaryInfo()
 
 	// Register all tools
 	server.RegisterTools()
@@ -78,8 +93,16 @@ func NewMCPServer(version string, engine *query.Engine, logger *logging.Logger) 
 	return server
 }
 
+// NewMCPServerForCLI creates a minimal MCP server for CLI tool introspection.
+// This server cannot handle tool calls but can provide tool definitions.
+func NewMCPServerForCLI() *MCPServer {
+	return &MCPServer{
+		activePreset: DefaultPreset,
+	}
+}
+
 // NewMCPServerWithRegistry creates a new MCP server with multi-repo support
-func NewMCPServerWithRegistry(version string, registry *repos.Registry, logger *logging.Logger) *MCPServer {
+func NewMCPServerWithRegistry(version string, registry *repos.Registry, logger *slog.Logger) *MCPServer {
 	server := &MCPServer{
 		stdin:        os.Stdin,
 		stdout:       os.Stdout,
@@ -90,7 +113,11 @@ func NewMCPServerWithRegistry(version string, registry *repos.Registry, logger *
 		tools:        make(map[string]ToolHandler),
 		resources:    make(map[string]ResourceHandler),
 		activePreset: DefaultPreset,
+		roots:        newRootsManager(),
 	}
+
+	// Record binary info for staleness detection
+	server.recordBinaryInfo()
 
 	// Register all tools
 	server.RegisterTools()
@@ -128,7 +155,7 @@ func (s *MCPServer) engine() *query.Engine {
 func (s *MCPServer) GetEngine() (*query.Engine, error) {
 	engine := s.engine()
 	if engine == nil {
-		return nil, fmt.Errorf("no active repository. Call listRepos to see available repos, then switchRepo")
+		return nil, errors.NewPreconditionError("no active repository", "Call listRepos to see available repos, then switchRepo")
 	}
 	return engine, nil
 }
@@ -170,21 +197,25 @@ func (s *MCPServer) SetActiveRepo(name, path string, engine *query.Engine) {
 
 // Start starts the MCP server and begins processing messages
 func (s *MCPServer) Start() error {
-	s.logger.Info("MCP server starting", map[string]interface{}{
-		"version": s.version,
-	})
+	s.logger.Info("MCP server starting",
+		"version", s.version,
+	)
 
 	// Main message loop
 	for {
 		msg, err := s.readMessage()
 		if err != nil {
 			if err == io.EOF {
-				s.logger.Info("MCP server shutting down (EOF)", nil)
+				s.logger.Info("MCP server shutting down (EOF)")
+				// Cleanup pending roots requests to prevent goroutine leaks
+				if s.roots != nil {
+					s.roots.CancelAllPending()
+				}
 				return nil
 			}
-			s.logger.Error("Error reading message", map[string]interface{}{
-				"error": err.Error(),
-			})
+			s.logger.Error("Error reading message",
+				"error", err.Error(),
+			)
 
 			// Try to send error response if we can extract an ID
 			if msg != nil && msg.Id != nil {
@@ -199,9 +230,9 @@ func (s *MCPServer) Start() error {
 		// Write response if one was generated (notifications don't generate responses)
 		if response != nil {
 			if err := s.writeMessage(response); err != nil {
-				s.logger.Error("Error writing response", map[string]interface{}{
-					"error": err.Error(),
-				})
+				s.logger.Error("Error writing response",
+					"error", err.Error(),
+				)
 			}
 		}
 	}
@@ -221,7 +252,7 @@ func (s *MCPServer) SetStdout(w io.Writer) {
 // SetPreset sets the active preset and updates the toolset hash
 func (s *MCPServer) SetPreset(preset string) error {
 	if !IsValidPreset(preset) {
-		return fmt.Errorf("invalid preset: %s (valid: %v)", preset, ValidPresets())
+		return errors.NewInvalidParameterError("preset", fmt.Sprintf("%s (valid: %v)", preset, ValidPresets()))
 	}
 
 	s.mu.Lock()
@@ -230,9 +261,9 @@ func (s *MCPServer) SetPreset(preset string) error {
 	s.activePreset = preset
 	s.updateToolsetHashLocked()
 
-	s.logger.Info("Preset changed", map[string]interface{}{
-		"preset": preset,
-	})
+	s.logger.Info("Preset changed",
+		"preset", preset,
+	)
 
 	return nil
 }
@@ -315,6 +346,185 @@ func (s *MCPServer) MarkExpanded() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.expanded = true
+}
+
+// GetRoots returns the current MCP roots from the client (v8.0)
+func (s *MCPServer) GetRoots() []Root {
+	if s.roots == nil {
+		return nil
+	}
+	return s.roots.GetRoots()
+}
+
+// GetRootPaths returns the filesystem paths for all client roots (v8.0)
+func (s *MCPServer) GetRootPaths() []string {
+	if s.roots == nil {
+		return nil
+	}
+	return s.roots.GetPaths()
+}
+
+// HasClientRoots returns true if the client provided any roots (v8.0)
+func (s *MCPServer) HasClientRoots() bool {
+	roots := s.GetRoots()
+	return len(roots) > 0
+}
+
+// createEngineForRoot creates a new query engine for the given root directory
+func (s *MCPServer) createEngineForRoot(repoRoot string) (*query.Engine, error) {
+	// Load configuration for the new root
+	cfg, err := config.LoadConfig(repoRoot)
+	if err != nil {
+		s.logger.Debug("Failed to load config for root, using defaults",
+			"root", repoRoot,
+			"error", err.Error(),
+		)
+		cfg = config.DefaultConfig()
+	}
+
+	// Open storage for the new root
+	db, err := storage.Open(repoRoot, s.logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+
+	// Create engine
+	engine, err := query.NewEngine(repoRoot, db, s.logger, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create engine: %w", err)
+	}
+
+	return engine, nil
+}
+
+// switchToClientRoot switches the engine to the client's root directory if different.
+// This fixes repo confusion when using a binary from a different location.
+//
+// IMPORTANT: Only switches in legacy single-engine mode. In multi-repo mode,
+// users have explicit control via switchRepo tool, so we don't override that.
+func (s *MCPServer) switchToClientRoot(clientRoot string) {
+	if clientRoot == "" {
+		return
+	}
+
+	// Only switch in legacy single-engine mode
+	// Multi-repo mode users have explicit control via switchRepo
+	if s.legacyEngine == nil {
+		s.logger.Debug("Multi-repo mode active, not auto-switching to client root",
+			"clientRoot", clientRoot,
+		)
+		return
+	}
+
+	currentRoot := s.legacyEngine.GetRepoRoot()
+
+	// Normalize paths for comparison
+	clientRootClean := filepath.Clean(clientRoot)
+	currentRootClean := filepath.Clean(currentRoot)
+
+	// Check if they're the same
+	if clientRootClean == currentRootClean {
+		s.logger.Debug("Client root matches current repo, no switch needed",
+			"root", clientRootClean,
+		)
+		return
+	}
+
+	s.logger.Info("Client root differs from server repo, switching to client's project",
+		"clientRoot", clientRootClean,
+		"serverRoot", currentRootClean,
+	)
+
+	// Create a new engine for the client's root
+	newEngine, err := s.createEngineForRoot(clientRootClean)
+	if err != nil {
+		s.logger.Warn("Failed to create engine for client root, keeping current repo",
+			"clientRoot", clientRootClean,
+			"error", err.Error(),
+		)
+		return
+	}
+
+	// Close the old engine's database to avoid resource leaks
+	oldEngine := s.legacyEngine
+	if oldEngine != nil && oldEngine.DB() != nil {
+		if err := oldEngine.DB().Close(); err != nil {
+			s.logger.Warn("Failed to close old engine database",
+				"error", err.Error(),
+			)
+		}
+	}
+
+	// Switch to the new engine
+	s.mu.Lock()
+	s.legacyEngine = newEngine
+	s.mu.Unlock()
+
+	// Wire up metrics persistence for the new engine
+	if newEngine.DB() != nil {
+		SetMetricsDB(newEngine.DB())
+	}
+
+	s.logger.Info("Switched to client root",
+		"root", clientRootClean,
+	)
+}
+
+// recordBinaryInfo records the current binary's path and modification time
+func (s *MCPServer) recordBinaryInfo() {
+	execPath, err := os.Executable()
+	if err != nil {
+		if s.logger != nil {
+			s.logger.Debug("Failed to get executable path", "error", err.Error())
+		}
+		return
+	}
+
+	// Resolve symlinks to get the actual binary
+	realPath, err := filepath.EvalSymlinks(execPath)
+	if err != nil {
+		realPath = execPath
+	}
+
+	info, err := os.Stat(realPath)
+	if err != nil {
+		if s.logger != nil {
+			s.logger.Debug("Failed to stat binary", "path", realPath, "error", err.Error())
+		}
+		return
+	}
+
+	s.binaryPath = realPath
+	s.binaryModTime = info.ModTime()
+
+	if s.logger != nil {
+		s.logger.Debug("Recorded binary info",
+			"path", s.binaryPath,
+			"modTime", s.binaryModTime.Format(time.RFC3339),
+		)
+	}
+}
+
+// IsBinaryStale checks if the binary on disk is newer than when this process started
+func (s *MCPServer) IsBinaryStale() bool {
+	if s.binaryPath == "" || s.binaryModTime.IsZero() {
+		return false
+	}
+
+	info, err := os.Stat(s.binaryPath)
+	if err != nil {
+		return false
+	}
+
+	return info.ModTime().After(s.binaryModTime)
+}
+
+// GetBinaryStaleWarning returns a warning message if the binary is stale, or empty string if not
+func (s *MCPServer) GetBinaryStaleWarning() string {
+	if !s.IsBinaryStale() {
+		return ""
+	}
+	return "CKB binary has been updated. Restart Claude Code or run /clear for changes to take effect."
 }
 
 // SendNotification sends a JSON-RPC notification to the client

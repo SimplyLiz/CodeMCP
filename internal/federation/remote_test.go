@@ -3,13 +3,12 @@ package federation
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
-
-	"ckb/internal/logging"
 )
 
 func TestExpandEnvVars(t *testing.T) {
@@ -271,11 +270,7 @@ func TestRemoteClient(t *testing.T) {
 	}))
 	defer mockServer.Close()
 
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.DebugLevel,
-		Format: logging.JSONFormat,
-		Output: os.Stderr,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	t.Run("ListRepos", func(t *testing.T) {
 		server := &RemoteServer{

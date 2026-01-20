@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"testing"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
 	"ckb/internal/query"
 	"ckb/internal/storage"
 	"ckb/internal/version"
@@ -38,11 +38,7 @@ func newTestMCPServer(t *testing.T) *MCPServer {
 		},
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.JSONFormat,
-		Output: io.Discard,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Create database in temp directory (each test gets its own isolated DB)
 	db, err := storage.Open(tempDir, logger)

@@ -2,12 +2,13 @@ package scip
 
 import (
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
 )
 
 // findRepoRoot finds the repository root by looking for go.mod
@@ -37,10 +38,7 @@ func TestFindCallers(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.RepoRoot = repoRoot
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.DebugLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	adapter, err := NewSCIPAdapter(cfg, logger)
 	if err != nil {
@@ -159,10 +157,7 @@ func TestCallGraph(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.RepoRoot = repoRoot
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.DebugLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	adapter, err := NewSCIPAdapter(cfg, logger)
 	if err != nil {
@@ -224,10 +219,7 @@ func TestCountSymbolsByPath(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.RepoRoot = repoRoot
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.DebugLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	adapter, err := NewSCIPAdapter(cfg, logger)
 	if err != nil {

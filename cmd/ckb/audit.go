@@ -92,10 +92,10 @@ func runAudit(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Audit completed", map[string]interface{}{
-		"items":    len(result.Items),
-		"critical": result.Summary.Critical,
-		"high":     result.Summary.High,
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Audit completed",
+		"items", len(result.Items),
+		"critical", result.Summary.Critical,
+		"high", result.Summary.High,
+		"duration", time.Since(start).Milliseconds(),
+	)
 }

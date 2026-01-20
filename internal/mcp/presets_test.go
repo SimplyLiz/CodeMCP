@@ -1,26 +1,26 @@
 package mcp
 
 import (
+	"io"
+	"log/slog"
 	"testing"
-
-	"ckb/internal/logging"
 )
 
 func TestPresetFiltering(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{
-		Level: logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	server := NewMCPServer("test", nil, logger)
 
 	// Test core preset (default)
+	// v8.0: Core now includes 5 compound tools (explore, understand, prepareChange, batchGet, batchSearch)
 	coreTools := server.GetFilteredTools()
-	if len(coreTools) != 14 {
-		t.Errorf("expected 14 core tools, got %d", len(coreTools))
+	if len(coreTools) != 19 {
+		t.Errorf("expected 19 core tools (v8.0 includes compound tools), got %d", len(coreTools))
 	}
 
-	// Verify core tools are in correct order (core-first)
+	// Verify compound tools come first (preferred for AI workflows)
 	expectedFirst := []string{
+		"explore", "understand", "prepareChange", "batchGet", "batchSearch",
 		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "listKeyConcepts",
@@ -41,8 +41,9 @@ func TestPresetFiltering(t *testing.T) {
 		t.Fatalf("failed to set full preset: %v", err)
 	}
 	fullTools := server.GetFilteredTools()
-	if len(fullTools) != 80 {
-		t.Errorf("expected 80 full tools, got %d", len(fullTools))
+	// v8.0: Full now includes 5 compound tools + scanSecrets (87 = 81 + 5 + 1)
+	if len(fullTools) != 87 {
+		t.Errorf("expected 87 full tools (v8.0 includes compound tools + scanSecrets), got %d", len(fullTools))
 	}
 
 	// Full preset should still have core tools first
@@ -54,9 +55,7 @@ func TestPresetFiltering(t *testing.T) {
 }
 
 func TestPagination(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{
-		Level: logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	server := NewMCPServer("test", nil, logger)
 
@@ -156,9 +155,7 @@ func TestCursorInvalidation(t *testing.T) {
 }
 
 func TestExpandToolsetRateLimit(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{
-		Level: logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	server := NewMCPServer("test", nil, logger)
 
@@ -176,9 +173,7 @@ func TestExpandToolsetRateLimit(t *testing.T) {
 }
 
 func TestSetPresetInvalid(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{
-		Level: logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	server := NewMCPServer("test", nil, logger)
 
@@ -196,9 +191,7 @@ func TestSetPresetInvalid(t *testing.T) {
 }
 
 func TestGetActivePresetAfterSet(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{
-		Level: logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	server := NewMCPServer("test", nil, logger)
 
@@ -294,9 +287,7 @@ func TestToolsetHash(t *testing.T) {
 }
 
 func TestGetAllPresetInfo(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{
-		Level: logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	server := NewMCPServer("test", nil, logger)
 	allTools := server.GetToolDefinitions()

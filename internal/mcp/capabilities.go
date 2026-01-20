@@ -32,9 +32,19 @@ type InitializeResult struct {
 
 // handleInitialize handles the initialize request
 func (s *MCPServer) handleInitialize(params map[string]interface{}) (*InitializeResult, error) {
-	s.logger.Info("MCP server initializing", map[string]interface{}{
-		"clientInfo": params["clientInfo"],
-	})
+	s.logger.Info("MCP server initializing",
+		"clientInfo", params["clientInfo"],
+	)
+
+	// Parse client capabilities (v8.0: roots support)
+	clientCaps := parseClientCapabilities(params)
+	if clientCaps.Roots != nil {
+		s.roots.SetClientSupported(true)
+		s.roots.SetListChangedEnabled(clientCaps.Roots.ListChanged)
+		s.logger.Info("Client supports roots",
+			"listChanged", clientCaps.Roots.ListChanged,
+		)
+	}
 
 	result := &InitializeResult{
 		ProtocolVersion: "2024-11-05",

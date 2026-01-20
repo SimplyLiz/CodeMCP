@@ -26,10 +26,10 @@ func (g *ArchitectureGenerator) AggregateModules(mods []*modules.Module) ([]Modu
 		// Count files
 		fileCount, err := g.CountFiles(mod)
 		if err != nil {
-			g.logger.Warn("Failed to count files for module", map[string]interface{}{
-				"moduleId": mod.ID,
-				"error":    err.Error(),
-			})
+			g.logger.Warn("Failed to count files for module",
+				"moduleId", mod.ID,
+				"error", err.Error(),
+			)
 			fileCount = 0
 		}
 		summary.FileCount = fileCount
@@ -37,10 +37,10 @@ func (g *ArchitectureGenerator) AggregateModules(mods []*modules.Module) ([]Modu
 		// Count lines of code
 		loc, err := g.CountLOC(mod)
 		if err != nil {
-			g.logger.Warn("Failed to count LOC for module", map[string]interface{}{
-				"moduleId": mod.ID,
-				"error":    err.Error(),
-			})
+			g.logger.Warn("Failed to count LOC for module",
+				"moduleId", mod.ID,
+				"error", err.Error(),
+			)
 			loc = 0
 		}
 		summary.LOC = loc
@@ -118,10 +118,10 @@ func (g *ArchitectureGenerator) CountLOC(mod *modules.Module) (int, error) {
 		if isSourceFile(path, mod.Language) {
 			loc, err := countFileLines(path)
 			if err != nil {
-				g.logger.Debug("Failed to count lines in file", map[string]interface{}{
-					"file":  path,
-					"error": err.Error(),
-				})
+				g.logger.Debug("Failed to count lines in file",
+					"file", path,
+					"error", err.Error(),
+				)
 				return nil //nolint:nilerr // intentionally continue on file read errors
 			}
 			totalLOC += loc

@@ -62,10 +62,10 @@ func runConcepts(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Concepts query completed", map[string]interface{}{
-		"count":    len(response.Concepts),
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Concepts query completed",
+		"count", len(response.Concepts),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // ConceptsResponseCLI contains concepts list for CLI output

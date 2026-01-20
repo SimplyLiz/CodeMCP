@@ -85,10 +85,10 @@ func runBreakingChanges(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Breaking changes analysis completed", map[string]interface{}{
-		"changesCount": len(response.Changes),
-		"duration":     time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Breaking changes analysis completed",
+		"changesCount", len(response.Changes),
+		"duration", time.Since(start).Milliseconds(),
+	)
 
 	// Exit with code 1 if breaking changes found (for CI)
 	if response.Summary != nil && response.Summary.BreakingChanges > 0 {
