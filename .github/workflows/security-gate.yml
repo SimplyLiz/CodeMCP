@@ -206,17 +206,65 @@ jobs:
               body += `**Security gate FAILED** - ${gateReason}\n\n`;
             }
 
-            // Summary table
+            // Get detailed counts
             const secrets = parseInt('${{ steps.evaluate.outputs.secrets }}') || 0;
+            const trufflehog = parseInt('${{ steps.evaluate.outputs.trufflehog }}') || 0;
+            const gosec = parseInt('${{ steps.evaluate.outputs.gosec }}') || 0;
+            const gosecHigh = parseInt('${{ steps.evaluate.outputs.gosec_high }}') || 0;
+            const bandit = parseInt('${{ steps.evaluate.outputs.bandit }}') || 0;
+            const banditHigh = parseInt('${{ steps.evaluate.outputs.bandit_high }}') || 0;
+            const semgrep = parseInt('${{ steps.evaluate.outputs.semgrep }}') || 0;
             const sast = parseInt('${{ steps.evaluate.outputs.sast }}') || 0;
+            const trivy = parseInt('${{ steps.evaluate.outputs.trivy }}') || 0;
+            const trivyCritical = parseInt('${{ steps.evaluate.outputs.trivy_critical }}') || 0;
+            const trivyHigh = parseInt('${{ steps.evaluate.outputs.trivy_high }}') || 0;
+            const govuln = parseInt('${{ steps.evaluate.outputs.govuln }}') || 0;
+            const osv = parseInt('${{ steps.evaluate.outputs.osv }}') || 0;
             const deps = parseInt('${{ steps.evaluate.outputs.deps }}') || 0;
             const licenses = parseInt('${{ steps.evaluate.outputs.licenses }}') || 0;
 
-            body += `| Category | Findings |\n|----------|----------|\n`;
-            body += `| Secrets | ${secrets === 0 ? '0' : secrets} |\n`;
-            body += `| SAST | ${sast === 0 ? '0' : sast} |\n`;
-            body += `| Dependencies | ${deps === 0 ? '0' : deps} |\n`;
-            body += `| Licenses | ${licenses === 0 ? '0' : licenses} non-permissive |\n\n`;
+            // Build detailed summary table
+            body += `| Category | Findings | Details |\n|----------|----------|----------|\n`;
+
+            // Secrets row
+            if (secrets === 0) {
+              body += `| ✅ Secrets | 0 | No secrets detected |\n`;
+            } else {
+              body += `| ⚠️ Secrets | ${secrets} | TruffleHog verified: ${trufflehog} |\n`;
+            }
+
+            // SAST row
+            if (sast === 0) {
+              body += `| ✅ SAST | 0 | No issues found |\n`;
+            } else {
+              let sastDetails = [];
+              if (gosec > 0) sastDetails.push(`Gosec: ${gosec} (${gosecHigh} high)`);
+              if (bandit > 0) sastDetails.push(`Bandit: ${bandit} (${banditHigh} high)`);
+              if (semgrep > 0) sastDetails.push(`Semgrep: ${semgrep}`);
+              const hasHighSast = gosecHigh > 0 || banditHigh > 0;
+              body += `| ${hasHighSast ? '❌' : '⚠️'} SAST | ${sast} | ${sastDetails.join(', ')} |\n`;
+            }
+
+            // Dependencies row
+            if (deps === 0) {
+              body += `| ✅ Dependencies | 0 | No vulnerabilities found |\n`;
+            } else {
+              let depDetails = [];
+              if (trivy > 0) depDetails.push(`Trivy: ${trivy} (${trivyCritical} crit, ${trivyHigh} high)`);
+              if (govuln > 0) depDetails.push(`govulncheck: ${govuln}`);
+              if (osv > 0) depDetails.push(`OSV: ${osv}`);
+              const hasCritical = trivyCritical > 0;
+              body += `| ${hasCritical ? '❌' : '⚠️'} Dependencies | ${deps} | ${depDetails.join(', ')} |\n`;
+            }
+
+            // Licenses row
+            if (licenses === 0) {
+              body += `| ✅ Licenses | 0 | All permissive |\n`;
+            } else {
+              body += `| ⚠️ Licenses | ${licenses} | Non-permissive licenses found |\n`;
+            }
+
+            body += `\n`;
 
             // Footer
             body += `---\n`;
