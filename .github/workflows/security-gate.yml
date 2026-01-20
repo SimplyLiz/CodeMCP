@@ -211,88 +211,23 @@ jobs:
               body += `**Security gate FAILED** - ${gateReason}\n\n`;
             }
 
-            // Show errors if any
-            const secretsErrors = '${{ inputs.secrets_errors }}';
-            if (secretsErrors) {
-              body += `> ⚠️ **Scanner errors:** ${secretsErrors}\n\n`;
-            }
-
-            // Get detailed counts
+            // Summary table
             const secrets = parseInt('${{ steps.evaluate.outputs.secrets }}') || 0;
-            const trufflehog = parseInt('${{ steps.evaluate.outputs.trufflehog }}') || 0;
-            const gosec = parseInt('${{ steps.evaluate.outputs.gosec }}') || 0;
-            const gosecHigh = parseInt('${{ steps.evaluate.outputs.gosec_high }}') || 0;
-            const bandit = parseInt('${{ steps.evaluate.outputs.bandit }}') || 0;
-            const banditHigh = parseInt('${{ steps.evaluate.outputs.bandit_high }}') || 0;
-            const semgrep = parseInt('${{ steps.evaluate.outputs.semgrep }}') || 0;
             const sast = parseInt('${{ steps.evaluate.outputs.sast }}') || 0;
-            const trivy = parseInt('${{ steps.evaluate.outputs.trivy }}') || 0;
-            const trivyCritical = parseInt('${{ steps.evaluate.outputs.trivy_critical }}') || 0;
-            const trivyHigh = parseInt('${{ steps.evaluate.outputs.trivy_high }}') || 0;
-            const govuln = parseInt('${{ steps.evaluate.outputs.govuln }}') || 0;
-            const osv = parseInt('${{ steps.evaluate.outputs.osv }}') || 0;
             const deps = parseInt('${{ steps.evaluate.outputs.deps }}') || 0;
             const licenses = parseInt('${{ steps.evaluate.outputs.licenses }}') || 0;
 
-            // Build URLs
-            const repoUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}`;
-            const runUrl = `${repoUrl}/actions/runs/${context.runId}`;
-            const codeScanning = `${repoUrl}/security/code-scanning`;
-            const secretScanning = `${repoUrl}/security/secret-scanning`;
-            const dependabot = `${repoUrl}/security/dependabot`;
+            body += `| Category | Findings |\n|----------|----------|\n`;
+            body += `| Secrets | ${secrets} |\n`;
+            body += `| SAST | ${sast} |\n`;
+            body += `| Dependencies | ${deps} |\n`;
+            body += `| Licenses | ${licenses} non-permissive |\n\n`;
 
-            // Quick summary icons
-            const secretIcon = secrets === 0 ? '✅' : (trufflehog > 0 ? '❌' : '⚠️');
-            const sastIcon = sast === 0 ? '✅' : (gosecHigh > 0 || banditHigh > 0 ? '❌' : '⚠️');
-            const depsIcon = deps === 0 ? '✅' : (trivyCritical > 0 ? '❌' : '⚠️');
-            const licenseIcon = licenses === 0 ? '✅' : '⚠️';
-
-            body += `${secretIcon} Secrets: ${secrets} · ${sastIcon} SAST: ${sast} · ${depsIcon} Deps: ${deps} · ${licenseIcon} Licenses: ${licenses}\n\n`;
-
-            // Collapsible details
-            body += `<details>\n<summary>View detailed breakdown</summary>\n\n`;
-            body += `| Category | Findings | Details |\n|----------|----------|----------|\n`;
-
-            // Secrets row
-            if (secrets === 0) {
-              body += `| ✅ Secrets | 0 | No secrets detected |\n`;
-            } else {
-              body += `| ${secretIcon} Secrets | ${secrets} | TruffleHog verified: ${trufflehog} — [View alerts](${secretScanning}) |\n`;
-            }
-
-            // SAST row
-            if (sast === 0) {
-              body += `| ✅ SAST | 0 | No issues found |\n`;
-            } else {
-              let sastDetails = [];
-              if (gosec > 0) sastDetails.push(`[Gosec](${codeScanning}?query=tool%3Agosec): ${gosec} (${gosecHigh} high)`);
-              if (bandit > 0) sastDetails.push(`[Bandit](${codeScanning}?query=tool%3Abandit): ${bandit} (${banditHigh} high)`);
-              if (semgrep > 0) sastDetails.push(`[Semgrep](${codeScanning}?query=tool%3Asemgrep): ${semgrep}`);
-              body += `| ${sastIcon} SAST | ${sast} | ${sastDetails.join(' · ')} |\n`;
-            }
-
-            // Dependencies row
-            if (deps === 0) {
-              body += `| ✅ Dependencies | 0 | No vulnerabilities found |\n`;
-            } else {
-              let depDetails = [];
-              if (trivy > 0) depDetails.push(`Trivy: ${trivy} (${trivyCritical} crit, ${trivyHigh} high)`);
-              if (govuln > 0) depDetails.push(`govulncheck: ${govuln}`);
-              if (osv > 0) depDetails.push(`OSV: ${osv}`);
-              body += `| ${depsIcon} Dependencies | ${deps} | ${depDetails.join(', ')} — [View](${dependabot}) |\n`;
-            }
-
-            // Licenses row
-            if (licenses === 0) {
-              body += `| ✅ Licenses | 0 | All permissive |\n`;
-            } else {
-              body += `| ${licenseIcon} Licenses | ${licenses} | Non-permissive — [View artifacts](${runUrl}#artifacts) |\n`;
-            }
-
-            body += `\n</details>\n\n`;
-
-            // Footer with links
-            body += `[View workflow run](${runUrl}) · [Security overview](${repoUrl}/security)\n`;
+            // Footer
+            body += `---\n`;
+            body += `<sub>Generated by CKB Security Audit | `;
+            body += `[View Details](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) | `;
+            body += `[Security Tab](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/security/code-scanning)</sub>`;
 
             // Find existing comment
             const { data: comments } = await github.rest.issues.listComments({
