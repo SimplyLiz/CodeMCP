@@ -1,6 +1,0 @@
-{
-  "/(marketing)/changelog/page": "app/(marketing)/changelog/page.js",
-  "/(marketing)/page": "app/(marketing)/page.js",
-  "/(marketing)/pricing/page": "app/(marketing)/pricing/page.js",
-  "/(marketing)/news/page": "app/(marketing)/news/page.js"
-}
