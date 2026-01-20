@@ -1,8 +1,8 @@
-# CKB 8.2 Streaming Design
+# CKB Streaming Design (v8.0)
 
 ## Overview
 
-This document outlines the streaming architecture for CKB 8.2, enabling efficient transfer of large results to AI agents without overwhelming context windows or causing timeouts.
+This document outlines the streaming architecture for CKB, enabling efficient transfer of large results to AI agents without overwhelming context windows or causing timeouts. Implemented in v8.0.
 
 ## Problem Statement
 
