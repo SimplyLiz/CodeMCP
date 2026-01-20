@@ -230,14 +230,23 @@ jobs:
             const secretScanning = `${repoUrl}/security/secret-scanning`;
             const dependabot = `${repoUrl}/security/dependabot`;
 
-            // Build detailed summary table
+            // Quick summary icons
+            const secretIcon = secrets === 0 ? '✅' : (trufflehog > 0 ? '❌' : '⚠️');
+            const sastIcon = sast === 0 ? '✅' : (gosecHigh > 0 || banditHigh > 0 ? '❌' : '⚠️');
+            const depsIcon = deps === 0 ? '✅' : (trivyCritical > 0 ? '❌' : '⚠️');
+            const licenseIcon = licenses === 0 ? '✅' : '⚠️';
+
+            body += `${secretIcon} Secrets: ${secrets} · ${sastIcon} SAST: ${sast} · ${depsIcon} Deps: ${deps} · ${licenseIcon} Licenses: ${licenses}\n\n`;
+
+            // Collapsible details
+            body += `<details>\n<summary>View detailed breakdown</summary>\n\n`;
             body += `| Category | Findings | Details |\n|----------|----------|----------|\n`;
 
             // Secrets row
             if (secrets === 0) {
               body += `| ✅ Secrets | 0 | No secrets detected |\n`;
             } else {
-              body += `| ⚠️ Secrets | ${secrets} | TruffleHog verified: ${trufflehog} — [View alerts](${secretScanning}) |\n`;
+              body += `| ${secretIcon} Secrets | ${secrets} | TruffleHog verified: ${trufflehog} — [View alerts](${secretScanning}) |\n`;
             }
 
             // SAST row
@@ -248,8 +257,7 @@ jobs:
               if (gosec > 0) sastDetails.push(`[Gosec](${codeScanning}?query=tool%3Agosec): ${gosec} (${gosecHigh} high)`);
               if (bandit > 0) sastDetails.push(`[Bandit](${codeScanning}?query=tool%3Abandit): ${bandit} (${banditHigh} high)`);
               if (semgrep > 0) sastDetails.push(`[Semgrep](${codeScanning}?query=tool%3Asemgrep): ${semgrep}`);
-              const hasHighSast = gosecHigh > 0 || banditHigh > 0;
-              body += `| ${hasHighSast ? '❌' : '⚠️'} SAST | ${sast} | ${sastDetails.join(' · ')} |\n`;
+              body += `| ${sastIcon} SAST | ${sast} | ${sastDetails.join(' · ')} |\n`;
             }
 
             // Dependencies row
@@ -260,18 +268,20 @@ jobs:
               if (trivy > 0) depDetails.push(`Trivy: ${trivy} (${trivyCritical} crit, ${trivyHigh} high)`);
               if (govuln > 0) depDetails.push(`govulncheck: ${govuln}`);
               if (osv > 0) depDetails.push(`OSV: ${osv}`);
-              const hasCritical = trivyCritical > 0;
-              body += `| ${hasCritical ? '❌' : '⚠️'} Dependencies | ${deps} | ${depDetails.join(', ')} — [View](${dependabot}) |\n`;
+              body += `| ${depsIcon} Dependencies | ${deps} | ${depDetails.join(', ')} — [View](${dependabot}) |\n`;
             }
 
             // Licenses row
             if (licenses === 0) {
               body += `| ✅ Licenses | 0 | All permissive |\n`;
             } else {
-              body += `| ⚠️ Licenses | ${licenses} | Non-permissive — [View artifacts](${runUrl}#artifacts) |\n`;
+              body += `| ${licenseIcon} Licenses | ${licenses} | Non-permissive — [View artifacts](${runUrl}#artifacts) |\n`;
             }
 
-            body += `\n`;
+            body += `\n</details>\n\n`;
+
+            // Footer with links
+            body += `[View workflow run](${runUrl}) · [Security overview](${repoUrl}/security)\n`;
 
             // Find existing comment
             const { data: comments } = await github.rest.issues.listComments({
