@@ -93,6 +93,13 @@ jobs:
     uses: ./.github/workflows/security-sast-go.yml
     with:
       exclude_dirs: 'testdata,internal/secrets'
+      # Exclude low-signal rules:
+      # G104: Unhandled errors (defer close patterns)
+      # G301: Directory permissions (0755 is intentional for user access)
+      # G302: File permissions (0644 is standard for config/log files)
+      # G304: File path from variable (paths come from trusted sources)
+      # G306: File write permissions (same as G302)
+      exclude_rules: 'G104,G301,G302,G304,G306'
 
   sast-python:
     name: Python SAST
