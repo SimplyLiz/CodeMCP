@@ -197,31 +197,31 @@ jobs:
             };
 
             // Build comment
-            let body = `## Security Audit Results\n\n`;
+            let body = `## 🔐 Security Audit Results\n\n`;
 
             const gateStatus = '${{ steps.evaluate.outputs.status }}';
             const gateReason = '${{ steps.evaluate.outputs.reason }}';
 
             // Status badge
             if (gateStatus === 'passed') {
-              body += `**Security gate passed** - No issues detected\n\n`;
+              body += `✅ **Security gate passed** - No issues detected\n\n`;
             } else if (gateStatus === 'warning') {
-              body += `**Security gate passed with warnings** - ${gateReason}\n\n`;
+              body += `⚠️ **Security gate passed with warnings** - ${gateReason}\n\n`;
             } else {
-              body += `**Security gate FAILED** - ${gateReason}\n\n`;
+              body += `❌ **Security gate FAILED** - ${gateReason}\n\n`;
             }
 
-            // Summary table
+            // Summary table with actual finding counts
             const secrets = parseInt('${{ steps.evaluate.outputs.secrets }}') || 0;
             const sast = parseInt('${{ steps.evaluate.outputs.sast }}') || 0;
             const deps = parseInt('${{ steps.evaluate.outputs.deps }}') || 0;
             const licenses = parseInt('${{ steps.evaluate.outputs.licenses }}') || 0;
 
             body += `| Category | Findings |\n|----------|----------|\n`;
-            body += `| Secrets | ${secrets} |\n`;
-            body += `| SAST | ${sast} |\n`;
-            body += `| Dependencies | ${deps} |\n`;
-            body += `| Licenses | ${licenses} non-permissive |\n\n`;
+            body += `| 🔑 Secrets | ${secrets === 0 ? '✅ 0' : '⚠️ ' + secrets} |\n`;
+            body += `| 🛡️ SAST | ${sast === 0 ? '✅ 0' : '⚠️ ' + sast} |\n`;
+            body += `| 📦 Dependencies | ${deps === 0 ? '✅ 0' : '⚠️ ' + deps} |\n`;
+            body += `| 📜 Licenses | ${licenses === 0 ? '✅ 0' : '⚠️ ' + licenses + ' non-permissive'} |\n\n`;
 
             // Footer
             body += `---\n`;
