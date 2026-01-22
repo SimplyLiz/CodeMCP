@@ -29,7 +29,7 @@ RepoStateMode:
 
 func init() {
 	symbolCmd.Flags().StringVar(&symbolRepoStateMode, "repo-state-mode", "head", "Repo state mode (head, full)")
-	symbolCmd.Flags().StringVar(&symbolFormat, "format", "json", "Output format (json, human)")
+	symbolCmd.Flags().StringVar(&symbolFormat, "format", "human", "Output format (human, json)")
 	rootCmd.AddCommand(symbolCmd)
 }
 
@@ -66,10 +66,10 @@ func runSymbol(cmd *cobra.Command, args []string) {
 	fmt.Println(output)
 
 	duration := time.Since(start).Milliseconds()
-	logger.Debug("Symbol query completed", map[string]interface{}{
-		"symbolId": symbolID,
-		"duration": duration,
-	})
+	logger.Debug("Symbol query completed",
+		"symbolId", symbolID,
+		"duration", duration,
+	)
 }
 
 // SymbolResponseCLI contains detailed symbol information for CLI output

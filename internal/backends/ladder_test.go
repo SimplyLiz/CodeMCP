@@ -2,9 +2,9 @@ package backends
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"testing"
-
-	"ckb/internal/logging"
 )
 
 // ladderMockBackend implements Backend for ladder testing
@@ -29,8 +29,8 @@ func newLadderMockBackend(id BackendID, available bool, caps []string) *ladderMo
 	}
 }
 
-func testLogger() *logging.Logger {
-	return logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+func testLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
 func TestNewBackendLadder(t *testing.T) {

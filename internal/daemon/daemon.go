@@ -5,17 +5,20 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
+	"ckb/internal/index"
 	"ckb/internal/paths"
 	"ckb/internal/scheduler"
+	"ckb/internal/slogutil"
 	"ckb/internal/version"
 	"ckb/internal/watcher"
 	"ckb/internal/webhooks"
@@ -32,6 +35,8 @@ type Daemon struct {
 	scheduler      *scheduler.Scheduler
 	watcher        *watcher.Watcher
 	webhookManager *webhooks.Manager
+	refreshManager *RefreshManager
+	structuredLog  *slog.Logger
 
 	// Shutdown coordination
 	ctx    context.Context
@@ -83,19 +88,16 @@ func New(cfg *config.DaemonConfig) (*Daemon, error) {
 	logger := log.New(logFile, "[ckb-daemon] ", log.LstdFlags|log.Lmicroseconds)
 
 	// Create structured logger for components
-	structuredLogger := logging.NewLogger(logging.Config{
-		Level:  logging.InfoLevel,
-		Format: logging.JSONFormat,
-		Output: logFile,
-	})
+	structuredLogger := slogutil.NewLogger(logFile, slog.LevelInfo)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	d := &Daemon{
-		config: cfg,
-		logger: logger,
-		ctx:    ctx,
-		cancel: cancel,
+		config:        cfg,
+		logger:        logger,
+		structuredLog: structuredLogger,
+		ctx:           ctx,
+		cancel:        cancel,
 	}
 
 	// Initialize scheduler
@@ -123,13 +125,44 @@ func New(cfg *config.DaemonConfig) (*Daemon, error) {
 	}
 	d.webhookManager = webhookMgr
 
+	// Initialize refresh manager
+	d.refreshManager = NewRefreshManager(structuredLogger, logger, webhookMgr)
+
 	return d, nil
 }
 
 // onWatcherChange handles file system change events
 func (d *Daemon) onWatcherChange(repoPath string, events []watcher.Event) {
 	d.logger.Printf("File changes detected in %s (%d events)", repoPath, len(events))
-	// TODO: Queue refresh job for the repository
+
+	// Skip if refresh already pending for this repo
+	if d.refreshManager.HasPendingRefresh(repoPath) {
+		d.logger.Printf("Refresh already pending for %s, skipping", repoPath)
+		return
+	}
+
+	// Determine trigger type from events
+	trigger, triggerInfo := d.detectTriggerFromEvents(events)
+
+	// Queue incremental refresh in background
+	d.wg.Add(1)
+	go func() {
+		defer d.wg.Done()
+		d.refreshManager.RunIncrementalRefreshWithTrigger(d.ctx, repoPath, trigger, triggerInfo)
+	}()
+}
+
+// detectTriggerFromEvents determines the trigger type from watcher events
+func (d *Daemon) detectTriggerFromEvents(events []watcher.Event) (index.RefreshTrigger, string) {
+	for _, e := range events {
+		if strings.HasSuffix(e.Path, "HEAD") {
+			return index.TriggerHEAD, "branch or commit changed"
+		}
+		if strings.HasSuffix(e.Path, "index") {
+			return index.TriggerIndex, "staged files changed"
+		}
+	}
+	return index.TriggerStale, ""
 }
 
 // Start starts the daemon

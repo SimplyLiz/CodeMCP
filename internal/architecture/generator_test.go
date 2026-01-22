@@ -2,12 +2,13 @@ package architecture
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
 	"ckb/internal/modules"
 )
 
@@ -47,10 +48,7 @@ func main() {
 	cfg.ImportScan.SkipBinary = true
 
 	// Create logger
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.DebugLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Create import scanner
 	importScanner := modules.NewImportScanner(&cfg.ImportScan, logger)
@@ -191,5 +189,87 @@ func TestComputeStrength(t *testing.T) {
 	strength := ComputeStrength(imports)
 	if strength != 3 {
 		t.Errorf("Expected strength 3, got %d", strength)
+	}
+}
+
+// TestInferDirectoryRole tests role inference from directory paths
+func TestInferDirectoryRole(t *testing.T) {
+	tests := []struct {
+		path     string
+		expected string
+	}{
+		// Entrypoint directories
+		{"cmd", "entrypoint"},
+		{"cmd/server", "entrypoint"},
+		{"bin", "entrypoint"},
+		{"main", "entrypoint"},
+		{"app", "entrypoint"},
+
+		// Test directories
+		{"tests", "test"},
+		{"test", "test"},
+		{"__tests__", "test"},
+		{"spec", "test"},
+		{"src/test/utils", "test"},
+		{"foo/tests/bar", "test"},
+
+		// API directories
+		{"api", "api"},
+		{"internal/api", "api"},
+		{"server", "api"},
+		{"handlers", "api"},
+		{"controllers", "api"},
+		{"routes", "api"},
+
+		// UI directories
+		{"ui", "ui"},
+		{"web", "ui"},
+		{"frontend", "ui"},
+		{"components", "ui"},
+		{"views", "ui"},
+		{"pages", "ui"},
+		{"screens", "ui"},
+
+		// Data directories
+		{"data", "data"},
+		{"db", "data"},
+		{"database", "data"},
+		{"models", "data"},
+		{"schema", "data"},
+		{"store", "data"},
+		{"repository", "data"},
+
+		// Utility directories
+		{"utils", "util"},
+		{"util", "util"},
+		{"lib", "util"},
+		{"common", "util"},
+		{"shared", "util"},
+		{"helpers", "util"},
+		{"tools", "util"},
+
+		// Config directories
+		{"config", "config"},
+		{"conf", "config"},
+		{"settings", "config"},
+
+		// Core directories (by convention)
+		{"internal/query", "core"},
+		{"pkg/auth", "core"},
+		{"src/main", "entrypoint"}, // main wins over src
+		{"src/services", "core"},
+
+		// Default fallback
+		{"examples", "core"},
+		{"docs", "core"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.path, func(t *testing.T) {
+			got := inferDirectoryRole(tc.path)
+			if got != tc.expected {
+				t.Errorf("inferDirectoryRole(%q) = %q, want %q", tc.path, got, tc.expected)
+			}
+		})
 	}
 }

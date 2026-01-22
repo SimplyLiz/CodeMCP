@@ -37,7 +37,7 @@ Examples:
 }
 
 func init() {
-	diffSummaryCmd.Flags().StringVar(&diffSummaryFormat, "format", "json", "Output format (json, human)")
+	diffSummaryCmd.Flags().StringVar(&diffSummaryFormat, "format", "human", "Output format (human, json)")
 	diffSummaryCmd.Flags().StringVar(&diffSummaryCommit, "commit", "", "Single commit hash to analyze")
 	diffSummaryCmd.Flags().StringVar(&diffSummaryBase, "base", "", "Base commit/ref for range (use with --head)")
 	diffSummaryCmd.Flags().StringVar(&diffSummaryHead, "head", "", "Head commit/ref for range (use with --base)")
@@ -88,11 +88,11 @@ func runDiffSummary(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Diff summary completed", map[string]interface{}{
-		"files":    len(response.ChangedFiles),
-		"symbols":  len(response.SymbolsAffected),
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Diff summary completed",
+		"files", len(response.ChangedFiles),
+		"symbols", len(response.SymbolsAffected),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // DiffSummaryResponseCLI contains diff summary for CLI output

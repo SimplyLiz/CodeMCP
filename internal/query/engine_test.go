@@ -2,12 +2,13 @@ package query
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
 	"ckb/internal/storage"
 )
 
@@ -29,10 +30,7 @@ func testEngine(t *testing.T) (*Engine, func()) {
 	}
 
 	// Create test logger (silent)
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.JSONFormat,
-		Level:  logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Create test database
 	db, err := storage.Open(tmpDir, logger)

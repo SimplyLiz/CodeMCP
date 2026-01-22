@@ -16,22 +16,25 @@ import (
 )
 
 const (
-	// npmRegistryURL is the npm registry endpoint for package info
-	npmRegistryURL = "https://registry.npmjs.org/@tastehub/ckb/latest"
+	// githubReleasesURL is the GitHub API endpoint for latest release
+	githubReleasesURL = "https://api.github.com/repos/SimplyLiz/CodeMCP/releases/latest"
+
+	// githubReleasesPage is the user-facing releases page
+	githubReleasesPage = "https://github.com/SimplyLiz/CodeMCP/releases"
 
 	// checkInterval is how often to check for updates (24 hours)
 	checkInterval = 24 * time.Hour
 
-	// httpTimeout is the timeout for the npm registry request
+	// httpTimeout is the timeout for the GitHub API request
 	httpTimeout = 3 * time.Second
 
 	// npmPackageName is the npm package name
 	npmPackageName = "@tastehub/ckb"
 )
 
-// npmPackageInfo represents the relevant fields from npm registry response
-type npmPackageInfo struct {
-	Version string `json:"version"`
+// githubReleaseInfo represents the relevant fields from GitHub Releases API
+type githubReleaseInfo struct {
+	TagName string `json:"tag_name"`
 }
 
 // UpdateInfo contains information about an available update
@@ -80,15 +83,49 @@ func (c *Checker) IsNpmInstall() bool {
 	return c.isNpmPath
 }
 
-// Check checks for available updates.
-// Returns nil if no update is available, check is disabled, or any error occurs.
-// This method is designed to fail silently - it never returns an error.
-func (c *Checker) Check(ctx context.Context) *UpdateInfo {
-	// Skip if not installed via npm
-	if !c.isNpmPath {
+// CheckCached checks the cache for a pending update notification.
+// This is instant (no HTTP) and should be called at startup.
+// Returns nil if no update available or cache is empty/stale.
+func (c *Checker) CheckCached() *UpdateInfo {
+	// Skip if disabled via environment variable
+	if os.Getenv("CKB_NO_UPDATE_CHECK") != "" {
 		return nil
 	}
 
+	// Read cache only - no network request
+	cached, _ := c.cache.Get()
+	if cached == nil {
+		return nil
+	}
+
+	return c.compareVersions(cached.LatestVersion)
+}
+
+// RefreshCache fetches the latest version from GitHub and updates the cache.
+// This should be called in a background goroutine.
+func (c *Checker) RefreshCache(ctx context.Context) {
+	// Skip if disabled via environment variable
+	if os.Getenv("CKB_NO_UPDATE_CHECK") != "" {
+		return
+	}
+
+	// Check if cache is still fresh
+	_, needsRefresh := c.cache.Get()
+	if !needsRefresh {
+		return // Cache is fresh, no need to fetch
+	}
+
+	// Fetch latest version from GitHub
+	latest := c.fetchLatestVersion(ctx)
+	if latest != "" {
+		c.cache.Set(latest)
+	}
+}
+
+// Check checks for available updates (legacy method, combines cached + fetch).
+// Returns nil if no update is available, check is disabled, or any error occurs.
+// This method is designed to fail silently - it never returns an error.
+func (c *Checker) Check(ctx context.Context) *UpdateInfo {
 	// Skip if disabled via environment variable
 	if os.Getenv("CKB_NO_UPDATE_CHECK") != "" {
 		return nil
@@ -100,7 +137,7 @@ func (c *Checker) Check(ctx context.Context) *UpdateInfo {
 		return c.compareVersions(cached.LatestVersion)
 	}
 
-	// Fetch latest version from npm (with timeout)
+	// Fetch latest version from GitHub (with timeout)
 	latest := c.fetchLatestVersion(ctx)
 	if latest == "" {
 		return nil
@@ -127,20 +164,21 @@ func (c *Checker) CheckAsync(ctx context.Context) <-chan *UpdateInfo {
 	return ch
 }
 
-// fetchLatestVersion fetches the latest version from npm registry.
+// fetchLatestVersion fetches the latest version from GitHub Releases API.
 // Returns empty string on any error (silent failure).
 func (c *Checker) fetchLatestVersion(ctx context.Context) string {
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(ctx, httpTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, npmRegistryURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, githubReleasesURL, nil)
 	if err != nil {
 		return ""
 	}
 
-	// Set a reasonable user agent
+	// Set headers for GitHub API
 	req.Header.Set("User-Agent", "ckb/"+version.Version)
+	req.Header.Set("Accept", "application/vnd.github+json")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -152,12 +190,18 @@ func (c *Checker) fetchLatestVersion(ctx context.Context) string {
 		return ""
 	}
 
-	var pkg npmPackageInfo
-	if err := json.NewDecoder(resp.Body).Decode(&pkg); err != nil {
+	var release githubReleaseInfo
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
 		return ""
 	}
 
-	return pkg.Version
+	// Strip 'v' prefix from tag if present (e.g., "v7.4.0" -> "7.4.0")
+	tag := release.TagName
+	if len(tag) > 0 && tag[0] == 'v' {
+		tag = tag[1:]
+	}
+
+	return tag
 }
 
 // compareVersions compares current version with latest and returns UpdateInfo if update available
@@ -172,8 +216,16 @@ func (c *Checker) compareVersions(latest string) *UpdateInfo {
 	return &UpdateInfo{
 		CurrentVersion: current,
 		LatestVersion:  latest,
-		UpdateCommand:  "npm update -g " + npmPackageName,
+		UpdateCommand:  c.getUpgradeCommand(),
 	}
+}
+
+// getUpgradeCommand returns the appropriate upgrade command based on install method
+func (c *Checker) getUpgradeCommand() string {
+	if c.isNpmPath {
+		return "npm update -g " + npmPackageName
+	}
+	return githubReleasesPage
 }
 
 // isNewerVersion returns true if version a is newer than version b.
@@ -211,25 +263,48 @@ func parseVersion(v string) [3]int {
 
 // FormatUpdateMessage formats the update notification for CLI output
 func (u *UpdateInfo) FormatUpdateMessage() string {
+	// Determine prefix based on whether it's a command or URL
+	prefix := "Run: "
+	if strings.HasPrefix(u.UpdateCommand, "http") {
+		prefix = ""
+	}
+
+	cmdLine := prefix + u.UpdateCommand
+	// Calculate padding (box is 53 chars inside)
+	cmdPadding := 51 - len(cmdLine)
+	if cmdPadding < 0 {
+		cmdPadding = 0
+	}
+
+	verPadding := 21 - len(u.CurrentVersion) - len(u.LatestVersion)
+	if verPadding < 0 {
+		verPadding = 0
+	}
+
 	return fmt.Sprintf(
 		"\n\033[33m╭─────────────────────────────────────────────────────╮\033[0m\n"+
 			"\033[33m│\033[0m  Update available: \033[36m%s\033[0m → \033[32m%s\033[0m%s\033[33m│\033[0m\n"+
-			"\033[33m│\033[0m  Run: \033[1m%s\033[0m%s\033[33m│\033[0m\n"+
+			"\033[33m│\033[0m  \033[1m%s\033[0m%s\033[33m│\033[0m\n"+
 			"\033[33m╰─────────────────────────────────────────────────────╯\033[0m\n",
 		u.CurrentVersion,
 		u.LatestVersion,
-		strings.Repeat(" ", 21-len(u.CurrentVersion)-len(u.LatestVersion)),
-		u.UpdateCommand,
-		strings.Repeat(" ", 31-len(u.UpdateCommand)),
+		strings.Repeat(" ", verPadding),
+		cmdLine,
+		strings.Repeat(" ", cmdPadding),
 	)
 }
 
 // FormatUpdateMessagePlain formats the update notification without colors
 func (u *UpdateInfo) FormatUpdateMessagePlain() string {
+	prefix := "Run: "
+	if strings.HasPrefix(u.UpdateCommand, "http") {
+		prefix = ""
+	}
 	return fmt.Sprintf(
-		"\nUpdate available: %s → %s\nRun: %s\n",
+		"\nUpdate available: %s → %s\n%s%s\n",
 		u.CurrentVersion,
 		u.LatestVersion,
+		prefix,
 		u.UpdateCommand,
 	)
 }

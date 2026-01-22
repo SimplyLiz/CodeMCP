@@ -36,7 +36,7 @@ Examples:
 }
 
 func init() {
-	entrypointsCmd.Flags().StringVar(&entrypointsFormat, "format", "json", "Output format (json, human)")
+	entrypointsCmd.Flags().StringVar(&entrypointsFormat, "format", "human", "Output format (human, json)")
 	entrypointsCmd.Flags().StringVar(&entrypointsModuleFilter, "module", "", "Filter to specific module")
 	entrypointsCmd.Flags().IntVar(&entrypointsLimit, "limit", 30, "Maximum entrypoints to return")
 	rootCmd.AddCommand(entrypointsCmd)
@@ -70,10 +70,10 @@ func runEntrypoints(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Entrypoints listing completed", map[string]interface{}{
-		"count":    len(response.Entrypoints),
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Entrypoints listing completed",
+		"count", len(response.Entrypoints),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // EntrypointsResponseCLI contains entrypoints list for CLI output

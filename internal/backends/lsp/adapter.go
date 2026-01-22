@@ -3,23 +3,23 @@ package lsp
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 
 	"ckb/internal/backends"
 	"ckb/internal/errors"
-	"ckb/internal/logging"
 )
 
 // LspAdapter adapts the LSP supervisor to the Backend interface
 type LspAdapter struct {
 	supervisor *LspSupervisor
 	languageId string
-	logger     *logging.Logger
+	logger     *slog.Logger
 }
 
 // NewLspAdapter creates a new LSP adapter for a specific language
-func NewLspAdapter(supervisor *LspSupervisor, languageId string, logger *logging.Logger) *LspAdapter {
+func NewLspAdapter(supervisor *LspSupervisor, languageId string, logger *slog.Logger) *LspAdapter {
 	return &LspAdapter{
 		supervisor: supervisor,
 		languageId: languageId,
@@ -107,9 +107,7 @@ func (l *LspAdapter) GetSymbol(ctx context.Context, id string) (*backends.Symbol
 	// Get hover information for documentation
 	hoverResult, err := l.supervisor.QueryHover(ctx, l.languageId, uri, line, character)
 	if err != nil {
-		l.logger.Debug("Failed to get hover info", map[string]interface{}{
-			"error": err.Error(),
-		})
+		l.logger.Debug("Failed to get hover info", "error", err.Error())
 	}
 
 	// Get definition location

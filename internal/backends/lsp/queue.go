@@ -92,10 +92,10 @@ func (s *LspSupervisor) processQueue(languageId string) {
 			case req.Response <- resp:
 			default:
 				// Response channel full or closed, log and continue
-				s.logger.Warn("Failed to send LSP response", map[string]interface{}{
-					"languageId": languageId,
-					"method":     req.Method,
-				})
+				s.logger.Warn("Failed to send LSP response",
+					"languageId", languageId,
+					"method", req.Method,
+				)
 			}
 
 		case <-s.done:
@@ -181,10 +181,10 @@ func (s *LspSupervisor) clearQueue(languageId string) {
 		default:
 			// Queue empty
 			if drained > 0 {
-				s.logger.Info("Cleared LSP queue", map[string]interface{}{
-					"languageId": languageId,
-					"count":      drained,
-				})
+				s.logger.Info("Cleared LSP queue",
+					"languageId", languageId,
+					"count", drained,
+				)
 			}
 			return
 		}

@@ -1,0 +1,319 @@
+# ============================================================================
+# CKB Starter Template
+# ============================================================================
+# A modular CI workflow with all CKB features as optional sections.
+#
+# HOW TO USE:
+#   1. Copy this file to .github/workflows/ckb.yml
+#   2. Delete sections you don't need (each marked with ###)
+#   3. Adjust thresholds in the 'env:' block
+#   4. Commit and push!
+#
+# FEATURES INCLUDED:
+#   [x] Impact Analysis    - See what your changes affect
+#   [x] Complexity Gate    - Block overly complex code
+#   [x] Coupling Check     - Warn about missing related files
+#   [x] Hotspot Warning    - Flag changes to volatile files
+#   [x] Dead Code          - Find unused code
+#   [x] Suggested Reviewers - Auto-assign based on ownership
+#   [x] PR Comment         - Beautiful summary comment
+#
+# For individual workflows, see the examples/ directory.
+# For the full showcase, see full-showcase.yml
+# ============================================================================
+
+name: CKB Analysis
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  # Uncomment for scheduled reports:
+  # schedule:
+  #   - cron: '0 3 * * 1'  # Weekly on Mondays
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  # Uncomment if using check runs:
+  # checks: write
+
+# ============================================================================
+# CONFIGURATION - Adjust these thresholds for your project
+# ============================================================================
+env:
+  # Complexity thresholds (set to 0 to disable)
+  MAX_CYCLOMATIC: 15
+  MAX_COGNITIVE: 20
+
+  # Coupling threshold (0.0-1.0, higher = stricter)
+  COUPLING_THRESHOLD: 0.7
+
+  # Risk level to fail on: low, medium, high, critical
+  FAIL_ON_RISK: critical
+
+  # Dead code confidence threshold (0.0-1.0)
+  DEAD_CODE_THRESHOLD: 0.9
+
+jobs:
+  analyze:
+    name: CKB Analysis
+    runs-on: ubuntu-latest
+    steps:
+      # ======================================================================
+      # SETUP (Required)
+      # ======================================================================
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed for accurate analysis
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install CKB
+        run: npm install -g @tastehub/ckb
+
+      - name: Restore Cache
+        uses: actions/cache@v4
+        with:
+          path: .ckb/
+          key: ckb-${{ runner.os }}-${{ hashFiles('**/*.go', '**/*.ts', '**/*.py') }}
+          restore-keys: |
+            ckb-${{ runner.os }}-
+
+      - name: Initialize
+        run: |
+          ckb init
+          ckb index --if-stale=24h
+
+      # ======================================================================
+      ### IMPACT ANALYSIS
+      # Shows which symbols changed and what depends on them.
+      # Delete this section if you only want basic metrics.
+      # ======================================================================
+      - name: Impact Analysis
+        id: impact
+        run: |
+          RANGE="${{ github.event.pull_request.base.sha }}..${{ github.sha }}"
+
+          ckb impact diff --base=origin/${{ github.base_ref }} --format=json > impact.json 2>/dev/null || echo '{}' > impact.json
+          ckb impact diff --base=origin/${{ github.base_ref }} --format=markdown > impact.md 2>/dev/null || echo "No impact data" > impact.md
+
+          echo "risk=$(jq -r '.summary.estimatedRisk // "low"' impact.json)" >> $GITHUB_OUTPUT
+          echo "changed=$(jq -r '.summary.symbolsChanged // 0' impact.json)" >> $GITHUB_OUTPUT
+          echo "affected=$(jq -r '.summary.transitivelyAffected // 0' impact.json)" >> $GITHUB_OUTPUT
+
+      # ======================================================================
+      ### COMPLEXITY CHECK
+      # Warns or fails on overly complex code.
+      # Delete this section to skip complexity analysis.
+      # ======================================================================
+      - name: Complexity Check
+        id: complexity
+        run: |
+          VIOLATIONS=0
+
+          for file in $(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(go|ts|js|py)$' | head -20); do
+            [ -f "$file" ] || continue
+
+            RESULT=$(ckb complexity "$file" --format=json 2>/dev/null || echo '{}')
+            CYCLO=$(echo "$RESULT" | jq -r '.summary.maxCyclomatic // 0')
+            COGNITIVE=$(echo "$RESULT" | jq -r '.summary.maxCognitive // 0')
+
+            if [ "$CYCLO" -gt "$MAX_CYCLOMATIC" ] || [ "$COGNITIVE" -gt "$MAX_COGNITIVE" ]; then
+              echo "::warning file=$file::Complexity: cyclomatic=$CYCLO, cognitive=$COGNITIVE"
+              VIOLATIONS=$((VIOLATIONS + 1))
+            fi
+          done
+
+          echo "violations=$VIOLATIONS" >> $GITHUB_OUTPUT
+
+      # ======================================================================
+      ### COUPLING CHECK
+      # Warns when frequently co-changed files are missing from PR.
+      # Delete this section to skip coupling analysis.
+      # ======================================================================
+      - name: Coupling Check
+        id: coupling
+        run: |
+          MISSING=0
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(go|ts|js|py)$' || true)
+
+          for file in $(echo "$CHANGED" | head -5); do
+            [ -f "$file" ] || continue
+
+            COUPLED=$(ckb coupling "$file" --min-correlation=$COUPLING_THRESHOLD --format=json 2>/dev/null || echo '{}')
+
+            # Check if coupled files are in the PR
+            for coupled_file in $(echo "$COUPLED" | jq -r '.correlations[]?.file // empty'); do
+              if ! echo "$CHANGED" | grep -q "^$coupled_file$"; then
+                echo "::warning::$file is often changed with $coupled_file (not in PR)"
+                MISSING=$((MISSING + 1))
+              fi
+            done
+          done
+
+          echo "missing=$MISSING" >> $GITHUB_OUTPUT
+
+      # ======================================================================
+      ### HOTSPOT CHECK
+      # Warns when modifying high-churn files.
+      # Delete this section to skip hotspot warnings.
+      # ======================================================================
+      - name: Hotspot Check
+        id: hotspots
+        run: |
+          HOTSPOT_COUNT=0
+
+          # Get hotspots and check if any changed files are hotspots
+          ckb hotspots --limit=20 --format=json > hotspots.json 2>/dev/null || echo '{"hotspots":[]}' > hotspots.json
+
+          for file in $(git diff --name-only origin/${{ github.base_ref }}...HEAD); do
+            SCORE=$(jq -r --arg f "$file" '.hotspots[] | select(.filePath == $f) | .ranking.score // 0' hotspots.json)
+            if [ -n "$SCORE" ] && [ "$(echo "$SCORE > 0.7" | bc -l)" -eq 1 ]; then
+              echo "::warning file=$file::Modifying hotspot (score: $SCORE)"
+              HOTSPOT_COUNT=$((HOTSPOT_COUNT + 1))
+            fi
+          done
+
+          echo "count=$HOTSPOT_COUNT" >> $GITHUB_OUTPUT
+
+      # ======================================================================
+      ### SUGGESTED REVIEWERS
+      # Auto-requests reviewers based on code ownership.
+      # Delete this section to skip reviewer suggestions.
+      # ======================================================================
+      - name: Get Reviewers
+        id: reviewers
+        run: |
+          ckb reviewers --base=origin/${{ github.base_ref }} --format=json > reviewers.json 2>/dev/null || echo '{"reviewers":[]}' > reviewers.json
+
+          # Get top 2 reviewers (excluding PR author)
+          REVIEWERS=$(jq -r --arg author "${{ github.event.pull_request.user.login }}" \
+            '[.reviewers[] | select(.owner != $author) | .owner] | .[0:2] | join(",")' reviewers.json)
+
+          echo "list=$REVIEWERS" >> $GITHUB_OUTPUT
+
+      - name: Request Reviewers
+        if: steps.reviewers.outputs.list != ''
+        continue-on-error: true
+        run: |
+          gh pr edit ${{ github.event.pull_request.number }} \
+            --add-reviewer "${{ steps.reviewers.outputs.list }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ======================================================================
+      ### PR COMMENT
+      # Posts a summary comment on the PR.
+      # Delete this section to skip PR comments.
+      # ======================================================================
+      - name: Post Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            // Load impact markdown if available
+            let body = '';
+            try {
+              body = fs.readFileSync('impact.md', 'utf8');
+            } catch {
+              body = '## CKB Analysis\n\nNo impact data available.';
+            }
+
+            // Add summary stats
+            const risk = '${{ steps.impact.outputs.risk }}';
+            const changed = '${{ steps.impact.outputs.changed }}';
+            const affected = '${{ steps.impact.outputs.affected }}';
+            const complexity = '${{ steps.complexity.outputs.violations }}';
+            const coupling = '${{ steps.coupling.outputs.missing }}';
+            const hotspots = '${{ steps.hotspots.outputs.count }}';
+
+            const emoji = {critical: '🔴', high: '🟠', medium: '🟡', low: '🟢'}[risk] || '⚪';
+
+            let summary = `## CKB Analysis ${emoji}\n\n`;
+            summary += `| Metric | Value |\n|--------|------:|\n`;
+            summary += `| Risk Level | **${risk}** |\n`;
+            summary += `| Symbols Changed | ${changed} |\n`;
+            summary += `| Transitively Affected | ${affected} |\n`;
+            if (complexity > 0) summary += `| Complexity Violations | ⚠️ ${complexity} |\n`;
+            if (coupling > 0) summary += `| Missing Coupled Files | ⚠️ ${coupling} |\n`;
+            if (hotspots > 0) summary += `| Hotspots Modified | ⚠️ ${hotspots} |\n`;
+            summary += '\n---\n*Generated by CKB*';
+
+            // Find and update or create comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+
+            const existing = comments.find(c => c.body?.includes('Generated by CKB'));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: summary
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: summary
+              });
+            }
+
+      # ======================================================================
+      ### QUALITY GATES
+      # Fails the workflow based on configured thresholds.
+      # Adjust or delete individual gates as needed.
+      # ======================================================================
+
+      # Fail on risk level
+      - name: Risk Gate
+        if: env.FAIL_ON_RISK != ''
+        run: |
+          RISK="${{ steps.impact.outputs.risk }}"
+          THRESHOLD="${{ env.FAIL_ON_RISK }}"
+
+          # Map to numbers: low=1, medium=2, high=3, critical=4
+          risk_num() { case "$1" in low)echo 1;;medium)echo 2;;high)echo 3;;critical)echo 4;;*)echo 0;;esac; }
+
+          if [ "$(risk_num "$RISK")" -ge "$(risk_num "$THRESHOLD")" ]; then
+            echo "::error::Risk level '$RISK' meets or exceeds threshold '$THRESHOLD'"
+            exit 1
+          fi
+
+      # Fail on complexity (uncomment to enable)
+      # - name: Complexity Gate
+      #   if: steps.complexity.outputs.violations > 0
+      #   run: |
+      #     echo "::error::${{ steps.complexity.outputs.violations }} file(s) exceed complexity thresholds"
+      #     exit 1
+
+      # ======================================================================
+      # SUMMARY
+      # ======================================================================
+      - name: Summary
+        if: always()
+        run: |
+          echo "## CKB Analysis Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Risk Level | ${{ steps.impact.outputs.risk }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Symbols Changed | ${{ steps.impact.outputs.changed }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Affected | ${{ steps.impact.outputs.affected }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Complexity Violations | ${{ steps.complexity.outputs.violations }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Missing Coupled Files | ${{ steps.coupling.outputs.missing }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Hotspots Modified | ${{ steps.hotspots.outputs.count }} |" >> $GITHUB_STEP_SUMMARY

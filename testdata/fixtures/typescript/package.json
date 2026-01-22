@@ -1,0 +1,17 @@
+{
+  "name": "fixture",
+  "version": "1.0.0",
+  "description": "TypeScript fixture for golden tests",
+  "main": "src/main.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "ts-node src/main.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@sourcegraph/scip-typescript": "^0.4.0",
+    "typescript": "^5.3.3"
+  }
+}

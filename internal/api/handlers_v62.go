@@ -2,11 +2,12 @@ package api
 
 import (
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"ckb/internal/federation"
-	"ckb/internal/logging"
 )
 
 // v6.2 Federation Handlers
@@ -60,10 +61,7 @@ func (s *Server) handleFederationRoutes(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Open federation
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.WarnLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	fed, err := federation.Open(fedName, logger)
 	if err != nil {

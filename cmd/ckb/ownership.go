@@ -58,10 +58,10 @@ Examples:
 func init() {
 	ownershipCmd.Flags().BoolVar(&ownershipIncludeBlame, "include-blame", true, "Include git-blame ownership analysis")
 	ownershipCmd.Flags().BoolVar(&ownershipIncludeHistory, "include-history", false, "Include ownership change history")
-	ownershipCmd.Flags().StringVar(&ownershipFormat, "format", "human", "Output format (json, human)")
+	ownershipCmd.Flags().StringVar(&ownershipFormat, "format", "human", "Output format (human, json)")
 
 	// Drift subcommand flags
-	ownershipDriftCmd.Flags().StringVar(&driftFormat, "format", "json", "Output format (json, human)")
+	ownershipDriftCmd.Flags().StringVar(&driftFormat, "format", "human", "Output format (human, json)")
 	ownershipDriftCmd.Flags().Float64Var(&driftThreshold, "threshold", 0.3, "Drift score threshold to report (0-1)")
 	ownershipDriftCmd.Flags().IntVar(&driftLimit, "limit", 20, "Maximum files to return")
 
@@ -100,11 +100,11 @@ func runOwnership(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Ownership query completed", map[string]interface{}{
-		"path":     path,
-		"owners":   len(response.Owners),
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Ownership query completed",
+		"path", path,
+		"owners", len(response.Owners),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 func runOwnershipDrift(cmd *cobra.Command, args []string) {
@@ -142,11 +142,11 @@ func runOwnershipDrift(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Ownership drift query completed", map[string]interface{}{
-		"scope":          scope,
-		"filesWithDrift": response.Summary.FilesWithDrift,
-		"duration":       time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Ownership drift query completed",
+		"scope", scope,
+		"filesWithDrift", response.Summary.FilesWithDrift,
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // OwnershipDriftResponseCLI contains ownership drift results for CLI output

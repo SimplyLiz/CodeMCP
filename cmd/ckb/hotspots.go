@@ -36,7 +36,7 @@ Examples:
 }
 
 func init() {
-	hotspotsCmd.Flags().StringVar(&hotspotsFormat, "format", "json", "Output format (json, human)")
+	hotspotsCmd.Flags().StringVar(&hotspotsFormat, "format", "human", "Output format (human, json)")
 	hotspotsCmd.Flags().StringVar(&hotspotsScope, "scope", "", "Module path to focus on")
 	hotspotsCmd.Flags().IntVar(&hotspotsLimit, "limit", 20, "Maximum hotspots to return (max 50)")
 	hotspotsCmd.Flags().StringVar(&hotspotsTimeStart, "start", "", "Start date (ISO8601 or YYYY-MM-DD)")
@@ -80,10 +80,10 @@ func runHotspots(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Hotspots query completed", map[string]interface{}{
-		"count":    len(response.Hotspots),
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Hotspots query completed",
+		"count", len(response.Hotspots),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // HotspotsResponseCLI contains hotspots list for CLI output

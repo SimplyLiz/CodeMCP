@@ -2,12 +2,12 @@ package daemon
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
-
-	"ckb/internal/logging"
 )
 
 func TestDefaultCompactionConfig(t *testing.T) {
@@ -47,11 +47,7 @@ func TestCompactor_DryRun(t *testing.T) {
 		}
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.DebugLevel,
-		Format: logging.HumanFormat,
-		Output: os.Stderr,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	config := CompactionConfig{
 		Enabled:                 true,
@@ -110,11 +106,7 @@ func TestCompactor_ActualDeletion(t *testing.T) {
 		_ = os.Chtimes(path, modTime, modTime)
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.DebugLevel,
-		Format: logging.HumanFormat,
-		Output: os.Stderr,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	config := CompactionConfig{
 		Enabled:                 true,
@@ -149,11 +141,7 @@ func TestCompactor_NoSnapshots(t *testing.T) {
 	// Create empty temp directory
 	tmpDir := t.TempDir()
 
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.DebugLevel,
-		Format: logging.HumanFormat,
-		Output: os.Stderr,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	config := DefaultCompactionConfig()
 	config.VacuumFTS = false

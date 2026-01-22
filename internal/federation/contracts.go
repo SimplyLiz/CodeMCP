@@ -334,6 +334,8 @@ func (idx *Index) FindDirectConsumers(contractID string, includeTier EvidenceTie
 		tierFilter = "1=1" // Include all
 	}
 
+	// #nosec G201 -- tierFilter is hardcoded string, contractID passed via placeholder
+	//nolint:gosec // G201: Safe - tierFilter is hardcoded string, contractID passed via placeholder
 	query := fmt.Sprintf(`
 		SELECT id, edge_key, contract_id, consumer_repo_uid, consumer_repo_id, consumer_paths,
 			tier, evidence_type, evidence_details, confidence, confidence_basis, detector_name, detected_at,
@@ -375,6 +377,8 @@ func (idx *Index) FindReverseImportClosure(contractID string, maxDepth int) ([]s
 			args[i] = id
 		}
 
+		// #nosec G201 -- only interpolates placeholder chars (?), values passed via args
+		//nolint:gosec // G201: Safe - only interpolates placeholder chars (?), values passed via args
 		query := fmt.Sprintf(`
 			SELECT DISTINCT c.*
 			FROM contracts c

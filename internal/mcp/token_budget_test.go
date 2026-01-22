@@ -2,9 +2,9 @@ package mcp
 
 import (
 	"encoding/json"
+	"io"
+	"log/slog"
 	"testing"
-
-	"ckb/internal/logging"
 )
 
 // Token budget thresholds for CI regression detection.
@@ -12,9 +12,10 @@ import (
 // the test fails and forces review of the token impact.
 const (
 	// tools/list budgets (bytes)
-	maxCorePresetBytes   = 45000  // ~11k tokens - core preset should be lean
-	maxReviewPresetBytes = 65000  // ~16k tokens - review adds a few tools
-	maxFullPresetBytes   = 250000 // ~62k tokens - all 58 tools
+	// v8.0: Increased budgets for compound tools (explore, understand, prepareChange, batchGet, batchSearch)
+	maxCorePresetBytes   = 60000  // ~15k tokens - v8.0: core now includes 5 compound tools
+	maxReviewPresetBytes = 80000  // ~20k tokens - review adds a few tools
+	maxFullPresetBytes   = 270000 // ~67k tokens - all 86 tools (v8.0: 81 + 5 compound)
 
 	// Per-tool schema budget (bytes) - catches bloated schemas
 	maxToolSchemaBytes = 6000 // ~1500 tokens per tool
@@ -23,7 +24,7 @@ const (
 // TestToolsListTokenBudget validates that preset token usage stays within budget.
 // This test fails CI if someone accidentally bloats tool schemas or adds too many tools.
 func TestToolsListTokenBudget(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	server := NewMCPServer("test", nil, logger)
 
 	tests := []struct {
@@ -32,9 +33,9 @@ func TestToolsListTokenBudget(t *testing.T) {
 		minTools int // Ensure we don't accidentally drop tools
 		maxTools int
 	}{
-		{PresetCore, maxCorePresetBytes, 12, 16},
-		{PresetReview, maxReviewPresetBytes, 17, 22},
-		{PresetFull, maxFullPresetBytes, 70, 80}, // 75 tools: 74 original + expandToolset
+		{PresetCore, maxCorePresetBytes, 17, 21},     // v8.0: 19 tools (14 + 5 compound)
+		{PresetReview, maxReviewPresetBytes, 22, 27}, // v8.0: 24 tools (19 + 5 review-specific)
+		{PresetFull, maxFullPresetBytes, 80, 90},     // v8.0: 86 tools (81 + 5 compound)
 	}
 
 	for _, tt := range tests {
@@ -71,7 +72,7 @@ func TestToolsListTokenBudget(t *testing.T) {
 // TestToolSchemaSize validates individual tool schemas don't bloat.
 // Catches cases where a single tool's schema grows excessively.
 func TestToolSchemaSize(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	server := NewMCPServer("test", nil, logger)
 
 	tools := server.GetToolDefinitions()
@@ -131,7 +132,7 @@ func TestTokenMetrics(t *testing.T) {
 		t.Skip("skipping metrics output in short mode")
 	}
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	server := NewMCPServer("test", nil, logger)
 
 	t.Log("")

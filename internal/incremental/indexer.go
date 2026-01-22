@@ -2,11 +2,22 @@ package incremental
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
-	"ckb/internal/logging"
+	"ckb/internal/project"
 	"ckb/internal/storage"
+)
+
+// Error types for graceful degradation
+var (
+	// ErrIncrementalNotSupported indicates the language doesn't support incremental indexing
+	ErrIncrementalNotSupported = errors.New("incremental indexing not supported for this language")
+
+	// ErrIndexerNotInstalled indicates the required indexer is not installed
+	ErrIndexerNotInstalled = errors.New("indexer not installed")
 )
 
 // CurrentSchemaVersion should match storage.currentSchemaVersion
@@ -21,11 +32,11 @@ type IncrementalIndexer struct {
 	updater   *IndexUpdater
 	store     *Store
 	config    *Config
-	logger    *logging.Logger
+	logger    *slog.Logger
 }
 
 // NewIncrementalIndexer creates a new incremental indexer
-func NewIncrementalIndexer(repoRoot string, db *storage.DB, config *Config, logger *logging.Logger) *IncrementalIndexer {
+func NewIncrementalIndexer(repoRoot string, db *storage.DB, config *Config, logger *slog.Logger) *IncrementalIndexer {
 	if config == nil {
 		config = DefaultConfig()
 	}
@@ -49,10 +60,42 @@ func NewIncrementalIndexer(repoRoot string, db *storage.DB, config *Config, logg
 	}
 }
 
-// IndexIncremental performs an incremental index update
-// Returns stats on success, error if incremental not possible
+// IndexIncremental performs an incremental index update for Go projects.
+// Deprecated: Use IndexIncrementalWithLang for multi-language support.
 func (i *IncrementalIndexer) IndexIncremental(ctx context.Context, since string) (*DeltaStats, error) {
+	return i.IndexIncrementalWithLang(ctx, since, project.LangGo)
+}
+
+// IndexIncrementalWithLang performs an incremental index update for the specified language.
+// Returns stats on success, or specific errors for graceful degradation:
+//   - ErrIncrementalNotSupported: language doesn't support incremental indexing
+//   - ErrIndexerNotInstalled: required indexer is not installed
+func (i *IncrementalIndexer) IndexIncrementalWithLang(ctx context.Context, since string, lang project.Language) (*DeltaStats, error) {
 	start := time.Now()
+
+	// Check if language supports incremental indexing
+	config := project.GetIndexerConfig(lang)
+	if config == nil {
+		return nil, fmt.Errorf("%w: %s", ErrIncrementalNotSupported, lang)
+	}
+	if !config.SupportsIncremental {
+		return nil, fmt.Errorf("%w: %s (not enabled)", ErrIncrementalNotSupported, lang)
+	}
+
+	// Check if indexer is installed
+	if !i.extractor.IsIndexerInstalled(config) {
+		installInfo := project.GetIndexerInfo(lang)
+		installCmd := ""
+		if installInfo != nil {
+			installCmd = installInfo.InstallCommand
+		}
+		i.logger.Warn("Indexer not installed for incremental mode",
+			"language", string(lang),
+			"indexer", config.Cmd,
+			"install", installCmd,
+		)
+		return nil, fmt.Errorf("%w: %s (install: %s)", ErrIndexerNotInstalled, config.Cmd, installCmd)
+	}
 
 	// 1. Detect changes
 	changes, err := i.detector.DetectChanges(since)
@@ -68,9 +111,7 @@ func (i *IncrementalIndexer) IndexIncremental(ctx context.Context, since string)
 		return stats, nil
 	}
 
-	i.logger.Info("Detected file changes", map[string]interface{}{
-		"changeCount": len(changes),
-	})
+	i.logger.Info("Detected file changes", "changeCount", len(changes), "language", string(lang))
 
 	// 2. Check if we should do full reindex instead
 	totalFiles := i.store.GetTotalFileCount()
@@ -81,10 +122,10 @@ func (i *IncrementalIndexer) IndexIncremental(ctx context.Context, since string)
 		}
 	}
 
-	// 3. Run scip-go to regenerate index
-	i.logger.Info("Running scip-go indexer", nil)
-	if runErr := i.extractor.RunSCIPGo(); runErr != nil {
-		return nil, fmt.Errorf("scip-go indexer failed: %w", runErr)
+	// 3. Run indexer to regenerate index
+	i.logger.Info("Running indexer", "indexer", config.Cmd, "language", string(lang))
+	if runErr := i.extractor.RunIndexer(config); runErr != nil {
+		return nil, fmt.Errorf("%s indexer failed: %w", config.Cmd, runErr)
 	}
 
 	// 4. Extract deltas from SCIP
@@ -107,16 +148,37 @@ func (i *IncrementalIndexer) IndexIncremental(ctx context.Context, since string)
 	delta.Stats.Duration = time.Since(start)
 	delta.Stats.IndexState = "partial"
 
-	i.logger.Info("Incremental index complete", map[string]interface{}{
-		"filesChanged":   delta.Stats.FilesChanged,
-		"filesAdded":     delta.Stats.FilesAdded,
-		"filesDeleted":   delta.Stats.FilesDeleted,
-		"symbolsAdded":   delta.Stats.SymbolsAdded,
-		"symbolsRemoved": delta.Stats.SymbolsRemoved,
-		"duration":       delta.Stats.Duration.String(),
-	})
+	i.logger.Info("Incremental index complete",
+		"filesChanged", delta.Stats.FilesChanged,
+		"filesAdded", delta.Stats.FilesAdded,
+		"filesDeleted", delta.Stats.FilesDeleted,
+		"symbolsAdded", delta.Stats.SymbolsAdded,
+		"symbolsRemoved", delta.Stats.SymbolsRemoved,
+		"duration", delta.Stats.Duration.String(),
+		"language", string(lang),
+	)
 
 	return &delta.Stats, nil
+}
+
+// CanUseIncremental checks if incremental indexing is available for a language.
+// Returns (canUse, reason) where reason explains why if canUse is false.
+func (i *IncrementalIndexer) CanUseIncremental(lang project.Language) (bool, string) {
+	config := project.GetIndexerConfig(lang)
+	if config == nil {
+		return false, fmt.Sprintf("no indexer configured for %s", lang)
+	}
+	if !config.SupportsIncremental {
+		return false, fmt.Sprintf("incremental not enabled for %s", lang)
+	}
+	if !i.extractor.IsIndexerInstalled(config) {
+		installInfo := project.GetIndexerInfo(lang)
+		if installInfo != nil {
+			return false, fmt.Sprintf("%s not installed (run: %s)", config.Cmd, installInfo.InstallCommand)
+		}
+		return false, fmt.Sprintf("%s not installed", config.Cmd)
+	}
+	return true, ""
 }
 
 // NeedsFullReindex checks if we need a full reindex

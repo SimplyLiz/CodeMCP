@@ -1,0 +1,33 @@
+{
+  "symbols": [
+    {
+      "file": "pkg/handler.go",
+      "kind": "class",
+      "line": 0,
+      "moduleId": "pkg",
+      "name": "Handler"
+    },
+    {
+      "file": "pkg/server.go",
+      "kind": "function",
+      "line": 0,
+      "moduleId": "pkg",
+      "name": "Server#RunServer"
+    },
+    {
+      "file": "main.go",
+      "kind": "function",
+      "line": 0,
+      "moduleId": ".",
+      "name": "main"
+    },
+    {
+      "file": "main.go",
+      "kind": "property",
+      "line": 0,
+      "moduleId": ".",
+      "name": ""
+    }
+  ],
+  "total": 4
+}

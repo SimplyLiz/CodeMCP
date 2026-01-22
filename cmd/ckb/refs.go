@@ -41,7 +41,7 @@ func init() {
 	refsCmd.Flags().StringVar(&refsScope, "scope", "", "Limit search to module ID")
 	refsCmd.Flags().BoolVar(&refsIncludeTest, "include-tests", false, "Include test file references")
 	refsCmd.Flags().IntVar(&refsLimit, "limit", 100, "Maximum number of references")
-	refsCmd.Flags().StringVar(&refsFormat, "format", "json", "Output format (json, human)")
+	refsCmd.Flags().StringVar(&refsFormat, "format", "human", "Output format (human, json)")
 	rootCmd.AddCommand(refsCmd)
 }
 
@@ -64,10 +64,10 @@ func runRefs(cmd *cobra.Command, args []string) {
 		if searchErr == nil && len(searchResult.Symbols) > 0 {
 			// Use the first matching symbol's stable ID
 			symbolID = searchResult.Symbols[0].StableId
-			logger.Debug("Resolved symbol name to SCIP ID", map[string]interface{}{
-				"query":    args[0],
-				"stableId": symbolID,
-			})
+			logger.Debug("Resolved symbol name to SCIP ID",
+				"query", args[0],
+				"stableId", symbolID,
+			)
 		}
 	}
 
@@ -96,11 +96,11 @@ func runRefs(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("References query completed", map[string]interface{}{
-		"symbolId": symbolID,
-		"refs":     len(response.References),
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("References query completed",
+		"symbolId", symbolID,
+		"refs", len(response.References),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // ReferencesResponseCLI contains reference results for CLI output

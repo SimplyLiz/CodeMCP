@@ -33,10 +33,10 @@ func (g *GitAdapter) GetFileChurn(filePath string, since string) (*ChurnMetrics,
 		)
 	}
 
-	g.logger.Debug("Getting file churn", map[string]interface{}{
-		"filePath": filePath,
-		"since":    since,
-	})
+	g.logger.Debug("Getting file churn",
+		"filePath", filePath,
+		"since", since,
+	)
 
 	// Get commit count
 	changeCount, err := g.getFileCommitCountSince(filePath, since)
@@ -65,10 +65,10 @@ func (g *GitAdapter) GetFileChurn(filePath string, since string) (*ChurnMetrics,
 	lastModified, err := g.GetFileLastModified(filePath)
 	if err != nil {
 		// Non-fatal, continue with empty timestamp
-		g.logger.Warn("Could not get last modified time", map[string]interface{}{
-			"filePath": filePath,
-			"error":    err.Error(),
-		})
+		g.logger.Warn("Could not get last modified time",
+			"filePath", filePath,
+			"error", err.Error(),
+		)
 		lastModified = ""
 	}
 
@@ -76,10 +76,10 @@ func (g *GitAdapter) GetFileChurn(filePath string, since string) (*ChurnMetrics,
 	avgChanges, err := g.getAverageChanges(filePath, since)
 	if err != nil {
 		// Non-fatal, default to 0
-		g.logger.Warn("Could not calculate average changes", map[string]interface{}{
-			"filePath": filePath,
-			"error":    err.Error(),
-		})
+		g.logger.Warn("Could not calculate average changes",
+			"filePath", filePath,
+			"error", err.Error(),
+		)
 		avgChanges = 0
 	}
 
@@ -109,10 +109,10 @@ func (g *GitAdapter) GetHotspots(limit int, since string) ([]ChurnMetrics, error
 		limit = 10 // Default to top 10
 	}
 
-	g.logger.Debug("Getting hotspots", map[string]interface{}{
-		"limit": limit,
-		"since": since,
-	})
+	g.logger.Debug("Getting hotspots",
+		"limit", limit,
+		"since", since,
+	)
 
 	// Use single git log command to get all data at once
 	// Format: commit hash, author, timestamp, then numstat for files
@@ -381,9 +381,9 @@ func (g *GitAdapter) getChangedFiles(since string) ([]string, error) {
 
 // GetTotalChurnMetrics returns aggregate churn metrics for the entire repository
 func (g *GitAdapter) GetTotalChurnMetrics(since string) (map[string]interface{}, error) {
-	g.logger.Debug("Getting total churn metrics", map[string]interface{}{
-		"since": since,
-	})
+	g.logger.Debug("Getting total churn metrics",
+		"since", since,
+	)
 
 	// Get total commit count
 	args := []string{"rev-list", "--count"}

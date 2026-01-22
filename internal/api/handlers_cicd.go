@@ -3,6 +3,8 @@ package api
 
 import (
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,7 +14,6 @@ import (
 	"ckb/internal/audit"
 	"ckb/internal/complexity"
 	"ckb/internal/coupling"
-	"ckb/internal/logging"
 	"ckb/internal/query"
 )
 
@@ -122,7 +123,7 @@ func (s *Server) handleCouplingAnalyze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logger := logging.NewLogger(logging.Config{Level: logging.WarnLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	analyzer := coupling.NewAnalyzer(repoRoot, logger)
 
 	opts := coupling.AnalyzeOptions{
@@ -187,7 +188,7 @@ func (s *Server) handleCouplingCheck(w http.ResponseWriter, r *http.Request) {
 		changedSet[f] = true
 	}
 
-	logger := logging.NewLogger(logging.Config{Level: logging.WarnLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	analyzer := coupling.NewAnalyzer(repoRoot, logger)
 
 	var missing []MissingCoupledFile
@@ -278,7 +279,7 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 		opts.QuickWins = true
 	}
 
-	logger := logging.NewLogger(logging.Config{Level: logging.WarnLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	analyzer := audit.NewAnalyzer(repoRoot, logger)
 
 	result, err := analyzer.Analyze(ctx, opts)

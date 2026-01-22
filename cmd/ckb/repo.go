@@ -374,16 +374,16 @@ func runRepoInfo(cmd *cobra.Command, args []string) error {
 }
 
 func runRepoWhich(cmd *cobra.Command, args []string) error {
-	registry, err := repos.LoadRegistry()
+	resolved, err := repos.ResolveActiveRepo("")
 	if err != nil {
-		return fmt.Errorf("failed to load registry: %w", err)
+		return fmt.Errorf("failed to resolve repository: %w", err)
 	}
 
-	if registry.Default == "" {
+	if resolved.Entry == nil {
 		os.Exit(1)
 	}
 
-	fmt.Println(registry.Default)
+	fmt.Println(resolved.Entry.Name)
 	return nil
 }
 

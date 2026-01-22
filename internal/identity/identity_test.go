@@ -2,11 +2,12 @@ package identity
 
 import (
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"testing"
 	"time"
 
-	"ckb/internal/logging"
 	"ckb/internal/storage"
 )
 
@@ -20,10 +21,7 @@ func setupTestDB(t *testing.T) (*storage.DB, string) {
 	}
 
 	// Create logger
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.JSONFormat,
-		Level:  logging.DebugLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Open database
 	db, err := storage.Open(tmpDir, logger)
@@ -79,10 +77,7 @@ func TestSymbolRepository(t *testing.T) {
 	db, tmpDir := setupTestDB(t)
 	defer cleanupTestDB(db, tmpDir)
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.JSONFormat,
-		Level:  logging.DebugLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	repo := NewSymbolRepository(db, logger)
 
@@ -174,10 +169,7 @@ func TestAliasResolution(t *testing.T) {
 	db, tmpDir := setupTestDB(t)
 	defer cleanupTestDB(db, tmpDir)
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.JSONFormat,
-		Level:  logging.DebugLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	repo := NewSymbolRepository(db, logger)
 	resolver := NewIdentityResolver(db, logger)
@@ -278,10 +270,7 @@ func TestAliasCreation(t *testing.T) {
 	db, tmpDir := setupTestDB(t)
 	defer cleanupTestDB(db, tmpDir)
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.JSONFormat,
-		Level:  logging.DebugLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	repo := NewSymbolRepository(db, logger)
 	creator := NewAliasCreator(db, logger)
@@ -397,10 +386,7 @@ func TestTombstones(t *testing.T) {
 	db, tmpDir := setupTestDB(t)
 	defer cleanupTestDB(db, tmpDir)
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.JSONFormat,
-		Level:  logging.DebugLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	repo := NewSymbolRepository(db, logger)
 	resolver := NewIdentityResolver(db, logger)
@@ -458,10 +444,7 @@ func TestAliasCycleDetection(t *testing.T) {
 	db, tmpDir := setupTestDB(t)
 	defer cleanupTestDB(db, tmpDir)
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.JSONFormat,
-		Level:  logging.DebugLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	repo := NewSymbolRepository(db, logger)
 	resolver := NewIdentityResolver(db, logger)
@@ -543,10 +526,7 @@ func TestAliasChainTooDeep(t *testing.T) {
 	db, tmpDir := setupTestDB(t)
 	defer cleanupTestDB(db, tmpDir)
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.JSONFormat,
-		Level:  logging.DebugLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	repo := NewSymbolRepository(db, logger)
 	resolver := NewIdentityResolver(db, logger)
@@ -614,10 +594,7 @@ func TestSymbolNotFound(t *testing.T) {
 	db, tmpDir := setupTestDB(t)
 	defer cleanupTestDB(db, tmpDir)
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.JSONFormat,
-		Level:  logging.DebugLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	resolver := NewIdentityResolver(db, logger)
 
@@ -641,10 +618,7 @@ func TestDirectSymbolResolution(t *testing.T) {
 	db, tmpDir := setupTestDB(t)
 	defer cleanupTestDB(db, tmpDir)
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.JSONFormat,
-		Level:  logging.DebugLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	repo := NewSymbolRepository(db, logger)
 	resolver := NewIdentityResolver(db, logger)

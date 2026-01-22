@@ -132,10 +132,10 @@ func (e *Engine) AnnotateModule(input *AnnotateModuleInput) (*AnnotateModuleResu
 		1.0, // User-declared is high confidence
 	); err != nil {
 		// Log warning but don't fail - the responsibility record was already saved
-		e.logger.Warn("Failed to update module annotations", map[string]interface{}{
-			"moduleId": input.ModuleId,
-			"error":    err.Error(),
-		})
+		e.logger.Warn("Failed to update module annotations",
+			"moduleId", input.ModuleId,
+			"error", err.Error(),
+		)
 	}
 
 	// Build result

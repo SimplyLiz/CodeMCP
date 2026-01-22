@@ -1,11 +1,11 @@
 package api
 
 import (
+	"io"
+	"log/slog"
 	"os"
 	"strings"
 	"testing"
-
-	"ckb/internal/logging"
 )
 
 func TestIsValidRepoID(t *testing.T) {
@@ -97,7 +97,7 @@ func TestIndexStorage(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	// Create logger
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Create storage
 	storage, err := NewIndexStorage(tmpDir, logger)

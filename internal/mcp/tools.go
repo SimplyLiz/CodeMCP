@@ -17,7 +17,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 	return []Tool{
 		{
 			Name:        "getStatus",
-			Description: "Get CKB system status including backend health, cache stats, and repository state",
+			Description: "Get CKB system status including backend health, cache stats, repository state, and usage hints for available capabilities.",
 			InputSchema: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
@@ -39,10 +39,30 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				"properties": map[string]interface{}{},
 			},
 		},
+		{
+			Name:        "reindex",
+			Description: "Trigger a refresh of the SCIP index without restarting CKB. Returns actionable guidance on how to refresh the index based on current staleness.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"scope": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"full", "incremental"},
+						"default":     "full",
+						"description": "Reindex scope: 'full' for complete reindex, 'incremental' for changed files only (Go only)",
+					},
+					"async": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Return immediately and poll status (not yet implemented)",
+					},
+				},
+			},
+		},
 		// Meta-tool for dynamic preset expansion
 		{
 			Name:        "expandToolset",
-			Description: "Add more tools for a specific workflow. ONLY call when user explicitly requests additional capabilities. Available presets: review, refactor, federation, docs, ops, full",
+			Description: "Add more tools for a specific workflow. Available presets: review, refactor, federation, docs, ops, full.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -81,7 +101,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "searchSymbols",
-			Description: "Search for symbols by name with optional filtering",
+			Description: "Semantic code search returning symbol types, locations, and relationships—more accurate than text-based grep/find.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -140,7 +160,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "getArchitecture",
-			Description: "Get codebase architecture with module dependencies",
+			Description: "Get codebase architecture with module dependencies. For single-module projects, use granularity='directory' or 'file' for meaningful visualization.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -159,12 +179,32 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 						"default":     false,
 						"description": "Force refresh of cached architecture",
 					},
+					"granularity": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"module", "directory", "file"},
+						"default":     "module",
+						"description": "Level of detail: 'module' (packages), 'directory' (folders), 'file' (individual files)",
+					},
+					"inferModules": map[string]interface{}{
+						"type":        "boolean",
+						"default":     true,
+						"description": "Infer modules from directory structure when no explicit package boundaries exist",
+					},
+					"targetPath": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional path to focus on (relative to repo root)",
+					},
+					"includeMetrics": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Include aggregate metrics (complexity, churn) per directory. Only applies to directory granularity.",
+					},
 				},
 			},
 		},
 		{
 			Name:        "analyzeImpact",
-			Description: "Analyze the impact of changing a symbol. Includes observed telemetry data when available for blended confidence scoring.",
+			Description: "Analyze the impact of changing a symbol. Returns callers, affected modules, and risk score—answers 'what breaks if I change X?'. For comprehensive pre-change analysis, use prepareChange instead.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -190,6 +230,44 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 					},
 				},
 				"required": []string{"symbolId"},
+			},
+		},
+		{
+			Name:        "analyzeChange",
+			Description: "Analyze the impact of a set of code changes from git diff. Answers: What might break? Which tests should run? Who needs to review?",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"diffContent": map[string]interface{}{
+						"type":        "string",
+						"description": "Raw git diff content. If empty, uses current working tree diff",
+					},
+					"staged": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "If true and no diffContent provided, analyze only staged changes (--cached)",
+					},
+					"baseBranch": map[string]interface{}{
+						"type":        "string",
+						"default":     "HEAD",
+						"description": "Base branch for comparison when using git diff",
+					},
+					"depth": map[string]interface{}{
+						"type":        "number",
+						"default":     2,
+						"description": "Maximum depth for transitive impact analysis (1-4)",
+					},
+					"includeTests": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Include test files in the analysis",
+					},
+					"strict": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Fail if SCIP index is stale",
+					},
+				},
 			},
 		},
 		{
@@ -1469,6 +1547,112 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		// v7.6 Static Dead Code Detection (SCIP-based, no telemetry required)
+		{
+			Name:        "findDeadCode",
+			Description: "Find dead code using static analysis of the SCIP index. Detects: symbols with zero references, self-only references, test-only references, and over-exported symbols. Works without telemetry.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"scope": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Limit analysis to specific packages/paths (e.g., ['internal/legacy', 'pkg/utils'])",
+					},
+					"includeUnexported": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Include unexported (private) symbols in analysis",
+					},
+					"minConfidence": map[string]interface{}{
+						"type":        "number",
+						"default":     0.7,
+						"description": "Minimum confidence threshold (0-1). Higher = fewer false positives",
+					},
+					"excludePatterns": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Glob patterns to exclude (e.g., ['*_generated.go', 'mocks/*'])",
+					},
+					"includeTestOnly": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Report symbols only used by tests as dead code",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"default":     100,
+						"description": "Maximum results to return",
+					},
+				},
+			},
+		},
+		// v7.6 Affected Tests Tool
+		{
+			Name:        "getAffectedTests",
+			Description: "Find tests affected by current code changes. Uses SCIP symbol analysis and heuristics to trace from changed code to test files. Useful for targeted test runs in CI or local development.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"staged": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Only analyze staged changes (git add)",
+					},
+					"baseBranch": map[string]interface{}{
+						"type":        "string",
+						"default":     "HEAD",
+						"description": "Base branch/commit to compare against",
+					},
+					"depth": map[string]interface{}{
+						"type":        "integer",
+						"default":     1,
+						"description": "Maximum depth for transitive impact analysis (1-3)",
+					},
+					"useCoverage": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Use coverage data if available for more accurate mapping",
+					},
+				},
+			},
+		},
+		// v7.6 Breaking Change Detection Tool
+		{
+			Name:        "compareAPI",
+			Description: "Compare API surfaces between two git refs to detect breaking changes. Finds removed symbols, signature changes, visibility changes, and renames. Useful for release planning and API compatibility checks.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"baseRef": map[string]interface{}{
+						"type":        "string",
+						"default":     "HEAD~1",
+						"description": "Base git ref for comparison (e.g., 'v1.0.0', 'main')",
+					},
+					"targetRef": map[string]interface{}{
+						"type":        "string",
+						"default":     "HEAD",
+						"description": "Target git ref for comparison (e.g., 'HEAD', 'v2.0.0')",
+					},
+					"scope": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Limit analysis to specific packages/paths",
+					},
+					"includeMinor": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Include non-breaking changes (additions) in output",
+					},
+				},
+			},
+		},
 		// v6.5 Developer Intelligence tools
 		{
 			Name:        "explainOrigin",
@@ -1598,6 +1782,67 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 						"type":        "boolean",
 						"default":     false,
 						"description": "Only show quick wins (low effort, high impact)",
+					},
+				},
+			},
+		},
+		// v8.0 Secret Detection
+		{
+			Name:        "scanSecrets",
+			Description: "Scan for exposed secrets (API keys, tokens, passwords) in the codebase. Uses builtin patterns and optionally external tools (gitleaks, trufflehog).",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"scope": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"workdir", "staged", "history"},
+						"default":     "workdir",
+						"description": "What to scan: workdir (current files), staged (git staged only), history (git commits)",
+					},
+					"paths": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "Limit scan to these paths (glob patterns)",
+					},
+					"excludePaths": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "Skip these paths (e.g., vendor/*, node_modules/*)",
+					},
+					"minSeverity": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"critical", "high", "medium", "low"},
+						"default":     "low",
+						"description": "Minimum severity to report",
+					},
+					"sinceCommit": map[string]interface{}{
+						"type":        "string",
+						"description": "For history scope: scan commits since this ref",
+					},
+					"maxCommits": map[string]interface{}{
+						"type":        "integer",
+						"default":     100,
+						"description": "For history scope: maximum commits to scan",
+					},
+					"useGitleaks": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Use gitleaks if available (more comprehensive patterns)",
+					},
+					"useTrufflehog": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Use trufflehog if available (verified secrets detection)",
+					},
+					"preferExternal": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Prefer external tools over builtin when available",
+					},
+					"applyAllowlist": map[string]interface{}{
+						"type":        "boolean",
+						"default":     true,
+						"description": "Apply configured allowlist to filter false positives",
 					},
 				},
 			},
@@ -1732,6 +1977,136 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				"properties": map[string]interface{}{},
 			},
 		},
+		// v8.0 Compound Tools - aggregate multiple queries to reduce tool calls
+		{
+			Name:        "explore",
+			Description: "Comprehensive area exploration returning structure, key symbols, and change hotspots in one call. Best starting point for file/directory/module questions. Aggregates: explainFile → searchSymbols → getCallGraph → getHotspots.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"target": map[string]interface{}{
+						"type":        "string",
+						"description": "File, directory, or module path to explore",
+					},
+					"depth": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"shallow", "standard", "deep"},
+						"default":     "standard",
+						"description": "Exploration thoroughness: shallow (quick overview), standard (balanced), deep (comprehensive)",
+					},
+					"focus": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"structure", "dependencies", "changes"},
+						"default":     "structure",
+						"description": "Aspect to emphasize: structure (symbols/types), dependencies (imports/exports), changes (hotspots/history)",
+					},
+				},
+				"required": []string{"target"},
+			},
+		},
+		{
+			Name:        "understand",
+			Description: "Comprehensive symbol deep-dive returning full context in one call. Ideal for 'what does X do?' or 'how does X work?' questions. Aggregates: searchSymbols → getSymbol → explainSymbol → findReferences → getCallGraph.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"query": map[string]interface{}{
+						"type":        "string",
+						"description": "Symbol name or ID to understand",
+					},
+					"includeReferences": map[string]interface{}{
+						"type":        "boolean",
+						"default":     true,
+						"description": "Include reference information grouped by file",
+					},
+					"includeCallGraph": map[string]interface{}{
+						"type":        "boolean",
+						"default":     true,
+						"description": "Include callers and callees",
+					},
+					"maxReferences": map[string]interface{}{
+						"type":        "number",
+						"default":     50,
+						"description": "Maximum references to include",
+					},
+				},
+				"required": []string{"query"},
+			},
+		},
+		{
+			Name:        "prepareChange",
+			Description: "Pre-change impact analysis showing blast radius, affected tests, coupled files, and risk score. Essential before modifying, renaming, or deleting code to prevent breaking changes.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"target": map[string]interface{}{
+						"type":        "string",
+						"description": "Symbol ID or file path to analyze",
+					},
+					"changeType": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"modify", "rename", "delete", "extract"},
+						"default":     "modify",
+						"description": "Type of change being planned",
+					},
+				},
+				"required": []string{"target"},
+			},
+		},
+		{
+			Name:        "batchGet",
+			Description: "Retrieve multiple symbols by ID in a single call. Max 50 symbols.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"symbolIds": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Array of symbol IDs to retrieve (max 50)",
+					},
+				},
+				"required": []string{"symbolIds"},
+			},
+		},
+		{
+			Name:        "batchSearch",
+			Description: "Perform multiple symbol searches in a single call. Max 10 queries.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"queries": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"query": map[string]interface{}{
+									"type":        "string",
+									"description": "Search query",
+								},
+								"kind": map[string]interface{}{
+									"type":        "string",
+									"description": "Optional kind filter",
+								},
+								"scope": map[string]interface{}{
+									"type":        "string",
+									"description": "Optional module scope",
+								},
+								"limit": map[string]interface{}{
+									"type":        "number",
+									"default":     10,
+									"description": "Max results per query",
+								},
+							},
+							"required": []string{"query"},
+						},
+						"description": "Array of search queries (max 10)",
+					},
+				},
+				"required": []string{"queries"},
+			},
+		},
 	}
 }
 
@@ -1740,12 +2115,14 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["getStatus"] = s.toolGetStatus
 	s.tools["getWideResultMetrics"] = s.toolGetWideResultMetrics
 	s.tools["doctor"] = s.toolDoctor
+	s.tools["reindex"] = s.toolReindex
 	s.tools["expandToolset"] = s.toolExpandToolset
 	s.tools["getSymbol"] = s.toolGetSymbol
 	s.tools["searchSymbols"] = s.toolSearchSymbols
 	s.tools["findReferences"] = s.toolFindReferences
 	s.tools["getArchitecture"] = s.toolGetArchitecture
 	s.tools["analyzeImpact"] = s.toolAnalyzeImpact
+	s.tools["analyzeChange"] = s.toolAnalyzeChange
 	s.tools["explainSymbol"] = s.toolExplainSymbol
 	s.tools["justifySymbol"] = s.toolJustifySymbol
 	s.tools["getCallGraph"] = s.toolGetCallGraph
@@ -1809,11 +2186,19 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["getTelemetryStatus"] = s.toolGetTelemetryStatus
 	s.tools["getObservedUsage"] = s.toolGetObservedUsage
 	s.tools["findDeadCodeCandidates"] = s.toolFindDeadCodeCandidates
+	// v7.6 Static Dead Code Detection
+	s.tools["findDeadCode"] = s.toolFindDeadCode
+	// v7.6 Affected Tests
+	s.tools["getAffectedTests"] = s.toolGetAffectedTests
+	// v7.6 Breaking Change Detection
+	s.tools["compareAPI"] = s.toolCompareAPI
 	// v6.5 Developer Intelligence tools
 	s.tools["explainOrigin"] = s.toolExplainOrigin
 	s.tools["analyzeCoupling"] = s.toolAnalyzeCoupling
 	s.tools["exportForLLM"] = s.toolExportForLLM
 	s.tools["auditRisk"] = s.toolAuditRisk
+	// v8.0 Secret Detection
+	s.tools["scanSecrets"] = s.toolScanSecrets
 	// v7.3 Doc-Symbol Linking tools
 	s.tools["getDocsForSymbol"] = s.toolGetDocsForSymbol
 	s.tools["getSymbolsInDoc"] = s.toolGetSymbolsInDoc
@@ -1825,4 +2210,13 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["listRepos"] = s.toolListRepos
 	s.tools["switchRepo"] = s.toolSwitchRepo
 	s.tools["getActiveRepo"] = s.toolGetActiveRepo
+	// v8.0 Compound Tools
+	s.tools["explore"] = s.toolExplore
+	s.tools["understand"] = s.toolUnderstand
+	s.tools["prepareChange"] = s.toolPrepareChange
+	s.tools["batchGet"] = s.toolBatchGet
+	s.tools["batchSearch"] = s.toolBatchSearch
+
+	// v8.0 Streaming support
+	s.RegisterStreamableTools()
 }

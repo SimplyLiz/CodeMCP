@@ -20,7 +20,7 @@ type DiffStats struct {
 
 // GetStagedDiff returns statistics for staged changes
 func (g *GitAdapter) GetStagedDiff() ([]DiffStats, error) {
-	g.logger.Debug("Getting staged diff", nil)
+	g.logger.Debug("Getting staged diff")
 
 	// Use git diff --cached --numstat to get staged changes
 	lines, err := g.executeGitCommandLines("diff", "--cached", "--numstat")
@@ -41,9 +41,9 @@ func (g *GitAdapter) GetStagedDiff() ([]DiffStats, error) {
 	err = g.enrichDiffStatsStaged(stats)
 	if err != nil {
 		// Non-fatal, log and continue
-		g.logger.Warn("Failed to enrich staged diff stats", map[string]interface{}{
-			"error": err.Error(),
-		})
+		g.logger.Warn("Failed to enrich staged diff stats",
+			"error", err.Error(),
+		)
 	}
 
 	return stats, nil
@@ -51,7 +51,7 @@ func (g *GitAdapter) GetStagedDiff() ([]DiffStats, error) {
 
 // GetWorkingTreeDiff returns statistics for working tree changes
 func (g *GitAdapter) GetWorkingTreeDiff() ([]DiffStats, error) {
-	g.logger.Debug("Getting working tree diff", nil)
+	g.logger.Debug("Getting working tree diff")
 
 	// Use git diff --numstat to get working tree changes
 	lines, err := g.executeGitCommandLines("diff", "--numstat")
@@ -72,9 +72,9 @@ func (g *GitAdapter) GetWorkingTreeDiff() ([]DiffStats, error) {
 	err = g.enrichDiffStatsWorking(stats)
 	if err != nil {
 		// Non-fatal, log and continue
-		g.logger.Warn("Failed to enrich working tree diff stats", map[string]interface{}{
-			"error": err.Error(),
-		})
+		g.logger.Warn("Failed to enrich working tree diff stats",
+			"error", err.Error(),
+		)
 	}
 
 	return stats, nil
@@ -82,7 +82,7 @@ func (g *GitAdapter) GetWorkingTreeDiff() ([]DiffStats, error) {
 
 // GetUntrackedFiles returns list of untracked files
 func (g *GitAdapter) GetUntrackedFiles() ([]string, error) {
-	g.logger.Debug("Getting untracked files", nil)
+	g.logger.Debug("Getting untracked files")
 
 	lines, err := g.executeGitCommandLines("ls-files", "--others", "--exclude-standard")
 	if err != nil {
@@ -100,9 +100,9 @@ func (g *GitAdapter) parseDiffStats(lines []string) ([]DiffStats, error) {
 	for _, line := range lines {
 		parts := strings.Fields(line)
 		if len(parts) < 3 {
-			g.logger.Warn("Skipping malformed numstat line", map[string]interface{}{
-				"line": line,
-			})
+			g.logger.Warn("Skipping malformed numstat line",
+				"line", line,
+			)
 			continue
 		}
 
@@ -117,19 +117,19 @@ func (g *GitAdapter) parseDiffStats(lines []string) ([]DiffStats, error) {
 			var err error
 			additions, err = strconv.Atoi(parts[0])
 			if err != nil {
-				g.logger.Warn("Failed to parse additions", map[string]interface{}{
-					"line":  line,
-					"error": err.Error(),
-				})
+				g.logger.Warn("Failed to parse additions",
+					"line", line,
+					"error", err.Error(),
+				)
 				continue
 			}
 
 			deletions, err = strconv.Atoi(parts[1])
 			if err != nil {
-				g.logger.Warn("Failed to parse deletions", map[string]interface{}{
-					"line":  line,
-					"error": err.Error(),
-				})
+				g.logger.Warn("Failed to parse deletions",
+					"line", line,
+					"error", err.Error(),
+				)
 				continue
 			}
 		}
@@ -158,9 +158,9 @@ func (g *GitAdapter) parseDiffStats(lines []string) ([]DiffStats, error) {
 
 		// For binary files, we can't determine additions/deletions
 		if isBinary {
-			g.logger.Debug("Binary file in diff", map[string]interface{}{
-				"filePath": filePath,
-			})
+			g.logger.Debug("Binary file in diff",
+				"filePath", filePath,
+			)
 		}
 
 		stats = append(stats, stat)
@@ -271,7 +271,7 @@ func (g *GitAdapter) enrichDiffStatsWorking(stats []DiffStats) error {
 
 // GetDiffSummary returns a summary of all changes (staged + working tree + untracked)
 func (g *GitAdapter) GetDiffSummary() (map[string]interface{}, error) {
-	g.logger.Debug("Getting diff summary", nil)
+	g.logger.Debug("Getting diff summary")
 
 	staged, err := g.GetStagedDiff()
 	if err != nil {
@@ -324,10 +324,10 @@ func (g *GitAdapter) GetCommitRangeDiff(base, head string) ([]DiffStats, error) 
 		)
 	}
 
-	g.logger.Debug("Getting commit range diff", map[string]interface{}{
-		"base": base,
-		"head": head,
-	})
+	g.logger.Debug("Getting commit range diff",
+		"base", base,
+		"head", head,
+	)
 
 	// Get numstat for the commit range
 	lines, err := g.executeGitCommandLines("diff", "--numstat", base, head)
@@ -403,10 +403,10 @@ func (g *GitAdapter) GetCommitsSinceDate(since string, limit int) ([]CommitInfo,
 		limit = 100 // Default cap
 	}
 
-	g.logger.Debug("Getting commits since date", map[string]interface{}{
-		"since": since,
-		"limit": limit,
-	})
+	g.logger.Debug("Getting commits since date",
+		"since", since,
+		"limit", limit,
+	)
 
 	args := []string{
 		"log",
@@ -465,9 +465,9 @@ func (g *GitAdapter) GetCommitDiff(commitHash string) ([]DiffStats, error) {
 		)
 	}
 
-	g.logger.Debug("Getting commit diff", map[string]interface{}{
-		"commit": commitHash,
-	})
+	g.logger.Debug("Getting commit diff",
+		"commit", commitHash,
+	)
 
 	// Get numstat for the commit
 	lines, err := g.executeGitCommandLines("diff", "--numstat", commitHash+"^", commitHash)

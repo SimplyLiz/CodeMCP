@@ -1,0 +1,211 @@
+# Complexity Gate Workflow
+# Fails PRs that increase complexity beyond thresholds
+#
+# Usage: Copy to .github/workflows/complexity-gate.yml
+
+name: Complexity Gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+env:
+  # Thresholds - adjust for your project
+  MAX_CYCLOMATIC: 15
+  MAX_COGNITIVE: 20
+  MAX_FILE_COMPLEXITY: 100
+
+jobs:
+  complexity:
+    name: Check Complexity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install CKB
+        run: npm install -g @tastehub/ckb
+
+      - name: Restore Cache
+        uses: actions/cache@v4
+        with:
+          path: .ckb/
+          key: ckb-${{ runner.os }}-${{ hashFiles('**/*.go', '**/*.ts', '**/*.py') }}
+          restore-keys: |
+            ckb-${{ runner.os }}-
+
+      - name: Initialize
+        run: |
+          ckb init
+          ckb index --if-stale=24h
+
+      - name: Get Changed Files
+        id: changed
+        run: |
+          # Get list of changed source files
+          git diff --name-only ${{ github.event.pull_request.base.sha }}..${{ github.sha }} \
+            | grep -E '\.(go|ts|tsx|js|jsx|py|rs|java)$' \
+            > changed-files.txt || true
+
+          if [ -s changed-files.txt ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "files=$(cat changed-files.txt | tr '\n' ',' | sed 's/,$//')" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Analyze Complexity
+        if: steps.changed.outputs.has_changes == 'true'
+        id: analyze
+        run: |
+          VIOLATIONS=""
+          WARNINGS=""
+          VIOLATION_COUNT=0
+          WARNING_COUNT=0
+
+          while IFS= read -r file; do
+            if [ -f "$file" ]; then
+              # Get complexity for the file
+              RESULT=$(ckb complexity "$file" --format=json 2>/dev/null || echo '{}')
+
+              # Extract metrics
+              CYCLO=$(echo "$RESULT" | jq -r '.metrics.cyclomaticComplexity // 0')
+              COGNITIVE=$(echo "$RESULT" | jq -r '.metrics.cognitiveComplexity // 0')
+              TOTAL=$(echo "$RESULT" | jq -r '.metrics.totalComplexity // 0')
+
+              # Check thresholds
+              if [ "$CYCLO" -gt "$MAX_CYCLOMATIC" ]; then
+                VIOLATIONS="$VIOLATIONS\n- \`$file\`: Cyclomatic complexity $CYCLO exceeds $MAX_CYCLOMATIC"
+                VIOLATION_COUNT=$((VIOLATION_COUNT + 1))
+              elif [ "$CYCLO" -gt $((MAX_CYCLOMATIC - 5)) ]; then
+                WARNINGS="$WARNINGS\n- \`$file\`: Cyclomatic complexity $CYCLO approaching limit"
+                WARNING_COUNT=$((WARNING_COUNT + 1))
+              fi
+
+              if [ "$COGNITIVE" -gt "$MAX_COGNITIVE" ]; then
+                VIOLATIONS="$VIOLATIONS\n- \`$file\`: Cognitive complexity $COGNITIVE exceeds $MAX_COGNITIVE"
+                VIOLATION_COUNT=$((VIOLATION_COUNT + 1))
+              fi
+
+              if [ "$TOTAL" -gt "$MAX_FILE_COMPLEXITY" ]; then
+                VIOLATIONS="$VIOLATIONS\n- \`$file\`: Total complexity $TOTAL exceeds $MAX_FILE_COMPLEXITY"
+                VIOLATION_COUNT=$((VIOLATION_COUNT + 1))
+              fi
+            fi
+          done < changed-files.txt
+
+          echo "violation_count=$VIOLATION_COUNT" >> $GITHUB_OUTPUT
+          echo "warning_count=$WARNING_COUNT" >> $GITHUB_OUTPUT
+
+          # Save for comment
+          echo -e "$VIOLATIONS" > violations.txt
+          echo -e "$WARNINGS" > warnings.txt
+
+      - name: Generate Complexity Report
+        if: steps.changed.outputs.has_changes == 'true'
+        run: |
+          cat > complexity-report.md << 'HEADER'
+          ## Complexity Analysis
+
+          HEADER
+
+          VIOLATIONS=$(cat violations.txt)
+          WARNINGS=$(cat warnings.txt)
+          V_COUNT=${{ steps.analyze.outputs.violation_count }}
+          W_COUNT=${{ steps.analyze.outputs.warning_count }}
+
+          if [ "$V_COUNT" -gt 0 ]; then
+            echo "### Violations" >> complexity-report.md
+            echo "" >> complexity-report.md
+            echo -e "$VIOLATIONS" >> complexity-report.md
+            echo "" >> complexity-report.md
+          fi
+
+          if [ "$W_COUNT" -gt 0 ]; then
+            echo "### Warnings" >> complexity-report.md
+            echo "" >> complexity-report.md
+            echo -e "$WARNINGS" >> complexity-report.md
+            echo "" >> complexity-report.md
+          fi
+
+          if [ "$V_COUNT" -eq 0 ] && [ "$W_COUNT" -eq 0 ]; then
+            echo "All changed files are within complexity thresholds." >> complexity-report.md
+          fi
+
+          echo "" >> complexity-report.md
+          echo "<details>" >> complexity-report.md
+          echo "<summary>Thresholds</summary>" >> complexity-report.md
+          echo "" >> complexity-report.md
+          echo "- Cyclomatic complexity: $MAX_CYCLOMATIC" >> complexity-report.md
+          echo "- Cognitive complexity: $MAX_COGNITIVE" >> complexity-report.md
+          echo "- Total file complexity: $MAX_FILE_COMPLEXITY" >> complexity-report.md
+          echo "" >> complexity-report.md
+          echo "</details>" >> complexity-report.md
+          echo "" >> complexity-report.md
+          echo "---" >> complexity-report.md
+          echo "*Generated by CKB*" >> complexity-report.md
+
+      - name: Post Comment
+        if: steps.changed.outputs.has_changes == 'true'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: complexity-check
+          path: complexity-report.md
+
+      - name: Create Check Run
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const hasChanges = '${{ steps.changed.outputs.has_changes }}' === 'true';
+            const violations = parseInt('${{ steps.analyze.outputs.violation_count || 0 }}');
+            const warnings = parseInt('${{ steps.analyze.outputs.warning_count || 0 }}');
+
+            let conclusion = 'success';
+            let title = 'Complexity check passed';
+            let summary = 'All files within thresholds.';
+
+            if (!hasChanges) {
+              summary = 'No source files changed.';
+            } else if (violations > 0) {
+              conclusion = 'failure';
+              title = `${violations} complexity violation(s) found`;
+              summary = `Found ${violations} file(s) exceeding complexity thresholds.`;
+            } else if (warnings > 0) {
+              conclusion = 'neutral';
+              title = `${warnings} complexity warning(s)`;
+              summary = `${warnings} file(s) approaching complexity limits.`;
+            }
+
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'Complexity Gate',
+              head_sha: context.sha,
+              status: 'completed',
+              conclusion: conclusion,
+              output: {
+                title: title,
+                summary: summary
+              }
+            });
+
+      - name: Fail on Violations
+        if: steps.analyze.outputs.violation_count > 0
+        run: |
+          echo "::error::Complexity violations detected. Please refactor complex code before merging."
+          exit 1

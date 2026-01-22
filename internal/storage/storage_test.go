@@ -1,12 +1,12 @@
 package storage
 
 import (
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
-
-	"ckb/internal/logging"
 )
 
 func setupTestDB(t *testing.T) (*DB, string) {
@@ -17,10 +17,7 @@ func setupTestDB(t *testing.T) (*DB, string) {
 	}
 
 	// Create logger
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.DebugLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Open database
 	db, err := Open(tmpDir, logger)

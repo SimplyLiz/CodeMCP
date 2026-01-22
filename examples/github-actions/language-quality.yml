@@ -1,0 +1,277 @@
+# Language Quality Dashboard Workflow
+# Monitors indexer quality per language and alerts on degradation
+#
+# Usage: Copy to .github/workflows/language-quality.yml
+
+name: Language Quality Dashboard
+
+on:
+  schedule:
+    # Run daily to track quality over time
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'go.mod'
+      - 'package.json'
+      - 'requirements.txt'
+      - 'Cargo.toml'
+      - 'pom.xml'
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  QUALITY_THRESHOLD: 0.7
+
+jobs:
+  analyze:
+    name: Analyze Language Quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install CKB
+        run: npm install -g @tastehub/ckb
+
+      - name: Initialize
+        run: |
+          ckb init
+          ckb index
+
+      - name: Check Environment
+        id: doctor
+        run: |
+          ckb doctor --tier=full --format=json > doctor.json
+
+          # Count languages by status
+          READY=$(jq '[.languages[] | select(.status == "ready")] | length' doctor.json)
+          MISSING=$(jq '[.languages[] | select(.status == "missing")] | length' doctor.json)
+          PARTIAL=$(jq '[.languages[] | select(.status == "partial")] | length' doctor.json)
+
+          echo "ready=$READY" >> $GITHUB_OUTPUT
+          echo "missing=$MISSING" >> $GITHUB_OUTPUT
+          echo "partial=$PARTIAL" >> $GITHUB_OUTPUT
+
+      - name: Analyze Language Quality
+        id: quality
+        run: |
+          # Start server for API access
+          ckb serve --port 8080 &
+          sleep 3
+
+          # Get language quality metrics
+          curl -s http://localhost:8080/meta/languages > languages.json || echo '{"languages":[]}' > languages.json
+
+          # Calculate overall quality
+          OVERALL=$(jq '.overallQuality // 1' languages.json)
+          LOW_QUALITY=$(jq '[.languages[] | select(.quality < ${{ env.QUALITY_THRESHOLD }})] | length' languages.json)
+
+          echo "overall=$OVERALL" >> $GITHUB_OUTPUT
+          echo "low_quality=$LOW_QUALITY" >> $GITHUB_OUTPUT
+
+          # Get quality by tier
+          TIER1=$(jq '[.languages[] | select(.tier == "scip" or .tier == 1)] | length' languages.json)
+          TIER2=$(jq '[.languages[] | select(.tier == "lsp" or .tier == 2)] | length' languages.json)
+          TIER3=$(jq '[.languages[] | select(.tier == "tree-sitter" or .tier == 3)] | length' languages.json)
+
+          echo "tier1=$TIER1" >> $GITHUB_OUTPUT
+          echo "tier2=$TIER2" >> $GITHUB_OUTPUT
+          echo "tier3=$TIER3" >> $GITHUB_OUTPUT
+
+      - name: Generate Dashboard
+        run: |
+          cat > language-dashboard.md << 'HEADER'
+          # Language Quality Dashboard
+
+          ## Summary
+
+          HEADER
+
+          OVERALL=$(echo "${{ steps.quality.outputs.overall }}" | awk '{printf "%.0f", $1 * 100}')
+          echo "**Overall Quality Score:** ${OVERALL}%" >> language-dashboard.md
+          echo "" >> language-dashboard.md
+
+          echo "### Indexer Coverage" >> language-dashboard.md
+          echo "" >> language-dashboard.md
+          echo "| Tier | Count | Description |" >> language-dashboard.md
+          echo "|------|-------|-------------|" >> language-dashboard.md
+          echo "| Tier 1 (SCIP) | ${{ steps.quality.outputs.tier1 }} | Full semantic analysis |" >> language-dashboard.md
+          echo "| Tier 2 (LSP) | ${{ steps.quality.outputs.tier2 }} | Go-to-definition, references |" >> language-dashboard.md
+          echo "| Tier 3 (Tree-sitter) | ${{ steps.quality.outputs.tier3 }} | Syntax-based navigation |" >> language-dashboard.md
+          echo "" >> language-dashboard.md
+
+          echo "### Environment Status" >> language-dashboard.md
+          echo "" >> language-dashboard.md
+          echo "| Status | Count |" >> language-dashboard.md
+          echo "|--------|-------|" >> language-dashboard.md
+          echo "| ✅ Ready | ${{ steps.doctor.outputs.ready }} |" >> language-dashboard.md
+          echo "| ⚠️ Partial | ${{ steps.doctor.outputs.partial }} |" >> language-dashboard.md
+          echo "| ❌ Missing | ${{ steps.doctor.outputs.missing }} |" >> language-dashboard.md
+          echo "" >> language-dashboard.md
+
+          echo "### Language Details" >> language-dashboard.md
+          echo "" >> language-dashboard.md
+          echo "| Language | Quality | Tier | Status | Issues |" >> language-dashboard.md
+          echo "|----------|---------|------|--------|--------|" >> language-dashboard.md
+
+          # Combine doctor and quality data
+          jq -r '
+            .languages[] |
+            "| \(.name) | \((.quality // 1) * 100 | floor)% | \(.tier // "—") | \(.status // "—") | \(.issues // [] | join(", ") | if . == "" then "—" else . end) |"
+          ' languages.json >> language-dashboard.md 2>/dev/null || true
+
+          # Add doctor data for missing tools
+          jq -r '
+            .languages[] | select(.status != "ready") |
+            "| \(.name) | — | \(.tier // "—") | \(.status) | \(.installCommand // "—") |"
+          ' doctor.json >> language-dashboard.md 2>/dev/null || true
+
+          echo "" >> language-dashboard.md
+
+          # Low quality warnings
+          LOW_QUALITY=${{ steps.quality.outputs.low_quality }}
+          if [ "$LOW_QUALITY" -gt 0 ]; then
+            echo "### ⚠️ Low Quality Languages" >> language-dashboard.md
+            echo "" >> language-dashboard.md
+            echo "These languages have quality below ${{ env.QUALITY_THRESHOLD }}:" >> language-dashboard.md
+            echo "" >> language-dashboard.md
+
+            jq -r '
+              .languages[] |
+              select(.quality < ${{ env.QUALITY_THRESHOLD }}) |
+              "- **\(.name)**: \((.quality // 0) * 100 | floor)% quality"
+            ' languages.json >> language-dashboard.md
+            echo "" >> language-dashboard.md
+          fi
+
+          # Recommendations
+          echo "### Recommendations" >> language-dashboard.md
+          echo "" >> language-dashboard.md
+
+          MISSING=${{ steps.doctor.outputs.missing }}
+          if [ "$MISSING" -gt 0 ]; then
+            echo "**Install missing indexers:**" >> language-dashboard.md
+            echo "" >> language-dashboard.md
+            jq -r '
+              .languages[] |
+              select(.status == "missing") |
+              "- \(.name): `\(.installCommand // "See documentation")`"
+            ' doctor.json >> language-dashboard.md
+            echo "" >> language-dashboard.md
+          fi
+
+          echo "---" >> language-dashboard.md
+          echo "*Generated by CKB language quality analysis*" >> language-dashboard.md
+
+      - name: Download Previous Baseline
+        uses: dawidd6/action-download-artifact@v3
+        continue-on-error: true
+        with:
+          workflow: language-quality.yml
+          name: language-baseline
+          path: baseline/
+
+      - name: Check for Degradation
+        id: degradation
+        run: |
+          DEGRADED=0
+
+          if [ -f "baseline/languages.json" ]; then
+            # Compare quality scores
+            while IFS= read -r lang; do
+              CURRENT=$(jq -r --arg l "$lang" '.languages[] | select(.name == $l) | .quality // 1' languages.json)
+              PREVIOUS=$(jq -r --arg l "$lang" '.languages[] | select(.name == $l) | .quality // 1' baseline/languages.json)
+
+              if [ -n "$CURRENT" ] && [ -n "$PREVIOUS" ]; then
+                DIFF=$(echo "$CURRENT - $PREVIOUS" | bc -l 2>/dev/null || echo "0")
+                if (( $(echo "$DIFF < -0.1" | bc -l 2>/dev/null || echo "0") )); then
+                  echo "Degradation detected for $lang: $PREVIOUS -> $CURRENT"
+                  DEGRADED=$((DEGRADED + 1))
+                fi
+              fi
+            done < <(jq -r '.languages[].name' languages.json)
+          fi
+
+          echo "degraded=$DEGRADED" >> $GITHUB_OUTPUT
+
+      - name: Save Baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: language-baseline
+          path: languages.json
+          retention-days: 90
+
+      - name: Upload Dashboard
+        uses: actions/upload-artifact@v4
+        with:
+          name: language-dashboard
+          path: |
+            language-dashboard.md
+            languages.json
+            doctor.json
+          retention-days: 30
+
+      - name: Create Alert Issue
+        if: steps.quality.outputs.low_quality > 2 || steps.degradation.outputs.degraded > 0
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('language-dashboard.md', 'utf8');
+            const lowQuality = parseInt('${{ steps.quality.outputs.low_quality }}');
+            const degraded = parseInt('${{ steps.degradation.outputs.degraded }}');
+
+            let title = '[CKB] Language Quality Alert: ';
+            if (degraded > 0) {
+              title += `${degraded} language(s) degraded`;
+            } else {
+              title += `${lowQuality} language(s) below threshold`;
+            }
+
+            // Check for existing open issue
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['language-quality', 'automated'],
+              state: 'open'
+            });
+
+            if (issues.data.length > 0) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issues.data[0].number,
+                title: title,
+                body: report
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: report,
+                labels: ['language-quality', 'automated']
+              });
+            }
+
+      - name: Summary
+        run: |
+          echo "## Language Quality Dashboard" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Overall Quality | $(echo "${{ steps.quality.outputs.overall }}" | awk '{printf "%.0f", $1 * 100}')% |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tier 1 (SCIP) | ${{ steps.quality.outputs.tier1 }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tier 2 (LSP) | ${{ steps.quality.outputs.tier2 }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tier 3 (Tree-sitter) | ${{ steps.quality.outputs.tier3 }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Low Quality | ${{ steps.quality.outputs.low_quality }} |" >> $GITHUB_STEP_SUMMARY

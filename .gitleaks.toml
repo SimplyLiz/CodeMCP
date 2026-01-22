@@ -1,0 +1,32 @@
+# Gitleaks configuration for CKB
+# https://github.com/gitleaks/gitleaks#configuration
+
+title = "CKB Gitleaks Config"
+
+# Extend the default gitleaks rules
+[extend]
+useDefault = true
+
+[allowlist]
+description = "CKB-specific allowlist for false positives"
+
+# Paths containing test fixtures and detection patterns (not real secrets)
+paths = [
+  # Secret detection patterns - these ARE the detectors, not secrets
+  '''internal/secrets/patterns\.go''',
+
+  # Test files with example/dummy secrets for validation
+  '''.*_test\.go''',
+  '''testdata/.*''',
+
+  # Documentation with example patterns
+  '''.*\.md''',
+]
+
+# Specific rules to ignore in certain contexts
+# (useful if we need to allow specific patterns project-wide)
+# regexTarget = "match"
+# regexes = [
+#   '''EXAMPLE''',
+#   '''CHANGEME''',
+# ]

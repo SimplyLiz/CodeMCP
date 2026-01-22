@@ -3,6 +3,7 @@ package modules
 import (
 	"bufio"
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -10,7 +11,6 @@ import (
 	"time"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
 	"ckb/internal/paths"
 )
 
@@ -104,11 +104,11 @@ var builtinPatterns = map[string]*LanguagePattern{
 type ImportScanner struct {
 	config   *config.ImportScanConfig
 	patterns map[string]*LanguagePattern
-	logger   *logging.Logger
+	logger   *slog.Logger
 }
 
 // NewImportScanner creates a new import scanner
-func NewImportScanner(cfg *config.ImportScanConfig, logger *logging.Logger) *ImportScanner {
+func NewImportScanner(cfg *config.ImportScanConfig, logger *slog.Logger) *ImportScanner {
 	return &ImportScanner{
 		config:   cfg,
 		patterns: builtinPatterns,
@@ -131,10 +131,7 @@ func (s *ImportScanner) ScanFile(filePath string, repoRoot string) ([]*ImportEdg
 	}
 
 	if info.Size() > int64(s.config.MaxFileSizeBytes) {
-		s.logger.Debug("Skipping file: too large", map[string]interface{}{
-			"file": canonicalPath,
-			"size": info.Size(),
-		})
+		s.logger.Debug("Skipping file: too large", "file", canonicalPath, "size", info.Size())
 		return nil, nil
 	}
 
@@ -234,9 +231,7 @@ func (s *ImportScanner) scanDirectoryWithContext(ctx context.Context, dirPath st
 
 		// Check max files limit
 		if filesScanned >= maxFiles {
-			s.logger.Warn("Reached max files limit during import scan", map[string]interface{}{
-				"maxFiles": maxFiles,
-			})
+			s.logger.Warn("Reached max files limit during import scan", "maxFiles", maxFiles)
 			return filepath.SkipAll
 		}
 
@@ -249,10 +244,7 @@ func (s *ImportScanner) scanDirectoryWithContext(ctx context.Context, dirPath st
 		edges, err := s.ScanFile(path, repoRoot)
 		if err != nil {
 			// Log error but continue scanning
-			s.logger.Warn("Error scanning file", map[string]interface{}{
-				"file":  path,
-				"error": err.Error(),
-			})
+			s.logger.Warn("Error scanning file", "file", path, "error", err.Error())
 			return nil //nolint:nilerr // intentionally continue on scan errors
 		}
 
@@ -266,10 +258,7 @@ func (s *ImportScanner) scanDirectoryWithContext(ctx context.Context, dirPath st
 		return nil, err
 	}
 
-	s.logger.Info("Import scan completed", map[string]interface{}{
-		"filesScanned": filesScanned,
-		"importsFound": len(allEdges),
-	})
+	s.logger.Info("Import scan completed", "filesScanned", filesScanned, "importsFound", len(allEdges))
 
 	return allEdges, nil
 }

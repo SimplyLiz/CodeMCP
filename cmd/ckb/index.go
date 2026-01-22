@@ -4,10 +4,14 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -15,7 +19,6 @@ import (
 	"ckb/internal/config"
 	"ckb/internal/incremental"
 	"ckb/internal/index"
-	"ckb/internal/logging"
 	"ckb/internal/project"
 	"ckb/internal/repostate"
 	"ckb/internal/storage"
@@ -23,13 +26,15 @@ import (
 )
 
 var (
-	indexForce    bool
-	indexDryRun   bool
-	indexLang     string
-	indexCompdb   string // Path to compile_commands.json for C/C++
-	indexTier     string // Tier to validate (enhanced, full)
-	indexAllowFb  bool   // Allow fallback if tier not satisfied
-	indexShowTier bool   // Show tier summary after indexing
+	indexForce         bool
+	indexDryRun        bool
+	indexLang          string
+	indexCompdb        string        // Path to compile_commands.json for C/C++
+	indexTier          string        // Tier to validate (enhanced, full)
+	indexAllowFb       bool          // Allow fallback if tier not satisfied
+	indexShowTier      bool          // Show tier summary after indexing
+	indexWatch         bool          // Watch for changes and auto-reindex
+	indexWatchInterval time.Duration // Watch mode polling interval
 )
 
 var indexCmd = &cobra.Command{
@@ -75,22 +80,21 @@ func init() {
 	indexCmd.Flags().StringVar(&indexTier, "tier", "", "Validate tier requirements before indexing (enhanced, full)")
 	indexCmd.Flags().BoolVar(&indexAllowFb, "allow-fallback", true, "Continue if tier requirements not met (default: true)")
 	indexCmd.Flags().BoolVar(&indexShowTier, "show-tier", true, "Show tier summary after indexing (default: true)")
+	indexCmd.Flags().BoolVar(&indexWatch, "watch", false, "Watch for changes and auto-reindex")
+	indexCmd.Flags().DurationVar(&indexWatchInterval, "watch-interval", 30*time.Second,
+		"Watch mode polling interval (min 5s, max 5m)")
 	rootCmd.AddCommand(indexCmd)
 }
 
 func runIndex(cmd *cobra.Command, args []string) {
 	repoRoot := mustGetRepoRoot()
 
-	// Check if .ckb directory exists, auto-init if not
+	// Check if this is an initialized CKB project
 	ckbDir := filepath.Join(repoRoot, ".ckb")
 	if _, err := os.Stat(ckbDir); os.IsNotExist(err) {
-		fmt.Println("No .ckb directory found. Initializing...")
-		if err := os.MkdirAll(ckbDir, 0755); err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating .ckb directory: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("  Created .ckb/")
-		fmt.Println()
+		fmt.Fprintln(os.Stderr, "Error: Not a CKB project.")
+		fmt.Fprintln(os.Stderr, "Run 'ckb init' first to initialize this directory.")
+		os.Exit(1)
 	}
 
 	// Get SCIP index path from config (default: .scip/index.scip)
@@ -266,9 +270,9 @@ func runIndex(cmd *cobra.Command, args []string) {
 		os.Exit(0)
 	}
 
-	// Try incremental indexing for Go projects (unless --force)
-	if !indexForce && lang == project.LangGo {
-		if tryIncrementalIndex(repoRoot, ckbDir) {
+	// Try incremental indexing for supported languages (unless --force)
+	if !indexForce && project.SupportsIncrementalIndexing(lang) {
+		if tryIncrementalIndex(repoRoot, ckbDir, lang) {
 			// Incremental succeeded, we're done
 			return
 		}
@@ -340,9 +344,9 @@ func runIndex(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(os.Stderr, "Warning: Could not save index metadata: %v\n", saveErr)
 	}
 
-	// Populate incremental tracking tables (for Go projects)
-	if lang == project.LangGo {
-		populateIncrementalTracking(repoRoot)
+	// Populate incremental tracking tables for supported languages
+	if project.SupportsIncrementalIndexing(lang) {
+		populateIncrementalTracking(repoRoot, lang)
 	}
 
 	// Success message
@@ -362,6 +366,12 @@ func runIndex(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Println("Run 'ckb status' to verify.")
+
+	// Start watch mode if enabled
+	if indexWatch {
+		fmt.Println()
+		runIndexWatchLoop(repoRoot, ckbDir, lang)
+	}
 }
 
 // showTierSummary displays the current tier status after indexing.
@@ -467,6 +477,8 @@ func isIndexerInstalled(command string) bool {
 }
 
 // runIndexerCommand runs the indexer and streams output.
+// By default, indexer output is captured and only shown on error.
+// With -v, output streams to stderr in real-time.
 func runIndexerCommand(dir, command string) error {
 	// Split command into parts
 	parts := strings.Fields(command)
@@ -474,20 +486,33 @@ func runIndexerCommand(dir, command string) error {
 		return fmt.Errorf("empty command")
 	}
 
-	cmd := exec.Command(parts[0], parts[1:]...)
+	cmd := exec.Command(parts[0], parts[1:]...) // #nosec G204 //nolint:gosec // command from trusted indexer config
 	cmd.Dir = dir
 
-	// Capture stderr for error messages, stream both
-	var stderr bytes.Buffer
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = &stderr
+	var stdout, stderr bytes.Buffer
+
+	if verbosity > 0 {
+		// Verbose mode: stream to stderr (keeps stdout clean for piping)
+		cmd.Stdout = os.Stderr
+		cmd.Stderr = os.Stderr
+	} else {
+		// Default: capture output, only show on error
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+	}
 
 	err := cmd.Run()
 	if err != nil {
-		// Print captured stderr
-		if stderr.Len() > 0 {
-			fmt.Fprintln(os.Stderr, "Indexer output:")
-			fmt.Fprintln(os.Stderr, stderr.String())
+		// Show captured output on error (if not already streamed)
+		if verbosity == 0 {
+			if stdout.Len() > 0 {
+				fmt.Fprintln(os.Stderr, "Indexer stdout:")
+				fmt.Fprintln(os.Stderr, stdout.String())
+			}
+			if stderr.Len() > 0 {
+				fmt.Fprintln(os.Stderr, "Indexer stderr:")
+				fmt.Fprintln(os.Stderr, stderr.String())
+			}
 		}
 		return fmt.Errorf("indexer failed: %w", err)
 	}
@@ -633,10 +658,10 @@ func getSourceExtensions(lang project.Language) []string {
 	}
 }
 
-// tryIncrementalIndex attempts incremental indexing for Go projects.
+// tryIncrementalIndex attempts incremental indexing for supported languages.
 // Returns true if incremental succeeded (caller should return early).
 // Returns false if full reindex is needed.
-func tryIncrementalIndex(repoRoot, ckbDir string) bool {
+func tryIncrementalIndex(repoRoot, ckbDir string, lang project.Language) bool {
 	dbPath := filepath.Join(ckbDir, "ckb.db")
 
 	// Check if database exists
@@ -645,11 +670,8 @@ func tryIncrementalIndex(repoRoot, ckbDir string) bool {
 		return false
 	}
 
-	// Create logger (quiet for CLI - only errors)
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.ErrorLevel,
-	})
+	// Create logger (silent for CLI)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Open database
 	db, err := storage.Open(repoRoot, logger)
@@ -690,10 +712,23 @@ func tryIncrementalIndex(repoRoot, ckbDir string) bool {
 	}
 	defer lock.Release()
 
+	// Check if incremental is available for this language
+	canUse, reason := indexer.CanUseIncremental(lang)
+	if !canUse {
+		fmt.Printf("Incremental not available: %s\n", reason)
+		return false
+	}
+
 	// Try incremental update
 	ctx := context.Background()
-	stats, err := indexer.IndexIncremental(ctx, "")
+	stats, err := indexer.IndexIncrementalWithLang(ctx, "", lang)
 	if err != nil {
+		// Check for specific errors that should fall back to full reindex
+		if strings.Contains(err.Error(), "not supported") ||
+			strings.Contains(err.Error(), "not installed") {
+			fmt.Printf("Incremental not available: %v\n", err)
+			return false
+		}
 		fmt.Printf("Incremental failed: %v\n", err)
 		fmt.Println("Falling back to full reindex...")
 		return false
@@ -710,12 +745,9 @@ func tryIncrementalIndex(repoRoot, ckbDir string) bool {
 
 // populateIncrementalTracking sets up tracking tables after a full index.
 // This enables subsequent incremental updates.
-func populateIncrementalTracking(repoRoot string) {
-	// Create logger (quiet for CLI - only errors)
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.ErrorLevel,
-	})
+func populateIncrementalTracking(repoRoot string, lang project.Language) {
+	// Create logger (silent for CLI)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Open database
 	db, err := storage.Open(repoRoot, logger)
@@ -748,4 +780,86 @@ func populateIncrementalTracking(repoRoot string) {
 	}
 
 	fmt.Println("  Incremental tracking enabled for future updates")
+}
+
+// runIndexWatchLoop watches for changes and runs incremental updates.
+func runIndexWatchLoop(repoRoot, ckbDir string, lang project.Language) {
+	// Validate and clamp watch interval
+	interval := indexWatchInterval
+	if interval < 5*time.Second {
+		interval = 5 * time.Second
+	}
+	if interval > 5*time.Minute {
+		interval = 5 * time.Minute
+	}
+
+	fmt.Printf("Watching for changes... (polling every %s, Ctrl+C to stop)\n", interval)
+
+	// Setup signal handling for graceful shutdown
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	// Track last known state for change detection
+	lastCommit := ""
+	if meta, err := index.LoadMeta(ckbDir); err == nil && meta != nil {
+		lastCommit = meta.CommitHash
+	}
+
+	for {
+		select {
+		case <-sigCh:
+			fmt.Println("\nStopping watch...")
+			return
+
+		case <-ticker.C:
+			// Check if there are new commits
+			currentCommit := getCurrentCommit(repoRoot)
+			if currentCommit == "" || currentCommit == lastCommit {
+				continue
+			}
+
+			fmt.Printf("\nChanges detected (commit %s -> %s)\n", shortHash(lastCommit), shortHash(currentCommit))
+
+			// Try incremental update for supported languages
+			if project.SupportsIncrementalIndexing(lang) {
+				if tryIncrementalIndex(repoRoot, ckbDir, lang) {
+					lastCommit = currentCommit
+					fmt.Println("Watching for changes...")
+					continue
+				}
+			}
+
+			// Fall back to checking freshness and full reindex if needed
+			meta, err := index.LoadMeta(ckbDir)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: Could not load index metadata: %v\n", err)
+				continue
+			}
+
+			if meta != nil {
+				freshness := meta.CheckFreshness(repoRoot)
+				if !freshness.Fresh {
+					fmt.Printf("Index stale: %s\n", freshness.Reason)
+					fmt.Println("Run 'ckb index --force' to rebuild.")
+				}
+			}
+
+			lastCommit = currentCommit
+			fmt.Println("Watching for changes...")
+		}
+	}
+}
+
+// getCurrentCommit returns the current HEAD commit hash.
+func getCurrentCommit(repoRoot string) string {
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = repoRoot
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }

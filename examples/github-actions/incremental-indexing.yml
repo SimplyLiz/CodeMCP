@@ -1,0 +1,114 @@
+# Incremental Indexing Workflow
+# Optimized for speed using incremental indexing with proper caching
+#
+# Usage: Copy to .github/workflows/incremental-indexing.yml
+
+name: CKB Analysis (Incremental)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Install Tools
+        run: |
+          npm install -g @tastehub/ckb
+          go install github.com/sourcegraph/scip-go/cmd/scip-go@latest
+
+      - name: Restore Cache
+        uses: actions/cache@v4
+        with:
+          path: .ckb/
+          key: ckb-${{ runner.os }}-${{ github.ref }}-${{ github.sha }}
+          restore-keys: |
+            ckb-${{ runner.os }}-${{ github.ref }}-
+            ckb-${{ runner.os }}-
+
+      - name: Index
+        run: |
+          ckb init
+          # Use --force on main branch pushes for accuracy
+          # Use incremental for PRs (much faster)
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "Full index for main branch"
+            ckb index --force
+          else
+            echo "Incremental index for PR"
+            ckb index
+          fi
+
+      - name: Analyze PR
+        if: github.event_name == 'pull_request'
+        id: analyze
+        run: |
+          ckb pr-summary --base=origin/${{ github.base_ref }} --format=json > summary.json
+
+          RISK=$(jq -r '.riskAssessment.level // "unknown"' summary.json)
+          FILES=$(jq -r '.summary.totalFiles // 0' summary.json)
+
+          echo "risk=$RISK" >> $GITHUB_OUTPUT
+          echo "files=$FILES" >> $GITHUB_OUTPUT
+
+      - name: Post PR Comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const data = JSON.parse(fs.readFileSync('summary.json', 'utf8'));
+
+            const emoji = {high: '🔴', medium: '🟡', low: '🟢'}[data.riskAssessment?.level] || '⚪';
+            const s = data.summary || {};
+            const risk = data.riskAssessment || {};
+
+            let body = '## CKB Analysis ' + emoji + '\n\n';
+            body += '| Metric | Value |\n';
+            body += '|--------|------:|\n';
+            body += '| Files | ' + (s.totalFiles || 0) + ' |\n';
+            body += '| Additions | +' + (s.totalAdditions || 0) + ' |\n';
+            body += '| Deletions | -' + (s.totalDeletions || 0) + ' |\n';
+            body += '| Hotspots | ' + (s.hotspotsTouched || 0) + ' |\n';
+            body += '| Risk | **' + (risk.level || 'unknown') + '** |\n';
+
+            if (risk.factors?.length) {
+              body += '\n### Risk Factors\n';
+              risk.factors.forEach(f => body += '- ' + f + '\n');
+            }
+
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            });
+
+      - name: Save Cache
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: .ckb/
+          key: ckb-${{ runner.os }}-${{ github.ref }}-${{ github.sha }}

@@ -6,6 +6,7 @@ import (
 
 	"ckb/internal/config"
 	"ckb/internal/envelope"
+	"ckb/internal/errors"
 	"ckb/internal/query"
 	"ckb/internal/repos"
 	"ckb/internal/storage"
@@ -13,7 +14,7 @@ import (
 
 // toolListRepos lists all registered repositories
 func (s *MCPServer) toolListRepos(params map[string]interface{}) (*envelope.Response, error) {
-	s.logger.Debug("Executing listRepos", nil)
+	s.logger.Debug("Executing listRepos")
 
 	if !s.IsMultiRepoMode() {
 		return nil, &MCPError{
@@ -24,7 +25,7 @@ func (s *MCPServer) toolListRepos(params map[string]interface{}) (*envelope.Resp
 
 	registry, err := repos.LoadRegistry()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load registry: %w", err)
+		return nil, errors.NewOperationError("load registry", err)
 	}
 
 	activeRepo, _ := s.GetActiveRepo()
@@ -65,9 +66,9 @@ func (s *MCPServer) toolListRepos(params map[string]interface{}) (*envelope.Resp
 
 // toolSwitchRepo switches to a different repository
 func (s *MCPServer) toolSwitchRepo(params map[string]interface{}) (*envelope.Response, error) {
-	s.logger.Debug("Executing switchRepo", map[string]interface{}{
-		"params": params,
-	})
+	s.logger.Debug("Executing switchRepo",
+		"params", params,
+	)
 
 	if !s.IsMultiRepoMode() {
 		return nil, &MCPError{
@@ -86,7 +87,7 @@ func (s *MCPServer) toolSwitchRepo(params map[string]interface{}) (*envelope.Res
 
 	registry, err := repos.LoadRegistry()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load registry: %w", err)
+		return nil, errors.NewOperationError("load registry", err)
 	}
 
 	entry, state, err := registry.Get(name)
@@ -121,10 +122,10 @@ func (s *MCPServer) toolSwitchRepo(params map[string]interface{}) (*envelope.Res
 		existingEntry.lastUsed = time.Now()
 		s.activeRepo = name
 		s.activeRepoPath = entry.Path
-		s.logger.Info("Switched to existing engine", map[string]interface{}{
-			"repo": name,
-			"path": entry.Path,
-		})
+		s.logger.Info("Switched to existing engine",
+			"repo", name,
+			"path", entry.Path,
+		)
 		return OperationalResponse(map[string]interface{}{
 			"success":    true,
 			"activeRepo": name,
@@ -140,7 +141,7 @@ func (s *MCPServer) toolSwitchRepo(params map[string]interface{}) (*envelope.Res
 	// Create new engine
 	engine, err := s.createEngineForRepo(entry.Path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create engine for %s: %w", name, err)
+		return nil, errors.NewOperationError("create engine for "+name, err)
 	}
 
 	s.engines[entry.Path] = &engineEntry{
@@ -156,11 +157,11 @@ func (s *MCPServer) toolSwitchRepo(params map[string]interface{}) (*envelope.Res
 	// Update last used in registry
 	_ = registry.TouchLastUsed(name)
 
-	s.logger.Info("Created new engine and switched", map[string]interface{}{
-		"repo":        name,
-		"path":        entry.Path,
-		"totalLoaded": len(s.engines),
-	})
+	s.logger.Info("Created new engine and switched",
+		"repo", name,
+		"path", entry.Path,
+		"totalLoaded", len(s.engines),
+	)
 
 	return OperationalResponse(map[string]interface{}{
 		"success":    true,
@@ -171,7 +172,7 @@ func (s *MCPServer) toolSwitchRepo(params map[string]interface{}) (*envelope.Res
 
 // toolGetActiveRepo returns information about the currently active repository
 func (s *MCPServer) toolGetActiveRepo(params map[string]interface{}) (*envelope.Response, error) {
-	s.logger.Debug("Executing getActiveRepo", nil)
+	s.logger.Debug("Executing getActiveRepo")
 
 	if !s.IsMultiRepoMode() {
 		return nil, &MCPError{
@@ -192,7 +193,7 @@ func (s *MCPServer) toolGetActiveRepo(params map[string]interface{}) (*envelope.
 
 	registry, err := repos.LoadRegistry()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load registry: %w", err)
+		return nil, errors.NewOperationError("load registry", err)
 	}
 
 	state := registry.ValidateState(name)
@@ -222,11 +223,11 @@ func (s *MCPServer) evictLRULocked() {
 
 	if victim != "" {
 		entry := s.engines[victim]
-		s.logger.Info("Evicting LRU engine", map[string]interface{}{
-			"repo":     entry.repoName,
-			"path":     entry.repoPath,
-			"lastUsed": entry.lastUsed,
-		})
+		s.logger.Info("Evicting LRU engine",
+			"repo", entry.repoName,
+			"path", entry.repoPath,
+			"lastUsed", entry.lastUsed,
+		)
 		// Wait for any in-flight operations
 		entry.activeOps.Wait()
 		// Close the engine
@@ -249,14 +250,14 @@ func (s *MCPServer) createEngineForRepo(repoPath string) (*query.Engine, error) 
 	// Open storage for this repo
 	db, err := storage.Open(repoPath, s.logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open database: %w", err)
+		return nil, errors.NewOperationError("open database", err)
 	}
 
 	// Create engine
 	engine, err := query.NewEngine(repoPath, db, s.logger, cfg)
 	if err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("failed to create engine: %w", err)
+		return nil, errors.NewOperationError("create engine", err)
 	}
 
 	return engine, nil

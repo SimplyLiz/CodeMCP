@@ -1,11 +1,11 @@
 package mcp
 
 import (
-	"fmt"
 	"time"
 
 	"ckb/internal/docs"
 	"ckb/internal/envelope"
+	"ckb/internal/errors"
 )
 
 // v7.3 Doc-Symbol Linking tool implementations
@@ -14,7 +14,7 @@ import (
 func (s *MCPServer) toolGetDocsForSymbol(params map[string]interface{}) (*envelope.Response, error) {
 	symbol, ok := params["symbol"].(string)
 	if !ok || symbol == "" {
-		return nil, fmt.Errorf("symbol is required")
+		return nil, errors.NewInvalidParameterError("symbol", "required")
 	}
 
 	limit := 10
@@ -24,7 +24,7 @@ func (s *MCPServer) toolGetDocsForSymbol(params map[string]interface{}) (*envelo
 
 	refs, err := s.engine().GetDocsForSymbol(symbol, limit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find docs for symbol: %w", err)
+		return nil, errors.NewOperationError("find docs for symbol", err)
 	}
 
 	// Convert to response format
@@ -58,15 +58,15 @@ func (s *MCPServer) toolGetDocsForSymbol(params map[string]interface{}) (*envelo
 func (s *MCPServer) toolGetSymbolsInDoc(params map[string]interface{}) (*envelope.Response, error) {
 	path, ok := params["path"].(string)
 	if !ok || path == "" {
-		return nil, fmt.Errorf("path is required")
+		return nil, errors.NewInvalidParameterError("path", "required")
 	}
 
 	doc, err := s.engine().GetDocumentInfo(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get document info: %w", err)
+		return nil, errors.NewOperationError("get document info", err)
 	}
 	if doc == nil {
-		return nil, fmt.Errorf("document not found: %s (run 'ckb docs index' first)", path)
+		return nil, errors.NewResourceNotFoundError("document", path)
 	}
 
 	// Convert references to response format
@@ -106,12 +106,12 @@ func (s *MCPServer) toolGetSymbolsInDoc(params map[string]interface{}) (*envelop
 func (s *MCPServer) toolGetDocsForModule(params map[string]interface{}) (*envelope.Response, error) {
 	moduleID, ok := params["moduleId"].(string)
 	if !ok || moduleID == "" {
-		return nil, fmt.Errorf("moduleId is required")
+		return nil, errors.NewInvalidParameterError("moduleId", "required")
 	}
 
 	docsList, err := s.engine().GetDocsForModule(moduleID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find docs for module: %w", err)
+		return nil, errors.NewOperationError("find docs for module", err)
 	}
 
 	// Convert to response format
@@ -145,7 +145,7 @@ func (s *MCPServer) toolCheckDocStaleness(params map[string]interface{}) (*envel
 		// Check single document
 		report, e := s.engine().CheckDocStaleness(path)
 		if e != nil {
-			return nil, fmt.Errorf("failed to check staleness: %w", e)
+			return nil, errors.NewOperationError("check staleness", e)
 		}
 		if report != nil {
 			reports = []docs.StalenessReport{*report}
@@ -154,10 +154,10 @@ func (s *MCPServer) toolCheckDocStaleness(params map[string]interface{}) (*envel
 		// Check all documents
 		reports, err = s.engine().CheckAllDocsStaleness()
 		if err != nil {
-			return nil, fmt.Errorf("failed to check staleness: %w", err)
+			return nil, errors.NewOperationError("check staleness", err)
 		}
 	} else {
-		return nil, fmt.Errorf("specify a path or use all=true")
+		return nil, errors.NewInvalidParameterError("path", "specify a path or use all=true")
 	}
 
 	// Convert to response format
@@ -212,7 +212,7 @@ func (s *MCPServer) toolIndexDocs(params map[string]interface{}) (*envelope.Resp
 	start := time.Now()
 	stats, err := s.engine().IndexDocs(force)
 	if err != nil {
-		return nil, fmt.Errorf("failed to index docs: %w", err)
+		return nil, errors.NewOperationError("index docs", err)
 	}
 
 	return OperationalResponse(map[string]interface{}{
@@ -240,7 +240,7 @@ func (s *MCPServer) toolGetDocCoverage(params map[string]interface{}) (*envelope
 
 	report, err := s.engine().GetDocCoverage(exportedOnly, topN)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get doc coverage: %w", err)
+		return nil, errors.NewOperationError("get doc coverage", err)
 	}
 
 	// Convert top undocumented to response format

@@ -1,11 +1,11 @@
 package storage
 
 import (
+	"io"
+	"log/slog"
 	"os"
 	"testing"
 	"time"
-
-	"ckb/internal/logging"
 )
 
 func TestNewCache(t *testing.T) {
@@ -15,7 +15,7 @@ func TestNewCache(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	db, err := Open(tmpDir, logger)
 	if err != nil {
 		t.Fatalf("failed to open database: %v", err)
@@ -38,7 +38,7 @@ func TestQueryCache(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	db, err := Open(tmpDir, logger)
 	if err != nil {
 		t.Fatalf("failed to open database: %v", err)
@@ -111,7 +111,7 @@ func TestViewCache(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	db, err := Open(tmpDir, logger)
 	if err != nil {
 		t.Fatalf("failed to open database: %v", err)
@@ -183,7 +183,7 @@ func TestNegativeCache(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	db, err := Open(tmpDir, logger)
 	if err != nil {
 		t.Fatalf("failed to open database: %v", err)
@@ -237,7 +237,7 @@ func TestCacheInvalidation(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	db, err := Open(tmpDir, logger)
 	if err != nil {
 		t.Fatalf("failed to open database: %v", err)
@@ -326,7 +326,7 @@ func TestCacheCleanup(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	db, err := Open(tmpDir, logger)
 	if err != nil {
 		t.Fatalf("failed to open database: %v", err)
@@ -364,7 +364,7 @@ func TestCacheStats(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	logger := logging.NewLogger(logging.Config{Level: logging.ErrorLevel})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	db, err := Open(tmpDir, logger)
 	if err != nil {
 		t.Fatalf("failed to open database: %v", err)

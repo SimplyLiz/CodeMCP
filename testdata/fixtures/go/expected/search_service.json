@@ -1,0 +1,145 @@
+{
+  "symbols": [
+    {
+      "file": "pkg/service.go",
+      "kind": "class",
+      "line": 0,
+      "moduleId": "pkg",
+      "name": "CachingService"
+    },
+    {
+      "file": "pkg/service.go",
+      "kind": "class",
+      "line": 0,
+      "moduleId": "pkg",
+      "name": "CachingService#cache"
+    },
+    {
+      "file": "pkg/service.go",
+      "kind": "class",
+      "line": 0,
+      "moduleId": "pkg",
+      "name": "CachingService#inner"
+    },
+    {
+      "file": "pkg/service.go",
+      "kind": "class",
+      "line": 0,
+      "moduleId": "pkg",
+      "name": "DefaultService"
+    },
+    {
+      "file": "pkg/service.go",
+      "kind": "class",
+      "line": 0,
+      "moduleId": "pkg",
+      "name": "DefaultService#model"
+    },
+    {
+      "file": "pkg/handler.go",
+      "kind": "class",
+      "line": 0,
+      "moduleId": "pkg",
+      "name": "Handler"
+    },
+    {
+      "file": "pkg/handler.go",
+      "kind": "class",
+      "line": 0,
+      "moduleId": "pkg",
+      "name": "Handler#service"
+    },
+    {
+      "file": "pkg/server.go",
+      "kind": "class",
+      "line": 0,
+      "moduleId": "pkg",
+      "name": "Server"
+    },
+    {
+      "file": "pkg/service.go",
+      "kind": "class",
+      "line": 0,
+      "moduleId": "pkg",
+      "name": "Service"
+    },
+    {
+      "file": "pkg/service.go",
+      "kind": "class",
+      "line": 0,
+      "moduleId": "pkg",
+      "name": "Service#Process"
+    },
+    {
+      "file": "pkg/service.go",
+      "kind": "class",
+      "line": 0,
+      "moduleId": "pkg",
+      "name": "Service#Validate"
+    },
+    {
+      "file": "pkg/service.go",
+      "kind": "function",
+      "line": 0,
+      "moduleId": "pkg",
+      "name": "CachingService#Process"
+    },
+    {
+      "file": "pkg/service.go",
+      "kind": "function",
+      "line": 0,
+      "moduleId": "pkg",
+      "name": "CachingService#Validate"
+    },
+    {
+      "file": "pkg/service.go",
+      "kind": "function",
+      "line": 0,
+      "moduleId": "pkg",
+      "name": "DefaultService#Process"
+    },
+    {
+      "file": "pkg/service.go",
+      "kind": "function",
+      "line": 0,
+      "moduleId": "pkg",
+      "name": "DefaultService#Validate"
+    },
+    {
+      "file": "pkg/handler.go",
+      "kind": "function",
+      "line": 0,
+      "moduleId": "pkg",
+      "name": "Handler#Handle"
+    },
+    {
+      "file": "pkg/service.go",
+      "kind": "function",
+      "line": 0,
+      "moduleId": "pkg",
+      "name": "NewCachingService"
+    },
+    {
+      "file": "pkg/service.go",
+      "kind": "function",
+      "line": 0,
+      "moduleId": "pkg",
+      "name": "NewDefaultService"
+    },
+    {
+      "file": "pkg/handler.go",
+      "kind": "function",
+      "line": 0,
+      "moduleId": "pkg",
+      "name": "NewHandler"
+    },
+    {
+      "file": "main.go",
+      "kind": "function",
+      "line": 0,
+      "moduleId": ".",
+      "name": "main"
+    }
+  ],
+  "total": 20
+}

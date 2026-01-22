@@ -32,7 +32,7 @@ Examples:
 }
 
 func init() {
-	justifyCmd.Flags().StringVar(&justifyFormat, "format", "json", "Output format (json, human)")
+	justifyCmd.Flags().StringVar(&justifyFormat, "format", "human", "Output format (human, json)")
 	rootCmd.AddCommand(justifyCmd)
 }
 
@@ -64,11 +64,11 @@ func runJustify(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Justify query completed", map[string]interface{}{
-		"symbolId": symbolId,
-		"verdict":  response.Verdict,
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Justify query completed",
+		"symbolId", symbolId,
+		"verdict", response.Verdict,
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // JustifyResponseCLI contains justify results for CLI output

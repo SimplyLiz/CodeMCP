@@ -12,6 +12,7 @@ type OutputFormat string
 const (
 	FormatJSON  OutputFormat = "json"
 	FormatHuman OutputFormat = "human"
+	FormatSARIF OutputFormat = "sarif"
 )
 
 // FormatResponse formats a response according to the specified format
@@ -72,6 +73,16 @@ func formatHuman(resp interface{}) (string, error) {
 		return formatTraceHuman(v)
 	case *JobsListResponseCLI:
 		return formatJobsListHuman(v)
+	case *DeadCodeResponseCLI:
+		return formatDeadCodeHuman(v), nil
+	case *BreakingResponseCLI:
+		return formatBreakingHuman(v), nil
+	case *DiffSummaryResponseCLI:
+		return formatDiffSummaryHuman(v), nil
+	case *ConceptsResponseCLI:
+		return formatConceptsHuman(v), nil
+	case *ChangeSetResponseCLI:
+		return formatChangeSetHuman(v), nil
 	default:
 		// For types without human formatters, output JSON with a note
 		json, err := formatJSON(resp)
@@ -146,6 +157,34 @@ func formatStatusHuman(resp *StatusResponseCLI) (string, error) {
 
 	b.WriteString(fmt.Sprintf("CKB v%s\n", resp.CkbVersion))
 	b.WriteString("──────────────────────────────────────────────────────────\n")
+
+	// Active repository (if set)
+	if resp.ActiveRepo != nil {
+		sourceHint := ""
+		switch resp.ActiveRepo.Source {
+		case "env":
+			sourceHint = " (from CKB_REPO)"
+		case "cwd":
+			sourceHint = " (from current directory)"
+		case "default":
+			sourceHint = " (default - run from project directory for full status)"
+		}
+		b.WriteString(fmt.Sprintf("Active: %s (%s)%s\n", resp.ActiveRepo.Name, resp.ActiveRepo.Path, sourceHint))
+	}
+
+	// Daemon status (show on same line group as active repo)
+	if resp.DaemonStatus != nil {
+		if resp.DaemonStatus.Running {
+			uptimeInfo := ""
+			if resp.DaemonStatus.Uptime != "" {
+				uptimeInfo = fmt.Sprintf(", uptime %s", resp.DaemonStatus.Uptime)
+			}
+			b.WriteString(fmt.Sprintf("Daemon: running (PID %d, port %d%s)\n", resp.DaemonStatus.PID, resp.DaemonStatus.Port, uptimeInfo))
+		} else {
+			b.WriteString("Daemon: stopped\n")
+		}
+	}
+	b.WriteString("\n")
 
 	// Analysis Tier (prominent)
 	if resp.Tier != nil {
@@ -224,6 +263,11 @@ func formatStatusHuman(resp *StatusResponseCLI) (string, error) {
 		if !resp.IndexStatus.Exists {
 			b.WriteString("  ✗ No index found\n")
 			b.WriteString("  Run 'ckb index' to create one.\n")
+			b.WriteString("\n")
+			b.WriteString("  Commands that work without index (git-based):\n")
+			b.WriteString("    hotspots, ownership, reviewers, diff-summary, pr-summary\n")
+			b.WriteString("  Commands that need SCIP index:\n")
+			b.WriteString("    search, refs, callgraph, impact, dead-code, trace, explain\n")
 		} else if resp.IndexStatus.Fresh {
 			commitInfo := ""
 			if resp.IndexStatus.CommitHash != "" {
@@ -240,6 +284,40 @@ func formatStatusHuman(resp *StatusResponseCLI) (string, error) {
 		} else {
 			b.WriteString(fmt.Sprintf("  ⚠ %s\n", resp.IndexStatus.Reason))
 			b.WriteString("  Run 'ckb index' to refresh.\n")
+		}
+	}
+
+	// Change Impact Analysis section
+	if resp.ChangeImpactStatus != nil {
+		b.WriteString("\nChange Impact Analysis:\n")
+
+		// Coverage status
+		if resp.ChangeImpactStatus.Coverage != nil {
+			cov := resp.ChangeImpactStatus.Coverage
+			if cov.Found {
+				staleMarker := ""
+				if cov.Stale {
+					staleMarker = " ⚠ stale"
+				}
+				b.WriteString(fmt.Sprintf("  Coverage:   ✓ Found %s (%s)%s\n", cov.Path, cov.Age, staleMarker))
+			} else {
+				b.WriteString("  Coverage:   ⚠ Not found (test mapping will use heuristics)\n")
+				if cov.GenerateCmd != "" {
+					b.WriteString(fmt.Sprintf("              Generate: %s\n", cov.GenerateCmd))
+				}
+			}
+		}
+
+		// CODEOWNERS status
+		if resp.ChangeImpactStatus.Codeowners != nil {
+			co := resp.ChangeImpactStatus.Codeowners
+			if co.Found {
+				b.WriteString(fmt.Sprintf("  CODEOWNERS: ✓ Found %s (%d teams, %d patterns)\n",
+					co.Path, co.TeamCount, co.PatternCount))
+			} else {
+				b.WriteString("  CODEOWNERS: ⚠ Not found (reviewer suggestions unavailable)\n")
+				b.WriteString("              Create: .github/CODEOWNERS\n")
+			}
 		}
 	}
 
@@ -774,4 +852,235 @@ func formatJobsListHuman(resp *JobsListResponseCLI) (string, error) {
 	}
 
 	return b.String(), nil
+}
+
+// formatDiffSummaryHuman formats a DiffSummaryResponseCLI in human-readable format
+func formatDiffSummaryHuman(resp *DiffSummaryResponseCLI) string {
+	var b strings.Builder
+
+	b.WriteString("Diff Summary\n")
+	b.WriteString(strings.Repeat("=", 60) + "\n\n")
+
+	// Selector info
+	b.WriteString(fmt.Sprintf("Scope: %s (%s)\n", resp.Selector.Type, resp.Selector.Value))
+	b.WriteString(fmt.Sprintf("Confidence: %.0f%%\n\n", resp.Confidence*100))
+
+	// One-liner summary
+	if resp.Summary.OneLiner != "" {
+		b.WriteString(fmt.Sprintf("Summary: %s\n\n", resp.Summary.OneLiner))
+	}
+
+	// Key changes
+	if len(resp.Summary.KeyChanges) > 0 {
+		b.WriteString("Key Changes:\n")
+		for _, change := range resp.Summary.KeyChanges {
+			b.WriteString(fmt.Sprintf("  • %s\n", change))
+		}
+		b.WriteString("\n")
+	}
+
+	// Risk overview
+	if resp.Summary.RiskOverview != "" {
+		b.WriteString(fmt.Sprintf("Risk: %s\n\n", resp.Summary.RiskOverview))
+	}
+
+	// Changed files
+	if len(resp.ChangedFiles) > 0 {
+		b.WriteString(fmt.Sprintf("Changed Files (%d):\n", len(resp.ChangedFiles)))
+		shown := min(15, len(resp.ChangedFiles))
+		for _, f := range resp.ChangedFiles[:shown] {
+			riskMarker := ""
+			if f.RiskLevel == "high" {
+				riskMarker = " ⚠"
+			} else if f.RiskLevel == "critical" {
+				riskMarker = " ✗"
+			}
+			b.WriteString(fmt.Sprintf("  %s %s (+%d/-%d)%s\n", f.ChangeType, f.FilePath, f.Additions, f.Deletions, riskMarker))
+		}
+		if len(resp.ChangedFiles) > shown {
+			b.WriteString(fmt.Sprintf("  ... and %d more\n", len(resp.ChangedFiles)-shown))
+		}
+		b.WriteString("\n")
+	}
+
+	// Symbols affected
+	if len(resp.SymbolsAffected) > 0 {
+		b.WriteString(fmt.Sprintf("Symbols Affected (%d):\n", len(resp.SymbolsAffected)))
+		shown := min(10, len(resp.SymbolsAffected))
+		for _, s := range resp.SymbolsAffected[:shown] {
+			markers := ""
+			if s.IsPublicAPI {
+				markers += " [public]"
+			}
+			if s.IsEntrypoint {
+				markers += " [entrypoint]"
+			}
+			b.WriteString(fmt.Sprintf("  %s %s (%s)%s\n", s.ChangeType, s.Name, s.Kind, markers))
+		}
+		if len(resp.SymbolsAffected) > shown {
+			b.WriteString(fmt.Sprintf("  ... and %d more\n", len(resp.SymbolsAffected)-shown))
+		}
+		b.WriteString("\n")
+	}
+
+	// Risk signals
+	if len(resp.RiskSignals) > 0 {
+		b.WriteString("Risk Signals:\n")
+		for _, r := range resp.RiskSignals {
+			icon := "○"
+			if r.Severity == "high" {
+				icon = "⚠"
+			} else if r.Severity == "critical" {
+				icon = "✗"
+			}
+			b.WriteString(fmt.Sprintf("  %s [%s] %s\n", icon, r.Type, r.Description))
+		}
+		b.WriteString("\n")
+	}
+
+	// Limitations
+	if len(resp.Limitations) > 0 {
+		b.WriteString("Limitations:\n")
+		for _, l := range resp.Limitations {
+			b.WriteString(fmt.Sprintf("  • %s\n", l))
+		}
+	}
+
+	return b.String()
+}
+
+// formatConceptsHuman formats a ConceptsResponseCLI in human-readable format
+func formatConceptsHuman(resp *ConceptsResponseCLI) string {
+	var b strings.Builder
+
+	b.WriteString("Key Concepts\n")
+	b.WriteString(strings.Repeat("=", 60) + "\n\n")
+
+	b.WriteString(fmt.Sprintf("Found %d concepts (confidence: %.0f%%)\n\n", resp.TotalFound, resp.Confidence*100))
+
+	for i, c := range resp.Concepts {
+		b.WriteString(fmt.Sprintf("%d. %s", i+1, c.Name))
+		if c.Category != "" {
+			b.WriteString(fmt.Sprintf(" [%s]", c.Category))
+		}
+		b.WriteString("\n")
+
+		if c.Description != "" {
+			b.WriteString(fmt.Sprintf("   %s\n", c.Description))
+		}
+
+		b.WriteString(fmt.Sprintf("   Occurrences: %d, Score: %.2f\n", c.Occurrences, c.Score))
+
+		if len(c.Files) > 0 {
+			shown := min(3, len(c.Files))
+			b.WriteString(fmt.Sprintf("   Files: %s", strings.Join(c.Files[:shown], ", ")))
+			if len(c.Files) > shown {
+				b.WriteString(fmt.Sprintf(" (+%d more)", len(c.Files)-shown))
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+	}
+
+	// Limitations
+	if len(resp.Limitations) > 0 {
+		b.WriteString("Limitations:\n")
+		for _, l := range resp.Limitations {
+			b.WriteString(fmt.Sprintf("  • %s\n", l))
+		}
+	}
+
+	return b.String()
+}
+
+// formatChangeSetHuman formats a ChangeSetResponseCLI in human-readable format
+func formatChangeSetHuman(resp *ChangeSetResponseCLI) string {
+	var b strings.Builder
+
+	b.WriteString("Change Impact Analysis\n")
+	b.WriteString(strings.Repeat("=", 60) + "\n\n")
+
+	// Summary
+	if resp.Summary != nil {
+		b.WriteString("Summary:\n")
+		b.WriteString(fmt.Sprintf("  Files Changed:    %d\n", resp.Summary.FilesChanged))
+		b.WriteString(fmt.Sprintf("  Symbols Changed:  %d\n", resp.Summary.SymbolsChanged))
+		b.WriteString(fmt.Sprintf("  Direct Impact:    %d symbols\n", resp.Summary.DirectlyAffected))
+		b.WriteString(fmt.Sprintf("  Transitive Impact: %d symbols\n", resp.Summary.TransitivelyAffected))
+		b.WriteString("\n")
+	}
+
+	// Risk Score
+	if resp.RiskScore != nil {
+		riskIcon := "✓"
+		if resp.RiskScore.Level == "high" {
+			riskIcon = "⚠"
+		} else if resp.RiskScore.Level == "critical" {
+			riskIcon = "✗"
+		}
+		b.WriteString(fmt.Sprintf("%s Risk Level: %s (score: %.2f)\n", riskIcon, resp.RiskScore.Level, resp.RiskScore.Score))
+		if resp.RiskScore.Explanation != "" {
+			b.WriteString(fmt.Sprintf("  %s\n", resp.RiskScore.Explanation))
+		}
+		b.WriteString("\n")
+	}
+
+	// Blast Radius
+	if resp.BlastRadius != nil {
+		b.WriteString("Blast Radius:\n")
+		b.WriteString(fmt.Sprintf("  Modules: %d, Files: %d, Callers: %d\n",
+			resp.BlastRadius.ModuleCount, resp.BlastRadius.FileCount, resp.BlastRadius.UniqueCallerCount))
+		b.WriteString("\n")
+	}
+
+	// Index Staleness Warning
+	if resp.IndexStaleness != nil && resp.IndexStaleness.IsStale {
+		b.WriteString(fmt.Sprintf("⚠ Index Warning: %s\n\n", resp.IndexStaleness.StalenessMessage))
+	}
+
+	// Changed Symbols (top items)
+	if len(resp.ChangedSymbols) > 0 {
+		b.WriteString(fmt.Sprintf("Changed Symbols (%d):\n", len(resp.ChangedSymbols)))
+		shown := min(10, len(resp.ChangedSymbols))
+		for _, s := range resp.ChangedSymbols[:shown] {
+			b.WriteString(fmt.Sprintf("  %s %s\n", s.ChangeType, s.Name))
+			b.WriteString(fmt.Sprintf("    %s\n", s.File))
+		}
+		if len(resp.ChangedSymbols) > shown {
+			b.WriteString(fmt.Sprintf("  ... and %d more\n", len(resp.ChangedSymbols)-shown))
+		}
+		b.WriteString("\n")
+	}
+
+	// Affected Symbols (top items)
+	if len(resp.AffectedSymbols) > 0 {
+		b.WriteString(fmt.Sprintf("Affected Downstream (%d):\n", len(resp.AffectedSymbols)))
+		shown := min(10, len(resp.AffectedSymbols))
+		for _, s := range resp.AffectedSymbols[:shown] {
+			b.WriteString(fmt.Sprintf("  %s (%s, distance: %d)\n", s.Name, s.Kind, s.Distance))
+		}
+		if len(resp.AffectedSymbols) > shown {
+			b.WriteString(fmt.Sprintf("  ... and %d more\n", len(resp.AffectedSymbols)-shown))
+		}
+		b.WriteString("\n")
+	}
+
+	// Recommendations
+	if len(resp.Recommendations) > 0 {
+		b.WriteString("Recommendations:\n")
+		for _, r := range resp.Recommendations {
+			icon := "→"
+			if r.Severity == "warn" {
+				icon = "⚠"
+			} else if r.Severity == "error" {
+				icon = "✗"
+			}
+			b.WriteString(fmt.Sprintf("  %s %s\n", icon, r.Message))
+			if r.Action != "" {
+				b.WriteString(fmt.Sprintf("    Action: %s\n", r.Action))
+			}
+		}
+	}
+
+	return b.String()
 }

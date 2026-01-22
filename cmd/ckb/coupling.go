@@ -45,7 +45,7 @@ func init() {
 	couplingCmd.Flags().Float64Var(&couplingMinCorrelation, "min-correlation", 0.3, "Minimum correlation threshold (0-1)")
 	couplingCmd.Flags().IntVar(&couplingWindowDays, "window", 365, "Analysis window in days")
 	couplingCmd.Flags().IntVar(&couplingLimit, "limit", 20, "Maximum results to return")
-	couplingCmd.Flags().StringVar(&couplingFormat, "format", "json", "Output format (json, human)")
+	couplingCmd.Flags().StringVar(&couplingFormat, "format", "human", "Output format (human, json)")
 	rootCmd.AddCommand(couplingCmd)
 }
 
@@ -80,9 +80,9 @@ func runCoupling(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Coupling analysis completed", map[string]interface{}{
-		"target":       target,
-		"correlations": len(result.Correlations),
-		"duration":     time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Coupling analysis completed",
+		"target", target,
+		"correlations", len(result.Correlations),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }

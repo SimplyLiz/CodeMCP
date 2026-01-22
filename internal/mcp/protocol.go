@@ -72,7 +72,7 @@ func (m *MCPMessage) IsNotification() bool {
 	return m.Method != "" && m.Id == nil
 }
 
-// IsResponse checks if the message is a response
+// IsResponse checks if the message is a response (must have id and either result or error)
 func (m *MCPMessage) IsResponse() bool {
-	return m.Result != nil || m.Error != nil
+	return m.Id != nil && (m.Result != nil || m.Error != nil)
 }

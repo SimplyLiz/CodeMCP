@@ -3,13 +3,13 @@ package mcp
 import (
 	"encoding/json"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
 	"ckb/internal/mcp/testdata"
 	"ckb/internal/query"
 	"ckb/internal/storage"
@@ -60,6 +60,19 @@ var nfrTokenBaselines = map[string]map[string]int{
 	"listEntrypoints": {
 		"small": 4800,  // 20 entrypoints
 		"large": 24000, // 100 entrypoints
+	},
+	// v8.1 Change Impact Analysis
+	"analyzeChange": {
+		"small":  6000,   // 10 changed, 20 affected
+		"medium": 55000,  // 100 changed, 200 affected
+		"large":  270000, // 500 changed, 1000 affected
+		"xlarge": 540000, // 1000 changed, 2000 affected
+	},
+	"getAffectedTests": {
+		"small":  1500,  // 5 tests
+		"medium": 6000,  // 20 tests
+		"large":  15000, // 50 tests
+		"xlarge": 30000, // 100 tests
 	},
 }
 
@@ -138,6 +151,18 @@ func TestNFRScenarios(t *testing.T) {
 		// listEntrypoints scenarios
 		{"listEntrypoints_small", "listEntrypoints", "small", testdata.SmallFixtures(), (*testdata.FixtureSet).ToListEntrypointsJSON},
 		{"listEntrypoints_large", "listEntrypoints", "large", testdata.LargeFixtures(), (*testdata.FixtureSet).ToListEntrypointsJSON},
+
+		// v8.1 analyzeChange scenarios (Change Impact Analysis)
+		{"analyzeChange_small", "analyzeChange", "small", testdata.SmallFixtures(), (*testdata.FixtureSet).ToAnalyzeChangeJSON},
+		{"analyzeChange_medium", "analyzeChange", "medium", testdata.MediumFixtures(), (*testdata.FixtureSet).ToAnalyzeChangeJSON},
+		{"analyzeChange_large", "analyzeChange", "large", testdata.LargeFixtures(), (*testdata.FixtureSet).ToAnalyzeChangeJSON},
+		{"analyzeChange_xlarge", "analyzeChange", "xlarge", testdata.ExtraLargeFixtures(), (*testdata.FixtureSet).ToAnalyzeChangeJSON},
+
+		// v8.1 getAffectedTests scenarios
+		{"getAffectedTests_small", "getAffectedTests", "small", testdata.SmallFixtures(), (*testdata.FixtureSet).ToGetAffectedTestsJSON},
+		{"getAffectedTests_medium", "getAffectedTests", "medium", testdata.MediumFixtures(), (*testdata.FixtureSet).ToGetAffectedTestsJSON},
+		{"getAffectedTests_large", "getAffectedTests", "large", testdata.LargeFixtures(), (*testdata.FixtureSet).ToGetAffectedTestsJSON},
+		{"getAffectedTests_xlarge", "getAffectedTests", "xlarge", testdata.ExtraLargeFixtures(), (*testdata.FixtureSet).ToGetAffectedTestsJSON},
 	}
 
 	for _, sc := range scenarios {
@@ -229,11 +254,7 @@ func newTestMCPServerWithIndex(t testing.TB) *MCPServer {
 		},
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.JSONFormat,
-		Output: io.Discard,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	db, err := storage.Open(":memory:", logger)
 	if err != nil {

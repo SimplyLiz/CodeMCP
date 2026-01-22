@@ -19,12 +19,12 @@ func (e *Engine) ApplyDelta(ctx context.Context, delta *diff.Delta) ([]string, e
 		return nil, fmt.Errorf("delta is nil")
 	}
 
-	e.logger.Info("Applying delta", map[string]interface{}{
-		"commit":           delta.Commit,
-		"symbols_added":    delta.Stats.SymbolsAdded,
-		"symbols_modified": delta.Stats.SymbolsModified,
-		"symbols_deleted":  delta.Stats.SymbolsDeleted,
-	})
+	e.logger.Info("Applying delta",
+		"commit", delta.Commit,
+		"symbols_added", delta.Stats.SymbolsAdded,
+		"symbols_modified", delta.Stats.SymbolsModified,
+		"symbols_deleted", delta.Stats.SymbolsDeleted,
+	)
 
 	// Get FTS manager for symbol updates
 	ftsManager := storage.NewFTSManager(e.db.Conn(), storage.DefaultFTSConfig())
@@ -193,10 +193,10 @@ func (e *Engine) ApplyDelta(ctx context.Context, delta *diff.Delta) ([]string, e
 		}
 	}
 
-	e.logger.Info("Delta applied", map[string]interface{}{
-		"duration_ms": time.Since(start).Milliseconds(),
-		"warnings":    len(warnings),
-	})
+	e.logger.Info("Delta applied",
+		"duration_ms", time.Since(start).Milliseconds(),
+		"warnings", len(warnings),
+	)
 
 	return warnings, nil
 }

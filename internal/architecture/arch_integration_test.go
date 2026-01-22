@@ -3,12 +3,13 @@ package architecture_test
 import (
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
 	"ckb/internal/modules"
 	"ckb/internal/query"
 	"ckb/internal/storage"
@@ -53,10 +54,7 @@ func TestArchitectureIntegration(t *testing.T) {
 		t.Fatalf("Config error: %v", err)
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	db, err := storage.Open(repoRoot, logger)
 	if err != nil {
@@ -127,10 +125,7 @@ func TestModuleDetection(t *testing.T) {
 		t.Fatalf("Config error: %v", err)
 	}
 
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.DebugLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	result, err := modules.DetectModules(".", cfg.Modules.Roots, cfg.Modules.Ignore, "test", logger)
 	if err != nil {

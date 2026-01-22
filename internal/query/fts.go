@@ -13,7 +13,7 @@ import (
 // This should be called after the SCIP adapter loads its index.
 func (e *Engine) PopulateFTSFromSCIP(ctx context.Context) error {
 	if e.scipAdapter == nil || !e.scipAdapter.IsAvailable() {
-		e.logger.Debug("Skipping FTS population - SCIP adapter not available", nil)
+		e.logger.Debug("Skipping FTS population - SCIP adapter not available")
 		return nil
 	}
 
@@ -22,7 +22,7 @@ func (e *Engine) PopulateFTSFromSCIP(ctx context.Context) error {
 	// Get the SCIP index
 	index := e.scipAdapter.GetIndex()
 	if index == nil {
-		e.logger.Debug("Skipping FTS population - no SCIP index loaded", nil)
+		e.logger.Debug("Skipping FTS population - no SCIP index loaded")
 		return nil
 	}
 
@@ -35,7 +35,7 @@ func (e *Engine) PopulateFTSFromSCIP(ctx context.Context) error {
 	}
 
 	if len(records) == 0 {
-		e.logger.Debug("No symbols to index for FTS", nil)
+		e.logger.Debug("No symbols to index for FTS")
 		return nil
 	}
 
@@ -44,25 +44,25 @@ func (e *Engine) PopulateFTSFromSCIP(ctx context.Context) error {
 
 	// Initialize schema if needed
 	if err := ftsManager.InitSchema(); err != nil {
-		e.logger.Warn("Failed to initialize FTS schema", map[string]interface{}{
-			"error": err.Error(),
-		})
+		e.logger.Warn("Failed to initialize FTS schema",
+			"error", err.Error(),
+		)
 		return err
 	}
 
 	// Bulk insert symbols
 	if err := ftsManager.BulkInsert(ctx, records); err != nil {
-		e.logger.Warn("Failed to populate FTS index", map[string]interface{}{
-			"error":        err.Error(),
-			"symbol_count": len(records),
-		})
+		e.logger.Warn("Failed to populate FTS index",
+			"error", err.Error(),
+			"symbol_count", len(records),
+		)
 		return err
 	}
 
-	e.logger.Info("FTS index populated from SCIP", map[string]interface{}{
-		"symbol_count": len(records),
-		"duration_ms":  time.Since(start).Milliseconds(),
-	})
+	e.logger.Info("FTS index populated from SCIP",
+		"symbol_count", len(records),
+		"duration_ms", time.Since(start).Milliseconds(),
+	)
 
 	return nil
 }

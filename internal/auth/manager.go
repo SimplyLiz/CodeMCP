@@ -3,12 +3,11 @@ package auth
 import (
 	"context"
 	"database/sql"
+	"log/slog"
 	"os"
 	"strings"
 	"sync"
 	"time"
-
-	"ckb/internal/logging"
 )
 
 // ManagerConfig configures the auth manager
@@ -44,14 +43,14 @@ type Manager struct {
 	config      ManagerConfig
 	store       *KeyStore
 	rateLimiter *RateLimiter
-	logger      *logging.Logger
+	logger      *slog.Logger
 	staticKeys  map[string]*APIKey // In-memory cache of static keys
 	mu          sync.RWMutex
 }
 
 // NewManager creates a new auth manager
 // db can be nil if only using static keys
-func NewManager(config ManagerConfig, db *sql.DB, logger *logging.Logger) (*Manager, error) {
+func NewManager(config ManagerConfig, db *sql.DB, logger *slog.Logger) (*Manager, error) {
 	m := &Manager{
 		config:     config,
 		logger:     logger,
@@ -74,13 +73,13 @@ func NewManager(config ManagerConfig, db *sql.DB, logger *logging.Logger) (*Mana
 		return nil, err
 	}
 
-	logger.Info("Auth manager initialized", map[string]interface{}{
-		"enabled":       config.Enabled,
-		"require_auth":  config.RequireAuth,
-		"static_keys":   len(config.StaticKeys),
-		"has_legacy":    config.LegacyToken != "",
-		"rate_limiting": config.RateLimiting.Enabled,
-	})
+	logger.Info("Auth manager initialized",
+		"enabled", config.Enabled,
+		"require_auth", config.RequireAuth,
+		"static_keys", len(config.StaticKeys),
+		"has_legacy", config.LegacyToken != "",
+		"rate_limiting", config.RateLimiting.Enabled,
+	)
 
 	return m, nil
 }
@@ -264,9 +263,9 @@ func (m *Manager) findKeyByPrefix(prefix, fullToken string) *APIKey {
 	if m.store != nil {
 		keys, err := m.store.GetByTokenPrefix(prefix)
 		if err != nil {
-			m.logger.Error("Failed to lookup key by prefix", map[string]interface{}{
-				"error": err.Error(),
-			})
+			m.logger.Error("Failed to lookup key by prefix",
+				"error", err.Error(),
+			)
 			return nil
 		}
 		for _, key := range keys {
@@ -291,10 +290,10 @@ func (m *Manager) updateLastUsed(keyID string) {
 
 	if m.store != nil {
 		if err := m.store.UpdateLastUsed(keyID, time.Now()); err != nil {
-			m.logger.Warn("Failed to update last used", map[string]interface{}{
-				"key_id": keyID,
-				"error":  err.Error(),
-			})
+			m.logger.Warn("Failed to update last used",
+				"key_id", keyID,
+				"error", err.Error(),
+			)
 		}
 	}
 }
@@ -507,10 +506,10 @@ func (m *Manager) RotateKey(id string) (*APIKey, string, error) {
 func (m *Manager) logAuditEvent(event AuditEvent) {
 	if m.store != nil {
 		if err := m.store.LogAuditEvent(event); err != nil {
-			m.logger.Warn("Failed to log audit event", map[string]interface{}{
-				"event_type": event.EventType,
-				"error":      err.Error(),
-			})
+			m.logger.Warn("Failed to log audit event",
+				"event_type", event.EventType,
+				"error", err.Error(),
+			)
 		}
 	}
 }

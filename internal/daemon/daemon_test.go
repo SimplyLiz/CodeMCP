@@ -422,3 +422,100 @@ func TestAuthConstants(t *testing.T) {
 		t.Errorf("Expected DaemonTokenEnvVar='CKB_DAEMON_TOKEN', got %q", DaemonTokenEnvVar)
 	}
 }
+
+func TestRefreshRequest(t *testing.T) {
+	req := RefreshRequest{
+		Full: true,
+		Repo: "/path/to/repo",
+	}
+
+	if !req.Full {
+		t.Error("Expected Full=true")
+	}
+	if req.Repo != "/path/to/repo" {
+		t.Errorf("Expected Repo='/path/to/repo', got %q", req.Repo)
+	}
+}
+
+func TestRefreshResponse(t *testing.T) {
+	resp := RefreshResponse{
+		Status: "queued",
+		Repo:   "/path/to/repo",
+		Type:   "incremental",
+	}
+
+	if resp.Status != "queued" {
+		t.Errorf("Expected Status='queued', got %q", resp.Status)
+	}
+	if resp.Repo != "/path/to/repo" {
+		t.Errorf("Expected Repo='/path/to/repo', got %q", resp.Repo)
+	}
+	if resp.Type != "incremental" {
+		t.Errorf("Expected Type='incremental', got %q", resp.Type)
+	}
+}
+
+func TestRefreshResponse_WithError(t *testing.T) {
+	resp := RefreshResponse{
+		Status: "error",
+		Error:  "repository not found",
+	}
+
+	if resp.Status != "error" {
+		t.Errorf("Expected Status='error', got %q", resp.Status)
+	}
+	if resp.Error != "repository not found" {
+		t.Errorf("Expected Error='repository not found', got %q", resp.Error)
+	}
+}
+
+func TestRefreshResponse_AlreadyQueued(t *testing.T) {
+	resp := RefreshResponse{
+		Status: "already_queued",
+		Repo:   "/path/to/repo",
+		Type:   "incremental",
+	}
+
+	if resp.Status != "already_queued" {
+		t.Errorf("Expected Status='already_queued', got %q", resp.Status)
+	}
+}
+
+func TestAPIMeta_AllFields(t *testing.T) {
+	meta := APIMeta{
+		RequestID:     "req-abc123",
+		Duration:      250,
+		DaemonVersion: "7.5.0",
+	}
+
+	if meta.RequestID != "req-abc123" {
+		t.Errorf("Expected RequestID='req-abc123', got %q", meta.RequestID)
+	}
+	if meta.Duration != 250 {
+		t.Errorf("Expected Duration=250, got %d", meta.Duration)
+	}
+	if meta.DaemonVersion != "7.5.0" {
+		t.Errorf("Expected DaemonVersion='7.5.0', got %q", meta.DaemonVersion)
+	}
+}
+
+func TestAPIResponse_WithErrorDetails(t *testing.T) {
+	resp := APIResponse{
+		Success: false,
+		Error: &APIError{
+			Code:    "validation_error",
+			Message: "Invalid input",
+			Details: []string{"field1 required", "field2 invalid"},
+		},
+	}
+
+	if resp.Success {
+		t.Error("Expected Success=false")
+	}
+	if resp.Error == nil {
+		t.Fatal("Expected Error to be set")
+	}
+	if resp.Error.Code != "validation_error" {
+		t.Errorf("Expected Code='validation_error', got %q", resp.Error.Code)
+	}
+}

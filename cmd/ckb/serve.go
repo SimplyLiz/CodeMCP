@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
@@ -10,8 +11,9 @@ import (
 	"time"
 
 	"ckb/internal/api"
-	"ckb/internal/logging"
+	"ckb/internal/config"
 	"ckb/internal/repos"
+	"ckb/internal/slogutil"
 	"ckb/internal/version"
 
 	"github.com/spf13/cobra"
@@ -50,11 +52,12 @@ func init() {
 }
 
 func runServe(cmd *cobra.Command, args []string) error {
-	// Create logger
-	logger := logging.NewLogger(logging.Config{
-		Format: logging.HumanFormat,
-		Level:  logging.InfoLevel,
-	})
+	// Create initial logger (will be replaced with file logger after repoRoot is determined)
+	cliLevel := slogutil.LevelFromVerbosity(verbosity, quiet)
+	if os.Getenv("CKB_DEBUG") == "1" {
+		cliLevel = slog.LevelDebug
+	}
+	logger := slogutil.NewLogger(os.Stderr, cliLevel)
 
 	fmt.Printf("CKB HTTP API Server v%s\n", version.Version)
 
@@ -95,6 +98,20 @@ func runServe(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Set up file logging with LoggerFactory
+	cfg, _ := config.LoadConfig(repoRoot)
+	if cfg == nil {
+		cfg = config.DefaultConfig()
+	}
+	factory := slogutil.NewLoggerFactory(repoRoot, cfg, cliLevel)
+	defer factory.Close()
+
+	// Create tee logger: file + stderr
+	if fileLogger, err := factory.APILogger(); err == nil {
+		stderrHandler := slogutil.NewCKBHandler(os.Stderr, &slog.HandlerOptions{Level: cliLevel})
+		logger = slogutil.NewTeeLogger(fileLogger.Handler(), stderrHandler)
+	}
+
 	engine := mustGetEngine(repoRoot, logger)
 
 	// Build server config
@@ -112,9 +129,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 		// No token = disable auth (with warning for non-localhost)
 		serverConfig.Auth.Enabled = false
 		if serveHost != "localhost" && serveHost != "127.0.0.1" {
-			logger.Warn("Auth disabled on non-localhost bind - consider setting --auth-token or CKB_AUTH_TOKEN", map[string]interface{}{
-				"host": serveHost,
-			})
+			logger.Warn("Auth disabled on non-localhost bind - consider setting --auth-token or CKB_AUTH_TOKEN",
+				"host", serveHost,
+			)
 		}
 	}
 
@@ -138,7 +155,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		} else {
 			// Use default config - user must still configure repos
 			serverConfig.IndexServer = api.DefaultIndexServerConfig()
-			logger.Warn("Index server enabled without config file - no repositories configured", nil)
+			logger.Warn("Index server enabled without config file - no repositories configured")
 		}
 		serverConfig.IndexServer.Enabled = true
 
@@ -164,9 +181,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// Start server in a goroutine
 	serverErr := make(chan error, 1)
 	go func() {
-		logger.Info("Starting CKB HTTP API server", map[string]interface{}{
-			"addr": addr,
-		})
+		logger.Info("Starting CKB HTTP API server",
+			"addr", addr,
+		)
 		fmt.Printf("CKB HTTP API server listening on http://%s\n", addr)
 		fmt.Println("Press Ctrl+C to stop")
 		serverErr <- server.Start()
@@ -176,15 +193,15 @@ func runServe(cmd *cobra.Command, args []string) error {
 	select {
 	case err := <-serverErr:
 		if err != nil {
-			logger.Error("Server error", map[string]interface{}{
-				"error": err.Error(),
-			})
+			logger.Error("Server error",
+				"error", err.Error(),
+			)
 			return err
 		}
 	case sig := <-shutdown:
-		logger.Info("Received shutdown signal", map[string]interface{}{
-			"signal": sig.String(),
-		})
+		logger.Info("Received shutdown signal",
+			"signal", sig.String(),
+		)
 
 		// Create shutdown context with timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -192,13 +209,13 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 		// Attempt graceful shutdown
 		if err := server.Shutdown(ctx); err != nil {
-			logger.Error("Error during shutdown", map[string]interface{}{
-				"error": err.Error(),
-			})
+			logger.Error("Error during shutdown",
+				"error", err.Error(),
+			)
 			return err
 		}
 
-		logger.Info("Server stopped gracefully", nil)
+		logger.Info("Server stopped gracefully")
 	}
 
 	return nil

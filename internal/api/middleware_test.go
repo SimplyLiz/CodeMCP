@@ -5,23 +5,19 @@ import (
 	"database/sql"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"ckb/internal/auth"
-	"ckb/internal/logging"
 
 	_ "modernc.org/sqlite"
 )
 
 // testLogger returns a silent logger for tests
-func testMiddlewareLogger() *logging.Logger {
-	return logging.NewLogger(logging.Config{
-		Level:  logging.ErrorLevel,
-		Format: logging.JSONFormat,
-		Output: io.Discard,
-	})
+func testMiddlewareLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
 // testDB creates an in-memory SQLite database for testing

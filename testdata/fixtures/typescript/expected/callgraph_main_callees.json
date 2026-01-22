@@ -1,0 +1,12 @@
+{
+  "edges": [],
+  "nodes": [
+    {
+      "file": ".",
+      "id": "scip-typescript npm fixture 1.0.0 src/`main.ts`/main().",
+      "name": "main",
+      "role": "root"
+    }
+  ],
+  "root": "scip-typescript npm fixture 1.0.0 src/`main.ts`/main()."
+}

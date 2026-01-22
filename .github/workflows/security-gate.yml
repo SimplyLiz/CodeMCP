@@ -1,0 +1,454 @@
+name: Security Gate
+
+on:
+  workflow_call:
+    inputs:
+      # Secret findings (strings - job outputs are always strings)
+      secret_findings:
+        type: string
+        default: '0'
+      trufflehog_findings:
+        type: string
+        default: '0'
+
+      # SAST findings
+      gosec_findings:
+        type: string
+        default: '0'
+      gosec_high:
+        type: string
+        default: '0'
+      bandit_findings:
+        type: string
+        default: '0'
+      bandit_high:
+        type: string
+        default: '0'
+      semgrep_findings:
+        type: string
+        default: '0'
+
+      # Dependency findings
+      trivy_findings:
+        type: string
+        default: '0'
+      trivy_critical:
+        type: string
+        default: '0'
+      trivy_high:
+        type: string
+        default: '0'
+      trivy_licenses:
+        type: string
+        default: '0'
+      govulncheck_findings:
+        type: string
+        default: '0'
+      osv_findings:
+        type: string
+        default: '0'
+
+      # Language flags
+      has_go:
+        type: boolean
+        default: false
+      has_python:
+        type: boolean
+        default: false
+
+      # Errors from scanners
+      secrets_errors:
+        type: string
+        default: ''
+
+    outputs:
+      status:
+        description: 'Gate status: passed, warning, failed'
+        value: ${{ jobs.gate.outputs.status }}
+      reason:
+        description: 'Reason for gate status'
+        value: ${{ jobs.gate.outputs.reason }}
+
+jobs:
+  gate:
+    name: Security Gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    outputs:
+      status: ${{ steps.evaluate.outputs.status }}
+      reason: ${{ steps.evaluate.outputs.reason }}
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: results
+        continue-on-error: true
+
+      - name: Evaluate Security Gate
+        id: evaluate
+        run: |
+          # Input aggregation
+          SECRETS="${{ inputs.secret_findings }}"
+          TRUFFLEHOG="${{ inputs.trufflehog_findings }}"
+          GOSEC="${{ inputs.gosec_findings }}"
+          GOSEC_HIGH="${{ inputs.gosec_high }}"
+          BANDIT="${{ inputs.bandit_findings }}"
+          BANDIT_HIGH="${{ inputs.bandit_high }}"
+          SEMGREP="${{ inputs.semgrep_findings }}"
+          TRIVY="${{ inputs.trivy_findings }}"
+          TRIVY_CRITICAL="${{ inputs.trivy_critical }}"
+          TRIVY_HIGH="${{ inputs.trivy_high }}"
+          LICENSES="${{ inputs.trivy_licenses }}"
+          GOVULN="${{ inputs.govulncheck_findings }}"
+          OSV="${{ inputs.osv_findings }}"
+          HAS_GO="${{ inputs.has_go }}"
+          HAS_PYTHON="${{ inputs.has_python }}"
+
+          # Calculate totals
+          SAST=$((GOSEC + BANDIT + SEMGREP))
+          DEPS=$((TRIVY + GOVULN + OSV))
+          TOTAL=$((SECRETS + SAST + DEPS))
+
+          # Export for PR comment
+          echo "secrets=$SECRETS" >> $GITHUB_OUTPUT
+          echo "trufflehog=$TRUFFLEHOG" >> $GITHUB_OUTPUT
+          echo "gosec=$GOSEC" >> $GITHUB_OUTPUT
+          echo "gosec_high=$GOSEC_HIGH" >> $GITHUB_OUTPUT
+          echo "bandit=$BANDIT" >> $GITHUB_OUTPUT
+          echo "bandit_high=$BANDIT_HIGH" >> $GITHUB_OUTPUT
+          echo "semgrep=$SEMGREP" >> $GITHUB_OUTPUT
+          echo "trivy=$TRIVY" >> $GITHUB_OUTPUT
+          echo "trivy_critical=$TRIVY_CRITICAL" >> $GITHUB_OUTPUT
+          echo "trivy_high=$TRIVY_HIGH" >> $GITHUB_OUTPUT
+          echo "licenses=$LICENSES" >> $GITHUB_OUTPUT
+          echo "govuln=$GOVULN" >> $GITHUB_OUTPUT
+          echo "osv=$OSV" >> $GITHUB_OUTPUT
+          echo "sast=$SAST" >> $GITHUB_OUTPUT
+          echo "deps=$DEPS" >> $GITHUB_OUTPUT
+          echo "total=$TOTAL" >> $GITHUB_OUTPUT
+
+          # Write summary
+          echo "### Security Audit Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Category | Findings |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|----------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Secrets | $SECRETS (TruffleHog verified: $TRUFFLEHOG) |" >> $GITHUB_STEP_SUMMARY
+
+          # SAST breakdown
+          SAST_DETAIL="Semgrep: $SEMGREP"
+          if [ "$HAS_GO" = "true" ]; then
+            SAST_DETAIL="Gosec: $GOSEC [$GOSEC_HIGH high], $SAST_DETAIL"
+          fi
+          if [ "$HAS_PYTHON" = "true" ]; then
+            SAST_DETAIL="Bandit: $BANDIT [$BANDIT_HIGH high], $SAST_DETAIL"
+          fi
+          echo "| SAST | $SAST ($SAST_DETAIL) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dependencies | $DEPS (Trivy: $TRIVY [$TRIVY_CRITICAL crit, $TRIVY_HIGH high], govuln: $GOVULN, OSV: $OSV) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Licenses | $LICENSES non-permissive |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Gate logic
+          # BLOCKING: verified secrets, critical vulns, HIGH SAST (language-specific)
+          if [ "$TRUFFLEHOG" -gt 0 ]; then
+            echo "status=failed" >> $GITHUB_OUTPUT
+            echo "reason=Verified secrets detected by TruffleHog" >> $GITHUB_OUTPUT
+            echo "::error::Security gate FAILED: $TRUFFLEHOG verified secret(s)"
+            echo "**GATE FAILED**: Verified secrets detected" >> $GITHUB_STEP_SUMMARY
+          elif [ "$TRIVY_CRITICAL" -gt 0 ]; then
+            echo "status=failed" >> $GITHUB_OUTPUT
+            echo "reason=$TRIVY_CRITICAL CRITICAL vulnerability(ies) detected" >> $GITHUB_OUTPUT
+            echo "::error::Security gate FAILED: $TRIVY_CRITICAL CRITICAL vulnerability(ies)"
+            echo "**GATE FAILED**: CRITICAL vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
+          elif [ "$HAS_GO" = "true" ] && [ "$GOSEC_HIGH" -gt 0 ]; then
+            echo "status=failed" >> $GITHUB_OUTPUT
+            echo "reason=$GOSEC_HIGH HIGH severity gosec finding(s)" >> $GITHUB_OUTPUT
+            echo "::error::Security gate FAILED: $GOSEC_HIGH HIGH severity gosec finding(s)"
+            echo "**GATE FAILED**: HIGH severity Go SAST findings" >> $GITHUB_STEP_SUMMARY
+          elif [ "$HAS_PYTHON" = "true" ] && [ "$BANDIT_HIGH" -gt 0 ]; then
+            echo "status=failed" >> $GITHUB_OUTPUT
+            echo "reason=$BANDIT_HIGH HIGH severity Bandit finding(s)" >> $GITHUB_OUTPUT
+            echo "::error::Security gate FAILED: $BANDIT_HIGH HIGH severity Bandit finding(s)"
+            echo "**GATE FAILED**: HIGH severity Python SAST findings" >> $GITHUB_STEP_SUMMARY
+          elif [ "$TOTAL" -gt 0 ]; then
+            echo "status=warning" >> $GITHUB_OUTPUT
+            echo "reason=$TOTAL issue(s) found (review recommended)" >> $GITHUB_OUTPUT
+            echo "::warning::Security gate passed with warnings: $TOTAL issue(s)"
+            echo "**GATE PASSED WITH WARNINGS**: $TOTAL issue(s) found" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "status=passed" >> $GITHUB_OUTPUT
+            echo "reason=No security issues detected" >> $GITHUB_OUTPUT
+            echo "**GATE PASSED**: No security issues detected" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: PR Comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            // Helper to safely read JSON
+            const readJSON = (path) => {
+              try {
+                return JSON.parse(fs.readFileSync(path, 'utf8'));
+              } catch { return null; }
+            };
+
+            // Build comment
+            let body = `## 🔐 Security Audit Results\n\n`;
+
+            const gateStatus = '${{ steps.evaluate.outputs.status }}';
+            const gateReason = '${{ steps.evaluate.outputs.reason }}';
+
+            // Status badge
+            if (gateStatus === 'passed') {
+              body += `✅ **Security gate passed** - No issues detected\n\n`;
+            } else if (gateStatus === 'warning') {
+              body += `⚠️ **Security gate passed with warnings** - ${gateReason}\n\n`;
+            } else {
+              body += `❌ **Security gate FAILED** - ${gateReason}\n\n`;
+            }
+
+            // Summary table with actual finding counts
+            const secrets = parseInt('${{ steps.evaluate.outputs.secrets }}') || 0;
+            const sast = parseInt('${{ steps.evaluate.outputs.sast }}') || 0;
+            const deps = parseInt('${{ steps.evaluate.outputs.deps }}') || 0;
+            const licenses = parseInt('${{ steps.evaluate.outputs.licenses }}') || 0;
+
+            body += `| Category | Findings |\n|----------|----------|\n`;
+            body += `| 🔑 Secrets | ${secrets === 0 ? '✅ 0' : '⚠️ ' + secrets} |\n`;
+            body += `| 🛡️ SAST | ${sast === 0 ? '✅ 0' : '⚠️ ' + sast} |\n`;
+            body += `| 📦 Dependencies | ${deps === 0 ? '✅ 0' : '⚠️ ' + deps} |\n`;
+            body += `| 📜 Licenses | ${licenses === 0 ? '✅ 0' : '⚠️ ' + licenses + ' non-permissive'} |\n\n`;
+
+            // Helper to read file content (for line-delimited JSON like TruffleHog)
+            const readFile = (path) => {
+              try {
+                return fs.readFileSync(path, 'utf8').trim();
+              } catch { return ''; }
+            };
+
+            // ==================== SECRET DETECTION ====================
+            let secretFindings = [];
+
+            // CKB Secrets
+            const ckbSecrets = readJSON('results/secret-scan-results/ckb-secrets.json');
+            if (ckbSecrets?.summary?.totalFindings > 0) {
+              secretFindings.push({
+                tool: 'CKB',
+                count: ckbSecrets.summary.totalFindings,
+                items: ckbSecrets.findings?.slice(0, 5).map(f =>
+                  `\`${f.file}:${f.line}\` - ${f.type} (${f.severity})`
+                ) || []
+              });
+            }
+
+            // Gitleaks
+            const gitleaks = readJSON('results/secret-scan-results/gitleaks.json');
+            if (Array.isArray(gitleaks) && gitleaks.length > 0) {
+              secretFindings.push({
+                tool: 'Gitleaks',
+                count: gitleaks.length,
+                items: gitleaks.slice(0, 5).map(f =>
+                  `\`${f.File}:${f.StartLine}\` - ${f.RuleID || 'secret'}`
+                )
+              });
+            }
+
+            // TruffleHog
+            const thContent = readFile('results/secret-scan-results/trufflehog.json');
+            if (thContent) {
+              const thFindings = thContent.split('\n').filter(l => l.trim()).map(l => {
+                try { return JSON.parse(l); } catch { return null; }
+              }).filter(Boolean);
+              if (thFindings.length > 0) {
+                secretFindings.push({
+                  tool: 'TruffleHog',
+                  count: thFindings.length,
+                  verified: true,
+                  items: thFindings.slice(0, 5).map(f => {
+                    const file = f.SourceMetadata?.Data?.Filesystem?.file || 'unknown';
+                    return `\`${file}\` - ${f.DetectorName} ${f.Verified ? '✅' : ''}`;
+                  })
+                });
+              }
+            }
+
+            if (secretFindings.length > 0) {
+              const totalSecrets = secretFindings.reduce((sum, s) => sum + s.count, 0);
+              body += `### 🔑 Secret Detection\n\n`;
+              body += `Found **${totalSecrets}** potential secret(s) across ${secretFindings.length} scanner(s)\n\n`;
+              body += `<details><summary>Details</summary>\n\n`;
+              for (const s of secretFindings) {
+                body += `**${s.tool}** (${s.count} finding${s.count > 1 ? 's' : ''})${s.verified ? ' - verified' : ''}\n`;
+                for (const item of s.items) {
+                  body += `- ${item}\n`;
+                }
+                if (s.count > 5) body += `- ... and ${s.count - 5} more\n`;
+                body += '\n';
+              }
+              body += `</details>\n\n`;
+            }
+
+            // ==================== SAST FINDINGS ====================
+            let sastFindings = [];
+
+            // Gosec
+            const gosec = readJSON('results/gosec-results/gosec.json');
+            if (gosec?.Issues?.length > 0) {
+              sastFindings.push({
+                tool: 'Gosec',
+                count: gosec.Issues.length,
+                items: gosec.Issues.slice(0, 5).map(i =>
+                  `\`${i.file}:${i.line}\` - ${i.rule_id}: ${i.details?.substring(0, 60) || 'N/A'}...`
+                )
+              });
+            }
+
+            // Semgrep
+            const semgrep = readJSON('results/semgrep-results/semgrep.json');
+            if (semgrep?.results?.length > 0) {
+              sastFindings.push({
+                tool: 'Semgrep',
+                count: semgrep.results.length,
+                items: semgrep.results.slice(0, 5).map(r =>
+                  `\`${r.path}:${r.start?.line}\` - ${r.check_id}`
+                )
+              });
+            }
+
+            if (sastFindings.length > 0) {
+              const totalSast = sastFindings.reduce((sum, s) => sum + s.count, 0);
+              body += `### 🛡️ SAST Analysis\n\n`;
+              body += `Found **${totalSast}** issue(s) across ${sastFindings.length} scanner(s)\n\n`;
+              body += `<details><summary>Details</summary>\n\n`;
+              for (const s of sastFindings) {
+                body += `**${s.tool}** (${s.count} finding${s.count > 1 ? 's' : ''})\n`;
+                for (const item of s.items) {
+                  body += `- ${item}\n`;
+                }
+                if (s.count > 5) body += `- ... and ${s.count - 5} more\n`;
+                body += '\n';
+              }
+              body += `</details>\n\n`;
+            }
+
+            // ==================== DEPENDENCY VULNERABILITIES ====================
+            let depFindings = [];
+
+            // Govulncheck
+            const govuln = readJSON('results/dependency-scan-results/govulncheck.json');
+            if (govuln?.vulns?.length > 0) {
+              depFindings.push({
+                tool: 'govulncheck',
+                count: govuln.vulns.length,
+                items: govuln.vulns.slice(0, 5).map(v =>
+                  `**${v.osv?.id || 'Unknown'}**: ${v.osv?.summary?.substring(0, 80) || 'No summary'}...`
+                )
+              });
+            }
+
+            // Trivy Vulnerabilities
+            const trivyVuln = readJSON('results/dependency-scan-results/trivy-vuln.json');
+            if (trivyVuln?.Results) {
+              const vulns = trivyVuln.Results.flatMap(r => r.Vulnerabilities || []);
+              if (vulns.length > 0) {
+                depFindings.push({
+                  tool: 'Trivy',
+                  count: vulns.length,
+                  items: vulns.slice(0, 5).map(v =>
+                    `**${v.VulnerabilityID}** (${v.Severity}): ${v.PkgName} - ${v.Title?.substring(0, 50) || 'N/A'}...`
+                  )
+                });
+              }
+            }
+
+            // OSV-Scanner
+            const osv = readJSON('results/dependency-scan-results/osv.json');
+            if (osv?.results) {
+              const osvVulns = osv.results.flatMap(r => r.packages || []);
+              if (osvVulns.length > 0) {
+                depFindings.push({
+                  tool: 'OSV-Scanner',
+                  count: osvVulns.length,
+                  items: osvVulns.slice(0, 5).map(p =>
+                    `**${p.package?.name || 'unknown'}**: ${p.vulnerabilities?.length || 0} vulnerabilities`
+                  )
+                });
+              }
+            }
+
+            if (depFindings.length > 0) {
+              const totalDeps = depFindings.reduce((sum, s) => sum + s.count, 0);
+              body += `### 📦 Dependency Vulnerabilities\n\n`;
+              body += `Found **${totalDeps}** vulnerability(ies) across ${depFindings.length} scanner(s)\n\n`;
+              body += `<details><summary>Details</summary>\n\n`;
+              for (const s of depFindings) {
+                body += `**${s.tool}** (${s.count} finding${s.count > 1 ? 's' : ''})\n`;
+                for (const item of s.items) {
+                  body += `- ${item}\n`;
+                }
+                if (s.count > 5) body += `- ... and ${s.count - 5} more\n`;
+                body += '\n';
+              }
+              body += `</details>\n\n`;
+            }
+
+            // ==================== LICENSE ISSUES ====================
+            const trivyLicense = readJSON('results/dependency-scan-results/trivy-license.json');
+            if (trivyLicense?.Results) {
+              const nonPermissive = trivyLicense.Results.flatMap(r => r.Licenses || [])
+                .filter(l => l.Category !== 'permissive');
+              if (nonPermissive.length > 0) {
+                body += `### 📜 License Issues\n\n`;
+                body += `Found **${nonPermissive.length}** non-permissive license(s)\n\n`;
+                body += `<details><summary>Details</summary>\n\n`;
+                for (const l of nonPermissive.slice(0, 10)) {
+                  body += `- **${l.PkgName || 'unknown'}**: ${l.Name} (${l.Category})\n`;
+                }
+                if (nonPermissive.length > 10) body += `- ... and ${nonPermissive.length - 10} more\n`;
+                body += `\n</details>\n\n`;
+              }
+            }
+
+            // Footer
+            body += `---\n`;
+            body += `<sub>Generated by CKB Security Audit | `;
+            body += `[View Details](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) | `;
+            body += `[Security Tab](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/security/code-scanning)</sub>`;
+
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+
+            const botComment = comments.find(c =>
+              c.user?.type === 'Bot' &&
+              c.body?.includes('Security Audit Results')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
+
+      - name: Fail on blocking findings
+        if: steps.evaluate.outputs.status == 'failed'
+        run: |
+          echo "::error::Security gate failed: ${{ steps.evaluate.outputs.reason }}"
+          exit 1

@@ -72,7 +72,7 @@ npx @tastehub/ckb setup
 
 ## MCP Integration
 
-CKB provides 58 code intelligence tools via MCP. Supports Claude Code, Cursor, Windsurf, VS Code, OpenCode, and Claude Desktop.
+CKB provides 80+ code intelligence tools via MCP. Supports Claude Code, Cursor, Windsurf, VS Code, OpenCode, and Claude Desktop.
 
 ```bash
 # Auto-configure (interactive)
@@ -106,6 +106,14 @@ claude mcp add ckb -- npx @tastehub/ckb mcp
 
 **Intelligence (v6.5):** `explainOrigin`, `analyzeCoupling`, `exportForLLM`, `auditRisk`
 
+**Code Analysis (v7.6):** `findDeadCode` (static dead code detection), `getAffectedTests`, `compareAPI`
+
+**Compound Operations (v8.0):** `explore`, `understand`, `prepareChange`, `batchGet`, `batchSearch`
+
+**Streaming (v8.0):** `findReferences` and `searchSymbols` support SSE streaming with `stream: true`
+
+**Index Management (v8.0):** `reindex` (trigger index refresh), enhanced `getStatus` with health tiers
+
 ## Architecture Overview
 
 CKB is a code intelligence orchestration layer with three interfaces (CLI, HTTP API, MCP) that all flow through a central query engine.
@@ -131,7 +139,7 @@ Storage Layer (internal/storage/) - SQLite for caching and symbol mappings
 - **internal/identity/**: Stable symbol IDs that survive refactoring. Uses fingerprinting and alias chains.
 - **internal/compression/**: Response budget enforcement for LLM-optimized output.
 - **internal/impact/**: Change impact analysis with visibility detection and risk scoring.
-- **internal/mcp/**: Model Context Protocol server (58 tools).
+- **internal/mcp/**: Model Context Protocol server (80+ tools).
 - **internal/ownership/**: CODEOWNERS parsing + git-blame analysis with time decay.
 - **internal/responsibilities/**: Module responsibility extraction from READMEs and code.
 - **internal/hotspots/**: Churn tracking with trend analysis and projections.
@@ -142,6 +150,8 @@ Storage Layer (internal/storage/) - SQLite for caching and symbol mappings
 - **internal/telemetry/**: OpenTelemetry integration for runtime observability.
 - **internal/audit/**: Multi-factor risk scoring (8 weighted factors).
 - **internal/coupling/**: Co-change analysis from git history.
+- **internal/streaming/**: SSE streaming infrastructure for long-running MCP operations.
+- **internal/envelope/**: Response metadata (ConfidenceFactor, CacheInfo) for AI transparency.
 
 ### Data Flow
 
@@ -177,3 +187,32 @@ CKB works at different quality levels depending on available tooling:
 - **Minimal tier** (heuristics): Git-based features work for all languages
 
 Run `ckb index` to auto-detect and run the appropriate SCIP indexer.
+
+### Keeping Your Index Fresh (v7.5+)
+
+CKB offers multiple ways to keep your index up-to-date:
+
+```bash
+# Manual (default)
+ckb index                    # Run when needed
+
+# Watch mode (CLI)
+ckb index --watch            # Watch and auto-reindex
+ckb index --watch --watch-interval 1m
+
+# MCP watch mode
+ckb mcp --watch              # Auto-reindex during IDE session
+ckb mcp --watch --watch-interval 15s
+
+# Background daemon
+ckb daemon start             # Watches all registered repos
+
+# Trigger from CI (v7.5+)
+curl -X POST http://localhost:9120/api/v1/refresh
+curl -X POST http://localhost:9120/api/v1/refresh -d '{"full":true}'
+
+# Check freshness
+ckb status                   # Shows commits behind, index age
+```
+
+The `getStatus` MCP tool now includes index freshness info (`index.fresh`, `index.commitsBehind`, `index.indexAge`).

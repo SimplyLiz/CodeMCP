@@ -3,21 +3,21 @@ package incremental
 import (
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"time"
 
-	"ckb/internal/logging"
 	"ckb/internal/storage"
 )
 
 // Store provides database operations for incremental indexing
 type Store struct {
 	db     *storage.DB
-	logger *logging.Logger
+	logger *slog.Logger
 }
 
 // NewStore creates a new incremental store
-func NewStore(db *storage.DB, logger *logging.Logger) *Store {
+func NewStore(db *storage.DB, logger *slog.Logger) *Store {
 	return &Store{
 		db:     db,
 		logger: logger,

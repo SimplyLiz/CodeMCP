@@ -3,10 +3,9 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
-
-	"ckb/internal/logging"
 )
 
 // JobHandler executes a specific type of job.
@@ -15,7 +14,7 @@ type JobHandler func(ctx context.Context, job *Job, progress func(int)) (interfa
 // Runner manages background job execution.
 type Runner struct {
 	store    *Store
-	logger   *logging.Logger
+	logger   *slog.Logger
 	handlers map[JobType]JobHandler
 
 	queue       chan *Job
@@ -54,7 +53,7 @@ func DefaultRunnerConfig() RunnerConfig {
 }
 
 // NewRunner creates a new job runner.
-func NewRunner(store *Store, logger *logging.Logger, config RunnerConfig) *Runner {
+func NewRunner(store *Store, logger *slog.Logger, config RunnerConfig) *Runner {
 	if config.QueueSize <= 0 {
 		config.QueueSize = 100
 	}
@@ -83,18 +82,18 @@ func (r *Runner) RegisterHandler(jobType JobType, handler JobHandler) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.handlers[jobType] = handler
-	r.logger.Debug("Registered job handler", map[string]interface{}{
-		"type": jobType,
-	})
+	r.logger.Debug("Registered job handler",
+		"type", jobType,
+	)
 }
 
 // Start begins processing jobs.
 func (r *Runner) Start() error {
-	r.logger.Info("Starting job runner", map[string]interface{}{
-		"workers":          r.workerCount,
-		"queueSize":        r.queueSize,
-		"recoveryInterval": r.recoveryInterval.String(),
-	})
+	r.logger.Info("Starting job runner",
+		"workers", r.workerCount,
+		"queueSize", r.queueSize,
+		"recoveryInterval", r.recoveryInterval.String(),
+	)
 
 	// Start workers
 	for i := 0; i < r.workerCount; i++ {
@@ -124,7 +123,7 @@ func (r *Runner) recoveryLoop() {
 		case <-ticker.C:
 			r.recoverPendingJobs()
 		case <-r.done:
-			r.logger.Debug("Recovery loop stopping", nil)
+			r.logger.Debug("Recovery loop stopping")
 			return
 		}
 	}
@@ -134,9 +133,9 @@ func (r *Runner) recoveryLoop() {
 func (r *Runner) recoverPendingJobs() {
 	pending, err := r.store.GetPendingJobs()
 	if err != nil {
-		r.logger.Warn("Failed to recover pending jobs", map[string]interface{}{
-			"error": err.Error(),
-		})
+		r.logger.Warn("Failed to recover pending jobs",
+			"error", err.Error(),
+		)
 		return
 	}
 
@@ -156,16 +155,16 @@ func (r *Runner) recoverPendingJobs() {
 	}
 
 	if recovered > 0 {
-		r.logger.Info("Recovered pending jobs", map[string]interface{}{
-			"recovered": recovered,
-			"remaining": len(pending) - recovered,
-		})
+		r.logger.Info("Recovered pending jobs",
+			"recovered", recovered,
+			"remaining", len(pending)-recovered,
+		)
 	}
 }
 
 // Stop gracefully shuts down the runner.
 func (r *Runner) Stop(timeout time.Duration) error {
-	r.logger.Info("Stopping job runner", nil)
+	r.logger.Info("Stopping job runner")
 
 	// Signal workers to stop
 	close(r.done)
@@ -173,9 +172,9 @@ func (r *Runner) Stop(timeout time.Duration) error {
 	// Cancel all running jobs
 	r.mu.Lock()
 	for id, cancel := range r.cancel {
-		r.logger.Debug("Cancelling running job", map[string]interface{}{
-			"jobId": id,
-		})
+		r.logger.Debug("Cancelling running job",
+			"jobId", id,
+		)
 		cancel()
 	}
 	r.mu.Unlock()
@@ -189,7 +188,7 @@ func (r *Runner) Stop(timeout time.Duration) error {
 
 	select {
 	case <-done:
-		r.logger.Info("Job runner stopped cleanly", nil)
+		r.logger.Info("Job runner stopped cleanly")
 		return nil
 	case <-time.After(timeout):
 		return fmt.Errorf("job runner shutdown timed out after %v", timeout)
@@ -206,16 +205,16 @@ func (r *Runner) Submit(job *Job) error {
 	// Try to enqueue
 	select {
 	case r.queue <- job:
-		r.logger.Debug("Job queued", map[string]interface{}{
-			"jobId": job.ID,
-			"type":  job.Type,
-		})
+		r.logger.Debug("Job queued",
+			"jobId", job.ID,
+			"type", job.Type,
+		)
 		return nil
 	case <-time.After(100 * time.Millisecond):
 		// Queue is full, job remains in database and will be picked up later
-		r.logger.Warn("Job queue full, job will be processed later", map[string]interface{}{
-			"jobId": job.ID,
-		})
+		r.logger.Warn("Job queue full, job will be processed later",
+			"jobId", job.ID,
+		)
 		return nil
 	case <-r.done:
 		return fmt.Errorf("runner is shutting down")
@@ -263,9 +262,9 @@ func (r *Runner) ListJobs(opts ListJobsOptions) (*ListJobsResponse, error) {
 func (r *Runner) worker(id int) {
 	defer r.wg.Done()
 
-	r.logger.Debug("Job worker started", map[string]interface{}{
-		"workerId": id,
-	})
+	r.logger.Debug("Job worker started",
+		"workerId", id,
+	)
 
 	for {
 		select {
@@ -276,9 +275,9 @@ func (r *Runner) worker(id int) {
 			r.processJob(job)
 
 		case <-r.done:
-			r.logger.Debug("Job worker stopping", map[string]interface{}{
-				"workerId": id,
-			})
+			r.logger.Debug("Job worker stopping",
+				"workerId", id,
+			)
 			return
 		}
 	}
@@ -292,10 +291,10 @@ func (r *Runner) processJob(job *Job) {
 	r.mu.RUnlock()
 
 	if !ok {
-		r.logger.Error("No handler for job type", map[string]interface{}{
-			"jobId": job.ID,
-			"type":  job.Type,
-		})
+		r.logger.Error("No handler for job type",
+			"jobId", job.ID,
+			"type", job.Type,
+		)
 		job.MarkFailed(fmt.Errorf("no handler for job type: %s", job.Type))
 		_ = r.store.UpdateJob(job)
 		return
@@ -317,25 +316,25 @@ func (r *Runner) processJob(job *Job) {
 	// Mark as running
 	job.MarkStarted()
 	if err := r.store.UpdateJob(job); err != nil {
-		r.logger.Error("Failed to update job status", map[string]interface{}{
-			"jobId": job.ID,
-			"error": err.Error(),
-		})
+		r.logger.Error("Failed to update job status",
+			"jobId", job.ID,
+			"error", err.Error(),
+		)
 	}
 
-	r.logger.Info("Processing job", map[string]interface{}{
-		"jobId": job.ID,
-		"type":  job.Type,
-	})
+	r.logger.Info("Processing job",
+		"jobId", job.ID,
+		"type", job.Type,
+	)
 
 	// Progress callback
 	progress := func(pct int) {
 		job.SetProgress(pct)
 		if err := r.store.UpdateJob(job); err != nil {
-			r.logger.Warn("Failed to update job progress", map[string]interface{}{
-				"jobId": job.ID,
-				"error": err.Error(),
-			})
+			r.logger.Warn("Failed to update job progress",
+				"jobId", job.ID,
+				"error", err.Error(),
+			)
 		}
 	}
 
@@ -348,41 +347,41 @@ func (r *Runner) processJob(job *Job) {
 		// Check if cancelled
 		if ctx.Err() == context.Canceled {
 			job.MarkCancelled()
-			r.logger.Info("Job cancelled", map[string]interface{}{
-				"jobId":    job.ID,
-				"duration": duration.String(),
-			})
+			r.logger.Info("Job cancelled",
+				"jobId", job.ID,
+				"duration", duration.String(),
+			)
 		} else {
 			job.MarkFailed(err)
 			r.failedCount++
-			r.logger.Error("Job failed", map[string]interface{}{
-				"jobId":    job.ID,
-				"error":    err.Error(),
-				"duration": duration.String(),
-			})
+			r.logger.Error("Job failed",
+				"jobId", job.ID,
+				"error", err.Error(),
+				"duration", duration.String(),
+			)
 		}
 	} else {
 		if err := job.MarkCompleted(result); err != nil {
-			r.logger.Error("Failed to serialize job result", map[string]interface{}{
-				"jobId": job.ID,
-				"error": err.Error(),
-			})
+			r.logger.Error("Failed to serialize job result",
+				"jobId", job.ID,
+				"error", err.Error(),
+			)
 			job.MarkFailed(err)
 		} else {
 			r.processedCount++
-			r.logger.Info("Job completed", map[string]interface{}{
-				"jobId":    job.ID,
-				"duration": duration.String(),
-			})
+			r.logger.Info("Job completed",
+				"jobId", job.ID,
+				"duration", duration.String(),
+			)
 		}
 	}
 
 	// Save final state
 	if err := r.store.UpdateJob(job); err != nil {
-		r.logger.Error("Failed to save job final state", map[string]interface{}{
-			"jobId": job.ID,
-			"error": err.Error(),
-		})
+		r.logger.Error("Failed to save job final state",
+			"jobId", job.ID,
+			"error", err.Error(),
+		)
 	}
 }
 

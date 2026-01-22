@@ -2,22 +2,17 @@ package auth
 
 import (
 	"database/sql"
-	"os"
+	"io"
+	"log/slog"
 	"testing"
 	"time"
-
-	"ckb/internal/logging"
 
 	_ "modernc.org/sqlite" // Pure Go SQLite driver
 )
 
 // testLogger returns a silent logger for tests
-func testLogger() *logging.Logger {
-	return logging.NewLogger(logging.Config{
-		Level:  logging.DebugLevel,
-		Format: logging.JSONFormat,
-		Output: os.Stderr,
-	})
+func testLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
 // testDB creates an in-memory SQLite database for testing

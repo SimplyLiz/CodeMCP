@@ -1,26 +1,26 @@
 package mcp
 
 import (
+	"io"
+	"log/slog"
 	"testing"
-
-	"ckb/internal/logging"
 )
 
 func TestPresetFiltering(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{
-		Level: logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	server := NewMCPServer("test", nil, logger)
 
 	// Test core preset (default)
+	// v8.0: Core now includes 5 compound tools (explore, understand, prepareChange, batchGet, batchSearch)
 	coreTools := server.GetFilteredTools()
-	if len(coreTools) != 14 {
-		t.Errorf("expected 14 core tools, got %d", len(coreTools))
+	if len(coreTools) != 19 {
+		t.Errorf("expected 19 core tools (v8.0 includes compound tools), got %d", len(coreTools))
 	}
 
-	// Verify core tools are in correct order (core-first)
+	// Verify compound tools come first (preferred for AI workflows)
 	expectedFirst := []string{
+		"explore", "understand", "prepareChange", "batchGet", "batchSearch",
 		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "listKeyConcepts",
@@ -41,8 +41,9 @@ func TestPresetFiltering(t *testing.T) {
 		t.Fatalf("failed to set full preset: %v", err)
 	}
 	fullTools := server.GetFilteredTools()
-	if len(fullTools) != 76 {
-		t.Errorf("expected 76 full tools, got %d", len(fullTools))
+	// v8.0: Full now includes 5 compound tools + scanSecrets (87 = 81 + 5 + 1)
+	if len(fullTools) != 87 {
+		t.Errorf("expected 87 full tools (v8.0 includes compound tools + scanSecrets), got %d", len(fullTools))
 	}
 
 	// Full preset should still have core tools first
@@ -54,9 +55,7 @@ func TestPresetFiltering(t *testing.T) {
 }
 
 func TestPagination(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{
-		Level: logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	server := NewMCPServer("test", nil, logger)
 
@@ -156,9 +155,7 @@ func TestCursorInvalidation(t *testing.T) {
 }
 
 func TestExpandToolsetRateLimit(t *testing.T) {
-	logger := logging.NewLogger(logging.Config{
-		Level: logging.ErrorLevel,
-	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	server := NewMCPServer("test", nil, logger)
 
@@ -172,6 +169,94 @@ func TestExpandToolsetRateLimit(t *testing.T) {
 
 	if !server.IsExpanded() {
 		t.Error("server should be expanded after MarkExpanded")
+	}
+}
+
+func TestSetPresetInvalid(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	server := NewMCPServer("test", nil, logger)
+
+	// Try to set an invalid preset
+	err := server.SetPreset("nonexistent")
+	if err == nil {
+		t.Error("expected error for invalid preset")
+	}
+
+	// Verify the preset wasn't changed
+	if server.GetActivePreset() != DefaultPreset {
+		t.Errorf("preset should remain %s after invalid SetPreset, got %s",
+			DefaultPreset, server.GetActivePreset())
+	}
+}
+
+func TestGetActivePresetAfterSet(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	server := NewMCPServer("test", nil, logger)
+
+	// Initially should return default
+	if server.GetActivePreset() != DefaultPreset {
+		t.Errorf("expected default preset %s, got %s", DefaultPreset, server.GetActivePreset())
+	}
+
+	// Set to review preset
+	if err := server.SetPreset(PresetReview); err != nil {
+		t.Fatalf("SetPreset failed: %v", err)
+	}
+
+	// Should return review
+	if server.GetActivePreset() != PresetReview {
+		t.Errorf("expected preset %s, got %s", PresetReview, server.GetActivePreset())
+	}
+}
+
+func TestPresetDescriptionsComplete(t *testing.T) {
+	// Verify all presets have descriptions
+	for _, preset := range ValidPresets() {
+		desc, ok := PresetDescriptions[preset]
+		if !ok {
+			t.Errorf("preset %s missing from PresetDescriptions", preset)
+		}
+		if desc == "" {
+			t.Errorf("preset %s has empty description", preset)
+		}
+	}
+}
+
+func TestGetPresetToolsInvalid(t *testing.T) {
+	// Invalid preset should return core tools
+	tools := GetPresetTools("nonexistent")
+	coreTools := GetPresetTools(PresetCore)
+
+	if len(tools) != len(coreTools) {
+		t.Errorf("invalid preset should return core tools, got %d tools instead of %d",
+			len(tools), len(coreTools))
+	}
+}
+
+func TestFormatTokens(t *testing.T) {
+	tests := []struct {
+		tokens   int
+		expected string
+	}{
+		{0, "~0 tokens"},
+		{500, "~500 tokens"},
+		{999, "~999 tokens"},
+		{1000, "~1k tokens"},  // (1000+500)/1000 = 1
+		{1499, "~1k tokens"},  // (1499+500)/1000 = 1
+		{1500, "~2k tokens"},  // (1500+500)/1000 = 2 (rounds up at .5)
+		{1501, "~2k tokens"},  // (1501+500)/1000 = 2
+		{9040, "~9k tokens"},  // (9040+500)/1000 = 9
+		{9499, "~9k tokens"},  // (9499+500)/1000 = 9
+		{9500, "~10k tokens"}, // (9500+500)/1000 = 10 (rounds up at .5)
+	}
+
+	for _, tc := range tests {
+		result := FormatTokens(tc.tokens)
+		if result != tc.expected {
+			t.Errorf("FormatTokens(%d) = %q, want %q", tc.tokens, result, tc.expected)
+		}
 	}
 }
 
@@ -198,5 +283,63 @@ func TestToolsetHash(t *testing.T) {
 	}
 	if hash1 == hash3 {
 		t.Error("different descriptions should have different hashes")
+	}
+}
+
+func TestGetAllPresetInfo(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	server := NewMCPServer("test", nil, logger)
+	allTools := server.GetToolDefinitions()
+	infos := GetAllPresetInfo(allTools)
+
+	// Should return info for all presets
+	if len(infos) != len(ValidPresets()) {
+		t.Errorf("expected %d preset infos, got %d", len(ValidPresets()), len(infos))
+	}
+
+	// Verify each preset has valid data
+	for _, info := range infos {
+		if info.Name == "" {
+			t.Error("preset info has empty name")
+		}
+		if info.ToolCount == 0 {
+			t.Errorf("preset %s has 0 tools", info.Name)
+		}
+		if info.TokenCount == 0 {
+			t.Errorf("preset %s has 0 tokens", info.Name)
+		}
+		if info.Description == "" {
+			t.Errorf("preset %s has no description", info.Name)
+		}
+	}
+
+	// Verify core is the default
+	var foundDefault bool
+	for _, info := range infos {
+		if info.Name == PresetCore && info.IsDefault {
+			foundDefault = true
+		}
+	}
+	if !foundDefault {
+		t.Error("core preset should be marked as default")
+	}
+
+	// Full preset should have the most tools
+	var fullInfo *PresetInfo
+	for i := range infos {
+		if infos[i].Name == PresetFull {
+			fullInfo = &infos[i]
+			break
+		}
+	}
+	if fullInfo == nil {
+		t.Fatal("full preset not found")
+	}
+	for _, info := range infos {
+		if info.Name != PresetFull && info.ToolCount > fullInfo.ToolCount {
+			t.Errorf("preset %s has more tools (%d) than full (%d)",
+				info.Name, info.ToolCount, fullInfo.ToolCount)
+		}
 	}
 }

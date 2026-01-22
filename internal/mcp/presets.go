@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"sort"
 )
 
@@ -25,13 +26,22 @@ const DefaultPreset = PresetCore
 // Core must enable one complete workflow without expansion.
 // Default workflow: "Investigate & Assess Impact"
 var Presets = map[string][]string{
-	// Core: 14 tools - enables "Investigate & Assess Impact" workflow completely
+	// Core: 19 tools - enables "Investigate & Assess Impact" workflow completely
+	// v8.0: Added compound tools (explore, understand, prepareChange, batchGet, batchSearch)
+	// to reduce tool calls by 60-70% for common workflows
 	PresetCore: {
-		// Discovery & Search
+		// v8.0 Compound Tools (preferred for AI workflows)
+		"explore",       // Replaces: explainFile → searchSymbols → getCallGraph → getHotspots
+		"understand",    // Replaces: searchSymbols → getSymbol → explainSymbol → findReferences → getCallGraph
+		"prepareChange", // Replaces: analyzeImpact + getAffectedTests + analyzeCoupling + risk
+		"batchGet",      // Multiple symbols in one call
+		"batchSearch",   // Multiple searches in one call
+
+		// Discovery & Search (granular fallback)
 		"searchSymbols",
 		"getSymbol",
 
-		// Navigation & Understanding
+		// Navigation & Understanding (granular fallback)
 		"explainSymbol",
 		"explainFile",
 		"findReferences",
@@ -43,7 +53,7 @@ var Presets = map[string][]string{
 		"getModuleOverview",
 		"listKeyConcepts", // Enables architecture exploration
 
-		// Impact & Risk
+		// Impact & Risk (granular fallback)
 		"analyzeImpact",
 		"getHotspots",
 
@@ -56,7 +66,8 @@ var Presets = map[string][]string{
 
 	// Review: core + code review tools
 	PresetReview: {
-		// Core tools
+		// Core tools (v8.0: includes compound tools)
+		"explore", "understand", "prepareChange", "batchGet", "batchSearch",
 		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "listKeyConcepts",
@@ -67,11 +78,13 @@ var Presets = map[string][]string{
 		"getOwnership",
 		"getOwnershipDrift",
 		"recentlyRelevant",
+		"scanSecrets", // v8.0: Secret detection for PR reviews
 	},
 
 	// Refactor: core + refactoring analysis tools
 	PresetRefactor: {
-		// Core tools
+		// Core tools (v8.0: includes compound tools)
+		"explore", "understand", "prepareChange", "batchGet", "batchSearch",
 		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "listKeyConcepts",
@@ -80,13 +93,18 @@ var Presets = map[string][]string{
 		"justifySymbol",
 		"analyzeCoupling",
 		"findDeadCodeCandidates",
+		"findDeadCode",     // v7.6: Static dead code detection (no telemetry needed)
+		"getAffectedTests", // v7.6: Find tests affected by changes
+		"compareAPI",       // v7.6: Breaking change detection
 		"auditRisk",
 		"explainOrigin",
+		"scanSecrets", // v8.0: Secret detection for security audits
 	},
 
 	// Federation: core + federation tools
 	PresetFederation: {
-		// Core tools
+		// Core tools (v8.0: includes compound tools)
+		"explore", "understand", "prepareChange", "batchGet", "batchSearch",
 		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "listKeyConcepts",
@@ -110,7 +128,8 @@ var Presets = map[string][]string{
 
 	// Docs: core + doc-symbol linking tools
 	PresetDocs: {
-		// Core tools
+		// Core tools (v8.0: includes compound tools)
+		"explore", "understand", "prepareChange", "batchGet", "batchSearch",
 		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "listKeyConcepts",
@@ -126,13 +145,15 @@ var Presets = map[string][]string{
 
 	// Ops: core + operational tools
 	PresetOps: {
-		// Core tools
+		// Core tools (v8.0: includes compound tools)
+		"explore", "understand", "prepareChange", "batchGet", "batchSearch",
 		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "listKeyConcepts",
 		"analyzeImpact", "getHotspots", "getStatus", "expandToolset",
 		// Ops-specific
 		"doctor",
+		"reindex",
 		"daemonStatus",
 		"listJobs",
 		"getJobStatus",
@@ -178,7 +199,15 @@ func GetPresetTools(preset string) []string {
 }
 
 // coreToolOrder defines the order of core tools (must appear first on page 1)
+// v8.0: Compound tools come first (preferred for AI workflows)
 var coreToolOrder = []string{
+	// v8.0 Compound Tools (preferred for AI workflows)
+	"explore",
+	"understand",
+	"prepareChange",
+	"batchGet",
+	"batchSearch",
+	// Granular tools (fallback)
 	"searchSymbols",
 	"getSymbol",
 	"explainSymbol",
@@ -291,4 +320,55 @@ func ComputeToolsetHash(tools []Tool) string {
 	}
 
 	return hex.EncodeToString(h.Sum(nil))[:10]
+}
+
+// FormatTokens formats a token count for display (e.g., "~12k tokens")
+// Uses rounding (+500) for values >= 1000 to give more accurate estimates.
+func FormatTokens(tokens int) string {
+	if tokens >= 1000 {
+		return fmt.Sprintf("~%dk tokens", (tokens+500)/1000)
+	}
+	return fmt.Sprintf("~%d tokens", tokens)
+}
+
+// PresetDescriptions provides human-readable descriptions for each preset
+var PresetDescriptions = map[string]string{
+	PresetCore:       "Quick navigation, search, impact analysis",
+	PresetReview:     "Code review with ownership and PR summaries",
+	PresetRefactor:   "Refactoring analysis with coupling and dead code",
+	PresetFederation: "Multi-repo queries and cross-repo visibility",
+	PresetDocs:       "Documentation-symbol linking and coverage",
+	PresetOps:        "Diagnostics, daemon, webhooks, jobs",
+	PresetFull:       "Complete feature set (all tools)",
+}
+
+// PresetInfo contains display information about a preset
+type PresetInfo struct {
+	Name        string
+	ToolCount   int
+	TokenCount  int
+	Description string
+	IsDefault   bool
+}
+
+// GetAllPresetInfo returns information about all presets including tool counts and token estimates.
+// Requires tool definitions to calculate accurate token estimates.
+func GetAllPresetInfo(allTools []Tool) []PresetInfo {
+	presets := ValidPresets()
+	infos := make([]PresetInfo, 0, len(presets))
+
+	for _, name := range presets {
+		filtered := FilterAndOrderTools(allTools, name)
+		tokens := EstimateTokens(MeasureJSONSize(filtered))
+
+		infos = append(infos, PresetInfo{
+			Name:        name,
+			ToolCount:   len(filtered),
+			TokenCount:  tokens,
+			Description: PresetDescriptions[name],
+			IsDefault:   name == DefaultPreset,
+		})
+	}
+
+	return infos
 }

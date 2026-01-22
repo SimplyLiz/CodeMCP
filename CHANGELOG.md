@@ -2,6 +2,603 @@
 
 All notable changes to CKB will be documented in this file.
 
+## [8.1.0] - Unreleased
+
+### Added
+
+#### Coverage Configuration Options
+Coverage file detection is now configurable via `.ckb/config.json`:
+
+```json
+{
+  "coverage": {
+    "paths": ["coverage/custom-lcov.info"],
+    "autoDetect": true,
+    "maxAge": "168h"
+  }
+}
+```
+
+- `paths`: Custom paths to check for coverage files
+- `autoDetect`: Use language-specific auto-detection (default: true)
+- `maxAge`: Max age before marking as stale (default: 7 days)
+
+#### Orphaned Index Detection
+`ckb doctor` now includes an `orphaned-indexes` check that scans for indexes pointing to repos that no longer exist:
+
+```
+$ ckb doctor
+
+✓ orphaned-indexes: Index cache: 234 MB (12 repos), 2 orphaned
+  → ckb cache clean --orphaned
+```
+
+#### Test Mapping (`ckb affected-tests`)
+New command to find tests affected by current changes:
+
+```bash
+$ ckb affected-tests
+
+Affected Tests
+──────────────────────────────────────────────────────────
+
+Found 8 test files:
+  • 5 direct (test references changed code)
+  • 3 transitive (test uses affected code)
+
+Run command:
+  go test ./internal/query/... ./internal/diff/...
+```
+
+**Features:**
+- Maps changed symbols to affected test files via SCIP
+- Finds corresponding test files by naming convention (e.g., `foo.go` → `foo_test.go`)
+- Generates language-appropriate run commands
+- `--format=list` for CI integration
+
+#### --include-tests Flag Wiring
+The `--include-tests` flag now works end-to-end in `ckb impact diff`:
+- Properly sets `IsTest` flag on references based on file path
+- Filters test files from changed symbols when `--include-tests=false`
+
+## [8.0.1] - 2026-01-22
+
+### Improved
+
+#### Human-Readable Output by Default
+All CLI commands now default to `--format=human` instead of `--format=json`. This makes the CLI more friendly for interactive use while still supporting `--format=json` for scripting and automation.
+
+#### Quieter Indexer Output
+External SCIP indexers (scip-go, scip-typescript, etc.) no longer spam stdout during `ckb index`. Output is now captured and only shown on error or when using `-v` verbose mode.
+
+#### Better Error Messages
+- `ckb dead-code` now clearly indicates it's for telemetry-based analysis and suggests using `ckb telemetry dead-code`
+- `ckb impact diff` no longer shows confusing "Symbol not found: diff" error; instead provides helpful guidance
+- Symbol not found errors now suggest using `ckb search` to find valid symbol IDs
+
+#### Index Missing Guidance
+`ckb status` now shows helpful guidance when no SCIP index is found:
+- Lists commands that work without index (git-based): `hotspots`, `ownership`, `reviewers`, `diff-summary`, `pr-summary`
+- Lists commands that need SCIP index: `search`, `refs`, `callgraph`, `impact`, `dead-code`, `trace`, `explain`
+
+### Fixed
+- Consistent `--format=human` support for `diff-summary`, `concepts`, and `impact diff` commands
+
+---
+
+## [8.0.0] - 2026-01-21
+
+**Theme:** Reliability, clarity, and compound operations for AI workflows.
+
+### Added
+
+#### Compound Operations (5 New Tools)
+
+Reduce AI tool calls by 60-70% with smart aggregation tools that combine multiple primitives into single, focused operations.
+
+**`explore` — Area Exploration**
+
+Comprehensive exploration of files, directories, or modules. Replaces the common pattern of `explainFile` → `searchSymbols` → `getCallGraph` → `getHotspots`.
+
+```json
+{
+  "target": "internal/query",
+  "depth": "standard",    // "shallow" | "standard" | "deep"
+  "focus": "structure"    // "structure" | "dependencies" | "changes"
+}
+```
+
+Returns: module overview, key symbols (ranked by importance), dependencies, recent changes, hotspots, and drilldown suggestions.
+
+**`understand` — Symbol Deep-Dive**
+
+Complete symbol understanding with ambiguity handling. Replaces `searchSymbols` → `getSymbol` → `explainSymbol` → `findReferences` → `getCallGraph`.
+
+```json
+{
+  "query": "HandleRequest",
+  "includeReferences": true,
+  "includeCallGraph": true,
+  "maxReferences": 50
+}
+```
+
+Returns: full symbol detail, explanation, references grouped by file, callers/callees, related tests, and disambiguation info when multiple matches exist.
+
+**`prepareChange` — Pre-Change Analysis**
+
+Impact analysis before modifying code. Combines `analyzeImpact` + `getAffectedTests` + `analyzeCoupling` + risk calculation.
+
+```json
+{
+  "target": "ckb:repo:sym:abc123",
+  "changeType": "modify"    // "modify" | "rename" | "delete" | "extract"
+}
+```
+
+Returns: direct dependents, transitive impact metrics, related tests, co-change files, and risk assessment with severity levels and mitigation suggestions.
+
+**`batchGet` — Multiple Symbols by ID**
+
+Retrieve up to 50 symbols in a single call. Returns results and errors keyed by symbol ID.
+
+**`batchSearch` — Multiple Searches**
+
+Execute up to 10 symbol searches in one call. Each query can have its own kind filter and scope.
+
+#### SSE Streaming
+
+Real-time feedback for long-running operations via Server-Sent Events.
+
+**Protocol:**
+```json
+// Request with streaming
+{
+  "name": "findReferences",
+  "arguments": {
+    "symbolId": "ckb:repo:sym:abc123",
+    "stream": true,
+    "chunkSize": 20
+  }
+}
+
+// Initial response
+{
+  "streamId": "abc123",
+  "streaming": true,
+  "meta": { "chunkSize": 20 }
+}
+
+// MCP notifications: ckb/streamMeta, ckb/streamChunk, ckb/streamProgress, ckb/streamComplete
+```
+
+**Streamable Tools:**
+- `findReferences` — Stream references in chunks with progress updates
+- `searchSymbols` — Stream symbol search results
+
+**Event Types:**
+| Event | Purpose |
+|-------|---------|
+| `meta` | Stream metadata (total count, chunk size, backends) |
+| `chunk` | Batch of items with sequence number |
+| `progress` | Phase updates with percentage |
+| `done` | Stream complete with summary |
+| `error` | Error with code and remediation |
+
+#### Enhanced `getStatus`
+
+System health with actionable remediation guidance.
+
+```json
+{
+  "backends": {
+    "scip": { "status": "available", "latencyMs": 12 },
+    "git": { "status": "available" },
+    "lsp": {
+      "status": "unavailable",
+      "reason": "No LSP server configured",
+      "remediation": "Configure LSP server in .ckb/config.json"
+    }
+  },
+  "index": {
+    "fresh": false,
+    "commitsBehind": 3,
+    "lastIndexed": "2h ago",
+    "symbolCount": 4521,
+    "fileCount": 156
+  },
+  "overallHealth": "degraded",
+  "suggestions": [
+    "Run 'ckb index' to refresh stale index",
+    "Configure LSP for enhanced code intelligence"
+  ]
+}
+```
+
+**Health Tiers:**
+- `available` — Backend working normally
+- `degraded` — Backend available but with warnings
+- `unavailable` — Backend not available, includes remediation
+
+#### `reindex` Tool
+
+Trigger index refresh via MCP with scope control.
+
+```json
+// Input
+{ "scope": "full", "async": false }
+
+// Output
+{
+  "status": "action_required",
+  "message": "Index is 3 commits behind. Run 'ckb index' to refresh."
+}
+```
+
+Status values: `skipped`, `action_required`, `started`, `completed`
+
+#### Structured Error Codes
+
+All MCP errors now include actionable remediation guidance.
+
+| Code | When | Remediation |
+|------|------|-------------|
+| `AMBIGUOUS_QUERY` | Multiple symbols match | Narrow with scope, kind, or more specific name |
+| `PARTIAL_RESULT` | Some backends failed | Result incomplete; check backend health |
+| `INVALID_PARAMETER` | Bad input | Check parameter format |
+| `RESOURCE_NOT_FOUND` | Symbol/file doesn't exist | Verify ID or path |
+| `PRECONDITION_FAILED` | Required condition not met | Check index freshness, backend availability |
+| `OPERATION_FAILED` | General failure | Check logs, retry |
+
+#### Response Metadata
+
+All tool responses now include structured metadata for AI transparency.
+
+**ConfidenceFactor:** Explains why a confidence score was assigned
+```json
+{
+  "score": 0.85,
+  "tier": "medium",
+  "factors": [
+    { "factor": "scip_exact_match", "weight": 0.9 },
+    { "factor": "index_slightly_stale", "weight": -0.05 }
+  ]
+}
+```
+
+**CacheInfo:** Cache hit/miss transparency
+```json
+{
+  "hit": true,
+  "tier": "query_cache",
+  "age": "45s",
+  "key": "findReferences:abc123"
+}
+```
+
+#### Code Analysis Tools
+
+**`findDeadCode`** — Static dead code detection
+
+Identifies symbols with no references (excluding test files, entrypoints, and interface implementations).
+
+```json
+{
+  "candidates": [
+    {
+      "symbolId": "ckb:repo:sym:abc123",
+      "name": "unusedHelper",
+      "kind": "function",
+      "file": "internal/util/helpers.go",
+      "confidence": 0.95,
+      "reason": "No references found"
+    }
+  ],
+  "excludedReasons": {
+    "entrypoint": 12,
+    "interface_impl": 8,
+    "test_only": 23
+  }
+}
+```
+
+**`getAffectedTests`** — Test coverage mapping
+
+Maps changed symbols to affected test files.
+
+```json
+{
+  "symbolId": "ckb:repo:sym:abc123",
+  "affectedTests": [
+    { "file": "auth/handler_test.go", "confidence": 0.95, "reason": "direct_reference" },
+    { "file": "api/routes_test.go", "confidence": 0.75, "reason": "transitive" }
+  ],
+  "runCommand": "go test ./internal/auth/... ./internal/api/..."
+}
+```
+
+**`compareAPI`** — Breaking change detection
+
+Compares API surface between commits/branches.
+
+```json
+{
+  "base": "main",
+  "head": "HEAD",
+  "breaking": [
+    {
+      "symbol": "ValidateToken",
+      "change": "renamed",
+      "newName": "ValidateUserToken",
+      "affectedCallers": 12
+    }
+  ],
+  "additions": [...],
+  "compatible": true
+}
+```
+
+#### Golden Test Suite
+
+Multi-language test fixtures for regression testing across Go, TypeScript, Python, and Rust.
+
+### Changed
+
+- All MCP tool handlers now use structured `CkbError` instead of raw `fmt.Errorf`
+- `getStatus` response includes streaming capabilities info
+- Confidence scores now include explanation factors via `FromProvenance()`
+- Cached responses include cache tier and age information
+
+### Files Added
+
+**Compound Operations:**
+- `internal/query/compound.go` — `Explore()`, `Understand()`, `PrepareChange()`, `BatchGet()`, `BatchSearch()`
+- `internal/query/compound_test.go` — Compound operation tests
+- `internal/mcp/tool_impls_compound.go` — MCP handlers for compound tools
+
+**Streaming:**
+- `internal/streaming/stream.go` — Core Stream type with event sending, heartbeat
+- `internal/streaming/chunker.go` — Generic chunking by count and byte size
+- `internal/streaming/mcp.go` — MCP notification writer for streams
+- `internal/mcp/streaming.go` — StreamingHandler type, registry, wrapForStreaming
+- `internal/mcp/tool_impls_streaming.go` — Streaming implementations
+
+**Error Handling:**
+- `internal/errors/codes.go` — Error code taxonomy with constructors
+- `internal/errors/remediation.go` — Remediation message generation
+
+**Metadata:**
+- `internal/envelope/confidence.go` — ConfidenceFactor type and FromProvenance()
+- `internal/envelope/cache.go` — CacheInfo type
+
+## [7.6.0]
+
+### Added
+
+#### Real Transitive Impact Analysis
+The `analyzeImpact` tool now provides real transitive caller analysis using call graph traversal, replacing the previous stub implementation.
+
+**What's New:**
+- **Transitive callers**: See not just direct callers, but callers-of-callers up to depth 4
+- **Blast radius summary**: Quick metrics showing module count, file count, unique callers, and risk level
+- **Distance tracking**: Each transitive caller includes its distance from the target symbol
+- **Confidence decay**: Confidence decreases with depth (0.85 → 0.75 → 0.65 for depths 2/3/4)
+
+**Example Output:**
+```json
+{
+  "blastRadius": {
+    "moduleCount": 4,
+    "fileCount": 12,
+    "uniqueCallerCount": 18,
+    "riskLevel": "high"
+  },
+  "transitiveImpact": [
+    { "kind": "transitive_caller", "symbolId": "...", "distance": 2, "confidence": 0.85 },
+    { "kind": "transitive_caller", "symbolId": "...", "distance": 3, "confidence": 0.75 }
+  ]
+}
+```
+
+**Blast Radius Thresholds:**
+| Level | Criteria |
+|-------|----------|
+| Low | ≤2 modules AND ≤5 callers |
+| High | >5 modules OR >20 callers |
+| Medium | Everything in between |
+
+**Usage:**
+```bash
+# CLI
+ckb impact <symbol-id> --depth 3
+
+# MCP
+analyzeImpact({ symbolId: "...", depth: 3 })
+```
+
+**Files Changed:**
+- `internal/impact/types.go` — Added `BlastRadius` struct with classification
+- `internal/impact/analyzer.go` — `TransitiveCallerProvider` interface, transitive analysis
+- `internal/query/impact.go` — `scipCallerProvider` using SCIP call graph
+- `internal/mcp/tool_impls.go` — Added `blastRadius` to MCP output
+
+## [7.5.0]
+
+### Added
+
+#### Change Impact Analysis
+Analyze the impact of code changes from git diffs *before* committing. This feature answers: "What downstream code might break?"
+
+**CLI:**
+```bash
+ckb impact diff                # Analyze working tree changes
+ckb impact diff --staged       # Analyze only staged changes
+ckb impact diff --base=main    # Compare against a branch
+ckb impact diff --depth=3      # Deeper transitive analysis
+ckb impact diff --strict       # Fail if index is stale
+```
+
+**MCP Tool:** `analyzeChange`
+
+**Key Features:**
+- **Git diff parsing** — Uses `sourcegraph/go-diff` to parse unified diffs into structured hunks
+- **Symbol mapping** — Maps changed lines to SCIP symbol definitions with confidence scoring
+- **Confidence levels** — 1.0 (exact definition), 0.8 (body change), 0.7 (reference), 0.3 (file-level)
+- **Aggregated risk** — Weighted factors: symbols changed (20%), direct impact (30%), transitive impact (20%), module spread (30%)
+- **Index staleness** — Warns when SCIP index is behind HEAD; `--strict` mode fails if stale
+- **Recommendations** — Actionable suggestions (review, test, split) based on analysis
+
+**Files Added:**
+- `internal/impact/interfaces.go` — Core types (ChangedSymbol, ParsedDiff, ChangeType)
+- `internal/diff/gitdiff.go` — Git diff parser with source file filtering
+- `internal/diff/symbolmap.go` — Diff-to-symbol mapper with confidence scoring
+- `internal/diff/scipadapter.go` — SCIP index adapter for symbol lookup
+
+**Files Changed:**
+- `internal/query/impact.go` — Added `AnalyzeChangeSet()` engine method
+- `internal/mcp/tools.go` — Added `analyzeChange` tool definition
+- `internal/mcp/tool_impls.go` — Added `analyzeChange` handler
+- `cmd/ckb/impact.go` — Added `ckb impact diff` subcommand
+
+See [[Change-Impact-Analysis]] in the wiki for full documentation.
+
+#### Token Efficiency Visibility
+Users can now see CKB's token savings compared to bloated MCP servers:
+
+**Startup Banner:**
+```
+CKB MCP Server v7.5.0
+  Active tools: 14 / 76 (18%)
+  Estimated context: ~1k tokens
+  Preset: core
+```
+
+**getStatus Response:**
+```json
+"preset": {
+  "active": "core",
+  "exposed": 14,
+  "total": 76,
+  "estimatedTokens": 1529,
+  "fullPresetTokens": 9040,
+  "tokenSavingsPercent": 83
+}
+```
+
+This addresses community feedback about MCP tools consuming 50-80k tokens before conversations even start. CKB's preset system delivers 83% token reduction while maintaining full functionality.
+
+**Preset Discoverability (`--list-presets`):**
+```
+$ ckb mcp --list-presets
+
+Available presets:
+
+  PRESET        TOOLS         TOKENS  DESCRIPTION
+  ------        -----         ------  -----------
+  core             14     ~2k tokens  Quick navigation, search, impact analysis (default)
+  review           19     ~2k tokens  Code review with ownership and PR summaries
+  refactor         19     ~2k tokens  Refactoring analysis with coupling and dead code
+  federation       28     ~3k tokens  Multi-repo queries and cross-repo visibility
+  docs             20     ~2k tokens  Documentation-symbol linking and coverage
+  ops              25     ~2k tokens  Diagnostics, daemon, webhooks, jobs
+  full             76     ~9k tokens  Complete feature set (all tools)
+
+Use: ckb mcp --preset=<name>
+```
+
+**Future:** Per-tool token breakdown (`--tokens` flag showing individual tool costs) planned for a later release.
+
+**Files Changed:**
+- `cmd/ckb/mcp.go` — Multi-line startup banner with token info, `--list-presets` flag
+- `internal/mcp/server.go` — Added `EstimateActiveTokens()`, `EstimateFullTokens()` methods
+- `internal/mcp/presets.go` — Added `FormatTokens()`, `GetAllPresetInfo()`, `PresetDescriptions`
+- `internal/mcp/tool_impls.go` — Token fields in getStatus response
+
+#### Auto Index Updates
+Automatic index maintenance across all CKB interfaces—keep your index fresh without manual intervention:
+
+**Watch Mode (CLI):**
+```bash
+# Watch for changes and auto-reindex (standalone)
+ckb index --watch
+ckb index --watch --watch-interval 15s
+
+# Watch with MCP server (existing, now configurable)
+ckb mcp --watch
+ckb mcp --watch --watch-interval 1m
+```
+
+**Daemon File Watcher:**
+The daemon's file watcher now triggers actual incremental refreshes instead of just logging. When git changes are detected, the daemon queues and executes an incremental update.
+
+**Webhook API:**
+```bash
+# Trigger incremental refresh via HTTP
+curl -X POST http://localhost:9120/api/v1/refresh
+
+# Force full reindex
+curl -X POST http://localhost:9120/api/v1/refresh -d '{"full": true}'
+
+# Specify repository
+curl -X POST http://localhost:9120/api/v1/refresh -d '{"repo": "/path/to/repo"}'
+```
+
+**Response:**
+```json
+{
+  "status": "queued",
+  "repo": "/path/to/repo",
+  "type": "incremental"
+}
+```
+
+**Index Staleness Visibility:**
+- `ckb status` now shows commits behind HEAD and index age
+- MCP `getStatus` response includes `index.commitsBehind`, `index.indexAge`, `index.reason`
+- Fresh indexes show ✓, stale indexes show ⚠ with specific reason
+
+**Files Added:**
+- `internal/daemon/refresh.go` — RefreshManager for incremental/full reindex
+- `cmd/ckb/status_test.go` — Status type tests
+- `internal/daemon/refresh_test.go` — RefreshManager unit tests
+
+**Files Changed:**
+- `cmd/ckb/index.go` — Added `--watch` and `--watch-interval` flags
+- `cmd/ckb/mcp.go` — Added `--watch-interval` flag (min 5s, max 5m)
+- `cmd/ckb/status.go` — Added staleness display with commits behind
+- `internal/daemon/daemon.go` — Connected file watcher to RefreshManager
+- `internal/daemon/server.go` — Added `/api/v1/refresh` endpoint
+- `internal/index/metadata.go` — Added `Staleness` type and `GetStaleness()` method
+- `internal/mcp/tool_impls.go` — Added index staleness to `getStatus` response
+- `CLAUDE.md` — Added "Keeping Your Index Fresh" section
+
+See [[Index-Management]] in the wiki for detailed documentation.
+
+#### Multi-Language Incremental Indexing
+Incremental indexing now supports multiple languages via a unified indexer registry:
+
+**Supported languages:**
+- Go (scip-go)
+- TypeScript/JavaScript (scip-typescript)
+- Python (scip-python)
+- Dart (scip_dart)
+- Rust (rust-analyzer)
+
+**Features:**
+- Automatic indexer detection and path resolution (including `~/go/bin`)
+- Graceful degradation with install hints when indexer is missing
+- Language-specific `SupportsIncremental` flag for safe fallback
+- Unified `IndexIncrementalWithLang(ctx, since, lang)` API
+
+**Usage:**
+```bash
+# Auto-detects language and uses incremental if available
+ckb index
+
+# Incremental not available message includes install command
+Incremental not available: scip-python not installed (run: pip install scip-python)
+```
+
 ## [7.4.0]
 
 ### Added
@@ -163,13 +760,14 @@ All 76 MCP tool responses now include structured metadata in a consistent envelo
 - `internal/mcp/handler.go` — Updated handleCallTool for envelope format
 - All `internal/mcp/tool_impls*.go` files — Refactored to return envelope responses
 
-#### npm Update Notifications
-Automatic update checking for npm installations:
+#### Update Notifications
+Automatic update checking for all installation methods:
 
-- **Auto-detection** — Detects when running from `npm install -g @tastehub/ckb`
-- **Non-blocking check** — Runs asynchronously, never delays command execution
-- **24-hour cache** — Checks npm registry at most once per day
-- **Silent failures** — Network timeouts (3s), errors, and offline mode fail silently
+- **GitHub Releases API** — Single source of truth for all install methods (npm, go install, binary)
+- **Deferred notification** — Shows at command START from cache (instant, no HTTP during execution)
+- **Background refresh** — Cache updated asynchronously for next run
+- **24-hour cache** — Checks GitHub at most once per day, stored in `~/.ckb/update-check.json`
+- **Smart upgrade message** — npm users see `npm update`, others see GitHub releases URL
 - **Protocol-safe** — Skips `mcp` and `serve` commands to avoid breaking protocols
 
 **Disable with:**
@@ -177,11 +775,19 @@ Automatic update checking for npm installations:
 export CKB_NO_UPDATE_CHECK=1
 ```
 
-**Example output:**
+**Example output (npm install):**
 ```
 ╭─────────────────────────────────────────────────────╮
 │  Update available: 7.3.0 → 7.4.0                    │
 │  Run: npm update -g @tastehub/ckb                   │
+╰─────────────────────────────────────────────────────╯
+```
+
+**Example output (go install / binary):**
+```
+╭─────────────────────────────────────────────────────╮
+│  Update available: 7.3.0 → 7.4.0                    │
+│  https://github.com/SimplyLiz/CodeMCP/releases      │
 ╰─────────────────────────────────────────────────────╯
 ```
 

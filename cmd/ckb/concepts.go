@@ -30,7 +30,7 @@ Examples:
 }
 
 func init() {
-	conceptsCmd.Flags().StringVar(&conceptsFormat, "format", "json", "Output format (json, human)")
+	conceptsCmd.Flags().StringVar(&conceptsFormat, "format", "human", "Output format (human, json)")
 	conceptsCmd.Flags().IntVar(&conceptsLimit, "limit", 12, "Maximum concepts to return (max 12)")
 	rootCmd.AddCommand(conceptsCmd)
 }
@@ -62,10 +62,10 @@ func runConcepts(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Concepts query completed", map[string]interface{}{
-		"count":    len(response.Concepts),
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Concepts query completed",
+		"count", len(response.Concepts),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // ConceptsResponseCLI contains concepts list for CLI output

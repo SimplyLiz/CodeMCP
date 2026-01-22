@@ -38,7 +38,7 @@ Examples:
 }
 
 func init() {
-	complexityCmd.Flags().StringVar(&complexityFormat, "format", "json", "Output format (json, human)")
+	complexityCmd.Flags().StringVar(&complexityFormat, "format", "human", "Output format (human, json)")
 	complexityCmd.Flags().BoolVar(&complexityIncludeFunctions, "include-functions", true, "Include per-function complexity")
 	complexityCmd.Flags().StringVar(&complexitySortBy, "sort", "cyclomatic", "Sort by: cyclomatic, cognitive, or name")
 	complexityCmd.Flags().IntVar(&complexityLimit, "limit", 0, "Limit number of functions shown (0 for all)")
@@ -97,13 +97,13 @@ func runComplexity(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Complexity analysis completed", map[string]interface{}{
-		"file":          filePath,
-		"functionCount": fc.FunctionCount,
-		"maxCyclomatic": fc.MaxCyclomatic,
-		"maxCognitive":  fc.MaxCognitive,
-		"duration":      time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Complexity analysis completed",
+		"file", filePath,
+		"functionCount", fc.FunctionCount,
+		"maxCyclomatic", fc.MaxCyclomatic,
+		"maxCognitive", fc.MaxCognitive,
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // ComplexityResponseCLI contains complexity results for CLI output

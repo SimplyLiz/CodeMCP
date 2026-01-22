@@ -1,0 +1,23 @@
+{
+  "edges": [
+    {
+      "from": "scip-typescript npm fixture 1.0.0 src/`main.ts`/runServer().",
+      "to": "scip-typescript npm fixture 1.0.0 src/`main.ts`/main()."
+    }
+  ],
+  "nodes": [
+    {
+      "file": ".",
+      "id": "scip-typescript npm fixture 1.0.0 src/`main.ts`/main().",
+      "name": "main",
+      "role": "root"
+    },
+    {
+      "file": "src/main.ts",
+      "id": "scip-typescript npm fixture 1.0.0 src/`main.ts`/runServer().",
+      "name": "ts`/runServer",
+      "role": "caller"
+    }
+  ],
+  "root": "scip-typescript npm fixture 1.0.0 src/`main.ts`/main()."
+}

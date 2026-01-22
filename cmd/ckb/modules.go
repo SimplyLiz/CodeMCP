@@ -77,11 +77,11 @@ Examples:
 
 func init() {
 	// Overview flags
-	modulesCmd.Flags().StringVar(&modulesFormat, "format", "json", "Output format (json, human)")
+	modulesCmd.Flags().StringVar(&modulesFormat, "format", "human", "Output format (human, json)")
 	modulesCmd.Flags().StringVar(&modulesName, "name", "", "Optional friendly name for the module")
 
 	// Annotate flags
-	modulesAnnotateCmd.Flags().StringVar(&modulesFormat, "format", "json", "Output format (json, human)")
+	modulesAnnotateCmd.Flags().StringVar(&modulesFormat, "format", "human", "Output format (human, json)")
 	modulesAnnotateCmd.Flags().StringVar(&annotateResponsibility, "responsibility", "", "One-sentence description of what this module does")
 	modulesAnnotateCmd.Flags().StringVar(&annotateCapabilities, "capabilities", "", "Comma-separated list of capabilities")
 	modulesAnnotateCmd.Flags().StringVar(&annotateTags, "tags", "", "Comma-separated list of tags")
@@ -89,7 +89,7 @@ func init() {
 	modulesAnnotateCmd.Flags().StringVar(&annotateInternalPaths, "internal-paths", "", "Comma-separated list of internal paths")
 
 	// Responsibilities subcommand flags
-	modulesResponsibilitiesCmd.Flags().StringVar(&respFormat, "format", "json", "Output format (json, human)")
+	modulesResponsibilitiesCmd.Flags().StringVar(&respFormat, "format", "human", "Output format (human, json)")
 	modulesResponsibilitiesCmd.Flags().BoolVar(&respIncludeFiles, "include-files", false, "Include file-level responsibilities")
 	modulesResponsibilitiesCmd.Flags().IntVar(&respLimit, "limit", 20, "Maximum modules to return")
 
@@ -131,10 +131,10 @@ func runModulesOverview(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Module overview completed", map[string]interface{}{
-		"path":     path,
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Module overview completed",
+		"path", path,
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 func runModulesAnnotate(cmd *cobra.Command, args []string) {
@@ -179,12 +179,12 @@ func runModulesAnnotate(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Module annotation completed", map[string]interface{}{
-		"moduleId": moduleId,
-		"created":  result.Created,
-		"updated":  result.Updated,
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Module annotation completed",
+		"moduleId", moduleId,
+		"created", result.Created,
+		"updated", result.Updated,
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 func splitAndTrim(s string) []string {
@@ -311,11 +311,11 @@ func runModulesResponsibilities(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Module responsibilities completed", map[string]interface{}{
-		"moduleId": moduleId,
-		"count":    len(response.Modules),
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Module responsibilities completed",
+		"moduleId", moduleId,
+		"count", len(response.Modules),
+		"duration", time.Since(start).Milliseconds(),
+	)
 }
 
 // ModuleResponsibilitiesResponseCLI contains responsibilities for CLI output

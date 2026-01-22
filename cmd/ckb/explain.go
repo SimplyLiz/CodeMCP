@@ -42,7 +42,7 @@ func init() {
 	explainCmd.Flags().BoolVar(&explainIncludeUsage, "include-usage", true, "Include telemetry usage data")
 	explainCmd.Flags().BoolVar(&explainIncludeCoChange, "include-cochange", true, "Include co-change analysis")
 	explainCmd.Flags().IntVar(&explainHistoryLimit, "history-limit", 10, "Number of timeline entries")
-	explainCmd.Flags().StringVar(&explainFormat, "format", "json", "Output format (json, human)")
+	explainCmd.Flags().StringVar(&explainFormat, "format", "human", "Output format (human, json)")
 	rootCmd.AddCommand(explainCmd)
 }
 
@@ -77,8 +77,8 @@ func runExplain(cmd *cobra.Command, args []string) {
 
 	fmt.Println(output)
 
-	logger.Debug("Explain completed", map[string]interface{}{
-		"symbol":   symbol,
-		"duration": time.Since(start).Milliseconds(),
-	})
+	logger.Debug("Explain completed",
+		"symbol", symbol,
+		"duration", time.Since(start).Milliseconds(),
+	)
 }

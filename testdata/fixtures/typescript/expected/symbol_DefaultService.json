@@ -1,0 +1,11 @@
+{
+  "deleted": false,
+  "redirected": false,
+  "symbol": {
+    "file": "src/pkg/service.ts",
+    "kind": "class",
+    "line": 30,
+    "moduleId": "",
+    "name": "DefaultService"
+  }
+}

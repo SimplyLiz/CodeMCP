@@ -3,9 +3,9 @@ package incremental
 import (
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"time"
 
-	"ckb/internal/logging"
 	"ckb/internal/storage"
 )
 
@@ -15,11 +15,11 @@ type IndexUpdater struct {
 	store      *Store
 	depTracker *DependencyTracker
 	config     *Config
-	logger     *logging.Logger
+	logger     *slog.Logger
 }
 
 // NewIndexUpdater creates a new incremental updater
-func NewIndexUpdater(db *storage.DB, store *Store, logger *logging.Logger) *IndexUpdater {
+func NewIndexUpdater(db *storage.DB, store *Store, logger *slog.Logger) *IndexUpdater {
 	config := DefaultConfig()
 	return &IndexUpdater{
 		db:         db,
@@ -43,9 +43,7 @@ func (u *IndexUpdater) ApplyDelta(delta *SymbolDelta) error {
 	// Build symbol-to-file map for dependency tracking
 	symbolToFile, err := u.depTracker.BuildSymbolToFileMap()
 	if err != nil {
-		u.logger.Warn("Failed to build symbol-to-file map", map[string]interface{}{
-			"error": err.Error(),
-		})
+		u.logger.Warn("Failed to build symbol-to-file map", "error", err.Error())
 		symbolToFile = make(map[string]string) // Continue with empty map
 	}
 
@@ -152,9 +150,7 @@ func (u *IndexUpdater) deleteFileData(tx *sql.Tx, path string) error {
 		return fmt.Errorf("delete file_deps: %w", err)
 	}
 
-	u.logger.Debug("Deleted file data", map[string]interface{}{
-		"path": path,
-	})
+	u.logger.Debug("Deleted file data", "path", path)
 
 	return nil
 }
@@ -199,19 +195,16 @@ func (u *IndexUpdater) insertFileData(tx *sql.Tx, delta FileDelta, symbolToFile 
 	if len(delta.Refs) > 0 && symbolToFile != nil {
 		if err := u.depTracker.UpdateFileDeps(tx, delta.Path, delta.Refs, symbolToFile); err != nil {
 			// Log but don't fail - deps are best-effort
-			u.logger.Warn("Failed to update file_deps", map[string]interface{}{
-				"path":  delta.Path,
-				"error": err.Error(),
-			})
+			u.logger.Warn("Failed to update file_deps", "path", delta.Path, "error", err.Error())
 		}
 	}
 
-	u.logger.Debug("Inserted file data", map[string]interface{}{
-		"path":        delta.Path,
-		"symbolCount": len(delta.Symbols),
-		"refCount":    len(delta.Refs),
-		"callEdges":   len(delta.CallEdges),
-	})
+	u.logger.Debug("Inserted file data",
+		"path", delta.Path,
+		"symbolCount", len(delta.Symbols),
+		"refCount", len(delta.Refs),
+		"callEdges", len(delta.CallEdges),
+	)
 
 	return nil
 }
@@ -289,9 +282,7 @@ func (u *IndexUpdater) PopulateFromFullIndex(extractor *SCIPExtractor) error {
 		return fmt.Errorf("failed to load SCIP index: %w", err)
 	}
 
-	u.logger.Info("Populating incremental tracking from full index", map[string]interface{}{
-		"documentCount": len(index.Documents),
-	})
+	u.logger.Info("Populating incremental tracking from full index", "documentCount", len(index.Documents))
 
 	// First pass: collect all file deltas to build symbol-to-file map
 	var deltas []FileDelta
@@ -386,10 +377,7 @@ func (u *IndexUpdater) PopulateFromFullIndex(extractor *SCIPExtractor) error {
 			// v2.0: Insert file dependencies
 			if len(delta.Refs) > 0 {
 				if err := u.depTracker.UpdateFileDeps(tx, delta.Path, delta.Refs, symbolToFile); err != nil {
-					u.logger.Warn("Failed to update file_deps", map[string]interface{}{
-						"path":  delta.Path,
-						"error": err.Error(),
-					})
+					u.logger.Warn("Failed to update file_deps", "path", delta.Path, "error", err.Error())
 				} else {
 					// Count deps inserted (approximate)
 					deps, _ := u.depTracker.GetDependencies(delta.Path)
@@ -398,10 +386,7 @@ func (u *IndexUpdater) PopulateFromFullIndex(extractor *SCIPExtractor) error {
 			}
 		}
 
-		u.logger.Info("Full index populated", map[string]interface{}{
-			"callEdges": totalCallEdges,
-			"fileDeps":  totalDeps,
-		})
+		u.logger.Info("Full index populated", "callEdges", totalCallEdges, "fileDeps", totalDeps)
 
 		return nil
 	})

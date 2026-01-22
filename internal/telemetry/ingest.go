@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"ckb/internal/config"
-	"ckb/internal/logging"
 )
 
 // IngestHandler handles telemetry ingestion requests
@@ -17,11 +17,11 @@ type IngestHandler struct {
 	mapper  *ServiceMapper
 	matcher *Matcher
 	config  config.TelemetryConfig
-	logger  *logging.Logger
+	logger  *slog.Logger
 }
 
 // NewIngestHandler creates a new ingestion handler
-func NewIngestHandler(storage *Storage, mapper *ServiceMapper, matcher *Matcher, cfg config.TelemetryConfig, logger *logging.Logger) *IngestHandler {
+func NewIngestHandler(storage *Storage, mapper *ServiceMapper, matcher *Matcher, cfg config.TelemetryConfig, logger *slog.Logger) *IngestHandler {
 	return &IngestHandler{
 		storage: storage,
 		mapper:  mapper,
@@ -137,10 +137,10 @@ func (h *IngestHandler) ProcessPayload(payload *IngestPayload) IngestResponse {
 		}
 
 		if err := h.storage.SaveObservedUsage(usage); err != nil {
-			h.logger.Error("Failed to save observed usage", map[string]interface{}{
-				"error":    err.Error(),
-				"symbolId": match.SymbolID,
-			})
+			h.logger.Error("Failed to save observed usage",
+				"error", err.Error(),
+				"symbolId", match.SymbolID,
+			)
 			continue
 		}
 
@@ -201,11 +201,11 @@ func (h *IngestHandler) saveUnmatchedEvent(call *CallAggregate, reason string, s
 	}
 
 	if err := h.storage.SaveUnmatchedEvent(event); err != nil {
-		h.logger.Error("Failed to save unmatched event", map[string]interface{}{
-			"error":        err.Error(),
-			"serviceName":  call.ServiceName,
-			"functionName": call.FunctionName,
-		})
+		h.logger.Error("Failed to save unmatched event",
+			"error", err.Error(),
+			"serviceName", call.ServiceName,
+			"functionName", call.FunctionName,
+		)
 	}
 }
 
@@ -235,10 +235,10 @@ func (h *IngestHandler) saveCallers(symbolID string, callers []Caller, period st
 		}
 
 		if err := h.storage.SaveObservedCaller(oc); err != nil {
-			h.logger.Error("Failed to save caller", map[string]interface{}{
-				"error":    err.Error(),
-				"symbolId": symbolID,
-			})
+			h.logger.Error("Failed to save caller",
+				"error", err.Error(),
+				"symbolId", symbolID,
+			)
 		}
 	}
 }

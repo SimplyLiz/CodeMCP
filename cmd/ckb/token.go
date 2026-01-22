@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,7 +13,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"ckb/internal/auth"
-	"ckb/internal/logging"
 
 	_ "modernc.org/sqlite" // Pure Go SQLite driver
 )
@@ -99,7 +99,7 @@ Examples:
 func init() {
 	// Common flags
 	tokenCmd.PersistentFlags().StringVar(&tokenDataDir, "data-dir", "~/.ckb-server", "Server data directory")
-	tokenCmd.PersistentFlags().StringVar(&tokenFormat, "format", "human", "Output format (json, human)")
+	tokenCmd.PersistentFlags().StringVar(&tokenFormat, "format", "human", "Output format (human, json)")
 
 	// Create flags
 	tokenCreateCmd.Flags().StringVar(&tokenName, "name", "", "Token name (required)")
@@ -324,7 +324,7 @@ func runTokenRotate(cmd *cobra.Command, args []string) {
 }
 
 // mustGetAuthManager creates an auth manager with database connection
-func mustGetAuthManager(logger *logging.Logger) *auth.Manager {
+func mustGetAuthManager(logger *slog.Logger) *auth.Manager {
 	dataDir := expandPath(tokenDataDir)
 
 	// Ensure data directory exists

@@ -117,15 +117,14 @@ func (s *Server) HandleIndexDeltaUpload(w http.ResponseWriter, r *http.Request) 
 	}
 	defer func() { _ = s.indexManager.Storage().CleanupUpload(streamResult.Path) }()
 
-	logFields := map[string]interface{}{
-		"repo_id":       repoID,
-		"upload_type":   "delta",
-		"base_commit":   deltaMeta.BaseCommit,
-		"target_commit": deltaMeta.TargetCommit,
-		"files_changed": len(deltaMeta.ChangedFiles),
-		"size":          streamResult.DecompressedSize,
-	}
-	s.logger.Info("Received delta upload", logFields)
+	s.logger.Info("Received delta upload",
+		"repo_id", repoID,
+		"upload_type", "delta",
+		"base_commit", deltaMeta.BaseCommit,
+		"target_commit", deltaMeta.TargetCommit,
+		"files_changed", len(deltaMeta.ChangedFiles),
+		"size", streamResult.DecompressedSize,
+	)
 
 	// Check if we should suggest full upload (too many files changed)
 	suggestFull := false
@@ -157,10 +156,10 @@ func (s *Server) HandleIndexDeltaUpload(w http.ResponseWriter, r *http.Request) 
 
 	// Reload the repo handle to pick up new data
 	if err := s.indexManager.ReloadRepo(repoID); err != nil {
-		s.logger.Warn("Failed to reload repo after delta upload", map[string]interface{}{
-			"repo_id": repoID,
-			"error":   err.Error(),
-		})
+		s.logger.Warn("Failed to reload repo after delta upload",
+			"repo_id", repoID,
+			"error", err.Error(),
+		)
 	}
 
 	// Build response
