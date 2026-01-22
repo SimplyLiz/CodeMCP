@@ -61,6 +61,28 @@ var nfrTokenBaselines = map[string]map[string]int{
 		"small": 4800,  // 20 entrypoints
 		"large": 24000, // 100 entrypoints
 	},
+	// v8.0 Compound Tools
+	"explore": {
+		"small": 4300,  // explainFile + 20 symbols + shallow callgraph + 10 hotspots
+		"large": 95000, // explainFile + 500 symbols + deep callgraph + 200 hotspots
+	},
+	"understand": {
+		"small": 5600,   // symbol detail + 50 refs + shallow callgraph
+		"large": 461000, // symbol detail + 5000 refs + deep callgraph
+	},
+	"prepareChange": {
+		"small": 2500,  // 10 impact + 5 tests + coupling
+		"large": 16200, // 100 impact + 50 tests + coupling
+	},
+	"batchGet": {
+		"small": 4800,  // 20 symbols with full detail
+		"large": 11800, // 50 symbols with full detail
+	},
+	"batchSearch": {
+		"small":  3400,  // 3 queries × ~7 results each
+		"medium": 18100, // 5 queries × 20 results
+		"large":  91000, // 10 queries × 50 results
+	},
 	// v8.1 Change Impact Analysis
 	"analyzeChange": {
 		"small":  6000,   // 10 changed, 20 affected
@@ -151,6 +173,23 @@ func TestNFRScenarios(t *testing.T) {
 		// listEntrypoints scenarios
 		{"listEntrypoints_small", "listEntrypoints", "small", testdata.SmallFixtures(), (*testdata.FixtureSet).ToListEntrypointsJSON},
 		{"listEntrypoints_large", "listEntrypoints", "large", testdata.LargeFixtures(), (*testdata.FixtureSet).ToListEntrypointsJSON},
+
+		// v8.0 compound tool scenarios
+		{"explore_small", "explore", "small", testdata.SmallFixtures(), (*testdata.FixtureSet).ToExploreJSON},
+		{"explore_large", "explore", "large", testdata.LargeFixtures(), (*testdata.FixtureSet).ToExploreJSON},
+
+		{"understand_small", "understand", "small", testdata.SmallFixtures(), (*testdata.FixtureSet).ToUnderstandJSON},
+		{"understand_large", "understand", "large", testdata.LargeFixtures(), (*testdata.FixtureSet).ToUnderstandJSON},
+
+		{"prepareChange_small", "prepareChange", "small", testdata.SmallFixtures(), (*testdata.FixtureSet).ToPrepareChangeJSON},
+		{"prepareChange_large", "prepareChange", "large", testdata.LargeFixtures(), (*testdata.FixtureSet).ToPrepareChangeJSON},
+
+		{"batchGet_small", "batchGet", "small", testdata.SmallFixtures(), (*testdata.FixtureSet).ToBatchGetJSON},
+		{"batchGet_large", "batchGet", "large", testdata.LargeFixtures(), (*testdata.FixtureSet).ToBatchGetJSON},
+
+		{"batchSearch_small", "batchSearch", "small", testdata.SmallFixtures(), (*testdata.FixtureSet).ToBatchSearchJSON},
+		{"batchSearch_medium", "batchSearch", "medium", testdata.MediumFixtures(), (*testdata.FixtureSet).ToBatchSearchJSON},
+		{"batchSearch_large", "batchSearch", "large", testdata.LargeFixtures(), (*testdata.FixtureSet).ToBatchSearchJSON},
 
 		// v8.1 analyzeChange scenarios (Change Impact Analysis)
 		{"analyzeChange_small", "analyzeChange", "small", testdata.SmallFixtures(), (*testdata.FixtureSet).ToAnalyzeChangeJSON},
