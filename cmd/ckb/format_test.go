@@ -1042,3 +1042,228 @@ func TestFormatStatusHuman_NoIndex(t *testing.T) {
 		t.Error("missing list of SCIP commands")
 	}
 }
+
+func TestFormatDiffSummaryHuman_EntrypointMarker(t *testing.T) {
+	resp := &DiffSummaryResponseCLI{
+		Selector:   DiffSelectorCLI{Type: "commit", Value: "abc"},
+		Confidence: 0.9,
+		Summary:    DiffSummaryTextCLI{},
+		SymbolsAffected: []DiffSymbolAffectedCLI{
+			{Name: "main", Kind: "function", ChangeType: "modified", IsEntrypoint: true},
+		},
+	}
+
+	result := formatDiffSummaryHuman(resp)
+
+	if !strings.Contains(result, "main (function) [entrypoint]") {
+		t.Error("missing entrypoint marker")
+	}
+}
+
+func TestFormatDiffSummaryHuman_DefaultRiskSignalIcon(t *testing.T) {
+	resp := &DiffSummaryResponseCLI{
+		Selector:   DiffSelectorCLI{Type: "commit", Value: "abc"},
+		Confidence: 0.9,
+		Summary:    DiffSummaryTextCLI{},
+		RiskSignals: []DiffRiskSignalCLI{
+			{Type: "complexity", Severity: "low", Description: "Minor complexity increase"},
+		},
+	}
+
+	result := formatDiffSummaryHuman(resp)
+
+	// Low severity should use ○ icon (default)
+	if !strings.Contains(result, "○ [complexity] Minor complexity increase") {
+		t.Error("expected default circle icon for low severity")
+	}
+}
+
+func TestFormatDiffSummaryHuman_SymbolTruncation(t *testing.T) {
+	// Create 15 symbols to test truncation at 10
+	symbols := make([]DiffSymbolAffectedCLI, 15)
+	for i := range symbols {
+		symbols[i] = DiffSymbolAffectedCLI{Name: "Sym", Kind: "func", ChangeType: "modified"}
+	}
+
+	resp := &DiffSummaryResponseCLI{
+		Selector:        DiffSelectorCLI{Type: "branch", Value: "main"},
+		Confidence:      0.9,
+		Summary:         DiffSummaryTextCLI{},
+		SymbolsAffected: symbols,
+	}
+
+	result := formatDiffSummaryHuman(resp)
+
+	if !strings.Contains(result, "... and 5 more") {
+		t.Error("expected truncation message for symbols")
+	}
+}
+
+func TestFormatConceptsHuman_NoCategory(t *testing.T) {
+	resp := &ConceptsResponseCLI{
+		TotalFound: 1,
+		Confidence: 0.8,
+		Concepts: []ConceptCLI{
+			{
+				Name:        "Uncategorized",
+				Category:    "", // No category
+				Occurrences: 5,
+				Score:       0.6,
+			},
+		},
+	}
+
+	result := formatConceptsHuman(resp)
+
+	// Should show name without category brackets
+	if !strings.Contains(result, "1. Uncategorized\n") {
+		t.Error("should show concept without category brackets")
+	}
+	if strings.Contains(result, "1. Uncategorized []") {
+		t.Error("should not show empty category brackets")
+	}
+}
+
+func TestFormatConceptsHuman_NoDescription(t *testing.T) {
+	resp := &ConceptsResponseCLI{
+		TotalFound: 1,
+		Confidence: 0.8,
+		Concepts: []ConceptCLI{
+			{
+				Name:        "Simple",
+				Category:    "test",
+				Description: "", // No description
+				Occurrences: 3,
+				Score:       0.5,
+			},
+		},
+	}
+
+	result := formatConceptsHuman(resp)
+
+	// Should have occurrences line directly after name
+	if !strings.Contains(result, "1. Simple [test]\n   Occurrences:") {
+		t.Error("should show occurrences directly after name when no description")
+	}
+}
+
+func TestFormatConceptsHuman_NoFiles(t *testing.T) {
+	resp := &ConceptsResponseCLI{
+		TotalFound: 1,
+		Confidence: 0.8,
+		Concepts: []ConceptCLI{
+			{
+				Name:        "NoFiles",
+				Category:    "test",
+				Occurrences: 2,
+				Score:       0.4,
+				Files:       []string{}, // Empty files
+			},
+		},
+	}
+
+	result := formatConceptsHuman(resp)
+
+	// Should not have Files: line
+	if strings.Contains(result, "Files:") {
+		t.Error("should not show Files section when empty")
+	}
+}
+
+func TestFormatChangeSetHuman_ErrorSeverityRecommendation(t *testing.T) {
+	resp := &ChangeSetResponseCLI{
+		Summary: &ChangeSummaryCLI{},
+		Recommendations: []RecommendationCLI{
+			{Type: "breaking", Severity: "error", Message: "Breaking change detected"},
+		},
+	}
+
+	result := formatChangeSetHuman(resp)
+
+	if !strings.Contains(result, "✗ Breaking change detected") {
+		t.Error("expected error severity with ✗ icon")
+	}
+}
+
+func TestFormatChangeSetHuman_DefaultRecommendationIcon(t *testing.T) {
+	resp := &ChangeSetResponseCLI{
+		Summary: &ChangeSummaryCLI{},
+		Recommendations: []RecommendationCLI{
+			{Type: "info", Severity: "info", Message: "Consider adding tests"},
+		},
+	}
+
+	result := formatChangeSetHuman(resp)
+
+	// Info severity should use → icon (default)
+	if !strings.Contains(result, "→ Consider adding tests") {
+		t.Error("expected default arrow icon for info severity")
+	}
+}
+
+func TestFormatChangeSetHuman_RecommendationWithoutAction(t *testing.T) {
+	resp := &ChangeSetResponseCLI{
+		Summary: &ChangeSummaryCLI{},
+		Recommendations: []RecommendationCLI{
+			{Type: "note", Severity: "info", Message: "Just a note", Action: ""},
+		},
+	}
+
+	result := formatChangeSetHuman(resp)
+
+	if !strings.Contains(result, "→ Just a note") {
+		t.Error("expected recommendation message")
+	}
+	if strings.Contains(result, "Action:") {
+		t.Error("should not show Action when empty")
+	}
+}
+
+func TestFormatChangeSetHuman_AffectedSymbolsTruncation(t *testing.T) {
+	// Create 15 affected symbols to test truncation at 10
+	affected := make([]ImpactItemCLI, 15)
+	for i := range affected {
+		affected[i] = ImpactItemCLI{Name: "Affected", Kind: "caller", Distance: 1}
+	}
+
+	resp := &ChangeSetResponseCLI{
+		Summary:         &ChangeSummaryCLI{},
+		AffectedSymbols: affected,
+	}
+
+	result := formatChangeSetHuman(resp)
+
+	if !strings.Contains(result, "... and 5 more") {
+		t.Error("expected truncation message for affected symbols")
+	}
+}
+
+func TestFormatChangeSetHuman_MediumRisk(t *testing.T) {
+	resp := &ChangeSetResponseCLI{
+		Summary: &ChangeSummaryCLI{},
+		RiskScore: &RiskScoreCLI{
+			Level: "medium",
+			Score: 0.5,
+		},
+	}
+
+	result := formatChangeSetHuman(resp)
+
+	// Medium risk should use ✓ icon (not warn/critical)
+	if !strings.Contains(result, "✓ Risk Level: medium") {
+		t.Error("expected medium risk with ✓ icon")
+	}
+}
+
+func TestFormatChangeSetHuman_NilSummary(t *testing.T) {
+	resp := &ChangeSetResponseCLI{
+		Summary: nil,
+	}
+
+	result := formatChangeSetHuman(resp)
+
+	// Should not panic, should not have Summary section
+	if strings.Contains(result, "Files Changed:") {
+		t.Error("should not show summary when nil")
+	}
+}
