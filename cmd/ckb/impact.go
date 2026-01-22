@@ -63,7 +63,7 @@ Examples:
 func init() {
 	impactCmd.Flags().IntVar(&impactDepth, "depth", 2, "Maximum impact depth")
 	impactCmd.Flags().BoolVar(&impactIncludeTests, "include-tests", false, "Include test dependencies")
-	impactCmd.Flags().StringVar(&impactFormat, "format", "json", "Output format (json, human)")
+	impactCmd.Flags().StringVar(&impactFormat, "format", "human", "Output format (human, json)")
 
 	// Diff subcommand flags
 	impactDiffCmd.Flags().BoolVar(&impactDiffStaged, "staged", false, "Analyze only staged changes (--cached)")
@@ -71,16 +71,47 @@ func init() {
 	impactDiffCmd.Flags().IntVar(&impactDepth, "depth", 2, "Maximum depth for transitive impact (1-4)")
 	impactDiffCmd.Flags().BoolVar(&impactIncludeTests, "include-tests", false, "Include test files in analysis")
 	impactDiffCmd.Flags().BoolVar(&impactDiffStrict, "strict", false, "Fail if SCIP index is stale")
-	impactDiffCmd.Flags().StringVar(&impactFormat, "format", "json", "Output format (json, human, markdown)")
+	impactDiffCmd.Flags().StringVar(&impactFormat, "format", "human", "Output format (json, human, markdown)")
 
 	impactCmd.AddCommand(impactDiffCmd)
 	rootCmd.AddCommand(impactCmd)
+}
+
+// formatImpactSubcommandError returns an error message when user provides
+// a subcommand name instead of a symbol ID.
+func formatImpactSubcommandError(arg string) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("Error: '%s' is not a valid symbol ID.\n\n", arg))
+	if arg == "diff" {
+		b.WriteString("Did you mean: ckb impact diff\n")
+		b.WriteString("  Analyzes impact of code changes from git diff\n")
+	}
+	b.WriteString("\nTo analyze a specific symbol, provide its ID:\n")
+	b.WriteString("  ckb impact <symbolId>\n")
+	b.WriteString("\nTo find symbol IDs, use:\n")
+	b.WriteString("  ckb search <name>\n")
+	return b.String()
+}
+
+// formatSymbolNotFoundError returns an error message when a symbol is not found.
+func formatSymbolNotFoundError(symbolID string) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("Error: Symbol not found: %s\n\n", symbolID))
+	b.WriteString("To find valid symbol IDs, use:\n")
+	b.WriteString("  ckb search <name>\n")
+	return b.String()
 }
 
 func runImpact(cmd *cobra.Command, args []string) {
 	start := time.Now()
 	logger := newLogger(impactFormat)
 	symbolID := args[0]
+
+	// Check if user might have meant a subcommand
+	if symbolID == "diff" || symbolID == "help" {
+		fmt.Fprint(os.Stderr, formatImpactSubcommandError(symbolID))
+		os.Exit(1)
+	}
 
 	repoRoot := mustGetRepoRoot()
 	engine := mustGetEngine(repoRoot, logger)
@@ -94,6 +125,11 @@ func runImpact(cmd *cobra.Command, args []string) {
 	}
 	response, err := engine.AnalyzeImpact(ctx, opts)
 	if err != nil {
+		// Provide helpful error for symbol not found
+		if strings.Contains(err.Error(), "not found") {
+			fmt.Fprint(os.Stderr, formatSymbolNotFoundError(symbolID))
+			os.Exit(1)
+		}
 		fmt.Fprintf(os.Stderr, "Error analyzing impact: %v\n", err)
 		os.Exit(1)
 	}

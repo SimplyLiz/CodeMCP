@@ -45,7 +45,7 @@ Examples:
 func init() {
 	breakingCmd.Flags().StringVar(&breakingBaseRef, "base", "HEAD~1", "Base git ref for comparison")
 	breakingCmd.Flags().StringVar(&breakingTargetRef, "target", "HEAD", "Target git ref for comparison")
-	breakingCmd.Flags().StringVar(&breakingFormat, "format", "human", "Output format (json, human)")
+	breakingCmd.Flags().StringVar(&breakingFormat, "format", "human", "Output format (human, json)")
 	breakingCmd.Flags().StringSliceVar(&breakingScope, "scope", nil, "Limit to specific packages/paths")
 	breakingCmd.Flags().BoolVar(&breakingIncludeMinor, "include-minor", false, "Include non-breaking changes")
 

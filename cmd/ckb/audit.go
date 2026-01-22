@@ -47,7 +47,7 @@ func init() {
 	auditCmd.Flags().IntVar(&auditLimit, "limit", 50, "Maximum items to return")
 	auditCmd.Flags().StringVar(&auditFactor, "factor", "", "Filter by specific risk factor")
 	auditCmd.Flags().BoolVar(&auditQuickWins, "quick-wins", false, "Only show quick wins (low effort, high impact)")
-	auditCmd.Flags().StringVar(&auditFormat, "format", "json", "Output format (json, human)")
+	auditCmd.Flags().StringVar(&auditFormat, "format", "human", "Output format (human, json)")
 	rootCmd.AddCommand(auditCmd)
 }
 

@@ -72,12 +72,12 @@ func init() {
 	webhooksCmd.AddCommand(webhooksDeliveriesCmd)
 
 	// List flags
-	webhooksListCmd.Flags().StringVar(&webhooksFormat, "format", "human", "Output format (json, human)")
+	webhooksListCmd.Flags().StringVar(&webhooksFormat, "format", "human", "Output format (human, json)")
 
 	// Deliveries flags
 	webhooksDeliveriesCmd.Flags().StringVar(&webhooksDeliveryStatus, "status", "", "Filter by status (queued, pending, delivered, failed, dead)")
 	webhooksDeliveriesCmd.Flags().IntVar(&webhooksDeliveryLimit, "limit", 20, "Maximum deliveries to return")
-	webhooksDeliveriesCmd.Flags().StringVar(&webhooksFormat, "format", "human", "Output format (json, human)")
+	webhooksDeliveriesCmd.Flags().StringVar(&webhooksFormat, "format", "human", "Output format (human, json)")
 }
 
 func runWebhooksList(cmd *cobra.Command, args []string) error {

@@ -41,7 +41,7 @@ func init() {
 	refsCmd.Flags().StringVar(&refsScope, "scope", "", "Limit search to module ID")
 	refsCmd.Flags().BoolVar(&refsIncludeTest, "include-tests", false, "Include test file references")
 	refsCmd.Flags().IntVar(&refsLimit, "limit", 100, "Maximum number of references")
-	refsCmd.Flags().StringVar(&refsFormat, "format", "json", "Output format (json, human)")
+	refsCmd.Flags().StringVar(&refsFormat, "format", "human", "Output format (human, json)")
 	rootCmd.AddCommand(refsCmd)
 }
 

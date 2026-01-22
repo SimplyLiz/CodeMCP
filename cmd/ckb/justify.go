@@ -32,7 +32,7 @@ Examples:
 }
 
 func init() {
-	justifyCmd.Flags().StringVar(&justifyFormat, "format", "json", "Output format (json, human)")
+	justifyCmd.Flags().StringVar(&justifyFormat, "format", "human", "Output format (human, json)")
 	rootCmd.AddCommand(justifyCmd)
 }
 

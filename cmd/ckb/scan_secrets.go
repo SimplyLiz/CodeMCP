@@ -70,7 +70,7 @@ func init() {
 	scanSecretsCmd.Flags().IntVar(&secretsMaxCommits, "max-commits", 100, "For history scope: maximum commits to scan")
 	scanSecretsCmd.Flags().BoolVar(&secretsUseGitleaks, "use-gitleaks", false, "Use gitleaks if available")
 	scanSecretsCmd.Flags().BoolVar(&secretsUseTrufflehog, "use-trufflehog", false, "Use trufflehog if available")
-	scanSecretsCmd.Flags().StringVarP(&secretsFormat, "output", "o", "json", "Output format: json, human, sarif")
+	scanSecretsCmd.Flags().StringVarP(&secretsFormat, "output", "o", "human", "Output format: human, json, sarif")
 	scanSecretsCmd.Flags().BoolVar(&secretsNoAllowlist, "no-allowlist", false, "Disable allowlist suppression")
 
 	rootCmd.AddCommand(scanSecretsCmd)

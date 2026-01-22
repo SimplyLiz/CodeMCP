@@ -50,7 +50,7 @@ func init() {
 	diffCmd.Flags().StringVar(&diffOutputPath, "output", "", "Output path for delta JSON (default: stdout)")
 	diffCmd.Flags().StringVar(&diffCommit, "commit", "", "Git commit hash for the new state")
 	diffCmd.Flags().BoolVar(&diffIncludeHash, "include-hashes", false, "Include entity hashes for validation")
-	diffCmd.Flags().StringVar(&diffFormat, "format", "json", "Output format: json or human")
+	diffCmd.Flags().StringVar(&diffFormat, "format", "human", "Output format: json or human")
 	diffCmd.Flags().BoolVar(&diffValidateOnly, "validate", false, "Validate an existing delta file instead of generating")
 
 	rootCmd.AddCommand(diffCmd)

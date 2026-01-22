@@ -69,16 +69,16 @@ Examples:
 
 func init() {
 	// List flags
-	jobsListCmd.Flags().StringVar(&jobsFormat, "format", "json", "Output format (json, human)")
+	jobsListCmd.Flags().StringVar(&jobsFormat, "format", "human", "Output format (human, json)")
 	jobsListCmd.Flags().IntVar(&jobsLimit, "limit", 20, "Maximum jobs to return")
 	jobsListCmd.Flags().StringVar(&jobsStatus, "status", "", "Filter by status (queued, running, completed, failed, cancelled)")
 	jobsListCmd.Flags().StringVar(&jobsType, "type", "", "Filter by type (refresh_architecture, analyze_impact, export)")
 
 	// Status flags
-	jobsStatusCmd.Flags().StringVar(&jobsFormat, "format", "json", "Output format (json, human)")
+	jobsStatusCmd.Flags().StringVar(&jobsFormat, "format", "human", "Output format (human, json)")
 
 	// Cancel flags
-	jobsCancelCmd.Flags().StringVar(&jobsFormat, "format", "json", "Output format (json, human)")
+	jobsCancelCmd.Flags().StringVar(&jobsFormat, "format", "human", "Output format (human, json)")
 
 	jobsCmd.AddCommand(jobsListCmd)
 	jobsCmd.AddCommand(jobsStatusCmd)

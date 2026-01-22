@@ -130,7 +130,7 @@ func init() {
 	daemonScheduleListCmd.Flags().StringVar(&scheduleTaskType, "type", "", "Filter by task type (refresh, federation_sync, cleanup, health_check)")
 	daemonScheduleListCmd.Flags().BoolVar(&scheduleEnabled, "enabled", false, "Show only enabled schedules")
 	daemonScheduleListCmd.Flags().IntVar(&scheduleLimit, "limit", 20, "Maximum schedules to return")
-	daemonScheduleListCmd.Flags().StringVar(&scheduleFormat, "format", "human", "Output format (json, human)")
+	daemonScheduleListCmd.Flags().StringVar(&scheduleFormat, "format", "human", "Output format (human, json)")
 
 	// Start flags
 	daemonStartCmd.Flags().IntVar(&daemonPort, "port", 9120, "HTTP port")

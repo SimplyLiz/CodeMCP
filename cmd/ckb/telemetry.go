@@ -86,9 +86,9 @@ Examples:
 	Run:  runTelemetryTestMap,
 }
 
-var deadCodeCmd = &cobra.Command{
+var telemetryDeadCodeCmd = &cobra.Command{
 	Use:   "dead-code",
-	Short: "Find dead code candidates",
+	Short: "Find dead code based on runtime telemetry",
 	Long: `Find potential dead code based on telemetry analysis.
 
 Identifies symbols that:
@@ -99,42 +99,44 @@ Identifies symbols that:
 Important: This feature requires sufficient telemetry coverage.
 Results include confidence scores and should be manually reviewed.
 
+For static analysis without telemetry, use: ckb dead-code
+
 Examples:
-  ckb dead-code
-  ckb dead-code --min-confidence=0.8
-  ckb dead-code --limit=50`,
+  ckb telemetry dead-code
+  ckb telemetry dead-code --min-confidence=0.8
+  ckb telemetry dead-code --limit=50`,
 	Run: runDeadCode,
 }
 
 func init() {
 	// Telemetry status
-	telemetryStatusCmd.Flags().StringVar(&telemetryFormat, "format", "json", "Output format (json, human)")
+	telemetryStatusCmd.Flags().StringVar(&telemetryFormat, "format", "human", "Output format (human, json)")
 
 	// Telemetry usage
-	telemetryUsageCmd.Flags().StringVar(&telemetryFormat, "format", "json", "Output format (json, human)")
+	telemetryUsageCmd.Flags().StringVar(&telemetryFormat, "format", "human", "Output format (human, json)")
 	telemetryUsageCmd.Flags().StringVar(&usagePeriod, "period", "90d", "Time period (7d, 30d, 90d, all)")
 	telemetryUsageCmd.Flags().BoolVar(&usageIncludeCallers, "include-callers", false, "Include caller breakdown")
 
 	// Telemetry unmapped
-	telemetryUnmappedCmd.Flags().StringVar(&telemetryFormat, "format", "json", "Output format (json, human)")
+	telemetryUnmappedCmd.Flags().StringVar(&telemetryFormat, "format", "human", "Output format (human, json)")
 
 	// Telemetry test-map
-	telemetryTestMapCmd.Flags().StringVar(&telemetryFormat, "format", "json", "Output format (json, human)")
+	telemetryTestMapCmd.Flags().StringVar(&telemetryFormat, "format", "human", "Output format (human, json)")
 
-	// Dead code
-	deadCodeCmd.Flags().StringVar(&telemetryFormat, "format", "json", "Output format (json, human)")
-	deadCodeCmd.Flags().Float64Var(&deadCodeMinConfidence, "min-confidence", 0.7, "Minimum confidence threshold")
-	deadCodeCmd.Flags().IntVar(&deadCodeLimit, "limit", 100, "Maximum candidates to return")
+	// Dead code (telemetry-based)
+	telemetryDeadCodeCmd.Flags().StringVar(&telemetryFormat, "format", "human", "Output format (human, json)")
+	telemetryDeadCodeCmd.Flags().Float64Var(&deadCodeMinConfidence, "min-confidence", 0.7, "Minimum confidence threshold")
+	telemetryDeadCodeCmd.Flags().IntVar(&deadCodeLimit, "limit", 100, "Maximum candidates to return")
 
 	// Add subcommands to telemetry
 	telemetryCmd.AddCommand(telemetryStatusCmd)
 	telemetryCmd.AddCommand(telemetryUsageCmd)
 	telemetryCmd.AddCommand(telemetryUnmappedCmd)
 	telemetryCmd.AddCommand(telemetryTestMapCmd)
+	telemetryCmd.AddCommand(telemetryDeadCodeCmd)
 
-	// Add commands to root
+	// Add telemetry to root
 	rootCmd.AddCommand(telemetryCmd)
-	rootCmd.AddCommand(deadCodeCmd)
 }
 
 func runTelemetryStatus(cmd *cobra.Command, args []string) {

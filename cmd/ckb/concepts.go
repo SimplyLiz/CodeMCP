@@ -30,7 +30,7 @@ Examples:
 }
 
 func init() {
-	conceptsCmd.Flags().StringVar(&conceptsFormat, "format", "json", "Output format (json, human)")
+	conceptsCmd.Flags().StringVar(&conceptsFormat, "format", "human", "Output format (human, json)")
 	conceptsCmd.Flags().IntVar(&conceptsLimit, "limit", 12, "Maximum concepts to return (max 12)")
 	rootCmd.AddCommand(conceptsCmd)
 }

@@ -36,7 +36,7 @@ Examples:
 }
 
 func init() {
-	entrypointsCmd.Flags().StringVar(&entrypointsFormat, "format", "json", "Output format (json, human)")
+	entrypointsCmd.Flags().StringVar(&entrypointsFormat, "format", "human", "Output format (human, json)")
 	entrypointsCmd.Flags().StringVar(&entrypointsModuleFilter, "module", "", "Filter to specific module")
 	entrypointsCmd.Flags().IntVar(&entrypointsLimit, "limit", 30, "Maximum entrypoints to return")
 	rootCmd.AddCommand(entrypointsCmd)

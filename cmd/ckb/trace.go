@@ -33,7 +33,7 @@ Examples:
 }
 
 func init() {
-	traceCmd.Flags().StringVar(&traceFormat, "format", "json", "Output format (json, human)")
+	traceCmd.Flags().StringVar(&traceFormat, "format", "human", "Output format (human, json)")
 	traceCmd.Flags().IntVar(&traceMaxPaths, "max-paths", 10, "Maximum paths to return")
 	traceCmd.Flags().IntVar(&traceMaxDepth, "max-depth", 5, "Maximum path depth (1-5)")
 	rootCmd.AddCommand(traceCmd)

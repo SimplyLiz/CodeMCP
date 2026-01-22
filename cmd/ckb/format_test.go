@@ -625,3 +625,645 @@ func TestFormatJustifyHuman(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatDiffSummaryHuman(t *testing.T) {
+	resp := &DiffSummaryResponseCLI{
+		Selector: DiffSelectorCLI{
+			Type:  "commit",
+			Value: "abc123",
+		},
+		Confidence: 0.85,
+		Summary: DiffSummaryTextCLI{
+			OneLiner:     "Refactored query engine for better performance",
+			KeyChanges:   []string{"Added caching layer", "Optimized search algorithm"},
+			RiskOverview: "Medium risk due to core changes",
+		},
+		ChangedFiles: []DiffFileChangeCLI{
+			{FilePath: "internal/query/engine.go", ChangeType: "modified", Additions: 50, Deletions: 20, RiskLevel: "high"},
+			{FilePath: "internal/query/cache.go", ChangeType: "added", Additions: 100, Deletions: 0, RiskLevel: "low"},
+		},
+		SymbolsAffected: []DiffSymbolAffectedCLI{
+			{Name: "Engine.Search", Kind: "method", ChangeType: "modified", IsPublicAPI: true, IsEntrypoint: false},
+			{Name: "NewCache", Kind: "function", ChangeType: "added", IsPublicAPI: false, IsEntrypoint: false},
+		},
+		RiskSignals: []DiffRiskSignalCLI{
+			{Type: "api_change", Severity: "high", Description: "Public API modified"},
+		},
+		Limitations: []string{"Analysis limited to Go files"},
+	}
+
+	result := formatDiffSummaryHuman(resp)
+
+	// Check header
+	if !strings.Contains(result, "Diff Summary") {
+		t.Error("missing header")
+	}
+
+	// Check selector
+	if !strings.Contains(result, "Scope: commit (abc123)") {
+		t.Error("missing selector info")
+	}
+
+	// Check confidence
+	if !strings.Contains(result, "Confidence: 85%") {
+		t.Error("missing confidence")
+	}
+
+	// Check summary
+	if !strings.Contains(result, "Summary: Refactored query engine") {
+		t.Error("missing one-liner summary")
+	}
+
+	// Check key changes
+	if !strings.Contains(result, "Key Changes:") {
+		t.Error("missing key changes section")
+	}
+	if !strings.Contains(result, "• Added caching layer") {
+		t.Error("missing key change item")
+	}
+
+	// Check risk overview
+	if !strings.Contains(result, "Risk: Medium risk due to core changes") {
+		t.Error("missing risk overview")
+	}
+
+	// Check changed files
+	if !strings.Contains(result, "Changed Files (2):") {
+		t.Error("missing changed files section")
+	}
+	if !strings.Contains(result, "modified internal/query/engine.go (+50/-20) ⚠") {
+		t.Error("missing high-risk file with marker")
+	}
+
+	// Check symbols affected
+	if !strings.Contains(result, "Symbols Affected (2):") {
+		t.Error("missing symbols section")
+	}
+	if !strings.Contains(result, "Engine.Search (method) [public]") {
+		t.Error("missing public API marker")
+	}
+
+	// Check risk signals
+	if !strings.Contains(result, "Risk Signals:") {
+		t.Error("missing risk signals section")
+	}
+	if !strings.Contains(result, "⚠ [api_change] Public API modified") {
+		t.Error("missing risk signal with icon")
+	}
+
+	// Check limitations
+	if !strings.Contains(result, "Limitations:") {
+		t.Error("missing limitations section")
+	}
+}
+
+func TestFormatDiffSummaryHuman_Truncation(t *testing.T) {
+	// Create 20 files to test truncation
+	files := make([]DiffFileChangeCLI, 20)
+	for i := range files {
+		files[i] = DiffFileChangeCLI{
+			FilePath:   "file.go",
+			ChangeType: "modified",
+			RiskLevel:  "low",
+		}
+	}
+
+	resp := &DiffSummaryResponseCLI{
+		Selector:     DiffSelectorCLI{Type: "branch", Value: "main"},
+		Confidence:   0.9,
+		Summary:      DiffSummaryTextCLI{},
+		ChangedFiles: files,
+	}
+
+	result := formatDiffSummaryHuman(resp)
+
+	// Should truncate at 15 and show "... and 5 more"
+	if !strings.Contains(result, "... and 5 more") {
+		t.Error("expected truncation message")
+	}
+}
+
+func TestFormatDiffSummaryHuman_CriticalRisk(t *testing.T) {
+	resp := &DiffSummaryResponseCLI{
+		Selector:   DiffSelectorCLI{Type: "commit", Value: "xyz"},
+		Confidence: 0.9,
+		Summary:    DiffSummaryTextCLI{},
+		ChangedFiles: []DiffFileChangeCLI{
+			{FilePath: "security.go", ChangeType: "modified", RiskLevel: "critical"},
+		},
+		RiskSignals: []DiffRiskSignalCLI{
+			{Type: "security", Severity: "critical", Description: "Security-sensitive file"},
+		},
+	}
+
+	result := formatDiffSummaryHuman(resp)
+
+	// Critical risk should use ✗ marker
+	if !strings.Contains(result, "security.go") && !strings.Contains(result, "✗") {
+		t.Error("expected critical risk marker for file")
+	}
+	if !strings.Contains(result, "✗ [security] Security-sensitive file") {
+		t.Error("expected critical risk signal with ✗ icon")
+	}
+}
+
+func TestFormatConceptsHuman(t *testing.T) {
+	resp := &ConceptsResponseCLI{
+		TotalFound: 3,
+		Confidence: 0.92,
+		Concepts: []ConceptCLI{
+			{
+				Name:        "Query Engine",
+				Category:    "core",
+				Description: "Central query processing system",
+				Occurrences: 45,
+				Score:       0.95,
+				Files:       []string{"engine.go", "search.go", "filter.go", "cache.go"},
+			},
+			{
+				Name:        "Symbol Resolution",
+				Category:    "feature",
+				Occurrences: 20,
+				Score:       0.80,
+				Files:       []string{"resolver.go"},
+			},
+		},
+		Limitations: []string{"Limited to indexed files"},
+	}
+
+	result := formatConceptsHuman(resp)
+
+	// Check header
+	if !strings.Contains(result, "Key Concepts") {
+		t.Error("missing header")
+	}
+
+	// Check count and confidence
+	if !strings.Contains(result, "Found 3 concepts (confidence: 92%)") {
+		t.Error("missing concept count and confidence")
+	}
+
+	// Check first concept
+	if !strings.Contains(result, "1. Query Engine [core]") {
+		t.Error("missing first concept with category")
+	}
+	if !strings.Contains(result, "Central query processing system") {
+		t.Error("missing description")
+	}
+	if !strings.Contains(result, "Occurrences: 45, Score: 0.95") {
+		t.Error("missing occurrences and score")
+	}
+
+	// Check files with truncation
+	if !strings.Contains(result, "Files: engine.go, search.go, filter.go (+1 more)") {
+		t.Error("missing files with truncation")
+	}
+
+	// Check second concept without category
+	if !strings.Contains(result, "2. Symbol Resolution [feature]") {
+		t.Error("missing second concept")
+	}
+
+	// Check limitations
+	if !strings.Contains(result, "Limitations:") {
+		t.Error("missing limitations section")
+	}
+}
+
+func TestFormatConceptsHuman_Empty(t *testing.T) {
+	resp := &ConceptsResponseCLI{
+		TotalFound: 0,
+		Confidence: 0.5,
+		Concepts:   []ConceptCLI{},
+	}
+
+	result := formatConceptsHuman(resp)
+
+	if !strings.Contains(result, "Found 0 concepts") {
+		t.Error("should show zero concepts")
+	}
+}
+
+func TestFormatChangeSetHuman(t *testing.T) {
+	resp := &ChangeSetResponseCLI{
+		Summary: &ChangeSummaryCLI{
+			FilesChanged:         5,
+			SymbolsChanged:       10,
+			DirectlyAffected:     15,
+			TransitivelyAffected: 25,
+		},
+		RiskScore: &RiskScoreCLI{
+			Level:       "high",
+			Score:       0.75,
+			Explanation: "Core system changes",
+		},
+		BlastRadius: &BlastRadiusCLI{
+			ModuleCount:       3,
+			FileCount:         12,
+			UniqueCallerCount: 20,
+		},
+		ChangedSymbols: []ChangedSymbolCLI{
+			{Name: "Engine.Search", File: "engine.go", ChangeType: "modified"},
+			{Name: "Engine.Filter", File: "engine.go", ChangeType: "modified"},
+		},
+		AffectedSymbols: []ImpactItemCLI{
+			{Name: "Handler.Query", Kind: "direct-caller", Distance: 1},
+			{Name: "API.Search", Kind: "transitive-caller", Distance: 2},
+		},
+		Recommendations: []RecommendationCLI{
+			{Type: "review", Severity: "warn", Message: "Needs senior review", Action: "Request review"},
+		},
+		IndexStaleness: &IndexStalenessCLI{
+			IsStale:          true,
+			StalenessMessage: "Index is 3 commits behind",
+		},
+	}
+
+	result := formatChangeSetHuman(resp)
+
+	// Check header
+	if !strings.Contains(result, "Change Impact Analysis") {
+		t.Error("missing header")
+	}
+
+	// Check summary
+	if !strings.Contains(result, "Files Changed:    5") {
+		t.Error("missing files changed")
+	}
+	if !strings.Contains(result, "Direct Impact:    15 symbols") {
+		t.Error("missing direct impact")
+	}
+
+	// Check risk score
+	if !strings.Contains(result, "⚠ Risk Level: high (score: 0.75)") {
+		t.Error("missing risk level with warning icon")
+	}
+	if !strings.Contains(result, "Core system changes") {
+		t.Error("missing risk explanation")
+	}
+
+	// Check blast radius
+	if !strings.Contains(result, "Modules: 3, Files: 12, Callers: 20") {
+		t.Error("missing blast radius")
+	}
+
+	// Check index staleness
+	if !strings.Contains(result, "⚠ Index Warning: Index is 3 commits behind") {
+		t.Error("missing staleness warning")
+	}
+
+	// Check changed symbols
+	if !strings.Contains(result, "Changed Symbols (2):") {
+		t.Error("missing changed symbols section")
+	}
+	if !strings.Contains(result, "modified Engine.Search") {
+		t.Error("missing changed symbol")
+	}
+
+	// Check affected symbols
+	if !strings.Contains(result, "Affected Downstream (2):") {
+		t.Error("missing affected symbols section")
+	}
+	if !strings.Contains(result, "Handler.Query (direct-caller, distance: 1)") {
+		t.Error("missing affected symbol")
+	}
+
+	// Check recommendations
+	if !strings.Contains(result, "Recommendations:") {
+		t.Error("missing recommendations section")
+	}
+	if !strings.Contains(result, "⚠ Needs senior review") {
+		t.Error("missing recommendation with warn icon")
+	}
+	if !strings.Contains(result, "Action: Request review") {
+		t.Error("missing recommendation action")
+	}
+}
+
+func TestFormatChangeSetHuman_CriticalRisk(t *testing.T) {
+	resp := &ChangeSetResponseCLI{
+		Summary: &ChangeSummaryCLI{},
+		RiskScore: &RiskScoreCLI{
+			Level: "critical",
+			Score: 0.95,
+		},
+	}
+
+	result := formatChangeSetHuman(resp)
+
+	if !strings.Contains(result, "✗ Risk Level: critical") {
+		t.Error("expected critical risk with ✗ icon")
+	}
+}
+
+func TestFormatChangeSetHuman_LowRisk(t *testing.T) {
+	resp := &ChangeSetResponseCLI{
+		Summary: &ChangeSummaryCLI{},
+		RiskScore: &RiskScoreCLI{
+			Level: "low",
+			Score: 0.2,
+		},
+	}
+
+	result := formatChangeSetHuman(resp)
+
+	if !strings.Contains(result, "✓ Risk Level: low") {
+		t.Error("expected low risk with ✓ icon")
+	}
+}
+
+func TestFormatChangeSetHuman_Truncation(t *testing.T) {
+	// Create 15 changed symbols to test truncation
+	symbols := make([]ChangedSymbolCLI, 15)
+	for i := range symbols {
+		symbols[i] = ChangedSymbolCLI{Name: "Sym", File: "file.go", ChangeType: "modified"}
+	}
+
+	resp := &ChangeSetResponseCLI{
+		Summary:        &ChangeSummaryCLI{},
+		ChangedSymbols: symbols,
+	}
+
+	result := formatChangeSetHuman(resp)
+
+	if !strings.Contains(result, "... and 5 more") {
+		t.Error("expected truncation message for changed symbols")
+	}
+}
+
+func TestFormatChangeSetHuman_FreshIndex(t *testing.T) {
+	resp := &ChangeSetResponseCLI{
+		Summary: &ChangeSummaryCLI{},
+		IndexStaleness: &IndexStalenessCLI{
+			IsStale: false,
+		},
+	}
+
+	result := formatChangeSetHuman(resp)
+
+	if strings.Contains(result, "Index Warning") {
+		t.Error("should not show staleness warning when fresh")
+	}
+}
+
+func TestFormatStatusHuman_NoIndex(t *testing.T) {
+	resp := &StatusResponseCLI{
+		CkbVersion: "8.0.0",
+		Healthy:    true,
+		IndexStatus: &IndexStatusCLI{
+			Exists: false,
+		},
+	}
+
+	result, err := formatStatusHuman(resp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Check index not found message
+	if !strings.Contains(result, "✗ No index found") {
+		t.Error("missing no index message")
+	}
+	if !strings.Contains(result, "Run 'ckb index' to create one") {
+		t.Error("missing index creation hint")
+	}
+
+	// Check command guidance
+	if !strings.Contains(result, "Commands that work without index (git-based):") {
+		t.Error("missing git-based commands guidance")
+	}
+	if !strings.Contains(result, "hotspots, ownership, reviewers, diff-summary, pr-summary") {
+		t.Error("missing list of git-based commands")
+	}
+	if !strings.Contains(result, "Commands that need SCIP index:") {
+		t.Error("missing SCIP commands guidance")
+	}
+	if !strings.Contains(result, "search, refs, callgraph, impact, dead-code, trace, explain") {
+		t.Error("missing list of SCIP commands")
+	}
+}
+
+func TestFormatDiffSummaryHuman_EntrypointMarker(t *testing.T) {
+	resp := &DiffSummaryResponseCLI{
+		Selector:   DiffSelectorCLI{Type: "commit", Value: "abc"},
+		Confidence: 0.9,
+		Summary:    DiffSummaryTextCLI{},
+		SymbolsAffected: []DiffSymbolAffectedCLI{
+			{Name: "main", Kind: "function", ChangeType: "modified", IsEntrypoint: true},
+		},
+	}
+
+	result := formatDiffSummaryHuman(resp)
+
+	if !strings.Contains(result, "main (function) [entrypoint]") {
+		t.Error("missing entrypoint marker")
+	}
+}
+
+func TestFormatDiffSummaryHuman_DefaultRiskSignalIcon(t *testing.T) {
+	resp := &DiffSummaryResponseCLI{
+		Selector:   DiffSelectorCLI{Type: "commit", Value: "abc"},
+		Confidence: 0.9,
+		Summary:    DiffSummaryTextCLI{},
+		RiskSignals: []DiffRiskSignalCLI{
+			{Type: "complexity", Severity: "low", Description: "Minor complexity increase"},
+		},
+	}
+
+	result := formatDiffSummaryHuman(resp)
+
+	// Low severity should use ○ icon (default)
+	if !strings.Contains(result, "○ [complexity] Minor complexity increase") {
+		t.Error("expected default circle icon for low severity")
+	}
+}
+
+func TestFormatDiffSummaryHuman_SymbolTruncation(t *testing.T) {
+	// Create 15 symbols to test truncation at 10
+	symbols := make([]DiffSymbolAffectedCLI, 15)
+	for i := range symbols {
+		symbols[i] = DiffSymbolAffectedCLI{Name: "Sym", Kind: "func", ChangeType: "modified"}
+	}
+
+	resp := &DiffSummaryResponseCLI{
+		Selector:        DiffSelectorCLI{Type: "branch", Value: "main"},
+		Confidence:      0.9,
+		Summary:         DiffSummaryTextCLI{},
+		SymbolsAffected: symbols,
+	}
+
+	result := formatDiffSummaryHuman(resp)
+
+	if !strings.Contains(result, "... and 5 more") {
+		t.Error("expected truncation message for symbols")
+	}
+}
+
+func TestFormatConceptsHuman_NoCategory(t *testing.T) {
+	resp := &ConceptsResponseCLI{
+		TotalFound: 1,
+		Confidence: 0.8,
+		Concepts: []ConceptCLI{
+			{
+				Name:        "Uncategorized",
+				Category:    "", // No category
+				Occurrences: 5,
+				Score:       0.6,
+			},
+		},
+	}
+
+	result := formatConceptsHuman(resp)
+
+	// Should show name without category brackets
+	if !strings.Contains(result, "1. Uncategorized\n") {
+		t.Error("should show concept without category brackets")
+	}
+	if strings.Contains(result, "1. Uncategorized []") {
+		t.Error("should not show empty category brackets")
+	}
+}
+
+func TestFormatConceptsHuman_NoDescription(t *testing.T) {
+	resp := &ConceptsResponseCLI{
+		TotalFound: 1,
+		Confidence: 0.8,
+		Concepts: []ConceptCLI{
+			{
+				Name:        "Simple",
+				Category:    "test",
+				Description: "", // No description
+				Occurrences: 3,
+				Score:       0.5,
+			},
+		},
+	}
+
+	result := formatConceptsHuman(resp)
+
+	// Should have occurrences line directly after name
+	if !strings.Contains(result, "1. Simple [test]\n   Occurrences:") {
+		t.Error("should show occurrences directly after name when no description")
+	}
+}
+
+func TestFormatConceptsHuman_NoFiles(t *testing.T) {
+	resp := &ConceptsResponseCLI{
+		TotalFound: 1,
+		Confidence: 0.8,
+		Concepts: []ConceptCLI{
+			{
+				Name:        "NoFiles",
+				Category:    "test",
+				Occurrences: 2,
+				Score:       0.4,
+				Files:       []string{}, // Empty files
+			},
+		},
+	}
+
+	result := formatConceptsHuman(resp)
+
+	// Should not have Files: line
+	if strings.Contains(result, "Files:") {
+		t.Error("should not show Files section when empty")
+	}
+}
+
+func TestFormatChangeSetHuman_ErrorSeverityRecommendation(t *testing.T) {
+	resp := &ChangeSetResponseCLI{
+		Summary: &ChangeSummaryCLI{},
+		Recommendations: []RecommendationCLI{
+			{Type: "breaking", Severity: "error", Message: "Breaking change detected"},
+		},
+	}
+
+	result := formatChangeSetHuman(resp)
+
+	if !strings.Contains(result, "✗ Breaking change detected") {
+		t.Error("expected error severity with ✗ icon")
+	}
+}
+
+func TestFormatChangeSetHuman_DefaultRecommendationIcon(t *testing.T) {
+	resp := &ChangeSetResponseCLI{
+		Summary: &ChangeSummaryCLI{},
+		Recommendations: []RecommendationCLI{
+			{Type: "info", Severity: "info", Message: "Consider adding tests"},
+		},
+	}
+
+	result := formatChangeSetHuman(resp)
+
+	// Info severity should use → icon (default)
+	if !strings.Contains(result, "→ Consider adding tests") {
+		t.Error("expected default arrow icon for info severity")
+	}
+}
+
+func TestFormatChangeSetHuman_RecommendationWithoutAction(t *testing.T) {
+	resp := &ChangeSetResponseCLI{
+		Summary: &ChangeSummaryCLI{},
+		Recommendations: []RecommendationCLI{
+			{Type: "note", Severity: "info", Message: "Just a note", Action: ""},
+		},
+	}
+
+	result := formatChangeSetHuman(resp)
+
+	if !strings.Contains(result, "→ Just a note") {
+		t.Error("expected recommendation message")
+	}
+	if strings.Contains(result, "Action:") {
+		t.Error("should not show Action when empty")
+	}
+}
+
+func TestFormatChangeSetHuman_AffectedSymbolsTruncation(t *testing.T) {
+	// Create 15 affected symbols to test truncation at 10
+	affected := make([]ImpactItemCLI, 15)
+	for i := range affected {
+		affected[i] = ImpactItemCLI{Name: "Affected", Kind: "caller", Distance: 1}
+	}
+
+	resp := &ChangeSetResponseCLI{
+		Summary:         &ChangeSummaryCLI{},
+		AffectedSymbols: affected,
+	}
+
+	result := formatChangeSetHuman(resp)
+
+	if !strings.Contains(result, "... and 5 more") {
+		t.Error("expected truncation message for affected symbols")
+	}
+}
+
+func TestFormatChangeSetHuman_MediumRisk(t *testing.T) {
+	resp := &ChangeSetResponseCLI{
+		Summary: &ChangeSummaryCLI{},
+		RiskScore: &RiskScoreCLI{
+			Level: "medium",
+			Score: 0.5,
+		},
+	}
+
+	result := formatChangeSetHuman(resp)
+
+	// Medium risk should use ✓ icon (not warn/critical)
+	if !strings.Contains(result, "✓ Risk Level: medium") {
+		t.Error("expected medium risk with ✓ icon")
+	}
+}
+
+func TestFormatChangeSetHuman_NilSummary(t *testing.T) {
+	resp := &ChangeSetResponseCLI{
+		Summary: nil,
+	}
+
+	result := formatChangeSetHuman(resp)
+
+	// Should not panic, should not have Summary section
+	if strings.Contains(result, "Files Changed:") {
+		t.Error("should not show summary when nil")
+	}
+}

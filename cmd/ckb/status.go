@@ -36,7 +36,7 @@ var statusCmd = &cobra.Command{
 }
 
 func init() {
-	statusCmd.Flags().StringVar(&statusFormat, "format", "human", "Output format (json, human)")
+	statusCmd.Flags().StringVar(&statusFormat, "format", "human", "Output format (human, json)")
 	rootCmd.AddCommand(statusCmd)
 }
 

@@ -37,7 +37,7 @@ After refreshing, all CKB queries will use the updated index.`,
 }
 
 func init() {
-	refreshCmd.Flags().StringVar(&refreshFormat, "format", "human", "Output format (json, human)")
+	refreshCmd.Flags().StringVar(&refreshFormat, "format", "human", "Output format (human, json)")
 	refreshCmd.Flags().BoolVarP(&refreshVerbose, "verbose", "v", false, "Show verbose output from scip-go")
 	refreshCmd.Flags().BoolVar(&refreshSkipTest, "skip-tests", false, "Skip indexing test files")
 	rootCmd.AddCommand(refreshCmd)

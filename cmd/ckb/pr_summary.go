@@ -37,7 +37,7 @@ Examples:
 }
 
 func init() {
-	prSummaryCmd.Flags().StringVar(&prSummaryFormat, "format", "json", "Output format (json, human)")
+	prSummaryCmd.Flags().StringVar(&prSummaryFormat, "format", "human", "Output format (human, json)")
 	prSummaryCmd.Flags().StringVar(&prSummaryBaseBranch, "base", "main", "Base branch to compare against")
 	prSummaryCmd.Flags().StringVar(&prSummaryHeadBranch, "head", "", "Head branch (default: current branch)")
 	prSummaryCmd.Flags().BoolVar(&prSummaryNoOwnership, "no-ownership", false, "Disable ownership analysis (ownership is included by default)")

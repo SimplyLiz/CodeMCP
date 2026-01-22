@@ -36,7 +36,7 @@ Examples:
 }
 
 func init() {
-	hotspotsCmd.Flags().StringVar(&hotspotsFormat, "format", "json", "Output format (json, human)")
+	hotspotsCmd.Flags().StringVar(&hotspotsFormat, "format", "human", "Output format (human, json)")
 	hotspotsCmd.Flags().StringVar(&hotspotsScope, "scope", "", "Module path to focus on")
 	hotspotsCmd.Flags().IntVar(&hotspotsLimit, "limit", 20, "Maximum hotspots to return (max 50)")
 	hotspotsCmd.Flags().StringVar(&hotspotsTimeStart, "start", "", "Start date (ISO8601 or YYYY-MM-DD)")

@@ -40,7 +40,7 @@ func init() {
 	searchCmd.Flags().StringVar(&searchScope, "scope", "", "Limit search to module ID")
 	searchCmd.Flags().StringVar(&searchKinds, "kinds", "", "Filter by kinds (comma-separated: class,function,method,etc)")
 	searchCmd.Flags().IntVar(&searchLimit, "limit", 20, "Maximum number of results")
-	searchCmd.Flags().StringVar(&searchFormat, "format", "json", "Output format (json, human)")
+	searchCmd.Flags().StringVar(&searchFormat, "format", "human", "Output format (human, json)")
 	rootCmd.AddCommand(searchCmd)
 }
 
