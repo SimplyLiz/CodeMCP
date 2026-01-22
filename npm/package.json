@@ -1,6 +1,7 @@
 {
   "name": "@tastehub/ckb",
-  "version": "8.0.1",
+  "mcpName": "io.github.simplyliz/ckb",
+  "version": "8.0.2",
   "description": "Code intelligence for AI assistants (MCP), CLI, and HTTP API - symbol navigation, impact analysis, architecture",
   "keywords": [
     "mcp",

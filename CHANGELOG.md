@@ -61,6 +61,39 @@ The `--include-tests` flag now works end-to-end in `ckb impact diff`:
 - Properly sets `IsTest` flag on references based on file path
 - Filters test files from changed symbols when `--include-tests=false`
 
+## [8.0.2] - 2026-01-22
+
+### Added
+
+#### Grok Support in `ckb setup`
+Grok is now a supported AI coding tool in the setup wizard:
+
+```bash
+ckb setup --tool=grok          # project-level (.grok/settings.json)
+ckb setup --tool=grok --global # global (~/.grok/user-settings.json)
+```
+
+Uses `grok mcp add` CLI when available, falls back to file-based configuration. Grok's MCP format includes `name` and `transport` fields alongside the standard `command`/`args`.
+
+#### MCP Registry Support
+Added `mcpName` field to npm package.json for publishing to the official MCP Registry (`io.github.simplyliz/ckb`).
+
+#### Compound Tool NFR Scenarios
+NFR test suite expanded from 28 to 39 scenarios, adding coverage for v8.0 compound tools:
+- `explore` (small, large) — aggregates explainFile + searchSymbols + callGraph + hotspots
+- `understand` (small, large) — aggregates symbol detail + findReferences + callGraph
+- `prepareChange` (small, large) — aggregates impact + affectedTests + coupling
+- `batchGet` (small, large) — batch symbol retrieval (up to 50)
+- `batchSearch` (small, medium, large) — multiple concurrent searches
+
+### Changed
+
+#### Dynamic NFR Baselines
+NFR tests now compare PR results against the base branch (dynamic baseline) instead of static hardcoded values. Two parallel CI jobs run the tests on both HEAD and base, then a comparison job reports regressions. This catches real regressions relative to the target branch rather than drifting static numbers.
+
+#### NFR Tests Scope
+NFR tests now only run on PRs targeting `main` (develop → main merges), reducing CI noise on feature branches.
+
 ## [8.0.1] - 2026-01-22
 
 ### Improved

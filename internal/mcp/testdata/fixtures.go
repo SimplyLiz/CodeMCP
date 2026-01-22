@@ -810,6 +810,265 @@ func (f *FixtureSet) ToAnalyzeChangeJSON() string {
 	return sb.String()
 }
 
+// ToExploreJSON converts fixtures to an explore compound response JSON.
+// Aggregates: explainFile + searchSymbols + getCallGraph + getHotspots
+func (f *FixtureSet) ToExploreJSON() string {
+	var sb strings.Builder
+	sb.WriteString(`{"schemaVersion":"1.0","data":{"file":{`)
+	sb.WriteString(`"path":"internal/module0/file0.go","role":"implementation",`)
+	sb.WriteString(fmt.Sprintf(`"symbolCount":%d,"lineCount":500,`, len(f.Symbols)))
+	sb.WriteString(`"description":"Core module implementation file"},`)
+
+	// Embed symbols
+	sb.WriteString(`"symbols":[`)
+	for i, sym := range f.Symbols {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(fmt.Sprintf(
+			`{"stableId":"%s","name":"%s","kind":"%s","location":{"path":"%s","line":%d}}`,
+			sym.StableID, sym.Name, sym.Kind, sym.FilePath, sym.Line,
+		))
+	}
+	sb.WriteString(`],`)
+
+	// Embed call graph
+	sb.WriteString(`"callGraph":{"nodes":[`)
+	for i, node := range f.CallGraph {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(fmt.Sprintf(
+			`{"symbolId":"%s","name":"%s","kind":"%s","callers":[`,
+			node.SymbolID, node.Name, node.Kind,
+		))
+		for j, caller := range node.Callers {
+			if j > 0 {
+				sb.WriteString(",")
+			}
+			sb.WriteString(fmt.Sprintf(`"%s"`, caller))
+		}
+		sb.WriteString(`],"callees":[`)
+		for j, callee := range node.Callees {
+			if j > 0 {
+				sb.WriteString(",")
+			}
+			sb.WriteString(fmt.Sprintf(`"%s"`, callee))
+		}
+		sb.WriteString(`]}`)
+	}
+	sb.WriteString(`]},`)
+
+	// Embed hotspots
+	sb.WriteString(`"hotspots":[`)
+	for i, h := range f.Hotspots {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(fmt.Sprintf(
+			`{"path":"%s","score":%.3f,"churn":%d}`,
+			h.FilePath, h.Score, h.Churn,
+		))
+	}
+	sb.WriteString(`]}}`)
+	return sb.String()
+}
+
+// ToUnderstandJSON converts fixtures to an understand compound response JSON.
+// Aggregates: searchSymbols + getSymbol + explainSymbol + findReferences + getCallGraph
+func (f *FixtureSet) ToUnderstandJSON() string {
+	var sb strings.Builder
+	sb.WriteString(`{"schemaVersion":"1.0","data":{"symbol":{`)
+
+	// Symbol detail
+	if len(f.Symbols) > 0 {
+		sym := f.Symbols[0]
+		sb.WriteString(fmt.Sprintf(
+			`"stableId":"%s","name":"%s","kind":"%s","location":{"path":"%s","line":%d},`,
+			sym.StableID, sym.Name, sym.Kind, sym.FilePath, sym.Line,
+		))
+		sb.WriteString(fmt.Sprintf(
+			`"description":"%s","signature":"func %s() error"`,
+			sym.Description, sym.Name,
+		))
+	}
+	sb.WriteString(`},`)
+
+	// Explanation
+	sb.WriteString(`"explanation":{"summary":"Core function handling primary business logic",`)
+	sb.WriteString(`"usage":"Called from API handlers and CLI commands",`)
+	sb.WriteString(`"history":"Modified 12 times, last change 3 days ago"},`)
+
+	// References
+	sb.WriteString(`"references":[`)
+	for i, ref := range f.References {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(fmt.Sprintf(
+			`{"location":{"path":"%s","line":%d,"column":%d},"kind":"%s"}`,
+			ref.FilePath, ref.Line, ref.Column, ref.Kind,
+		))
+	}
+	sb.WriteString(`],`)
+
+	// Call graph
+	sb.WriteString(`"callGraph":{"nodes":[`)
+	for i, node := range f.CallGraph {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(fmt.Sprintf(
+			`{"symbolId":"%s","name":"%s","callers":[`,
+			node.SymbolID, node.Name,
+		))
+		for j, caller := range node.Callers {
+			if j > 0 {
+				sb.WriteString(",")
+			}
+			sb.WriteString(fmt.Sprintf(`"%s"`, caller))
+		}
+		sb.WriteString(`],"callees":[`)
+		for j, callee := range node.Callees {
+			if j > 0 {
+				sb.WriteString(",")
+			}
+			sb.WriteString(fmt.Sprintf(`"%s"`, callee))
+		}
+		sb.WriteString(`]}`)
+	}
+	sb.WriteString(fmt.Sprintf(`]},"totalReferences":%d}}`, len(f.References)))
+	return sb.String()
+}
+
+// ToPrepareChangeJSON converts fixtures to a prepareChange compound response JSON.
+// Aggregates: analyzeImpact + getAffectedTests + coupling analysis
+func (f *FixtureSet) ToPrepareChangeJSON() string {
+	var sb strings.Builder
+	sb.WriteString(`{"schemaVersion":"1.0","data":{"target":"ckb:test:sym:00000000",`)
+	sb.WriteString(fmt.Sprintf(`"changeType":"modify","riskScore":%.2f,`, f.ChangeSet.RiskScore))
+
+	// Impact
+	sb.WriteString(`"impact":{"affectedSymbols":[`)
+	for i, node := range f.ImpactNodes {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(fmt.Sprintf(
+			`{"symbolId":"%s","name":"%s","kind":"%s","depth":%d,"riskLevel":"%s"}`,
+			node.SymbolID, node.Name, node.Kind, node.Depth, node.RiskLevel,
+		))
+	}
+	sb.WriteString(fmt.Sprintf(`],"totalAffected":%d},`, len(f.ImpactNodes)))
+
+	// Affected tests
+	sb.WriteString(`"affectedTests":[`)
+	for i, test := range f.AffectedTests.Tests {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(fmt.Sprintf(
+			`{"filePath":"%s","reason":"%s","confidence":%.2f}`,
+			test.FilePath, test.Reason, test.Confidence,
+		))
+	}
+	sb.WriteString(`],`)
+
+	// Coupling
+	sb.WriteString(`"coupledFiles":[`)
+	limit := len(f.Hotspots)
+	if limit > 10 {
+		limit = 10
+	}
+	for i := 0; i < limit; i++ {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(fmt.Sprintf(
+			`{"path":"%s","couplingScore":%.3f,"cochangeCount":%d}`,
+			f.Hotspots[i].FilePath, f.Hotspots[i].Score, f.Hotspots[i].Churn,
+		))
+	}
+	sb.WriteString(`]}}`)
+	return sb.String()
+}
+
+// ToBatchGetJSON converts fixtures to a batchGet compound response JSON.
+// Simulates fetching multiple symbols by ID.
+func (f *FixtureSet) ToBatchGetJSON() string {
+	var sb strings.Builder
+	sb.WriteString(`{"schemaVersion":"1.0","data":{"symbols":[`)
+
+	// Use up to 50 symbols (batchGet max)
+	limit := len(f.Symbols)
+	if limit > 50 {
+		limit = 50
+	}
+
+	for i := 0; i < limit; i++ {
+		sym := f.Symbols[i]
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(fmt.Sprintf(
+			`{"stableId":"%s","name":"%s","kind":"%s","location":{"path":"%s","line":%d},"description":"%s","signature":"func %s() error","container":"module%d"}`,
+			sym.StableID, sym.Name, sym.Kind, sym.FilePath, sym.Line, sym.Description, sym.Name, i/10,
+		))
+	}
+
+	sb.WriteString(fmt.Sprintf(`],"total":%d,"missing":[]}}`, limit))
+	return sb.String()
+}
+
+// ToBatchSearchJSON converts fixtures to a batchSearch compound response JSON.
+// Simulates multiple concurrent searches.
+func (f *FixtureSet) ToBatchSearchJSON() string {
+	var sb strings.Builder
+	sb.WriteString(`{"schemaVersion":"1.0","data":{"results":[`)
+
+	// Simulate multiple search queries, each returning a subset of symbols
+	numQueries := 3
+	if len(f.Symbols) > 200 {
+		numQueries = 10
+	} else if len(f.Symbols) > 50 {
+		numQueries = 5
+	}
+
+	perQuery := len(f.Symbols) / numQueries
+	if perQuery > 100 {
+		perQuery = 100
+	}
+
+	for q := 0; q < numQueries; q++ {
+		if q > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(fmt.Sprintf(`{"query":"query%d","symbols":[`, q))
+
+		start := q * perQuery
+		end := start + perQuery
+		if end > len(f.Symbols) {
+			end = len(f.Symbols)
+		}
+
+		for i := start; i < end; i++ {
+			sym := f.Symbols[i]
+			if i > start {
+				sb.WriteString(",")
+			}
+			sb.WriteString(fmt.Sprintf(
+				`{"stableId":"%s","name":"%s","kind":"%s","location":{"path":"%s","line":%d},"description":"%s"}`,
+				sym.StableID, sym.Name, sym.Kind, sym.FilePath, sym.Line, sym.Description,
+			))
+		}
+
+		sb.WriteString(fmt.Sprintf(`],"total":%d,"truncated":false}`, end-start))
+	}
+
+	sb.WriteString(`]}}`)
+	return sb.String()
+}
+
 // ToGetAffectedTestsJSON converts affected tests to getAffectedTests response JSON.
 func (f *FixtureSet) ToGetAffectedTestsJSON() string {
 	var sb strings.Builder
