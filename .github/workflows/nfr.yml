@@ -199,45 +199,29 @@ jobs:
               else:
                   print(f"**Regressions:** 0 \u2705\n")
 
-              print("**Thresholds:** WARN \u2265 +5% \u2022 FAIL \u2265 +10% \u2022 Hotspot \u2265 90% budget\n")
+              print("**Thresholds:** WARN \u2265 +5% \u2022 FAIL \u2265 +10%\n")
 
               # Diff block preview
               preview_bad = sorted([r for r in rows if r["diff_pct"] >= 5], key=lambda r: -r["diff_pct"])[:3]
-              preview_hot = sorted([r for r in rows if r["budget_pct"] >= 90 and r["diff_pct"] < 5], key=lambda r: -r["budget_pct"])[:3]
               preview_good = sorted([r for r in rows if r["diff_pct"] <= -5], key=lambda r: r["diff_pct"])[:3]
 
-              if preview_bad or preview_hot or preview_good:
-                  all_preview = preview_bad + preview_hot + preview_good
+              if preview_bad or preview_good:
+                  all_preview = preview_bad + preview_good
                   max_name = max(len(f"{r['tool']}/{r['tier']}") for r in all_preview)
                   print("```diff")
                   for r in preview_bad:
                       name = f"{r['tool']}/{r['tier']}"
-                      print(f"- {r['verdict']:4} {name:<{max_name}}  {r['diff_pct']:+6.1f}%  {r['actual']:>9,}B  budget {r['budget_pct']:>2.0f}%  {r['timing']}")
-                  for r in preview_hot:
-                      name = f"{r['tool']}/{r['tier']}"
-                      print(f"! HOT  {name:<{max_name}}  {r['diff_pct']:+6.1f}%  {r['actual']:>9,}B  budget {r['budget_pct']:>2.0f}%  {r['timing']}")
+                      print(f"- {r['verdict']:4} {name:<{max_name}}  {r['diff_pct']:+6.1f}%  {r['actual']:>9,}B  {r['timing']}")
                   for r in preview_good:
                       name = f"{r['tool']}/{r['tier']}"
-                      print(f"+ SAVE {name:<{max_name}}  {r['diff_pct']:+6.1f}%  {r['actual']:>9,}B  budget {r['budget_pct']:>2.0f}%  {r['timing']}")
+                      print(f"+ SAVE {name:<{max_name}}  {r['diff_pct']:+6.1f}%  {r['actual']:>9,}B  {r['timing']}")
                   print("```\n")
-
-              # Hotspots
-              hotspots = sorted([r for r in rows if r["budget_pct"] >= 90], key=lambda r: -r["budget_pct"])[:3]
-              if hotspots:
-                  print("### Hotspots (closest to limit)\n")
-                  print("| Scenario | Budget | Margin |")
-                  print("|---|---:|---:|")
-                  for h in hotspots:
-                      margin = 100 - h["budget_pct"]
-                      print(f"| {h['tool']} / {h['tier']} | {h['budget_pct']:.0f}% | {margin:.0f}% |")
-                  print()
 
               # Full breakdown
               print("<details><summary>All scenarios</summary>\n")
-              print("| | Scenario | Change | Actual (B) | Base (B) | Max | Budget | Margin | Time |")
-              print("|:---:|---|---:|---:|---:|---:|---:|---:|---:|")
+              print("| | Scenario | Change | Actual (B) | Base (B) | Time |")
+              print("|:---:|---|---:|---:|---:|---:|")
               for r in sorted(rows, key=lambda x: -x["diff_pct"]):
-                  margin = 100 - r["budget_pct"]
                   if r["verdict"] == "FAIL":
                       icon = "\U0001f534"
                   elif r["verdict"] == "WARN":
@@ -247,7 +231,7 @@ jobs:
                   else:
                       icon = "\u26aa"
                   src = "" if r["base_in_branch"] else " *"
-                  print(f"| {icon} | {r['tool']} / {r['tier']}{src} | {r['diff_pct']:+.1f}% | {r['actual']:,} | {r['baseline']:,} | {r['max']:,} | {r['budget_pct']:.0f}% | {margin:.0f}% | {r['timing']} |")
+                  print(f"| {icon} | {r['tool']} / {r['tier']}{src} | {r['diff_pct']:+.1f}% | {r['actual']:,} | {r['baseline']:,} | {r['timing']} |")
               print("\n*\\* = new scenario, compared against static baseline*")
               print("\n</details>")
 
