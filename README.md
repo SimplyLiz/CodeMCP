@@ -3,6 +3,7 @@
 **Know your code. Change it safely. Ship with confidence.**
 
 [![npm version](https://img.shields.io/npm/v/@tastehub/ckb.svg)](https://www.npmjs.com/package/@tastehub/ckb)
+[![codecov](https://codecov.io/gh/SimplyLiz/CodeMCP/graph/badge.svg)](https://codecov.io/gh/SimplyLiz/CodeMCP)
 [![Website](https://img.shields.io/badge/website-codeknowledge.dev-teal.svg)](https://codeknowledge.dev)
 [![Documentation](https://img.shields.io/badge/docs-codeknowledge.dev-blue.svg)](https://codeknowledge.dev/docs)
 
