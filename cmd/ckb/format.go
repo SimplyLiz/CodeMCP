@@ -77,6 +77,10 @@ func formatHuman(resp interface{}) (string, error) {
 		return formatDeadCodeHuman(v), nil
 	case *BreakingResponseCLI:
 		return formatBreakingHuman(v), nil
+	case *DiffSummaryResponseCLI:
+		return formatDiffSummaryHuman(v), nil
+	case *ConceptsResponseCLI:
+		return formatConceptsHuman(v), nil
 	default:
 		// For types without human formatters, output JSON with a note
 		json, err := formatJSON(resp)
@@ -841,4 +845,143 @@ func formatJobsListHuman(resp *JobsListResponseCLI) (string, error) {
 	}
 
 	return b.String(), nil
+}
+
+// formatDiffSummaryHuman formats a DiffSummaryResponseCLI in human-readable format
+func formatDiffSummaryHuman(resp *DiffSummaryResponseCLI) string {
+	var b strings.Builder
+
+	b.WriteString("Diff Summary\n")
+	b.WriteString(strings.Repeat("=", 60) + "\n\n")
+
+	// Selector info
+	b.WriteString(fmt.Sprintf("Scope: %s (%s)\n", resp.Selector.Type, resp.Selector.Value))
+	b.WriteString(fmt.Sprintf("Confidence: %.0f%%\n\n", resp.Confidence*100))
+
+	// One-liner summary
+	if resp.Summary.OneLiner != "" {
+		b.WriteString(fmt.Sprintf("Summary: %s\n\n", resp.Summary.OneLiner))
+	}
+
+	// Key changes
+	if len(resp.Summary.KeyChanges) > 0 {
+		b.WriteString("Key Changes:\n")
+		for _, change := range resp.Summary.KeyChanges {
+			b.WriteString(fmt.Sprintf("  • %s\n", change))
+		}
+		b.WriteString("\n")
+	}
+
+	// Risk overview
+	if resp.Summary.RiskOverview != "" {
+		b.WriteString(fmt.Sprintf("Risk: %s\n\n", resp.Summary.RiskOverview))
+	}
+
+	// Changed files
+	if len(resp.ChangedFiles) > 0 {
+		b.WriteString(fmt.Sprintf("Changed Files (%d):\n", len(resp.ChangedFiles)))
+		shown := min(15, len(resp.ChangedFiles))
+		for _, f := range resp.ChangedFiles[:shown] {
+			riskMarker := ""
+			if f.RiskLevel == "high" {
+				riskMarker = " ⚠"
+			} else if f.RiskLevel == "critical" {
+				riskMarker = " ✗"
+			}
+			b.WriteString(fmt.Sprintf("  %s %s (+%d/-%d)%s\n", f.ChangeType, f.FilePath, f.Additions, f.Deletions, riskMarker))
+		}
+		if len(resp.ChangedFiles) > shown {
+			b.WriteString(fmt.Sprintf("  ... and %d more\n", len(resp.ChangedFiles)-shown))
+		}
+		b.WriteString("\n")
+	}
+
+	// Symbols affected
+	if len(resp.SymbolsAffected) > 0 {
+		b.WriteString(fmt.Sprintf("Symbols Affected (%d):\n", len(resp.SymbolsAffected)))
+		shown := min(10, len(resp.SymbolsAffected))
+		for _, s := range resp.SymbolsAffected[:shown] {
+			markers := ""
+			if s.IsPublicAPI {
+				markers += " [public]"
+			}
+			if s.IsEntrypoint {
+				markers += " [entrypoint]"
+			}
+			b.WriteString(fmt.Sprintf("  %s %s (%s)%s\n", s.ChangeType, s.Name, s.Kind, markers))
+		}
+		if len(resp.SymbolsAffected) > shown {
+			b.WriteString(fmt.Sprintf("  ... and %d more\n", len(resp.SymbolsAffected)-shown))
+		}
+		b.WriteString("\n")
+	}
+
+	// Risk signals
+	if len(resp.RiskSignals) > 0 {
+		b.WriteString("Risk Signals:\n")
+		for _, r := range resp.RiskSignals {
+			icon := "○"
+			if r.Severity == "high" {
+				icon = "⚠"
+			} else if r.Severity == "critical" {
+				icon = "✗"
+			}
+			b.WriteString(fmt.Sprintf("  %s [%s] %s\n", icon, r.Type, r.Description))
+		}
+		b.WriteString("\n")
+	}
+
+	// Limitations
+	if len(resp.Limitations) > 0 {
+		b.WriteString("Limitations:\n")
+		for _, l := range resp.Limitations {
+			b.WriteString(fmt.Sprintf("  • %s\n", l))
+		}
+	}
+
+	return b.String()
+}
+
+// formatConceptsHuman formats a ConceptsResponseCLI in human-readable format
+func formatConceptsHuman(resp *ConceptsResponseCLI) string {
+	var b strings.Builder
+
+	b.WriteString("Key Concepts\n")
+	b.WriteString(strings.Repeat("=", 60) + "\n\n")
+
+	b.WriteString(fmt.Sprintf("Found %d concepts (confidence: %.0f%%)\n\n", resp.TotalFound, resp.Confidence*100))
+
+	for i, c := range resp.Concepts {
+		b.WriteString(fmt.Sprintf("%d. %s", i+1, c.Name))
+		if c.Category != "" {
+			b.WriteString(fmt.Sprintf(" [%s]", c.Category))
+		}
+		b.WriteString("\n")
+
+		if c.Description != "" {
+			b.WriteString(fmt.Sprintf("   %s\n", c.Description))
+		}
+
+		b.WriteString(fmt.Sprintf("   Occurrences: %d, Score: %.2f\n", c.Occurrences, c.Score))
+
+		if len(c.Files) > 0 {
+			shown := min(3, len(c.Files))
+			b.WriteString(fmt.Sprintf("   Files: %s", strings.Join(c.Files[:shown], ", ")))
+			if len(c.Files) > shown {
+				b.WriteString(fmt.Sprintf(" (+%d more)", len(c.Files)-shown))
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+	}
+
+	// Limitations
+	if len(resp.Limitations) > 0 {
+		b.WriteString("Limitations:\n")
+		for _, l := range resp.Limitations {
+			b.WriteString(fmt.Sprintf("  • %s\n", l))
+		}
+	}
+
+	return b.String()
 }
