@@ -7,6 +7,55 @@ import (
 	"ckb/internal/query"
 )
 
+func TestFormatImpactSubcommandError_Diff(t *testing.T) {
+	result := formatImpactSubcommandError("diff")
+
+	if !strings.Contains(result, "Error: 'diff' is not a valid symbol ID") {
+		t.Error("missing error message")
+	}
+	if !strings.Contains(result, "Did you mean: ckb impact diff") {
+		t.Error("missing diff suggestion")
+	}
+	if !strings.Contains(result, "Analyzes impact of code changes from git diff") {
+		t.Error("missing diff description")
+	}
+	if !strings.Contains(result, "ckb impact <symbolId>") {
+		t.Error("missing usage hint")
+	}
+	if !strings.Contains(result, "ckb search <name>") {
+		t.Error("missing search hint")
+	}
+}
+
+func TestFormatImpactSubcommandError_Help(t *testing.T) {
+	result := formatImpactSubcommandError("help")
+
+	if !strings.Contains(result, "Error: 'help' is not a valid symbol ID") {
+		t.Error("missing error message")
+	}
+	// Should not have diff-specific message
+	if strings.Contains(result, "Did you mean: ckb impact diff") {
+		t.Error("should not suggest diff for help")
+	}
+	if !strings.Contains(result, "ckb impact <symbolId>") {
+		t.Error("missing usage hint")
+	}
+}
+
+func TestFormatSymbolNotFoundError(t *testing.T) {
+	result := formatSymbolNotFoundError("ckb:repo:sym:abc123")
+
+	if !strings.Contains(result, "Error: Symbol not found: ckb:repo:sym:abc123") {
+		t.Error("missing error with symbol ID")
+	}
+	if !strings.Contains(result, "To find valid symbol IDs, use:") {
+		t.Error("missing guidance")
+	}
+	if !strings.Contains(result, "ckb search <name>") {
+		t.Error("missing search hint")
+	}
+}
+
 func TestConvertImpactResponse(t *testing.T) {
 	resp := &query.AnalyzeImpactResponse{
 		Symbol: &query.SymbolInfo{

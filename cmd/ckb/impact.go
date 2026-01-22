@@ -77,6 +77,31 @@ func init() {
 	rootCmd.AddCommand(impactCmd)
 }
 
+// formatImpactSubcommandError returns an error message when user provides
+// a subcommand name instead of a symbol ID.
+func formatImpactSubcommandError(arg string) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("Error: '%s' is not a valid symbol ID.\n\n", arg))
+	if arg == "diff" {
+		b.WriteString("Did you mean: ckb impact diff\n")
+		b.WriteString("  Analyzes impact of code changes from git diff\n")
+	}
+	b.WriteString("\nTo analyze a specific symbol, provide its ID:\n")
+	b.WriteString("  ckb impact <symbolId>\n")
+	b.WriteString("\nTo find symbol IDs, use:\n")
+	b.WriteString("  ckb search <name>\n")
+	return b.String()
+}
+
+// formatSymbolNotFoundError returns an error message when a symbol is not found.
+func formatSymbolNotFoundError(symbolID string) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("Error: Symbol not found: %s\n\n", symbolID))
+	b.WriteString("To find valid symbol IDs, use:\n")
+	b.WriteString("  ckb search <name>\n")
+	return b.String()
+}
+
 func runImpact(cmd *cobra.Command, args []string) {
 	start := time.Now()
 	logger := newLogger(impactFormat)
@@ -84,15 +109,7 @@ func runImpact(cmd *cobra.Command, args []string) {
 
 	// Check if user might have meant a subcommand
 	if symbolID == "diff" || symbolID == "help" {
-		fmt.Fprintf(os.Stderr, "Error: '%s' is not a valid symbol ID.\n\n", symbolID)
-		if symbolID == "diff" {
-			fmt.Fprintln(os.Stderr, "Did you mean: ckb impact diff")
-			fmt.Fprintln(os.Stderr, "  Analyzes impact of code changes from git diff")
-		}
-		fmt.Fprintln(os.Stderr, "\nTo analyze a specific symbol, provide its ID:")
-		fmt.Fprintln(os.Stderr, "  ckb impact <symbolId>")
-		fmt.Fprintln(os.Stderr, "\nTo find symbol IDs, use:")
-		fmt.Fprintln(os.Stderr, "  ckb search <name>")
+		fmt.Fprint(os.Stderr, formatImpactSubcommandError(symbolID))
 		os.Exit(1)
 	}
 
@@ -110,9 +127,7 @@ func runImpact(cmd *cobra.Command, args []string) {
 	if err != nil {
 		// Provide helpful error for symbol not found
 		if strings.Contains(err.Error(), "not found") {
-			fmt.Fprintf(os.Stderr, "Error: Symbol not found: %s\n\n", symbolID)
-			fmt.Fprintln(os.Stderr, "To find valid symbol IDs, use:")
-			fmt.Fprintln(os.Stderr, "  ckb search <name>")
+			fmt.Fprint(os.Stderr, formatSymbolNotFoundError(symbolID))
 			os.Exit(1)
 		}
 		fmt.Fprintf(os.Stderr, "Error analyzing impact: %v\n", err)
