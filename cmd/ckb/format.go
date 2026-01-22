@@ -81,6 +81,8 @@ func formatHuman(resp interface{}) (string, error) {
 		return formatDiffSummaryHuman(v), nil
 	case *ConceptsResponseCLI:
 		return formatConceptsHuman(v), nil
+	case *ChangeSetResponseCLI:
+		return formatChangeSetHuman(v), nil
 	default:
 		// For types without human formatters, output JSON with a note
 		json, err := formatJSON(resp)
@@ -980,6 +982,98 @@ func formatConceptsHuman(resp *ConceptsResponseCLI) string {
 		b.WriteString("Limitations:\n")
 		for _, l := range resp.Limitations {
 			b.WriteString(fmt.Sprintf("  • %s\n", l))
+		}
+	}
+
+	return b.String()
+}
+
+// formatChangeSetHuman formats a ChangeSetResponseCLI in human-readable format
+func formatChangeSetHuman(resp *ChangeSetResponseCLI) string {
+	var b strings.Builder
+
+	b.WriteString("Change Impact Analysis\n")
+	b.WriteString(strings.Repeat("=", 60) + "\n\n")
+
+	// Summary
+	if resp.Summary != nil {
+		b.WriteString("Summary:\n")
+		b.WriteString(fmt.Sprintf("  Files Changed:    %d\n", resp.Summary.FilesChanged))
+		b.WriteString(fmt.Sprintf("  Symbols Changed:  %d\n", resp.Summary.SymbolsChanged))
+		b.WriteString(fmt.Sprintf("  Direct Impact:    %d symbols\n", resp.Summary.DirectlyAffected))
+		b.WriteString(fmt.Sprintf("  Transitive Impact: %d symbols\n", resp.Summary.TransitivelyAffected))
+		b.WriteString("\n")
+	}
+
+	// Risk Score
+	if resp.RiskScore != nil {
+		riskIcon := "✓"
+		if resp.RiskScore.Level == "high" {
+			riskIcon = "⚠"
+		} else if resp.RiskScore.Level == "critical" {
+			riskIcon = "✗"
+		}
+		b.WriteString(fmt.Sprintf("%s Risk Level: %s (score: %.2f)\n", riskIcon, resp.RiskScore.Level, resp.RiskScore.Score))
+		if resp.RiskScore.Explanation != "" {
+			b.WriteString(fmt.Sprintf("  %s\n", resp.RiskScore.Explanation))
+		}
+		b.WriteString("\n")
+	}
+
+	// Blast Radius
+	if resp.BlastRadius != nil {
+		b.WriteString("Blast Radius:\n")
+		b.WriteString(fmt.Sprintf("  Modules: %d, Files: %d, Callers: %d\n",
+			resp.BlastRadius.ModuleCount, resp.BlastRadius.FileCount, resp.BlastRadius.UniqueCallerCount))
+		b.WriteString("\n")
+	}
+
+	// Index Staleness Warning
+	if resp.IndexStaleness != nil && resp.IndexStaleness.IsStale {
+		b.WriteString(fmt.Sprintf("⚠ Index Warning: %s\n\n", resp.IndexStaleness.StalenessMessage))
+	}
+
+	// Changed Symbols (top items)
+	if len(resp.ChangedSymbols) > 0 {
+		b.WriteString(fmt.Sprintf("Changed Symbols (%d):\n", len(resp.ChangedSymbols)))
+		shown := min(10, len(resp.ChangedSymbols))
+		for _, s := range resp.ChangedSymbols[:shown] {
+			b.WriteString(fmt.Sprintf("  %s %s\n", s.ChangeType, s.Name))
+			b.WriteString(fmt.Sprintf("    %s\n", s.File))
+		}
+		if len(resp.ChangedSymbols) > shown {
+			b.WriteString(fmt.Sprintf("  ... and %d more\n", len(resp.ChangedSymbols)-shown))
+		}
+		b.WriteString("\n")
+	}
+
+	// Affected Symbols (top items)
+	if len(resp.AffectedSymbols) > 0 {
+		b.WriteString(fmt.Sprintf("Affected Downstream (%d):\n", len(resp.AffectedSymbols)))
+		shown := min(10, len(resp.AffectedSymbols))
+		for _, s := range resp.AffectedSymbols[:shown] {
+			b.WriteString(fmt.Sprintf("  %s (%s, distance: %d)\n", s.Name, s.Kind, s.Distance))
+		}
+		if len(resp.AffectedSymbols) > shown {
+			b.WriteString(fmt.Sprintf("  ... and %d more\n", len(resp.AffectedSymbols)-shown))
+		}
+		b.WriteString("\n")
+	}
+
+	// Recommendations
+	if len(resp.Recommendations) > 0 {
+		b.WriteString("Recommendations:\n")
+		for _, r := range resp.Recommendations {
+			icon := "→"
+			if r.Severity == "warn" {
+				icon = "⚠"
+			} else if r.Severity == "error" {
+				icon = "✗"
+			}
+			b.WriteString(fmt.Sprintf("  %s %s\n", icon, r.Message))
+			if r.Action != "" {
+				b.WriteString(fmt.Sprintf("    Action: %s\n", r.Action))
+			}
 		}
 	}
 

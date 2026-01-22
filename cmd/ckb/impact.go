@@ -82,6 +82,20 @@ func runImpact(cmd *cobra.Command, args []string) {
 	logger := newLogger(impactFormat)
 	symbolID := args[0]
 
+	// Check if user might have meant a subcommand
+	if symbolID == "diff" || symbolID == "help" {
+		fmt.Fprintf(os.Stderr, "Error: '%s' is not a valid symbol ID.\n\n", symbolID)
+		if symbolID == "diff" {
+			fmt.Fprintln(os.Stderr, "Did you mean: ckb impact diff")
+			fmt.Fprintln(os.Stderr, "  Analyzes impact of code changes from git diff")
+		}
+		fmt.Fprintln(os.Stderr, "\nTo analyze a specific symbol, provide its ID:")
+		fmt.Fprintln(os.Stderr, "  ckb impact <symbolId>")
+		fmt.Fprintln(os.Stderr, "\nTo find symbol IDs, use:")
+		fmt.Fprintln(os.Stderr, "  ckb search <name>")
+		os.Exit(1)
+	}
+
 	repoRoot := mustGetRepoRoot()
 	engine := mustGetEngine(repoRoot, logger)
 	ctx := newContext()
@@ -94,6 +108,13 @@ func runImpact(cmd *cobra.Command, args []string) {
 	}
 	response, err := engine.AnalyzeImpact(ctx, opts)
 	if err != nil {
+		// Provide helpful error for symbol not found
+		if strings.Contains(err.Error(), "not found") {
+			fmt.Fprintf(os.Stderr, "Error: Symbol not found: %s\n\n", symbolID)
+			fmt.Fprintln(os.Stderr, "To find valid symbol IDs, use:")
+			fmt.Fprintln(os.Stderr, "  ckb search <name>")
+			os.Exit(1)
+		}
 		fmt.Fprintf(os.Stderr, "Error analyzing impact: %v\n", err)
 		os.Exit(1)
 	}
