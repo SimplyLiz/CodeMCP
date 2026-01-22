@@ -2,7 +2,7 @@ name: NFR Tests
 
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [main]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
