@@ -263,6 +263,11 @@ func formatStatusHuman(resp *StatusResponseCLI) (string, error) {
 		if !resp.IndexStatus.Exists {
 			b.WriteString("  ✗ No index found\n")
 			b.WriteString("  Run 'ckb index' to create one.\n")
+			b.WriteString("\n")
+			b.WriteString("  Commands that work without index (git-based):\n")
+			b.WriteString("    hotspots, ownership, reviewers, diff-summary, pr-summary\n")
+			b.WriteString("  Commands that need SCIP index:\n")
+			b.WriteString("    search, refs, callgraph, impact, dead-code, trace, explain\n")
 		} else if resp.IndexStatus.Fresh {
 			commitInfo := ""
 			if resp.IndexStatus.CommitHash != "" {

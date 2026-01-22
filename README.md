@@ -3,7 +3,8 @@
 **Know your code. Change it safely. Ship with confidence.**
 
 [![npm version](https://img.shields.io/npm/v/@tastehub/ckb.svg)](https://www.npmjs.com/package/@tastehub/ckb)
-[![Documentation](https://img.shields.io/badge/docs-wiki-blue.svg)](https://github.com/SimplyLiz/CodeMCP/wiki)
+[![Website](https://img.shields.io/badge/website-codeknowledge.dev-teal.svg)](https://codeknowledge.dev)
+[![Documentation](https://img.shields.io/badge/docs-codeknowledge.dev-blue.svg)](https://codeknowledge.dev/docs)
 
 CKB transforms your codebase into a queryable knowledge base. Ask questions, understand impact, find owners, detect dead code—all through CLI, API, or AI assistants.
 
@@ -49,22 +50,19 @@ CKB transforms your codebase into a queryable knowledge base. Ask questions, und
 
 ```bash
 # See what's risky in your codebase
-ckb hotspots
+ckb hotspots --format=human
 
-# Check impact before changing code
-ckb impact diff
-
-# Find tests to run for your changes
-ckb affected-tests --output=command
+# Check what changed and what might break
+ckb diff-summary --format=human
 
 # Scan for exposed secrets
-ckb scan-secrets
-
-# Get reviewers for your PR
-ckb reviewers
+ckb audit --format=human
 
 # Check architecture at a glance
-ckb arch
+ckb arch --format=human
+
+# Check system status
+ckb status
 ```
 
 ---
@@ -259,14 +257,13 @@ See the **[Index Management Guide](https://github.com/SimplyLiz/CodeMCP/wiki/Ind
 ## CLI
 
 ```bash
-ckb status          # System health (with remediation suggestions)
-ckb search Handler  # Find symbols
-ckb impact diff     # Analyze changes
-ckb affected-tests  # Tests to run
-ckb hotspots        # Risky areas
-ckb arch            # Architecture overview
-ckb reviewers       # PR reviewers
-ckb mcp             # Start MCP server
+ckb status           # System health (with remediation suggestions)
+ckb search Handler   # Find symbols
+ckb diff-summary     # Analyze what changed
+ckb hotspots         # Risky areas
+ckb arch             # Architecture overview
+ckb ownership        # File/path ownership
+ckb mcp              # Start MCP server
 ```
 
 **v8.0 Compound Operations (via MCP):**
@@ -588,4 +585,9 @@ See the **[Full Documentation Wiki](https://github.com/SimplyLiz/CodeMCP/wiki)**
 
 ## License
 
-Free for personal use. Commercial/enterprise use requires a license. See [LICENSE](LICENSE) for details.
+**Free for:**
+- Personal use
+- Open source projects
+- Startups & small businesses under $25k annual revenue
+
+**Commercial license required** for organizations with $25k+ annual revenue. See [pricing](https://codeknowledge.dev/pricing) for Team and Enterprise plans, or [LICENSE](LICENSE) for full terms.

@@ -29,7 +29,7 @@
     "x64",
     "arm64"
   ],
-  "homepage": "https://github.com/SimplyLiz/CodeMCP",
+  "homepage": "https://codeknowledge.dev",
   "bugs": {
     "url": "https://github.com/SimplyLiz/CodeMCP/issues"
   },
@@ -37,7 +37,7 @@
     "type": "git",
     "url": "git+https://github.com/SimplyLiz/CodeMCP.git"
   },
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "scripts": {
     "prepublishOnly": "cp ../README.md ./README.md && cp ../LICENSE ./LICENSE"
   },
