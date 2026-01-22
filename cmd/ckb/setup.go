@@ -37,6 +37,7 @@ var aiTools = []aiTool{
 	{ID: "windsurf", Name: "Windsurf", SupportsGlobal: true, SupportsProject: false, GlobalUsesCmd: false, Format: "mcpServers"},
 	{ID: "vscode", Name: "VS Code", SupportsGlobal: true, SupportsProject: true, GlobalUsesCmd: true, Format: "servers"},
 	{ID: "opencode", Name: "OpenCode", SupportsGlobal: true, SupportsProject: true, GlobalUsesCmd: false, Format: "mcp"},
+	{ID: "grok", Name: "Grok", SupportsGlobal: true, SupportsProject: true, GlobalUsesCmd: true, Format: "grokServers"},
 	{ID: "claude-desktop", Name: "Claude Desktop", SupportsGlobal: true, SupportsProject: false, GlobalUsesCmd: false, Format: "mcpServers"},
 }
 
@@ -45,11 +46,12 @@ var setupCmd = &cobra.Command{
 	Short: "Configure CKB for AI coding tools",
 	Long: `Sets up CKB as an MCP server for AI coding tools.
 
-Supports: Claude Code, Cursor, Windsurf, VS Code, OpenCode, Claude Desktop
+Supports: Claude Code, Cursor, Windsurf, VS Code, OpenCode, Grok, Claude Desktop
 
 Examples:
   ckb setup                    # Interactive setup
   ckb setup --tool=cursor      # Configure for Cursor
+  ckb setup --tool=grok        # Configure for Grok
   ckb setup --tool=vscode --global  # Configure VS Code globally
   ckb setup --npx              # Use npx for portable setup`,
 	RunE: runSetup,
@@ -58,7 +60,7 @@ Examples:
 func init() {
 	setupCmd.Flags().BoolVar(&setupGlobal, "global", false, "Configure globally for all projects")
 	setupCmd.Flags().BoolVar(&setupNpx, "npx", false, "Use npx @tastehub/ckb for portable setup")
-	setupCmd.Flags().StringVar(&setupTool, "tool", "", "AI tool to configure (claude-code, cursor, windsurf, vscode, opencode, claude-desktop)")
+	setupCmd.Flags().StringVar(&setupTool, "tool", "", "AI tool to configure (claude-code, cursor, windsurf, vscode, opencode, grok, claude-desktop)")
 	setupCmd.Flags().StringVar(&setupPreset, "preset", "", "Tool preset: core (default), review, refactor, federation, docs, ops, full")
 	rootCmd.AddCommand(setupCmd)
 }
@@ -98,6 +100,14 @@ type openCodeMcpEntry struct {
 	Enabled bool     `json:"enabled"`
 }
 
+// grokMcpEntry is used by Grok (.grok/settings.json)
+type grokMcpEntry struct {
+	Name      string   `json:"name"`
+	Transport string   `json:"transport"`
+	Command   string   `json:"command"`
+	Args      []string `json:"args"`
+}
+
 func runSetup(cmd *cobra.Command, args []string) error {
 	// Determine the CKB command to use
 	var ckbCommand string
@@ -132,7 +142,7 @@ func runSetup(cmd *cobra.Command, args []string) error {
 			}
 		}
 		if selectedTool == nil {
-			return fmt.Errorf("unknown tool: %s. Valid options: claude-code, cursor, windsurf, vscode, opencode, claude-desktop", setupTool)
+			return fmt.Errorf("unknown tool: %s. Valid options: claude-code, cursor, windsurf, vscode, opencode, grok, claude-desktop", setupTool)
 		}
 	} else {
 		// Interactive tool selection
@@ -362,6 +372,8 @@ func configureTool(tool *aiTool, global bool, ckbCommand string, ckbArgs []strin
 			return configureClaudeCodeGlobal(ckbCommand, ckbArgs)
 		case "vscode":
 			return configureVSCodeGlobal(ckbCommand, ckbArgs)
+		case "grok":
+			return configureGrokGlobal(ckbCommand, ckbArgs)
 		}
 	}
 
@@ -402,6 +414,8 @@ func configureTool(tool *aiTool, global bool, ckbCommand string, ckbArgs []strin
 		err = writeVSCodeConfig(configPath, ckbCommand, ckbArgs)
 	case "mcp":
 		err = writeOpenCodeConfig(configPath, ckbCommand, ckbArgs, setupNpx)
+	case "grokServers":
+		err = writeGrokConfig(configPath, ckbCommand, ckbArgs)
 	default:
 		err = fmt.Errorf("unknown format: %s", tool.Format)
 	}
@@ -471,6 +485,12 @@ func getConfigPath(toolID string, global bool) string {
 			return filepath.Join(home, ".config", "opencode", "opencode.json")
 		}
 		return filepath.Join(cwd, "opencode.json")
+
+	case "grok":
+		if global {
+			return filepath.Join(home, ".grok", "user-settings.json")
+		}
+		return filepath.Join(cwd, ".grok", "settings.json")
 
 	case "claude-desktop":
 		if runtime.GOOS == "windows" {
@@ -582,6 +602,90 @@ func writeOpenCodeConfig(path, command string, args []string, useNpx bool) error
 	}
 
 	return os.WriteFile(path, data, 0644)
+}
+
+func writeGrokConfig(path, command string, args []string) error {
+	// Read existing config preserving other fields
+	var raw map[string]json.RawMessage
+	if data, err := os.ReadFile(path); err == nil {
+		if jsonErr := json.Unmarshal(data, &raw); jsonErr != nil {
+			fmt.Printf("Warning: existing config is invalid, will overwrite\n")
+			raw = make(map[string]json.RawMessage)
+		}
+	} else {
+		raw = make(map[string]json.RawMessage)
+	}
+
+	// Parse existing mcpServers or create new
+	mcpServers := make(map[string]grokMcpEntry)
+	if existing, ok := raw["mcpServers"]; ok {
+		_ = json.Unmarshal(existing, &mcpServers)
+	}
+
+	// Add or update CKB entry
+	mcpServers["ckb"] = grokMcpEntry{
+		Name:      "ckb",
+		Transport: "stdio",
+		Command:   command,
+		Args:      args,
+	}
+
+	// Marshal mcpServers back
+	mcpData, err := json.Marshal(mcpServers)
+	if err != nil {
+		return fmt.Errorf("failed to marshal mcpServers: %w", err)
+	}
+	raw["mcpServers"] = mcpData
+
+	// Write config
+	data, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	return os.WriteFile(path, data, 0644)
+}
+
+func configureGrokGlobal(ckbCommand string, ckbArgs []string) error {
+	// Try using grok mcp add command first
+	if isGrokAvailable() {
+		cmdArgs := []string{"mcp", "add", "ckb", "--transport", "stdio", "--command", ckbCommand}
+		for _, arg := range ckbArgs {
+			cmdArgs = append(cmdArgs, "--args", arg)
+		}
+
+		fmt.Printf("Running: grok %s\n", formatArgs(cmdArgs))
+
+		execCmd := exec.Command("grok", cmdArgs...)
+		execCmd.Stdout = os.Stdout
+		execCmd.Stderr = os.Stderr
+
+		if err := execCmd.Run(); err != nil {
+			return fmt.Errorf("failed to add CKB to Grok: %w", err)
+		}
+
+		fmt.Println("\n✓ CKB added to Grok globally.")
+		fmt.Println("Restart Grok to load the new configuration.")
+		return nil
+	}
+
+	// Fallback to writing ~/.grok/user-settings.json
+	fmt.Println("Grok CLI not found, using fallback configuration...")
+	configPath := getConfigPath("grok", true)
+	if err := writeGrokConfig(configPath, ckbCommand, ckbArgs); err != nil {
+		return err
+	}
+
+	fmt.Printf("\n✓ Added CKB to %s\n", configPath)
+	fmt.Printf("  Command: %s %s\n", ckbCommand, strings.Join(ckbArgs, " "))
+	fmt.Println("\nRestart Grok to load the new configuration.")
+
+	return nil
+}
+
+func isGrokAvailable() bool {
+	_, err := exec.LookPath("grok")
+	return err == nil
 }
 
 func configureClaudeCodeGlobal(ckbCommand string, ckbArgs []string) error {

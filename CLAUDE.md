@@ -54,6 +54,7 @@ golangci-lint run
 # Configure for specific AI tools
 ./ckb setup --tool=claude-code
 ./ckb setup --tool=cursor
+./ckb setup --tool=grok
 ./ckb setup --tool=vscode
 ```
 
@@ -72,7 +73,7 @@ npx @tastehub/ckb setup
 
 ## MCP Integration
 
-CKB provides 80+ code intelligence tools via MCP. Supports Claude Code, Cursor, Windsurf, VS Code, OpenCode, and Claude Desktop.
+CKB provides 80+ code intelligence tools via MCP. Supports Claude Code, Cursor, Windsurf, VS Code, OpenCode, Grok, and Claude Desktop.
 
 ```bash
 # Auto-configure (interactive)

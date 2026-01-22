@@ -71,7 +71,7 @@ ckb status
 
 | AI Assistants | CI/CD | Your Tools |
 |---------------|-------|------------|
-| Claude Code, Cursor, Windsurf, VS Code | GitHub Actions, GitLab CI | CLI, HTTP API, Scripts |
+| Claude Code, Cursor, Windsurf, VS Code, Grok | GitHub Actions, GitLab CI | CLI, HTTP API, Scripts |
 
 **83% token reduction** with smart presets—load only the tools you need.
 
@@ -163,7 +163,7 @@ Now Claude can answer questions like:
 
 | Interface | Best For |
 |-----------|----------|
-| **[MCP](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration)** | AI-assisted development — Claude, Cursor, Windsurf, VS Code, OpenCode |
+| **[MCP](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration)** | AI-assisted development — Claude, Cursor, Windsurf, VS Code, OpenCode, Grok |
 | **[CLI](https://github.com/SimplyLiz/CodeMCP/wiki/User-Guide)** | Quick lookups from terminal, scripting |
 | **[HTTP API](https://github.com/SimplyLiz/CodeMCP/wiki/API-Reference)** | IDE plugins, CI integration, custom tooling |
 
@@ -413,6 +413,33 @@ Add to `opencode.json` in project root:
       "type": "local",
       "command": ["npx", "@tastehub/ckb", "mcp"],
       "enabled": true
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><strong>Grok</strong></summary>
+
+```bash
+# Auto-configure for current project
+npx @tastehub/ckb setup --tool=grok
+
+# Or add globally
+npx @tastehub/ckb setup --tool=grok --global
+```
+
+Or manually add to `.grok/settings.json` (project) or `~/.grok/user-settings.json` (global):
+```json
+{
+  "mcpServers": {
+    "ckb": {
+      "name": "ckb",
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["@tastehub/ckb", "mcp"]
     }
   }
 }
