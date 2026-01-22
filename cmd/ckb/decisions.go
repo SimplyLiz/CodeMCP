@@ -68,7 +68,7 @@ func init() {
 	decisionsCmd.Flags().StringVar(&decisionsModule, "module", "", "Filter by affected module")
 	decisionsCmd.Flags().StringVar(&decisionsSearch, "search", "", "Search in title and content")
 	decisionsCmd.Flags().IntVar(&decisionsLimit, "limit", 50, "Maximum decisions to return")
-	decisionsCmd.Flags().StringVar(&decisionsFormat, "format", "human", "Output format (json, human)")
+	decisionsCmd.Flags().StringVar(&decisionsFormat, "format", "human", "Output format (human, json)")
 
 	// Create flags
 	decisionsCreateCmd.Flags().BoolVar(&decisionsInteractive, "interactive", false, "Interactive creation mode")
@@ -80,7 +80,7 @@ func init() {
 	decisionsCreateCmd.Flags().StringSliceVar(&createAlternatives, "alternative", nil, "Alternatives considered (can be specified multiple times)")
 	decisionsCreateCmd.Flags().StringVar(&createAuthor, "author", "", "Author of the decision")
 	decisionsCreateCmd.Flags().StringVar(&createStatus, "status", "proposed", "Initial status (proposed, accepted)")
-	decisionsCreateCmd.Flags().StringVar(&decisionsFormat, "format", "human", "Output format (json, human)")
+	decisionsCreateCmd.Flags().StringVar(&decisionsFormat, "format", "human", "Output format (human, json)")
 
 	decisionsCmd.AddCommand(decisionsCreateCmd)
 	rootCmd.AddCommand(decisionsCmd)

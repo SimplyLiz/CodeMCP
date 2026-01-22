@@ -99,7 +99,7 @@ Examples:
 func init() {
 	// Common flags
 	tokenCmd.PersistentFlags().StringVar(&tokenDataDir, "data-dir", "~/.ckb-server", "Server data directory")
-	tokenCmd.PersistentFlags().StringVar(&tokenFormat, "format", "human", "Output format (json, human)")
+	tokenCmd.PersistentFlags().StringVar(&tokenFormat, "format", "human", "Output format (human, json)")
 
 	// Create flags
 	tokenCreateCmd.Flags().StringVar(&tokenName, "name", "", "Token name (required)")

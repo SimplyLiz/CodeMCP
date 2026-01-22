@@ -35,7 +35,7 @@ Examples:
 }
 
 func init() {
-	recentCmd.Flags().StringVar(&recentFormat, "format", "json", "Output format (json, human)")
+	recentCmd.Flags().StringVar(&recentFormat, "format", "human", "Output format (human, json)")
 	recentCmd.Flags().StringVar(&recentModuleFilter, "module", "", "Module path to focus on")
 	recentCmd.Flags().IntVar(&recentLimit, "limit", 20, "Maximum results to return")
 	recentCmd.Flags().StringVar(&recentTimeStart, "start", "", "Start date (ISO8601 or YYYY-MM-DD)")

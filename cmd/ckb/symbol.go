@@ -29,7 +29,7 @@ RepoStateMode:
 
 func init() {
 	symbolCmd.Flags().StringVar(&symbolRepoStateMode, "repo-state-mode", "head", "Repo state mode (head, full)")
-	symbolCmd.Flags().StringVar(&symbolFormat, "format", "json", "Output format (json, human)")
+	symbolCmd.Flags().StringVar(&symbolFormat, "format", "human", "Output format (human, json)")
 	rootCmd.AddCommand(symbolCmd)
 }
 

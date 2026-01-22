@@ -42,7 +42,7 @@ func init() {
 	explainCmd.Flags().BoolVar(&explainIncludeUsage, "include-usage", true, "Include telemetry usage data")
 	explainCmd.Flags().BoolVar(&explainIncludeCoChange, "include-cochange", true, "Include co-change analysis")
 	explainCmd.Flags().IntVar(&explainHistoryLimit, "history-limit", 10, "Number of timeline entries")
-	explainCmd.Flags().StringVar(&explainFormat, "format", "json", "Output format (json, human)")
+	explainCmd.Flags().StringVar(&explainFormat, "format", "human", "Output format (human, json)")
 	rootCmd.AddCommand(explainCmd)
 }
 

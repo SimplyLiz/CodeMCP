@@ -131,26 +131,26 @@ Examples:
 
 func init() {
 	// Index flags
-	docsIndexCmd.Flags().StringVar(&docsFormat, "format", "json", "Output format (json, human)")
+	docsIndexCmd.Flags().StringVar(&docsFormat, "format", "human", "Output format (human, json)")
 	docsIndexCmd.Flags().BoolVar(&docsForce, "force", false, "Force re-index all docs")
 
 	// Symbol flags
-	docsSymbolCmd.Flags().StringVar(&docsFormat, "format", "json", "Output format (json, human)")
+	docsSymbolCmd.Flags().StringVar(&docsFormat, "format", "human", "Output format (human, json)")
 	docsSymbolCmd.Flags().IntVar(&docsLimit, "limit", 10, "Maximum results")
 
 	// File flags
-	docsFileCmd.Flags().StringVar(&docsFormat, "format", "json", "Output format (json, human)")
+	docsFileCmd.Flags().StringVar(&docsFormat, "format", "human", "Output format (human, json)")
 	docsFileCmd.Flags().BoolVar(&docsShowSymbols, "symbols", false, "List referenced symbols")
 
 	// Module flags
-	docsModuleCmd.Flags().StringVar(&docsFormat, "format", "json", "Output format (json, human)")
+	docsModuleCmd.Flags().StringVar(&docsFormat, "format", "human", "Output format (human, json)")
 
 	// Stale flags
-	docsStaleCmd.Flags().StringVar(&docsFormat, "format", "json", "Output format (json, human)")
+	docsStaleCmd.Flags().StringVar(&docsFormat, "format", "human", "Output format (human, json)")
 	docsStaleCmd.Flags().BoolVar(&docsAll, "all", false, "Check all indexed docs")
 
 	// Coverage flags
-	docsCoverageCmd.Flags().StringVar(&docsFormat, "format", "json", "Output format (json, human)")
+	docsCoverageCmd.Flags().StringVar(&docsFormat, "format", "human", "Output format (human, json)")
 	docsCoverageCmd.Flags().BoolVar(&docsExported, "exported-only", false, "Only count exported symbols")
 	docsCoverageCmd.Flags().IntVar(&docsLimit, "top", 10, "Number of top undocumented symbols")
 	docsCoverageCmd.Flags().Float64Var(&docsFailUnder, "fail-under", 0, "Exit 1 if coverage below threshold (0-100)")

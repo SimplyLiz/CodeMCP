@@ -37,7 +37,7 @@ Examples:
 func init() {
 	callgraphCmd.Flags().StringVar(&callgraphDirection, "direction", "both", "Direction to traverse (callers, callees, both)")
 	callgraphCmd.Flags().IntVar(&callgraphDepth, "depth", 1, "Maximum depth to traverse (1-4)")
-	callgraphCmd.Flags().StringVar(&callgraphFormat, "format", "json", "Output format (json, human)")
+	callgraphCmd.Flags().StringVar(&callgraphFormat, "format", "human", "Output format (human, json)")
 	rootCmd.AddCommand(callgraphCmd)
 }
 

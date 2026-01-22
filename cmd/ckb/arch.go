@@ -47,7 +47,7 @@ func init() {
 	archCmd.Flags().IntVar(&archDepth, "depth", 2, "Maximum dependency depth")
 	archCmd.Flags().BoolVar(&archIncludeExternal, "include-external-deps", false, "Include external dependencies")
 	archCmd.Flags().BoolVar(&archRefresh, "refresh", false, "Bypass cache and recompute")
-	archCmd.Flags().StringVar(&archFormat, "format", "json", "Output format (json, human)")
+	archCmd.Flags().StringVar(&archFormat, "format", "human", "Output format (human, json)")
 	archCmd.Flags().StringVar(&archGranularity, "granularity", "module", "Level of detail: module, directory, file")
 	archCmd.Flags().BoolVar(&archInferModules, "infer-modules", true, "Infer modules from directory structure")
 	archCmd.Flags().StringVar(&archTargetPath, "target-path", "", "Focus on specific path (relative to repo root)")

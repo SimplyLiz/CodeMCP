@@ -44,7 +44,7 @@ Examples:
 }
 
 func init() {
-	deadcodeCmd.Flags().StringVar(&deadcodeFormat, "format", "json", "Output format (json, human)")
+	deadcodeCmd.Flags().StringVar(&deadcodeFormat, "format", "human", "Output format (human, json)")
 	deadcodeCmd.Flags().StringSliceVar(&deadcodeScope, "scope", nil, "Limit to specific packages/paths")
 	deadcodeCmd.Flags().IntVar(&deadcodeLimit, "limit", 100, "Maximum results to return")
 	deadcodeCmd.Flags().Float64Var(&deadcodeMinConfidence, "min-confidence", 0.7, "Minimum confidence threshold (0-1)")

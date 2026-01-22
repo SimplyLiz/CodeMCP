@@ -57,7 +57,7 @@ Examples:
 }
 
 func init() {
-	metricsCmd.Flags().StringVar(&metricsFormat, "format", "json", "Output format (json, human)")
+	metricsCmd.Flags().StringVar(&metricsFormat, "format", "human", "Output format (human, json)")
 	metricsCmd.Flags().IntVar(&metricsDays, "days", 7, "Number of days to include (1-90)")
 	metricsCmd.Flags().StringVar(&metricsTool, "tool", "", "Filter to specific tool")
 	rootCmd.AddCommand(metricsCmd)

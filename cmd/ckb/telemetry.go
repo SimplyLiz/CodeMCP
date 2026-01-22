@@ -108,21 +108,21 @@ Examples:
 
 func init() {
 	// Telemetry status
-	telemetryStatusCmd.Flags().StringVar(&telemetryFormat, "format", "json", "Output format (json, human)")
+	telemetryStatusCmd.Flags().StringVar(&telemetryFormat, "format", "human", "Output format (human, json)")
 
 	// Telemetry usage
-	telemetryUsageCmd.Flags().StringVar(&telemetryFormat, "format", "json", "Output format (json, human)")
+	telemetryUsageCmd.Flags().StringVar(&telemetryFormat, "format", "human", "Output format (human, json)")
 	telemetryUsageCmd.Flags().StringVar(&usagePeriod, "period", "90d", "Time period (7d, 30d, 90d, all)")
 	telemetryUsageCmd.Flags().BoolVar(&usageIncludeCallers, "include-callers", false, "Include caller breakdown")
 
 	// Telemetry unmapped
-	telemetryUnmappedCmd.Flags().StringVar(&telemetryFormat, "format", "json", "Output format (json, human)")
+	telemetryUnmappedCmd.Flags().StringVar(&telemetryFormat, "format", "human", "Output format (human, json)")
 
 	// Telemetry test-map
-	telemetryTestMapCmd.Flags().StringVar(&telemetryFormat, "format", "json", "Output format (json, human)")
+	telemetryTestMapCmd.Flags().StringVar(&telemetryFormat, "format", "human", "Output format (human, json)")
 
 	// Dead code
-	deadCodeCmd.Flags().StringVar(&telemetryFormat, "format", "json", "Output format (json, human)")
+	deadCodeCmd.Flags().StringVar(&telemetryFormat, "format", "human", "Output format (human, json)")
 	deadCodeCmd.Flags().Float64Var(&deadCodeMinConfidence, "min-confidence", 0.7, "Minimum confidence threshold")
 	deadCodeCmd.Flags().IntVar(&deadCodeLimit, "limit", 100, "Maximum candidates to return")
 

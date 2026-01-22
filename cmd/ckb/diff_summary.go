@@ -37,7 +37,7 @@ Examples:
 }
 
 func init() {
-	diffSummaryCmd.Flags().StringVar(&diffSummaryFormat, "format", "json", "Output format (json, human)")
+	diffSummaryCmd.Flags().StringVar(&diffSummaryFormat, "format", "human", "Output format (human, json)")
 	diffSummaryCmd.Flags().StringVar(&diffSummaryCommit, "commit", "", "Single commit hash to analyze")
 	diffSummaryCmd.Flags().StringVar(&diffSummaryBase, "base", "", "Base commit/ref for range (use with --head)")
 	diffSummaryCmd.Flags().StringVar(&diffSummaryHead, "head", "", "Head commit/ref for range (use with --base)")

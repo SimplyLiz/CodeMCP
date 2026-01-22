@@ -36,7 +36,7 @@ Use --fix to output a shell script with suggested fixes (does not auto-execute).
 func init() {
 	doctorCmd.Flags().BoolVar(&doctorFix, "fix", false, "Output fix script (does not auto-execute)")
 	doctorCmd.Flags().StringVar(&doctorCheck, "check", "", "Run specific check (git, scip, lsp, config, storage)")
-	doctorCmd.Flags().StringVar(&doctorFormat, "format", "human", "Output format (json, human)")
+	doctorCmd.Flags().StringVar(&doctorFormat, "format", "human", "Output format (human, json)")
 	doctorCmd.Flags().StringVar(&doctorTier, "tier", "", "Check requirements for specific tier (basic, enhanced, full)")
 	rootCmd.AddCommand(doctorCmd)
 }

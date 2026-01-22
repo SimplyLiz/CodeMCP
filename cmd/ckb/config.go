@@ -43,7 +43,7 @@ var configEnvCmd = &cobra.Command{
 }
 
 func init() {
-	configShowCmd.Flags().StringVar(&configFormat, "format", "human", "Output format (json, human)")
+	configShowCmd.Flags().StringVar(&configFormat, "format", "human", "Output format (human, json)")
 	configShowCmd.Flags().BoolVar(&configShowDiff, "diff", false, "Only show non-default values")
 
 	configCmd.AddCommand(configShowCmd)

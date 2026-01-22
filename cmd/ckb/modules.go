@@ -77,11 +77,11 @@ Examples:
 
 func init() {
 	// Overview flags
-	modulesCmd.Flags().StringVar(&modulesFormat, "format", "json", "Output format (json, human)")
+	modulesCmd.Flags().StringVar(&modulesFormat, "format", "human", "Output format (human, json)")
 	modulesCmd.Flags().StringVar(&modulesName, "name", "", "Optional friendly name for the module")
 
 	// Annotate flags
-	modulesAnnotateCmd.Flags().StringVar(&modulesFormat, "format", "json", "Output format (json, human)")
+	modulesAnnotateCmd.Flags().StringVar(&modulesFormat, "format", "human", "Output format (human, json)")
 	modulesAnnotateCmd.Flags().StringVar(&annotateResponsibility, "responsibility", "", "One-sentence description of what this module does")
 	modulesAnnotateCmd.Flags().StringVar(&annotateCapabilities, "capabilities", "", "Comma-separated list of capabilities")
 	modulesAnnotateCmd.Flags().StringVar(&annotateTags, "tags", "", "Comma-separated list of tags")
@@ -89,7 +89,7 @@ func init() {
 	modulesAnnotateCmd.Flags().StringVar(&annotateInternalPaths, "internal-paths", "", "Comma-separated list of internal paths")
 
 	// Responsibilities subcommand flags
-	modulesResponsibilitiesCmd.Flags().StringVar(&respFormat, "format", "json", "Output format (json, human)")
+	modulesResponsibilitiesCmd.Flags().StringVar(&respFormat, "format", "human", "Output format (human, json)")
 	modulesResponsibilitiesCmd.Flags().BoolVar(&respIncludeFiles, "include-files", false, "Include file-level responsibilities")
 	modulesResponsibilitiesCmd.Flags().IntVar(&respLimit, "limit", 20, "Maximum modules to return")
 

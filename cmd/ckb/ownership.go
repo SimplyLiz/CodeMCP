@@ -58,10 +58,10 @@ Examples:
 func init() {
 	ownershipCmd.Flags().BoolVar(&ownershipIncludeBlame, "include-blame", true, "Include git-blame ownership analysis")
 	ownershipCmd.Flags().BoolVar(&ownershipIncludeHistory, "include-history", false, "Include ownership change history")
-	ownershipCmd.Flags().StringVar(&ownershipFormat, "format", "human", "Output format (json, human)")
+	ownershipCmd.Flags().StringVar(&ownershipFormat, "format", "human", "Output format (human, json)")
 
 	// Drift subcommand flags
-	ownershipDriftCmd.Flags().StringVar(&driftFormat, "format", "json", "Output format (json, human)")
+	ownershipDriftCmd.Flags().StringVar(&driftFormat, "format", "human", "Output format (human, json)")
 	ownershipDriftCmd.Flags().Float64Var(&driftThreshold, "threshold", 0.3, "Drift score threshold to report (0-1)")
 	ownershipDriftCmd.Flags().IntVar(&driftLimit, "limit", 20, "Maximum files to return")
 

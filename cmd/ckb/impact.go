@@ -63,7 +63,7 @@ Examples:
 func init() {
 	impactCmd.Flags().IntVar(&impactDepth, "depth", 2, "Maximum impact depth")
 	impactCmd.Flags().BoolVar(&impactIncludeTests, "include-tests", false, "Include test dependencies")
-	impactCmd.Flags().StringVar(&impactFormat, "format", "json", "Output format (json, human)")
+	impactCmd.Flags().StringVar(&impactFormat, "format", "human", "Output format (human, json)")
 
 	// Diff subcommand flags
 	impactDiffCmd.Flags().BoolVar(&impactDiffStaged, "staged", false, "Analyze only staged changes (--cached)")
@@ -71,7 +71,7 @@ func init() {
 	impactDiffCmd.Flags().IntVar(&impactDepth, "depth", 2, "Maximum depth for transitive impact (1-4)")
 	impactDiffCmd.Flags().BoolVar(&impactIncludeTests, "include-tests", false, "Include test files in analysis")
 	impactDiffCmd.Flags().BoolVar(&impactDiffStrict, "strict", false, "Fail if SCIP index is stale")
-	impactDiffCmd.Flags().StringVar(&impactFormat, "format", "json", "Output format (json, human, markdown)")
+	impactDiffCmd.Flags().StringVar(&impactFormat, "format", "human", "Output format (json, human, markdown)")
 
 	impactCmd.AddCommand(impactDiffCmd)
 	rootCmd.AddCommand(impactCmd)

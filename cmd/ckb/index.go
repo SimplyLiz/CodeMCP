@@ -477,6 +477,8 @@ func isIndexerInstalled(command string) bool {
 }
 
 // runIndexerCommand runs the indexer and streams output.
+// By default, indexer output is captured and only shown on error.
+// With -v, output streams to stderr in real-time.
 func runIndexerCommand(dir, command string) error {
 	// Split command into parts
 	parts := strings.Fields(command)
@@ -487,17 +489,30 @@ func runIndexerCommand(dir, command string) error {
 	cmd := exec.Command(parts[0], parts[1:]...) // #nosec G204 //nolint:gosec // command from trusted indexer config
 	cmd.Dir = dir
 
-	// Capture stderr for error messages, stream both
-	var stderr bytes.Buffer
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = &stderr
+	var stdout, stderr bytes.Buffer
+
+	if verbosity > 0 {
+		// Verbose mode: stream to stderr (keeps stdout clean for piping)
+		cmd.Stdout = os.Stderr
+		cmd.Stderr = os.Stderr
+	} else {
+		// Default: capture output, only show on error
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+	}
 
 	err := cmd.Run()
 	if err != nil {
-		// Print captured stderr
-		if stderr.Len() > 0 {
-			fmt.Fprintln(os.Stderr, "Indexer output:")
-			fmt.Fprintln(os.Stderr, stderr.String())
+		// Show captured output on error (if not already streamed)
+		if verbosity == 0 {
+			if stdout.Len() > 0 {
+				fmt.Fprintln(os.Stderr, "Indexer stdout:")
+				fmt.Fprintln(os.Stderr, stdout.String())
+			}
+			if stderr.Len() > 0 {
+				fmt.Fprintln(os.Stderr, "Indexer stderr:")
+				fmt.Fprintln(os.Stderr, stderr.String())
+			}
 		}
 		return fmt.Errorf("indexer failed: %w", err)
 	}
