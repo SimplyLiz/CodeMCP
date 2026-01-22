@@ -61,6 +61,31 @@ The `--include-tests` flag now works end-to-end in `ckb impact diff`:
 - Properly sets `IsTest` flag on references based on file path
 - Filters test files from changed symbols when `--include-tests=false`
 
+## [8.0.1] - 2026-01-22
+
+### Improved
+
+#### Human-Readable Output by Default
+All CLI commands now default to `--format=human` instead of `--format=json`. This makes the CLI more friendly for interactive use while still supporting `--format=json` for scripting and automation.
+
+#### Quieter Indexer Output
+External SCIP indexers (scip-go, scip-typescript, etc.) no longer spam stdout during `ckb index`. Output is now captured and only shown on error or when using `-v` verbose mode.
+
+#### Better Error Messages
+- `ckb dead-code` now clearly indicates it's for telemetry-based analysis and suggests using `ckb telemetry dead-code`
+- `ckb impact diff` no longer shows confusing "Symbol not found: diff" error; instead provides helpful guidance
+- Symbol not found errors now suggest using `ckb search` to find valid symbol IDs
+
+#### Index Missing Guidance
+`ckb status` now shows helpful guidance when no SCIP index is found:
+- Lists commands that work without index (git-based): `hotspots`, `ownership`, `reviewers`, `diff-summary`, `pr-summary`
+- Lists commands that need SCIP index: `search`, `refs`, `callgraph`, `impact`, `dead-code`, `trace`, `explain`
+
+### Fixed
+- Consistent `--format=human` support for `diff-summary`, `concepts`, and `impact diff` commands
+
+---
+
 ## [8.0.0] - 2026-01-21
 
 **Theme:** Reliability, clarity, and compound operations for AI workflows.

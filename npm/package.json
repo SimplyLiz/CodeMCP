@@ -1,6 +1,6 @@
 {
   "name": "@tastehub/ckb",
-  "version": "8.0.0",
+  "version": "8.0.1",
   "description": "Code intelligence for AI assistants (MCP), CLI, and HTTP API - symbol navigation, impact analysis, architecture",
   "keywords": [
     "mcp",
