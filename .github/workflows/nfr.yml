@@ -178,17 +178,21 @@ jobs:
           if rows:
               fails = [r for r in rows if r["verdict"] == "FAIL"]
               warns = [r for r in rows if r["verdict"] == "WARN"]
-              goods = [r for r in rows if r["verdict"] == "GOOD"]
-              oks = [r for r in rows if r["verdict"] == "OK"]
+              improved = [r for r in rows if r["diff_pct"] < -0.05]
+              unchanged = [r for r in rows if abs(r["diff_pct"]) <= 0.05]
+              worsened = [r for r in rows if r["diff_pct"] > 0.05 and r["verdict"] not in ("FAIL", "WARN")]
 
               indicators = []
               if fails:
                   indicators.append(f"\u274c {len(fails)} failed")
               if warns:
                   indicators.append(f"\u26a0\ufe0f {len(warns)} regressed")
-              if goods:
-                  indicators.append(f"\u2b06\ufe0f {len(goods)} improved")
-              indicators.append(f"\u2705 {len(oks)} passed")
+              if improved:
+                  indicators.append(f"\u2b06\ufe0f {len(improved)} improved")
+              if unchanged:
+                  indicators.append(f"\u2705 {len(unchanged)} unchanged")
+              if worsened:
+                  indicators.append(f"\U0001f7e1 {len(worsened)} slightly worse")
 
               print(f"## NFR Tests {' \u00b7 '.join(indicators)}\n")
               print(f"Comparing PR against **{('${{ github.event.pull_request.base.ref }}' or 'base')}** branch (dynamic baseline).\n")
@@ -203,7 +207,7 @@ jobs:
 
               # Diff block preview
               preview_bad = sorted([r for r in rows if r["diff_pct"] >= 5], key=lambda r: -r["diff_pct"])[:3]
-              preview_good = sorted([r for r in rows if r["diff_pct"] <= -5], key=lambda r: r["diff_pct"])[:3]
+              preview_good = sorted([r for r in rows if r["diff_pct"] < -2], key=lambda r: r["diff_pct"])[:3]
 
               if preview_bad or preview_good:
                   all_preview = preview_bad + preview_good
