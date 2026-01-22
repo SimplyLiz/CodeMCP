@@ -656,7 +656,7 @@ func configureGrokGlobal(ckbCommand string, ckbArgs []string) error {
 
 		fmt.Printf("Running: grok %s\n", formatArgs(cmdArgs))
 
-		execCmd := exec.Command("grok", cmdArgs...)
+		execCmd := exec.Command("grok", cmdArgs...) // #nosec G204 //nolint:gosec // hardcoded command, args are trusted config
 		execCmd.Stdout = os.Stdout
 		execCmd.Stderr = os.Stderr
 
