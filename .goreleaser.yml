@@ -74,7 +74,7 @@ brews:
       owner: SimplyLiz
       name: homebrew-ckb
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    folder: Formula
+    directory: Formula
     homepage: "https://github.com/SimplyLiz/CodeMCP"
     description: "Code intelligence orchestration layer for AI-assisted development"
     install: |
