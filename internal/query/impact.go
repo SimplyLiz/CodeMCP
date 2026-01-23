@@ -10,14 +10,14 @@ import (
 	"strings"
 	"time"
 
-	"ckb/internal/backends"
-	"ckb/internal/backends/scip"
-	"ckb/internal/compression"
-	"ckb/internal/diff"
-	"ckb/internal/errors"
-	"ckb/internal/impact"
-	"ckb/internal/output"
-	"ckb/internal/telemetry"
+	"github.com/SimplyLiz/CodeMCP/internal/backends"
+	"github.com/SimplyLiz/CodeMCP/internal/backends/scip"
+	"github.com/SimplyLiz/CodeMCP/internal/compression"
+	"github.com/SimplyLiz/CodeMCP/internal/diff"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/impact"
+	"github.com/SimplyLiz/CodeMCP/internal/output"
+	"github.com/SimplyLiz/CodeMCP/internal/telemetry"
 )
 
 // AnalyzeImpactOptions contains options for analyzeImpact.

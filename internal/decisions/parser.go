@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"ckb/internal/paths"
+	"github.com/SimplyLiz/CodeMCP/internal/paths"
 )
 
 // Parser parses ADR markdown files

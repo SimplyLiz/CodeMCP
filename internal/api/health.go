@@ -11,7 +11,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"ckb/internal/version"
+	"github.com/SimplyLiz/CodeMCP/internal/version"
 )
 
 // HealthResponse represents the health check response

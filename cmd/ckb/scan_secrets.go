@@ -10,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"ckb/internal/secrets"
-	"ckb/internal/version"
+	"github.com/SimplyLiz/CodeMCP/internal/secrets"
+	"github.com/SimplyLiz/CodeMCP/internal/version"
 )
 
 var (

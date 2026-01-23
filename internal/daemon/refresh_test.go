@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"ckb/internal/index"
-	"ckb/internal/webhooks"
+	"github.com/SimplyLiz/CodeMCP/internal/index"
+	"github.com/SimplyLiz/CodeMCP/internal/webhooks"
 )
 
 // mockLogger implements the Printf interface for testing

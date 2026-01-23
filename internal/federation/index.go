@@ -7,7 +7,7 @@ import (
 
 	_ "modernc.org/sqlite" // Pure Go SQLite driver
 
-	"ckb/internal/paths"
+	"github.com/SimplyLiz/CodeMCP/internal/paths"
 )
 
 // Index represents the federation index database

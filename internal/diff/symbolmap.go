@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"ckb/internal/impact"
+	"github.com/SimplyLiz/CodeMCP/internal/impact"
 )
 
 // SymbolIndex is an interface for querying symbols by file and line

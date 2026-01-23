@@ -16,13 +16,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"ckb/internal/config"
-	"ckb/internal/incremental"
-	"ckb/internal/index"
-	"ckb/internal/project"
-	"ckb/internal/repostate"
-	"ckb/internal/storage"
-	"ckb/internal/tier"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/incremental"
+	"github.com/SimplyLiz/CodeMCP/internal/index"
+	"github.com/SimplyLiz/CodeMCP/internal/project"
+	"github.com/SimplyLiz/CodeMCP/internal/repostate"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/tier"
 )
 
 var (

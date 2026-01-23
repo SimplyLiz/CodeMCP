@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"ckb/internal/coupling"
+	"github.com/SimplyLiz/CodeMCP/internal/coupling"
 )
 
 // Analyzer performs risk analysis on codebases

@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"ckb/internal/version"
+	"github.com/SimplyLiz/CodeMCP/internal/version"
 )
 
 // setupServer creates and configures the HTTP server

@@ -3,10 +3,10 @@ package main
 import (
 	"time"
 
-	"ckb/internal/compression"
-	"ckb/internal/output"
-	"ckb/internal/repostate"
-	"ckb/internal/version"
+	"github.com/SimplyLiz/CodeMCP/internal/compression"
+	"github.com/SimplyLiz/CodeMCP/internal/output"
+	"github.com/SimplyLiz/CodeMCP/internal/repostate"
+	"github.com/SimplyLiz/CodeMCP/internal/version"
 )
 
 // Response is the common wrapper for all CKB command responses

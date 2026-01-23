@@ -51,10 +51,10 @@ type StreamErrorNotification struct {
 
 // MCP notification methods.
 const (
-	MethodStreamChunk    = "ckb/streamChunk"
-	MethodStreamProgress = "ckb/streamProgress"
-	MethodStreamComplete = "ckb/streamComplete"
-	MethodStreamError    = "ckb/streamError"
+	MethodStreamChunk    = "github.com/SimplyLiz/CodeMCP/streamChunk"
+	MethodStreamProgress = "github.com/SimplyLiz/CodeMCP/streamProgress"
+	MethodStreamComplete = "github.com/SimplyLiz/CodeMCP/streamComplete"
+	MethodStreamError    = "github.com/SimplyLiz/CodeMCP/streamError"
 )
 
 // NewMCPStreamWriter creates a writer that sends stream events as MCP notifications.

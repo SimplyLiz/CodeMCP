@@ -3,9 +3,9 @@ package mcp
 import (
 	"time"
 
-	"ckb/internal/docs"
-	"ckb/internal/envelope"
-	"ckb/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/docs"
+	"github.com/SimplyLiz/CodeMCP/internal/envelope"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
 )
 
 // v7.3 Doc-Symbol Linking tool implementations

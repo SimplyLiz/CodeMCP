@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 func setupTestStore(t *testing.T) (*Store, func()) {

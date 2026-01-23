@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"ckb/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
 )
 
 // ErrorResponse represents an HTTP error response

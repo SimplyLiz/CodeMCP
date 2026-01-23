@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"ckb/internal/auth"
-	"ckb/internal/query"
+	"github.com/SimplyLiz/CodeMCP/internal/auth"
+	"github.com/SimplyLiz/CodeMCP/internal/query"
 )
 
 // ServerConfig contains configuration for the HTTP server

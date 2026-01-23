@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"ckb/internal/paths"
+	"github.com/SimplyLiz/CodeMCP/internal/paths"
 )
 
 // Federation represents a federation of repositories

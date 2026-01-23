@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"path/filepath"
 
-	"ckb/internal/config"
-	"ckb/internal/paths"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/paths"
 )
 
 // LoggerFactory creates appropriately configured loggers for different subsystems.

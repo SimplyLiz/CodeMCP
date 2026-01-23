@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"ckb/internal/mcp"
+	"github.com/SimplyLiz/CodeMCP/internal/mcp"
 )
 
 var (

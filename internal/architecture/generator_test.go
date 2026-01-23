@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"ckb/internal/config"
-	"ckb/internal/modules"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/modules"
 )
 
 // TestArchitectureGenerator tests the basic architecture generation flow

@@ -3,7 +3,7 @@ package envelope
 import (
 	"testing"
 
-	"ckb/internal/query"
+	"github.com/SimplyLiz/CodeMCP/internal/query"
 )
 
 func TestGenerateConfidenceFactors(t *testing.T) {

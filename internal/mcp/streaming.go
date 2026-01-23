@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"sync"
 
-	"ckb/internal/envelope"
-	"ckb/internal/streaming"
+	"github.com/SimplyLiz/CodeMCP/internal/envelope"
+	"github.com/SimplyLiz/CodeMCP/internal/streaming"
 )
 
 // StreamingHandler wraps a tool handler to support streaming responses.

@@ -3,8 +3,8 @@ package mcp
 import (
 	"context"
 
-	"ckb/internal/envelope"
-	"ckb/internal/query"
+	"github.com/SimplyLiz/CodeMCP/internal/envelope"
+	"github.com/SimplyLiz/CodeMCP/internal/query"
 )
 
 // v7.6 Static Dead Code Detection tool implementation

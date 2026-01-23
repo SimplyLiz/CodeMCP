@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"ckb/internal/config"
-	"ckb/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
 )
 
 // Constants for supervisor behavior

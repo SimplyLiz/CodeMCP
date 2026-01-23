@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"ckb/internal/config"
-	"ckb/internal/errors"
-	"ckb/internal/repostate"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/repostate"
 )
 
 const (

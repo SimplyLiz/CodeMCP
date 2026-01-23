@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"ckb/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
 )
 
 const (

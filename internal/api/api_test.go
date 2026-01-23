@@ -8,9 +8,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"ckb/internal/config"
-	"ckb/internal/query"
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/query"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 // newTestServer creates a server for testing

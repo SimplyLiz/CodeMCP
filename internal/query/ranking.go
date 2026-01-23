@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"ckb/internal/backends/scip"
-	"ckb/internal/graph"
+	"github.com/SimplyLiz/CodeMCP/internal/backends/scip"
+	"github.com/SimplyLiz/CodeMCP/internal/graph"
 )
 
 // FusionWeights controls how different signals are combined in ranking.

@@ -5,7 +5,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"ckb/internal/repostate"
+	"github.com/SimplyLiz/CodeMCP/internal/repostate"
 )
 
 // IndexFreshness tracks how up-to-date a SCIP index is

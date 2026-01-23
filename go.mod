@@ -1,4 +1,4 @@
-module ckb
+module github.com/SimplyLiz/CodeMCP
 
 go 1.24.11
 

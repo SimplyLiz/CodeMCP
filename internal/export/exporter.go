@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"ckb/internal/modules"
+	"github.com/SimplyLiz/CodeMCP/internal/modules"
 )
 
 // Exporter provides LLM-friendly codebase export functionality

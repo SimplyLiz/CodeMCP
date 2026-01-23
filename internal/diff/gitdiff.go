@@ -6,7 +6,7 @@ import (
 
 	godiff "github.com/sourcegraph/go-diff/diff"
 
-	"ckb/internal/impact"
+	"github.com/SimplyLiz/CodeMCP/internal/impact"
 )
 
 // GitDiffParser parses unified git diffs into structured data

@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"ckb/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
 )
 
 // CommitInfo represents information about a single commit

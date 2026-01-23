@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"ckb/internal/envelope"
-	"ckb/internal/errors"
-	"ckb/internal/telemetry"
+	"github.com/SimplyLiz/CodeMCP/internal/envelope"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/telemetry"
 )
 
 // v6.4 Telemetry tool implementations

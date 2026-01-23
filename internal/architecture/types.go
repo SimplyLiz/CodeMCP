@@ -1,7 +1,7 @@
 package architecture
 
 import (
-	"ckb/internal/modules"
+	"github.com/SimplyLiz/CodeMCP/internal/modules"
 )
 
 // Granularity specifies the level of detail for architecture visualization

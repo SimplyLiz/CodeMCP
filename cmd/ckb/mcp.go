@@ -11,14 +11,14 @@ import (
 	"strings"
 	"time"
 
-	"ckb/internal/config"
-	"ckb/internal/index"
-	"ckb/internal/mcp"
-	"ckb/internal/project"
-	"ckb/internal/repos"
-	"ckb/internal/repostate"
-	"ckb/internal/slogutil"
-	"ckb/internal/version"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/index"
+	"github.com/SimplyLiz/CodeMCP/internal/mcp"
+	"github.com/SimplyLiz/CodeMCP/internal/project"
+	"github.com/SimplyLiz/CodeMCP/internal/repos"
+	"github.com/SimplyLiz/CodeMCP/internal/repostate"
+	"github.com/SimplyLiz/CodeMCP/internal/slogutil"
+	"github.com/SimplyLiz/CodeMCP/internal/version"
 
 	"github.com/spf13/cobra"
 )

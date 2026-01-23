@@ -7,11 +7,11 @@ import (
 	"os"
 	"sync"
 
-	"ckb/internal/config"
-	"ckb/internal/query"
-	"ckb/internal/repos"
-	"ckb/internal/slogutil"
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/query"
+	"github.com/SimplyLiz/CodeMCP/internal/repos"
+	"github.com/SimplyLiz/CodeMCP/internal/slogutil"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 var (

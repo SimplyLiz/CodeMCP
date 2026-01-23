@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"ckb/internal/backends"
-	"ckb/internal/compression"
-	"ckb/internal/errors"
-	"ckb/internal/output"
+	"github.com/SimplyLiz/CodeMCP/internal/backends"
+	"github.com/SimplyLiz/CodeMCP/internal/compression"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/output"
 )
 
 // GetSymbolOptions contains options for getSymbol.

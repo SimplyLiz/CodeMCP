@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	"ckb/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
 )
 
 // MaxMessageSize is the maximum size for a single MCP message (1MB).

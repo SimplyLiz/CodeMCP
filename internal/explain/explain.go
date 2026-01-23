@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"ckb/internal/coupling"
+	"github.com/SimplyLiz/CodeMCP/internal/coupling"
 )
 
 // Explainer provides symbol explanation functionality

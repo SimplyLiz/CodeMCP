@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 // SymbolFilter represents filter criteria for listing symbols

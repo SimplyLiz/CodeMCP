@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"ckb/internal/secrets"
+	"github.com/SimplyLiz/CodeMCP/internal/secrets"
 )
 
 func TestFormatSecretsAsSARIF(t *testing.T) {
@@ -100,7 +100,7 @@ func TestFormatSecretsAsSARIF(t *testing.T) {
 	if r1.Level != "error" {
 		t.Errorf("Critical severity should map to 'error', got %q", r1.Level)
 	}
-	if r1.RuleID != "ckb/secrets/aws_access_key_id" {
+	if r1.RuleID != "github.com/SimplyLiz/CodeMCP/secrets/aws_access_key_id" {
 		t.Errorf("RuleID = %q, want ckb/secrets/aws_access_key_id", r1.RuleID)
 	}
 

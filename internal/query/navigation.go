@@ -11,11 +11,11 @@ import (
 	"time"
 	"unicode"
 
-	"ckb/internal/backends"
-	"ckb/internal/backends/git"
-	"ckb/internal/backends/scip"
-	"ckb/internal/output"
-	"ckb/internal/version"
+	"github.com/SimplyLiz/CodeMCP/internal/backends"
+	"github.com/SimplyLiz/CodeMCP/internal/backends/git"
+	"github.com/SimplyLiz/CodeMCP/internal/backends/scip"
+	"github.com/SimplyLiz/CodeMCP/internal/output"
+	"github.com/SimplyLiz/CodeMCP/internal/version"
 )
 
 // AINavigationMeta captures common response metadata aligned with the navigation spec.

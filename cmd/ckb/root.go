@@ -3,9 +3,9 @@ package main
 import (
 	"os"
 
-	"ckb/internal/config"
-	"ckb/internal/tier"
-	"ckb/internal/version"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/tier"
+	"github.com/SimplyLiz/CodeMCP/internal/version"
 
 	"github.com/spf13/cobra"
 )

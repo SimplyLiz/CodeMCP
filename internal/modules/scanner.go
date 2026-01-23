@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"path/filepath"
 
-	"ckb/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
 )
 
 // Scanner provides high-level module and import scanning functionality

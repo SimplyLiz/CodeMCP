@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"ckb/internal/query"
-	"ckb/internal/tier"
+	"github.com/SimplyLiz/CodeMCP/internal/query"
+	"github.com/SimplyLiz/CodeMCP/internal/tier"
 )
 
 func TestStatusResponseCLI(t *testing.T) {

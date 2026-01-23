@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"time"
 
-	"ckb/internal/identity"
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/identity"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 // StalenessChecker checks documents for stale symbol references.

@@ -7,9 +7,9 @@ import (
 	"log/slog"
 	"time"
 
-	"ckb/internal/envelope"
-	"ckb/internal/errors"
-	"ckb/internal/federation"
+	"github.com/SimplyLiz/CodeMCP/internal/envelope"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/federation"
 )
 
 // v7.3 Remote Federation tool implementations (Phase 5)

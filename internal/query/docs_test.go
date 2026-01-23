@@ -202,7 +202,7 @@ func TestScipSymbolIndex(t *testing.T) {
 	})
 
 	t.Run("GetDisplayName falls back to extraction", func(t *testing.T) {
-		name := idx.GetDisplayName("ckb/internal/query.Engine")
+		name := idx.GetDisplayName("github.com/SimplyLiz/CodeMCP/internal/query.Engine")
 		// Should extract something from the symbol ID
 		if name == "" {
 			t.Error("display name should not be empty")

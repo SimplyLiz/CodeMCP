@@ -3,7 +3,7 @@ package compression
 import (
 	"fmt"
 
-	"ckb/internal/output"
+	"github.com/SimplyLiz/CodeMCP/internal/output"
 )
 
 // CompletenessInfo describes how complete the query results are

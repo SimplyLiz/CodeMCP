@@ -22,9 +22,9 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X ckb/internal/version.Version={{.Version}}
-      - -X ckb/internal/version.Commit={{.ShortCommit}}
-      - -X ckb/internal/version.BuildDate={{.Date}}
+      - -X github.com/SimplyLiz/CodeMCP/internal/version.Version={{.Version}}
+      - -X github.com/SimplyLiz/CodeMCP/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/SimplyLiz/CodeMCP/internal/version.BuildDate={{.Date}}
     # Ignore non-existent directories that might appear in go:generate
     ignore:
       - goos: windows

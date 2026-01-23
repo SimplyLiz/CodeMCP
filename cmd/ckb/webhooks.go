@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"ckb/internal/paths"
-	"ckb/internal/webhooks"
+	"github.com/SimplyLiz/CodeMCP/internal/paths"
+	"github.com/SimplyLiz/CodeMCP/internal/webhooks"
 )
 
 var webhooksCmd = &cobra.Command{

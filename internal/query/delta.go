@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"ckb/internal/diff"
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/diff"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 // ApplyDelta applies a delta artifact to the storage layer.

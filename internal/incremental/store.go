@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 // Store provides database operations for incremental indexing

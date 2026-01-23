@@ -4,7 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 
-	"ckb/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
 )
 
 // DefaultPageSize is the default number of tools per page

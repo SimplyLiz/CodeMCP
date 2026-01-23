@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"ckb/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
 )
 
 // getTestAdapter returns a SCIP adapter for testing, or skips the test if unavailable

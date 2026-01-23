@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"ckb/internal/backends"
-	"ckb/internal/config"
-	"ckb/internal/errors"
-	"ckb/internal/repostate"
+	"github.com/SimplyLiz/CodeMCP/internal/backends"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/repostate"
 )
 
 // SCIPAdapter implements the Backend and SymbolBackend interfaces for SCIP

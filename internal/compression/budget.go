@@ -1,6 +1,6 @@
 package compression
 
-import "ckb/internal/config"
+import "github.com/SimplyLiz/CodeMCP/internal/config"
 
 // ResponseBudget defines limits for response sizes to keep token counts manageable
 type ResponseBudget struct {

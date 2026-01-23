@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 // MeasureJSONSize returns the approximate byte size of a value when JSON-encoded

@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"ckb/internal/project"
-	"ckb/internal/query"
-	"ckb/internal/tier"
+	"github.com/SimplyLiz/CodeMCP/internal/project"
+	"github.com/SimplyLiz/CodeMCP/internal/query"
+	"github.com/SimplyLiz/CodeMCP/internal/tier"
 )
 
 var (

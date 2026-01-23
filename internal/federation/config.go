@@ -10,7 +10,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/google/uuid"
 
-	"ckb/internal/paths"
+	"github.com/SimplyLiz/CodeMCP/internal/paths"
 )
 
 // Config represents a federation configuration stored in config.toml

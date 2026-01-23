@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"ckb/internal/repostate"
+	"github.com/SimplyLiz/CodeMCP/internal/repostate"
 )
 
 func TestLoadMeta_NoFile(t *testing.T) {

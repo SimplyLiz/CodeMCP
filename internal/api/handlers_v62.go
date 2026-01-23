@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"ckb/internal/federation"
+	"github.com/SimplyLiz/CodeMCP/internal/federation"
 )
 
 // v6.2 Federation Handlers

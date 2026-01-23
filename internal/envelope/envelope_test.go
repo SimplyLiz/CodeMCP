@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"ckb/internal/output"
-	"ckb/internal/query"
+	"github.com/SimplyLiz/CodeMCP/internal/output"
+	"github.com/SimplyLiz/CodeMCP/internal/query"
 )
 
 func TestScoreToTier(t *testing.T) {

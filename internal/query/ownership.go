@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"ckb/internal/errors"
-	"ckb/internal/output"
-	"ckb/internal/ownership"
-	"ckb/internal/version"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/output"
+	"github.com/SimplyLiz/CodeMCP/internal/ownership"
+	"github.com/SimplyLiz/CodeMCP/internal/version"
 )
 
 // GetOwnershipOptions contains options for getOwnership.

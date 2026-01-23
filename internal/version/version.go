@@ -3,7 +3,7 @@
 package version
 
 // These variables can be overridden at build time using ldflags:
-// go build -ldflags "-X ckb/internal/version.Version=1.0.0 -X ckb/internal/version.Commit=abc123"
+// go build -ldflags "-X github.com/SimplyLiz/CodeMCP/internal/version.Version=1.0.0 -X github.com/SimplyLiz/CodeMCP/internal/version.Commit=abc123"
 var (
 	// Version is the semantic version of CKB
 	Version = "8.0.4"

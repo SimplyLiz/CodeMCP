@@ -184,7 +184,7 @@ func TestImportEdgeMultipleCases(t *testing.T) {
 			to:             "internal/query/engine.go",
 			kind:           LocalModule,
 			confidence:     0.9,
-			rawImport:      "ckb/internal/query",
+			rawImport:      "github.com/SimplyLiz/CodeMCP/internal/query",
 			expectLocal:    true,
 			expectExternal: false,
 			expectStdlib:   false,

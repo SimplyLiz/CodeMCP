@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"ckb/internal/query"
+	"github.com/SimplyLiz/CodeMCP/internal/query"
 )
 
 // looksLikeSCIPID returns true if the string looks like a SCIP symbol ID

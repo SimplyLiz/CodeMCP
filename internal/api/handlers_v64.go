@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"ckb/internal/telemetry"
+	"github.com/SimplyLiz/CodeMCP/internal/telemetry"
 )
 
 // v6.4 Telemetry Handlers

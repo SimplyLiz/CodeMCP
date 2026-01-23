@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"ckb/internal/version"
+	"github.com/SimplyLiz/CodeMCP/internal/version"
 )
 
 // SummarizePROptions contains options for the summarize-pr tool.

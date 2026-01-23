@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"ckb/internal/backends"
-	"ckb/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/backends"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
 )
 
 // LspAdapter adapts the LSP supervisor to the Backend interface

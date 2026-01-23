@@ -3,10 +3,10 @@ package mcp
 import (
 	"context"
 
-	"ckb/internal/envelope"
-	"ckb/internal/errors"
-	"ckb/internal/query"
-	"ckb/internal/streaming"
+	"github.com/SimplyLiz/CodeMCP/internal/envelope"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/query"
+	"github.com/SimplyLiz/CodeMCP/internal/streaming"
 )
 
 // RegisterStreamableTools registers all tools that support streaming.

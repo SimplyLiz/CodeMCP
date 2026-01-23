@@ -3,12 +3,12 @@ package mcp
 import (
 	"context"
 
-	"ckb/internal/audit"
-	"ckb/internal/coupling"
-	"ckb/internal/envelope"
-	"ckb/internal/errors"
-	"ckb/internal/explain"
-	"ckb/internal/export"
+	"github.com/SimplyLiz/CodeMCP/internal/audit"
+	"github.com/SimplyLiz/CodeMCP/internal/coupling"
+	"github.com/SimplyLiz/CodeMCP/internal/envelope"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/explain"
+	"github.com/SimplyLiz/CodeMCP/internal/export"
 )
 
 // v6.5 Developer Intelligence tool implementations

@@ -1,7 +1,7 @@
 package diff
 
 import (
-	"ckb/internal/backends/scip"
+	"github.com/SimplyLiz/CodeMCP/internal/backends/scip"
 )
 
 // SCIPSymbolIndex adapts a SCIP index to the SymbolIndex interface

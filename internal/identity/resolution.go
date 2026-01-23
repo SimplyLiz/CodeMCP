@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"ckb/internal/errors"
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 // AliasChainMaxDepth is the maximum depth for alias chain resolution

@@ -9,7 +9,7 @@ import (
 
 	sitter "github.com/smacker/go-tree-sitter"
 
-	"ckb/internal/complexity"
+	"github.com/SimplyLiz/CodeMCP/internal/complexity"
 )
 
 // FenceParser extracts identifiers from fenced code blocks.

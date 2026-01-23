@@ -1,6 +1,6 @@
 package compression
 
-import "ckb/internal/config"
+import "github.com/SimplyLiz/CodeMCP/internal/config"
 
 // BackendLimits defines hard limits for backend operations to prevent resource exhaustion
 type BackendLimits struct {

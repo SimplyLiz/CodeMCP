@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"time"
 
-	"ckb/internal/index"
-	"ckb/internal/tier"
-	"ckb/internal/version"
+	"github.com/SimplyLiz/CodeMCP/internal/index"
+	"github.com/SimplyLiz/CodeMCP/internal/tier"
+	"github.com/SimplyLiz/CodeMCP/internal/version"
 )
 
 // StatusResponse is the response for getStatus.

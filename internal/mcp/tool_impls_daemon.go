@@ -4,12 +4,12 @@ import (
 	"io"
 	"log/slog"
 
-	"ckb/internal/daemon"
-	"ckb/internal/envelope"
-	"ckb/internal/errors"
-	"ckb/internal/paths"
-	"ckb/internal/scheduler"
-	"ckb/internal/webhooks"
+	"github.com/SimplyLiz/CodeMCP/internal/daemon"
+	"github.com/SimplyLiz/CodeMCP/internal/envelope"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/paths"
+	"github.com/SimplyLiz/CodeMCP/internal/scheduler"
+	"github.com/SimplyLiz/CodeMCP/internal/webhooks"
 )
 
 // toolDaemonStatus returns daemon status

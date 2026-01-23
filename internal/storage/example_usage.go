@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"ckb/internal/slogutil"
+	"github.com/SimplyLiz/CodeMCP/internal/slogutil"
 )
 
 // ExampleBasicSetup demonstrates basic database initialization

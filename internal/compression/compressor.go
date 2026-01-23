@@ -1,7 +1,7 @@
 package compression
 
 import (
-	"ckb/internal/output"
+	"github.com/SimplyLiz/CodeMCP/internal/output"
 )
 
 // Compressor applies budgets and limits to compress response data

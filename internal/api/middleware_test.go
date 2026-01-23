@@ -10,7 +10,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"ckb/internal/auth"
+	"github.com/SimplyLiz/CodeMCP/internal/auth"
 
 	_ "modernc.org/sqlite"
 )

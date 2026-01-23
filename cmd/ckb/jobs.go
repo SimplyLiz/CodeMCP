@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"ckb/internal/jobs"
+	"github.com/SimplyLiz/CodeMCP/internal/jobs"
 )
 
 var (

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"ckb/internal/auth"
+	"github.com/SimplyLiz/CodeMCP/internal/auth"
 
 	"github.com/google/uuid"
 )

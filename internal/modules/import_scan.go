@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"ckb/internal/config"
-	"ckb/internal/paths"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/paths"
 )
 
 // LanguagePattern defines import patterns for a specific language

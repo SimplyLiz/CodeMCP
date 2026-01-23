@@ -1,9 +1,9 @@
 package mcp
 
 import (
-	"ckb/internal/envelope"
-	"ckb/internal/output"
-	"ckb/internal/query"
+	"github.com/SimplyLiz/CodeMCP/internal/envelope"
+	"github.com/SimplyLiz/CodeMCP/internal/output"
+	"github.com/SimplyLiz/CodeMCP/internal/query"
 )
 
 // ToolResponse is a convenience builder for MCP tool responses.

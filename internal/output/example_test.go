@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"ckb/internal/output"
+	"github.com/SimplyLiz/CodeMCP/internal/output"
 )
 
 // Example demonstrates basic sorting and encoding

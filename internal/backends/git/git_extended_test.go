@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"ckb/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
 )
 
 // TestGitAdapter_GetFileHistory tests file history retrieval

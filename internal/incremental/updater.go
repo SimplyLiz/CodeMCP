@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 // IndexUpdater applies incremental updates to the database

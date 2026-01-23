@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"ckb/internal/breaking"
+	"github.com/SimplyLiz/CodeMCP/internal/breaking"
 )
 
 // CompareAPIOptions configures API comparison

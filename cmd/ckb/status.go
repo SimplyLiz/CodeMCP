@@ -14,14 +14,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"ckb/internal/config"
-	"ckb/internal/daemon"
-	"ckb/internal/index"
-	"ckb/internal/project"
-	"ckb/internal/query"
-	"ckb/internal/repos"
-	"ckb/internal/tier"
-	"ckb/internal/version"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/daemon"
+	"github.com/SimplyLiz/CodeMCP/internal/index"
+	"github.com/SimplyLiz/CodeMCP/internal/project"
+	"github.com/SimplyLiz/CodeMCP/internal/query"
+	"github.com/SimplyLiz/CodeMCP/internal/repos"
+	"github.com/SimplyLiz/CodeMCP/internal/tier"
+	"github.com/SimplyLiz/CodeMCP/internal/version"
 )
 
 var (

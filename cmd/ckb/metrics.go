@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"ckb/internal/version"
+	"github.com/SimplyLiz/CodeMCP/internal/version"
 
 	"github.com/spf13/cobra"
 )

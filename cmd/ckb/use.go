@@ -7,7 +7,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"ckb/internal/repos"
+	"github.com/SimplyLiz/CodeMCP/internal/repos"
 
 	"github.com/spf13/cobra"
 )
