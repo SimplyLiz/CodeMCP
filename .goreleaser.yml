@@ -69,6 +69,19 @@ changelog:
       - Merge pull request
       - Merge branch
 
+brews:
+  - repository:
+      owner: SimplyLiz
+      name: homebrew-ckb
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    folder: Formula
+    homepage: "https://github.com/SimplyLiz/CodeMCP"
+    description: "Code intelligence orchestration layer for AI-assisted development"
+    install: |
+      bin.install "ckb"
+    test: |
+      assert_match version.to_s, shell_output("#{bin}/ckb version")
+
 release:
   github:
     owner: SimplyLiz
