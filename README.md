@@ -108,7 +108,14 @@ npm install -g @tastehub/ckb
 npx @tastehub/ckb init
 ```
 
-### Option 2: Build from Source
+### Option 2: Homebrew (macOS/Linux)
+
+```bash
+brew tap SimplyLiz/ckb
+brew install ckb
+```
+
+### Option 3: Build from Source
 
 ```bash
 git clone https://github.com/SimplyLiz/CodeMCP.git
