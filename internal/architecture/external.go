@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"ckb/internal/modules"
+	"github.com/SimplyLiz/CodeMCP/internal/modules"
 )
 
 // GetExternalDeps extracts external dependencies for a module

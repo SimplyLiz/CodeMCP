@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"ckb/internal/decisions"
-	"ckb/internal/paths"
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/decisions"
+	"github.com/SimplyLiz/CodeMCP/internal/paths"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 // DecisionResult represents the result of a decision query

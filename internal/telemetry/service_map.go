@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"sync"
 
-	"ckb/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
 )
 
 // ServiceMapper resolves service names to repository IDs

@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"ckb/internal/diff"
+	"github.com/SimplyLiz/CodeMCP/internal/diff"
 )
 
 // DeltaIngestResponse represents the response for delta ingestion

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"ckb/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
 
 	scippb "github.com/sourcegraph/scip/bindings/go/scip"
 	"google.golang.org/protobuf/proto"

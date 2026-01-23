@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"ckb/internal/paths"
+	"github.com/SimplyLiz/CodeMCP/internal/paths"
 )
 
 // ModuleContext provides context for import classification

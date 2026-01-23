@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"ckb/internal/query"
+	"github.com/SimplyLiz/CodeMCP/internal/query"
 )
 
 func TestConvertAffectedTestsResponse(t *testing.T) {

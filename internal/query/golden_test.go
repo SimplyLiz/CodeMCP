@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"ckb/internal/backends/scip"
-	"ckb/internal/config"
-	"ckb/internal/storage"
-	"ckb/internal/testutil"
+	"github.com/SimplyLiz/CodeMCP/internal/backends/scip"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/testutil"
 )
 
 // setupGoldenEngine creates a query engine using a fixture's SCIP index.

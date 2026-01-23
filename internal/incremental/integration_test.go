@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"ckb/internal/project"
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/project"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 // getFixtureRoot returns the path to the testdata/incremental directory.

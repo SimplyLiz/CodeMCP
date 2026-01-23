@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"ckb/internal/envelope"
-	"ckb/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/envelope"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
 )
 
 // handleMessage processes an incoming MCP message and returns a response

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"ckb/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
 )
 
 // handleCrash handles a crashed or unhealthy LSP process

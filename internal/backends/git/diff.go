@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"ckb/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
 )
 
 // DiffStats represents statistics for a file in a diff

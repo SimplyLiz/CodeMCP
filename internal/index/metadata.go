@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"ckb/internal/repostate"
+	"github.com/SimplyLiz/CodeMCP/internal/repostate"
 )
 
 const (

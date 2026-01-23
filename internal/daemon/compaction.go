@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"ckb/internal/scheduler"
+	"github.com/SimplyLiz/CodeMCP/internal/scheduler"
 )
 
 // CompactionConfig contains compaction settings

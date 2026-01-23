@@ -3,7 +3,7 @@ package diff
 import (
 	"testing"
 
-	"ckb/internal/impact"
+	"github.com/SimplyLiz/CodeMCP/internal/impact"
 )
 
 // mockSymbolIndex implements SymbolIndex for testing

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 func setupTestUpdater(t *testing.T) (*IndexUpdater, *Store, *storage.DB, func()) {

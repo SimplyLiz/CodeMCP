@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strings"
 
-	"ckb/internal/backends/scip"
-	"ckb/internal/project"
+	"github.com/SimplyLiz/CodeMCP/internal/backends/scip"
+	"github.com/SimplyLiz/CodeMCP/internal/project"
 )
 
 // SCIPExtractor extracts per-file data from SCIP index

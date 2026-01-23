@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"ckb/internal/envelope"
+	"github.com/SimplyLiz/CodeMCP/internal/envelope"
 )
 
 // getBackendRemediation returns remediation steps for a backend.

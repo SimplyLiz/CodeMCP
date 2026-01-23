@@ -4,9 +4,9 @@ import (
 	"io"
 	"log/slog"
 
-	"ckb/internal/envelope"
-	"ckb/internal/errors"
-	"ckb/internal/federation"
+	"github.com/SimplyLiz/CodeMCP/internal/envelope"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/federation"
 )
 
 // v6.3 Contract-Aware Impact Analysis tool implementations

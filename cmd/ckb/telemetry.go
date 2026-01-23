@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"ckb/internal/telemetry"
+	"github.com/SimplyLiz/CodeMCP/internal/telemetry"
 )
 
 // Telemetry command flags

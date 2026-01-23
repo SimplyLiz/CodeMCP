@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"ckb/internal/modules"
-	"ckb/internal/paths"
+	"github.com/SimplyLiz/CodeMCP/internal/modules"
+	"github.com/SimplyLiz/CodeMCP/internal/paths"
 )
 
 // getGoModulePath reads the module path from go.mod in the repo root
@@ -111,7 +111,7 @@ func (g *ArchitectureGenerator) classifyImport(
 
 	// For Go: use go.mod module path to classify imports
 	// - Contains dot (.) → external dependency
-	// - Starts with module path (e.g., "ckb/") → local workspace
+	// - Starts with module path (e.g., "github.com/SimplyLiz/CodeMCP/") → local workspace
 	// - Otherwise → stdlib
 	if fromModule.Language == modules.LanguageGo {
 		goModPath := getGoModulePath(g.repoRoot)

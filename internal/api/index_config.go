@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"ckb/internal/auth"
+	"github.com/SimplyLiz/CodeMCP/internal/auth"
 
 	"github.com/BurntSushi/toml"
 )

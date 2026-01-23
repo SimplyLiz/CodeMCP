@@ -3,9 +3,9 @@ package mcp
 import (
 	"context"
 
-	"ckb/internal/envelope"
-	"ckb/internal/errors"
-	"ckb/internal/secrets"
+	"github.com/SimplyLiz/CodeMCP/internal/envelope"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/secrets"
 )
 
 // toolScanSecrets scans for exposed secrets in the codebase.

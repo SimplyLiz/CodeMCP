@@ -3,7 +3,7 @@ package impact_test
 import (
 	"fmt"
 
-	"ckb/internal/impact"
+	"github.com/SimplyLiz/CodeMCP/internal/impact"
 )
 
 // ExampleImpactAnalyzer demonstrates basic usage of the impact analyzer

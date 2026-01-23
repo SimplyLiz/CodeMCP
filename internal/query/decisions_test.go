@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"ckb/internal/decisions"
+	"github.com/SimplyLiz/CodeMCP/internal/decisions"
 )
 
 func TestRecordDecision(t *testing.T) {

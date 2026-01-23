@@ -11,10 +11,10 @@ import (
 	"strconv"
 	"strings"
 
-	"ckb/internal/audit"
-	"ckb/internal/complexity"
-	"ckb/internal/coupling"
-	"ckb/internal/query"
+	"github.com/SimplyLiz/CodeMCP/internal/audit"
+	"github.com/SimplyLiz/CodeMCP/internal/complexity"
+	"github.com/SimplyLiz/CodeMCP/internal/coupling"
+	"github.com/SimplyLiz/CodeMCP/internal/query"
 )
 
 // handleFileComplexity handles GET /complexity?path=...

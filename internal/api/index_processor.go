@@ -13,7 +13,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"ckb/internal/backends/scip"
+	"github.com/SimplyLiz/CodeMCP/internal/backends/scip"
 )
 
 // SCIPProcessor processes uploaded SCIP index files into CKB databases

@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"time"
 
-	"ckb/internal/config"
-	"ckb/internal/envelope"
-	"ckb/internal/errors"
-	"ckb/internal/query"
-	"ckb/internal/repos"
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/envelope"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/query"
+	"github.com/SimplyLiz/CodeMCP/internal/repos"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 // toolListRepos lists all registered repositories

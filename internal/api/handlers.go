@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"ckb/internal/query"
+	"github.com/SimplyLiz/CodeMCP/internal/query"
 )
 
 // StatusResponse represents the system status response

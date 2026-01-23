@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"ckb/internal/version"
+	"github.com/SimplyLiz/CodeMCP/internal/version"
 )
 
 // registerRoutes registers all API routes

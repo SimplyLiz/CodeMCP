@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"ckb/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
 )
 
 // Orchestrator coordinates queries across multiple backends

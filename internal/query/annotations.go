@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 // AnnotateModuleInput represents input for annotating a module

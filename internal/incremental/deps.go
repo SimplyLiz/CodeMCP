@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 // DependencyTracker manages file-level dependencies and transitive invalidation

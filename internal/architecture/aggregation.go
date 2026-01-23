@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"ckb/internal/modules"
-	"ckb/internal/paths"
+	"github.com/SimplyLiz/CodeMCP/internal/modules"
+	"github.com/SimplyLiz/CodeMCP/internal/paths"
 )
 
 // AggregateModules collects statistics for each module

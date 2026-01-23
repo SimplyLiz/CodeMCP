@@ -10,11 +10,11 @@ import (
 	"syscall"
 	"time"
 
-	"ckb/internal/api"
-	"ckb/internal/config"
-	"ckb/internal/repos"
-	"ckb/internal/slogutil"
-	"ckb/internal/version"
+	"github.com/SimplyLiz/CodeMCP/internal/api"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/repos"
+	"github.com/SimplyLiz/CodeMCP/internal/slogutil"
+	"github.com/SimplyLiz/CodeMCP/internal/version"
 
 	"github.com/spf13/cobra"
 )

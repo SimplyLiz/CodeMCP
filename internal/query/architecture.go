@@ -6,12 +6,12 @@ import (
 	"sort"
 	"time"
 
-	"ckb/internal/architecture"
-	"ckb/internal/compression"
-	"ckb/internal/errors"
-	"ckb/internal/jobs"
-	"ckb/internal/modules"
-	"ckb/internal/output"
+	"github.com/SimplyLiz/CodeMCP/internal/architecture"
+	"github.com/SimplyLiz/CodeMCP/internal/compression"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/jobs"
+	"github.com/SimplyLiz/CodeMCP/internal/modules"
+	"github.com/SimplyLiz/CodeMCP/internal/output"
 )
 
 // GetArchitectureOptions contains options for getArchitecture.

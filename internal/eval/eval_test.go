@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"ckb/internal/query"
+	"github.com/SimplyLiz/CodeMCP/internal/query"
 )
 
 func TestMatchSymbol(t *testing.T) {

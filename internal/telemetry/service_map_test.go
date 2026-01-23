@@ -3,7 +3,7 @@ package telemetry
 import (
 	"testing"
 
-	"ckb/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
 )
 
 func TestNewServiceMapper(t *testing.T) {

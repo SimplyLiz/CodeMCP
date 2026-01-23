@@ -8,8 +8,8 @@ import (
 	"runtime"
 	"testing"
 
-	"ckb/internal/project"
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/project"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 // TestFixturePaths verifies that test fixtures exist for all supported languages.

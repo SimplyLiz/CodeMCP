@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"ckb/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
 )
 
 // TestLspSupervisorCreation tests basic supervisor creation

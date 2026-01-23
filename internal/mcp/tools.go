@@ -1,6 +1,6 @@
 package mcp
 
-import "ckb/internal/envelope"
+import "github.com/SimplyLiz/CodeMCP/internal/envelope"
 
 // Tool represents a CKB tool exposed via MCP
 type Tool struct {

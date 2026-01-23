@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"ckb/internal/deadcode"
+	"github.com/SimplyLiz/CodeMCP/internal/deadcode"
 )
 
 // FindDeadCodeOptions configures the dead code detection.

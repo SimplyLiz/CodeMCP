@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"time"
 
-	"ckb/internal/project"
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/project"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 // Error types for graceful degradation

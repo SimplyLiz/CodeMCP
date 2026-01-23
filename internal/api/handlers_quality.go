@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"ckb/internal/project"
+	"github.com/SimplyLiz/CodeMCP/internal/project"
 )
 
 // LanguageQualityResponse represents the language quality API response.

@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 
-	"ckb/internal/decisions"
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/decisions"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 // RelatedDecision is a lightweight representation of an ADR for embedding in responses

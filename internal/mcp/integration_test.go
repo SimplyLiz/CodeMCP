@@ -9,11 +9,11 @@ import (
 	"strings"
 	"testing"
 
-	"ckb/internal/backends/scip"
-	"ckb/internal/config"
-	"ckb/internal/query"
-	"ckb/internal/storage"
-	"ckb/internal/version"
+	"github.com/SimplyLiz/CodeMCP/internal/backends/scip"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/query"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/version"
 )
 
 // TestMultipleMessagesInSession tests that the MCP server can handle multiple

@@ -7,13 +7,13 @@ import (
 	"path/filepath"
 	"sort"
 
-	"ckb/internal/complexity"
-	"ckb/internal/envelope"
-	"ckb/internal/errors"
-	"ckb/internal/index"
-	"ckb/internal/jobs"
-	"ckb/internal/query"
-	"ckb/internal/repos"
+	"github.com/SimplyLiz/CodeMCP/internal/complexity"
+	"github.com/SimplyLiz/CodeMCP/internal/envelope"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/index"
+	"github.com/SimplyLiz/CodeMCP/internal/jobs"
+	"github.com/SimplyLiz/CodeMCP/internal/query"
+	"github.com/SimplyLiz/CodeMCP/internal/repos"
 )
 
 // toolGetStatus implements the getStatus tool

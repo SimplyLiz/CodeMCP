@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"ckb/internal/identity"
+	"github.com/SimplyLiz/CodeMCP/internal/identity"
 )
 
 func TestSplitNormalized(t *testing.T) {

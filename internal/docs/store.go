@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 // Store provides database operations for doc-symbol linking.

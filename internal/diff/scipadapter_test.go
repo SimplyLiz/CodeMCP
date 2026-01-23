@@ -3,7 +3,7 @@ package diff
 import (
 	"testing"
 
-	"ckb/internal/backends/scip"
+	"github.com/SimplyLiz/CodeMCP/internal/backends/scip"
 )
 
 func TestConvertOccurrence(t *testing.T) {

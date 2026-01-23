@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"ckb/internal/backends/git"
-	"ckb/internal/config"
-	"ckb/internal/modules"
+	"github.com/SimplyLiz/CodeMCP/internal/backends/git"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/modules"
 )
 
 // ArchitectureGenerator generates architecture views of the repository
@@ -457,7 +457,7 @@ func (g *ArchitectureGenerator) buildDirectoryEdges(directories []*modules.Infer
 // extractSymbolFromImport extracts a symbol/package name from an import
 func extractSymbolFromImport(imp *modules.ImportEdge) string {
 	// For Go: extract package name from path (last segment)
-	// e.g., "ckb/internal/query" -> "query"
+	// e.g., "github.com/SimplyLiz/CodeMCP/internal/query" -> "query"
 	path := imp.To
 	if path == "" {
 		return ""
@@ -603,9 +603,9 @@ func (g *ArchitectureGenerator) resolveImportToDirectory(imp *modules.ImportEdge
 		return resolved
 	}
 
-	// For Go package imports (e.g., "ckb/internal/query"), strip the module prefix
+	// For Go package imports (e.g., "github.com/SimplyLiz/CodeMCP/internal/query"), strip the module prefix
 	if goModulePrefix != "" && strings.HasPrefix(importPath, goModulePrefix+"/") {
-		// Strip module prefix: "ckb/internal/query" -> "internal/query"
+		// Strip module prefix: "github.com/SimplyLiz/CodeMCP/internal/query" -> "internal/query"
 		repoRelative := strings.TrimPrefix(importPath, goModulePrefix+"/")
 		if dirSet[repoRelative] {
 			return repoRelative

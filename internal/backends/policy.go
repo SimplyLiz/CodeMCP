@@ -1,7 +1,7 @@
 package backends
 
 import (
-	"ckb/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
 )
 
 // QueryPolicy defines how backends should be queried and results merged

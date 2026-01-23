@@ -8,7 +8,7 @@ import (
 	"sort"
 	"text/tabwriter"
 
-	"ckb/internal/repos"
+	"github.com/SimplyLiz/CodeMCP/internal/repos"
 
 	"github.com/spf13/cobra"
 )

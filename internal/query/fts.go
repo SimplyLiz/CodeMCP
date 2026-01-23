@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"ckb/internal/backends/scip"
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/backends/scip"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 // PopulateFTSFromSCIP populates the FTS5 symbol index from the loaded SCIP index.

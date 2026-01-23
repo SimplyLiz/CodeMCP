@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"ckb/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
 )
 
 // LokiHandler implements slog.Handler and sends logs to Grafana Loki.

@@ -14,8 +14,8 @@ import (
 	"log/slog"
 	"os"
 
-	"ckb/internal/backends/git"
-	"ckb/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/backends/git"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
 )
 
 func main() {

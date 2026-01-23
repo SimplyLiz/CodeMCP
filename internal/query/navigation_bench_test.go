@@ -3,7 +3,7 @@ package query
 import (
 	"testing"
 
-	"ckb/internal/backends/git"
+	"github.com/SimplyLiz/CodeMCP/internal/backends/git"
 )
 
 // =============================================================================

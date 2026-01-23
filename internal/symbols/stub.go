@@ -7,7 +7,7 @@ package symbols
 import (
 	"context"
 
-	"ckb/internal/complexity"
+	"github.com/SimplyLiz/CodeMCP/internal/complexity"
 )
 
 // Symbol represents an extracted symbol from source code.

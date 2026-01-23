@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"ckb/internal/coupling"
+	"github.com/SimplyLiz/CodeMCP/internal/coupling"
 )
 
 var (

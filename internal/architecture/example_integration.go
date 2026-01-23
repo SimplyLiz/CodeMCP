@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"ckb/internal/config"
-	"ckb/internal/modules"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/modules"
 )
 
 // Example: getArchitecture MCP handler implementation

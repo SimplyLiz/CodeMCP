@@ -14,14 +14,14 @@ import (
 	"syscall"
 	"time"
 
-	"ckb/internal/config"
-	"ckb/internal/index"
-	"ckb/internal/paths"
-	"ckb/internal/scheduler"
-	"ckb/internal/slogutil"
-	"ckb/internal/version"
-	"ckb/internal/watcher"
-	"ckb/internal/webhooks"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/index"
+	"github.com/SimplyLiz/CodeMCP/internal/paths"
+	"github.com/SimplyLiz/CodeMCP/internal/scheduler"
+	"github.com/SimplyLiz/CodeMCP/internal/slogutil"
+	"github.com/SimplyLiz/CodeMCP/internal/version"
+	"github.com/SimplyLiz/CodeMCP/internal/watcher"
+	"github.com/SimplyLiz/CodeMCP/internal/webhooks"
 )
 
 // Daemon represents the CKB daemon process

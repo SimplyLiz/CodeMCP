@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 func TestParseGitDiffNUL(t *testing.T) {

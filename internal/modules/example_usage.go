@@ -7,9 +7,9 @@ package modules
 Example 1: Basic Module Detection
 
 	import (
-		"ckb/internal/config"
-		"ckb/internal/slogutil"
-		"ckb/internal/modules"
+		"github.com/SimplyLiz/CodeMCP/internal/config"
+		"github.com/SimplyLiz/CodeMCP/internal/slogutil"
+		"github.com/SimplyLiz/CodeMCP/internal/modules"
 		"log/slog"
 		"os"
 	)

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"ckb/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
 )
 
 // enqueue adds a request to the language's request queue

@@ -11,10 +11,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"ckb/internal/config"
-	"ckb/internal/paths"
-	"ckb/internal/query"
-	"ckb/internal/version"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/paths"
+	"github.com/SimplyLiz/CodeMCP/internal/query"
+	"github.com/SimplyLiz/CodeMCP/internal/version"
 )
 
 var (

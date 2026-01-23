@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"ckb/internal/jobs"
-	"ckb/internal/query"
+	"github.com/SimplyLiz/CodeMCP/internal/jobs"
+	"github.com/SimplyLiz/CodeMCP/internal/query"
 )
 
 // v6.1 Job Management Handlers

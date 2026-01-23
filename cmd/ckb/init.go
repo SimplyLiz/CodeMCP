@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"ckb/internal/config"
-	"ckb/internal/errors"
-	"ckb/internal/repos"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/repos"
 
 	"github.com/spf13/cobra"
 )

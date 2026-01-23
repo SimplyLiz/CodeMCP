@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"ckb/internal/watcher"
+	"github.com/SimplyLiz/CodeMCP/internal/watcher"
 )
 
 // testLogger implements Printf for testing

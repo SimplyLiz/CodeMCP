@@ -3,7 +3,7 @@ package mcp
 import (
 	"strings"
 
-	"ckb/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
 )
 
 // Resource represents a static resource

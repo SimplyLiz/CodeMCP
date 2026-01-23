@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"ckb/internal/secrets"
+	"github.com/SimplyLiz/CodeMCP/internal/secrets"
 )
 
 // SARIF 2.1.0 schema types
@@ -116,7 +116,7 @@ func FormatSecretsAsSARIF(result *secrets.ScanResult, version string) (string, e
 	ruleIndex := make(map[string]int)
 
 	for _, f := range result.Findings {
-		ruleID := fmt.Sprintf("ckb/secrets/%s", f.Rule)
+		ruleID := fmt.Sprintf("github.com/SimplyLiz/CodeMCP/secrets/%s", f.Rule)
 		if _, exists := ruleMap[ruleID]; !exists {
 			rule := SARIFRule{
 				ID:   ruleID,
@@ -149,7 +149,7 @@ func FormatSecretsAsSARIF(result *secrets.ScanResult, version string) (string, e
 	// Build results
 	results := make([]SARIFResult, 0, len(result.Findings))
 	for _, f := range result.Findings {
-		ruleID := fmt.Sprintf("ckb/secrets/%s", f.Rule)
+		ruleID := fmt.Sprintf("github.com/SimplyLiz/CodeMCP/secrets/%s", f.Rule)
 
 		// Generate fingerprint for deduplication
 		fingerprint := generateFingerprint(f)
@@ -176,7 +176,7 @@ func FormatSecretsAsSARIF(result *secrets.ScanResult, version string) (string, e
 				},
 			},
 			Fingerprints: map[string]string{
-				"ckb/v1": fingerprint,
+				"github.com/SimplyLiz/CodeMCP/v1": fingerprint,
 			},
 			Properties: map[string]interface{}{
 				"confidence": f.Confidence,

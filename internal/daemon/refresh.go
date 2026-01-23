@@ -12,12 +12,12 @@ import (
 	"sync"
 	"time"
 
-	"ckb/internal/incremental"
-	"ckb/internal/index"
-	"ckb/internal/project"
-	"ckb/internal/repostate"
-	"ckb/internal/storage"
-	"ckb/internal/webhooks"
+	"github.com/SimplyLiz/CodeMCP/internal/incremental"
+	"github.com/SimplyLiz/CodeMCP/internal/index"
+	"github.com/SimplyLiz/CodeMCP/internal/project"
+	"github.com/SimplyLiz/CodeMCP/internal/repostate"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/webhooks"
 )
 
 // RefreshManager handles incremental and full reindex operations

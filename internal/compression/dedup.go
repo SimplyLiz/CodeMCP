@@ -3,7 +3,7 @@ package compression
 import (
 	"fmt"
 
-	"ckb/internal/output"
+	"github.com/SimplyLiz/CodeMCP/internal/output"
 )
 
 // DeduplicateReferences removes duplicate references by location

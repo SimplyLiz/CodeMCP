@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"ckb/internal/backends/scip"
-	"ckb/internal/config"
-	"ckb/internal/repostate"
+	"github.com/SimplyLiz/CodeMCP/internal/backends/scip"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/repostate"
 
 	"github.com/spf13/cobra"
 )

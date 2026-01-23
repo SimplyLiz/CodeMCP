@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"ckb/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
 )
 
 func TestValueOrDefault(t *testing.T) {

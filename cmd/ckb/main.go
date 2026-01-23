@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"ckb/internal/update"
+	"github.com/SimplyLiz/CodeMCP/internal/update"
 )
 
 func main() {

@@ -11,7 +11,7 @@ import (
 
 	toml "github.com/pelletier/go-toml/v2"
 
-	"ckb/internal/paths"
+	"github.com/SimplyLiz/CodeMCP/internal/paths"
 )
 
 // ModulesDeclarationFile is the default filename for module declarations

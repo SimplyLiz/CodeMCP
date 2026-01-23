@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"ckb/internal/daemon"
+	"github.com/SimplyLiz/CodeMCP/internal/daemon"
 )
 
 var (

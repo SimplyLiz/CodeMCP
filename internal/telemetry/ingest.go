@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"ckb/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
 )
 
 // IngestHandler handles telemetry ingestion requests

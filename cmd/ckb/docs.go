@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"ckb/internal/docs"
+	"github.com/SimplyLiz/CodeMCP/internal/docs"
 )
 
 var (

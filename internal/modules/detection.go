@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"ckb/internal/paths"
+	"github.com/SimplyLiz/CodeMCP/internal/paths"
 )
 
 // ManifestFile represents a manifest file that can be used to detect modules

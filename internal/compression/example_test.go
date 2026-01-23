@@ -3,9 +3,9 @@ package compression_test
 import (
 	"fmt"
 
-	"ckb/internal/compression"
-	"ckb/internal/config"
-	"ckb/internal/output"
+	"github.com/SimplyLiz/CodeMCP/internal/compression"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/output"
 )
 
 // Example_basicCompression demonstrates basic compression usage

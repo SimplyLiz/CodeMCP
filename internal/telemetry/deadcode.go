@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"ckb/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
 )
 
 // DeadCodeOptions configures dead code candidate detection

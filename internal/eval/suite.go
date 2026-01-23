@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"ckb/internal/query"
+	"github.com/SimplyLiz/CodeMCP/internal/query"
 )
 
 // TestCase represents a single evaluation test case.

@@ -3,7 +3,7 @@ package hotspots
 import (
 	"context"
 
-	"ckb/internal/complexity"
+	"github.com/SimplyLiz/CodeMCP/internal/complexity"
 )
 
 // ComplexityAnalyzer provides complexity metrics for hotspot analysis.

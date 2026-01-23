@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"ckb/internal/version"
+	"github.com/SimplyLiz/CodeMCP/internal/version"
 )
 
 const (
@@ -177,7 +177,7 @@ func (c *Checker) fetchLatestVersion(ctx context.Context) string {
 	}
 
 	// Set headers for GitHub API
-	req.Header.Set("User-Agent", "ckb/"+version.Version)
+	req.Header.Set("User-Agent", "github.com/SimplyLiz/CodeMCP/"+version.Version)
 	req.Header.Set("Accept", "application/vnd.github+json")
 
 	resp, err := http.DefaultClient.Do(req)

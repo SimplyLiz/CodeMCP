@@ -3,7 +3,7 @@ package mcp
 import (
 	"testing"
 
-	"ckb/internal/telemetry"
+	"github.com/SimplyLiz/CodeMCP/internal/telemetry"
 )
 
 func TestMCPErrorError(t *testing.T) {

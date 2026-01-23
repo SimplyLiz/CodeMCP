@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"ckb/internal/version"
+	"github.com/SimplyLiz/CodeMCP/internal/version"
 )
 
 // MetricsConfig contains metrics configuration

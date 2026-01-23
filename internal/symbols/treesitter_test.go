@@ -6,7 +6,7 @@ import (
 	"context"
 	"testing"
 
-	"ckb/internal/complexity"
+	"github.com/SimplyLiz/CodeMCP/internal/complexity"
 )
 
 func TestExtractSource_Go(t *testing.T) {

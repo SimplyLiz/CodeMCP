@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"ckb/internal/backends"
-	"ckb/internal/docs"
+	"github.com/SimplyLiz/CodeMCP/internal/backends"
+	"github.com/SimplyLiz/CodeMCP/internal/docs"
 )
 
 // IndexDocs scans and indexes documentation for symbol references.

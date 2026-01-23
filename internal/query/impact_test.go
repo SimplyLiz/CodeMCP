@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"ckb/internal/impact"
-	"ckb/internal/telemetry"
+	"github.com/SimplyLiz/CodeMCP/internal/impact"
+	"github.com/SimplyLiz/CodeMCP/internal/telemetry"
 )
 
 func TestFilterTestReferences(t *testing.T) {

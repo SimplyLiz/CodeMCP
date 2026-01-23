@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"ckb/internal/backends/scip"
+	"github.com/SimplyLiz/CodeMCP/internal/backends/scip"
 )
 
 // Analyzer detects dead code using SCIP index reference analysis.

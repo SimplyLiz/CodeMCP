@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"ckb/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
 )
 
 func TestNewLokiHandler(t *testing.T) {

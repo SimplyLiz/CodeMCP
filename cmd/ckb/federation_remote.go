@@ -13,7 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"ckb/internal/federation"
+	"github.com/SimplyLiz/CodeMCP/internal/federation"
 )
 
 // Remote server flags

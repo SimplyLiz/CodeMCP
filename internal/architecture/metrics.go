@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"ckb/internal/backends/git"
-	"ckb/internal/complexity"
+	"github.com/SimplyLiz/CodeMCP/internal/backends/git"
+	"github.com/SimplyLiz/CodeMCP/internal/complexity"
 )
 
 // MetricsCalculator computes aggregate metrics for directories

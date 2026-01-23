@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"ckb/internal/config"
-	"ckb/internal/mcp/testdata"
-	"ckb/internal/query"
-	"ckb/internal/storage"
-	"ckb/internal/version"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/mcp/testdata"
+	"github.com/SimplyLiz/CodeMCP/internal/query"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/version"
 )
 
 // NFR Token Baselines (bytes) - CI gates.

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 // FuzzyMatchResult represents the result of a fuzzy match attempt

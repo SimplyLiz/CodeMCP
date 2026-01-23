@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"ckb/internal/config"
-	"ckb/internal/modules"
-	"ckb/internal/query"
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/modules"
+	"github.com/SimplyLiz/CodeMCP/internal/query"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 // findRepoRoot finds the repository root by looking for go.mod

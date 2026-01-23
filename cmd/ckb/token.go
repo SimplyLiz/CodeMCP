@@ -12,7 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"ckb/internal/auth"
+	"github.com/SimplyLiz/CodeMCP/internal/auth"
 
 	_ "modernc.org/sqlite" // Pure Go SQLite driver
 )

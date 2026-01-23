@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"ckb/internal/project"
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/project"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 func setupTestIndexer(t *testing.T) (*IncrementalIndexer, string, func()) {

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"ckb/internal/backends/scip"
-	"ckb/internal/project"
+	"github.com/SimplyLiz/CodeMCP/internal/backends/scip"
+	"github.com/SimplyLiz/CodeMCP/internal/project"
 )
 
 func TestIsLocalSymbol(t *testing.T) {

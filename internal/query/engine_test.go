@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"ckb/internal/config"
-	"ckb/internal/storage"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
 // testEngine creates a test engine with minimal configuration

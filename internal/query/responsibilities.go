@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"ckb/internal/output"
-	"ckb/internal/responsibilities"
+	"github.com/SimplyLiz/CodeMCP/internal/output"
+	"github.com/SimplyLiz/CodeMCP/internal/responsibilities"
 )
 
 // GetModuleResponsibilitiesOptions controls getModuleResponsibilities behavior.

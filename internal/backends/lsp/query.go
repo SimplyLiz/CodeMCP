@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"ckb/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
 )
 
 // LspRequest represents a request to an LSP server

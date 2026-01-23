@@ -1,7 +1,7 @@
 package git
 
 import (
-	"ckb/internal/repostate"
+	"github.com/SimplyLiz/CodeMCP/internal/repostate"
 )
 
 // GetRepoState returns the current repository state

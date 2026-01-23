@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"ckb/internal/errors"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
 )
 
 // ChurnMetrics represents churn statistics for a file

@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"ckb/internal/paths"
-	"ckb/internal/repos"
+	"github.com/SimplyLiz/CodeMCP/internal/paths"
+	"github.com/SimplyLiz/CodeMCP/internal/repos"
 )
 
 var (

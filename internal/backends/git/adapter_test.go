@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"ckb/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
 )
 
 // setupTestAdapter creates a test adapter using the current repository

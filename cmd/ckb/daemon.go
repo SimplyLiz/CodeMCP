@@ -10,10 +10,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"ckb/internal/config"
-	"ckb/internal/daemon"
-	"ckb/internal/paths"
-	"ckb/internal/scheduler"
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/daemon"
+	"github.com/SimplyLiz/CodeMCP/internal/paths"
+	"github.com/SimplyLiz/CodeMCP/internal/scheduler"
 )
 
 var daemonCmd = &cobra.Command{

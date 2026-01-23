@@ -3,7 +3,7 @@ package graph
 import (
 	"context"
 
-	"ckb/internal/backends/scip"
+	"github.com/SimplyLiz/CodeMCP/internal/backends/scip"
 )
 
 // EdgeWeights defines weights for different edge types.

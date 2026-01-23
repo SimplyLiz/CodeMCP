@@ -3,7 +3,7 @@ package compression
 import (
 	"testing"
 
-	"ckb/internal/output"
+	"github.com/SimplyLiz/CodeMCP/internal/output"
 )
 
 func TestDeduplicateReferences(t *testing.T) {
