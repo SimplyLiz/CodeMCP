@@ -17,6 +17,7 @@ coverage:
       default:
         target: 30%
         threshold: 0%
+        only_pulls: true
 
 comment:
   # Codecov's recommended condensed format
@@ -42,3 +43,4 @@ flag_management:
         threshold: 1%
       - type: patch
         target: 30%
+        only_pulls: true
