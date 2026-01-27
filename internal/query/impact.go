@@ -1680,6 +1680,29 @@ func min(a, b int) int {
 	return b
 }
 
+// hasUnrelatedModuleChanges checks if changes span multiple unrelated modules.
+// Returns true only when:
+// 1. Changes touch 2+ files
+// 2. Impact affects 3+ distinct modules (suggesting broad, disconnected changes)
+func hasUnrelatedModuleChanges(changedSymbols []impact.ChangedSymbol, modules []ModuleImpact) bool {
+	// Count distinct files changed
+	changedFiles := make(map[string]bool)
+	for _, sym := range changedSymbols {
+		if sym.File != "" {
+			changedFiles[sym.File] = true
+		}
+	}
+
+	// Single file = cohesive by definition
+	if len(changedFiles) <= 1 {
+		return false
+	}
+
+	// Need 3+ affected modules to suggest unrelated changes
+	// (2 modules could easily be caller/callee)
+	return len(modules) >= 3
+}
+
 // generateRecommendations creates actionable recommendations based on impact analysis.
 func (e *Engine) generateRecommendations(
 	summary *ChangeSummary,
@@ -1699,13 +1722,13 @@ func (e *Engine) generateRecommendations(
 		})
 	}
 
-	// Recommend splitting large changes
-	if summary.SymbolsChanged > 15 {
+	// Recommend splitting when changes span unrelated modules
+	if hasUnrelatedModuleChanges(changedSymbols, modules) {
 		recs = append(recs, Recommendation{
 			Type:     "split",
 			Severity: "info",
-			Message:  fmt.Sprintf("Large change with %d symbols modified. Consider splitting into smaller PRs.", summary.SymbolsChanged),
-			Action:   "Break into smaller, focused changes",
+			Message:  fmt.Sprintf("Changes affect %d distinct modules. Consider splitting into focused PRs.", len(modules)),
+			Action:   "Group related changes into separate PRs",
 		})
 	}
 
