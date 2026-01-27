@@ -60,6 +60,11 @@ type MCPServer struct {
 	// Binary staleness detection (v8.0)
 	binaryPath    string    // Path to the running binary
 	binaryModTime time.Time // Modification time at startup
+
+	// Lazy engine loading (for fast MCP startup)
+	engineLoader func() (*query.Engine, error)
+	engineOnce   sync.Once
+	engineErr    error
 }
 
 // NewMCPServer creates a new MCP server in legacy single-engine mode
@@ -101,6 +106,37 @@ func NewMCPServerForCLI() *MCPServer {
 	}
 }
 
+// EngineLoader is a function that creates an engine on demand
+type EngineLoader func() (*query.Engine, error)
+
+// NewMCPServerLazy creates a new MCP server with lazy engine loading.
+// The engine is not created until the first tool call that needs it.
+// This allows the MCP handshake to complete quickly.
+func NewMCPServerLazy(version string, loader EngineLoader, logger *slog.Logger) *MCPServer {
+	server := &MCPServer{
+		stdin:        os.Stdin,
+		stdout:       os.Stdout,
+		logger:       logger,
+		version:      version,
+		engineLoader: loader,
+		tools:        make(map[string]ToolHandler),
+		resources:    make(map[string]ResourceHandler),
+		activePreset: DefaultPreset,
+		roots:        newRootsManager(),
+	}
+
+	// Record binary info for staleness detection
+	server.recordBinaryInfo()
+
+	// Register all tools
+	server.RegisterTools()
+
+	// Compute initial toolset hash
+	server.updateToolsetHash()
+
+	return server
+}
+
 // NewMCPServerWithRegistry creates a new MCP server with multi-repo support
 func NewMCPServerWithRegistry(version string, registry *repos.Registry, logger *slog.Logger) *MCPServer {
 	server := &MCPServer{
@@ -130,8 +166,28 @@ func NewMCPServerWithRegistry(version string, registry *repos.Registry, logger *
 
 // engine returns the current engine (for backward compatibility with tool handlers)
 func (s *MCPServer) engine() *query.Engine {
-	// Legacy mode
+	// Legacy mode with preloaded engine
 	if s.legacyEngine != nil {
+		return s.legacyEngine
+	}
+
+	// Legacy mode with lazy loading
+	if s.engineLoader != nil {
+		s.engineOnce.Do(func() {
+			s.logger.Info("Loading engine (lazy initialization)...")
+			engine, err := s.engineLoader()
+			if err != nil {
+				s.engineErr = err
+				s.logger.Error("Failed to load engine", "error", err.Error())
+				return
+			}
+			s.legacyEngine = engine
+			// Wire up metrics persistence
+			if engine != nil && engine.DB() != nil {
+				SetMetricsDB(engine.DB())
+			}
+			s.logger.Info("Engine loaded successfully")
+		})
 		return s.legacyEngine
 	}
 
