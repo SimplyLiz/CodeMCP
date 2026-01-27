@@ -278,7 +278,7 @@ func DefaultConfig() *Config {
 		Backends: BackendsConfig{
 			Scip: ScipConfig{
 				Enabled:   true,
-				IndexPath: ".scip/index.scip",
+				IndexPath: "index.scip",
 			},
 			Lsp: LspConfig{
 				Enabled:           true,
@@ -445,6 +445,29 @@ func LoadConfig(repoRoot string) (*Config, error) {
 		return nil, err
 	}
 	return result.Config, nil
+}
+
+// SaveConfig saves configuration to .ckb/config.json
+func SaveConfig(repoRoot string, cfg *Config) error {
+	configPath := filepath.Join(repoRoot, ".ckb", "config.json")
+
+	// Ensure .ckb directory exists
+	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+
+	// Marshal config to JSON with indentation
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	// Write to file
+	if err := os.WriteFile(configPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
+	}
+
+	return nil
 }
 
 // LoadConfigWithDetails loads configuration and returns detailed info about how it was loaded

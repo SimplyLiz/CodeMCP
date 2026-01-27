@@ -170,7 +170,7 @@ type IndexState struct {
 
 // Config configures incremental indexing behavior
 type Config struct {
-	IndexPath            string   // Path to SCIP index file (default: .scip/index.scip)
+	IndexPath            string   // Path to SCIP index file (default: index.scip)
 	Excludes             []string // Glob patterns to exclude
 	IncrementalThreshold int      // Percentage of files changed before falling back to full (default: 50)
 	IndexTests           bool     // Whether to index _test.go files (default: false)
@@ -191,7 +191,7 @@ type TransitiveConfig struct {
 // DefaultConfig returns the default incremental indexing configuration
 func DefaultConfig() *Config {
 	return &Config{
-		IndexPath:            ".scip/index.scip",
+		IndexPath:            "index.scip",
 		IncrementalThreshold: 50,
 		IndexTests:           false,
 		Transitive: TransitiveConfig{

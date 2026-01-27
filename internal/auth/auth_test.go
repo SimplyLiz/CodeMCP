@@ -21,6 +21,9 @@ func testDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
 	}
+	// With :memory:, each connection gets its own independent database.
+	// Limit to 1 connection so all operations share the same in-memory state.
+	db.SetMaxOpenConns(1)
 	return db
 }
 

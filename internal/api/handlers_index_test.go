@@ -452,6 +452,7 @@ func setupTestIndexDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
 	}
+	db.SetMaxOpenConns(1)
 
 	// Create schema matching what index_queries.go expects
 	schema := `

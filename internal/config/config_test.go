@@ -26,8 +26,8 @@ func TestDefaultConfig(t *testing.T) {
 	}
 
 	// Check index path
-	if cfg.Backends.Scip.IndexPath != ".scip/index.scip" {
-		t.Errorf("SCIP IndexPath = %q, want %q", cfg.Backends.Scip.IndexPath, ".scip/index.scip")
+	if cfg.Backends.Scip.IndexPath != "index.scip" {
+		t.Errorf("SCIP IndexPath = %q, want %q", cfg.Backends.Scip.IndexPath, "index.scip")
 	}
 
 	// Check LSP servers

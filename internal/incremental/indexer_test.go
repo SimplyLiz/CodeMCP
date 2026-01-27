@@ -98,8 +98,8 @@ func TestNewIncrementalIndexer_NilConfig(t *testing.T) {
 	if indexer.config == nil {
 		t.Fatal("expected non-nil config after initialization")
 	}
-	if indexer.config.IndexPath != ".scip/index.scip" {
-		t.Errorf("expected default index path '.scip/index.scip', got %q", indexer.config.IndexPath)
+	if indexer.config.IndexPath != "index.scip" {
+		t.Errorf("expected default index path 'index.scip', got %q", indexer.config.IndexPath)
 	}
 }
 
@@ -849,13 +849,6 @@ func setupTestIndexerWithFixture(t *testing.T) (*IncrementalIndexer, string, fun
 		t.Fatalf("failed to create .ckb dir: %v", err)
 	}
 
-	// Create .scip directory
-	scipDir := filepath.Join(tmpDir, ".scip")
-	if err := os.MkdirAll(scipDir, 0755); err != nil {
-		os.RemoveAll(tmpDir)
-		t.Fatalf("failed to create .scip dir: %v", err)
-	}
-
 	// Copy fixture files to temp directory
 	fixtureRoot := getFixtureRootForIndexerTest(t)
 	goFixture := filepath.Join(fixtureRoot, "go")
@@ -875,9 +868,9 @@ func setupTestIndexerWithFixture(t *testing.T) (*IncrementalIndexer, string, fun
 		}
 	}
 
-	// Copy SCIP index
+	// Copy SCIP index to root (new default location)
 	srcIndex := filepath.Join(goFixture, ".scip", "index.scip")
-	dstIndex := filepath.Join(scipDir, "index.scip")
+	dstIndex := filepath.Join(tmpDir, "index.scip")
 	indexContent, err := os.ReadFile(srcIndex)
 	if err != nil {
 		os.RemoveAll(tmpDir)
@@ -974,7 +967,7 @@ func TestIndexIncrementalWithLang_ChangesDetected(t *testing.T) {
 	// but uses the existing fixture index for extraction
 	indexer.extractor = &SCIPExtractor{
 		repoRoot:  tmpDir,
-		indexPath: filepath.Join(tmpDir, ".scip", "index.scip"),
+		indexPath: filepath.Join(tmpDir, "index.scip"),
 		logger:    indexer.logger,
 	}
 

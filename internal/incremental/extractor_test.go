@@ -355,8 +355,8 @@ func TestDefaultConfig(t *testing.T) {
 	if config == nil {
 		t.Fatal("expected non-nil config")
 	}
-	if config.IndexPath != ".scip/index.scip" {
-		t.Errorf("expected IndexPath '.scip/index.scip', got %q", config.IndexPath)
+	if config.IndexPath != "index.scip" {
+		t.Errorf("expected IndexPath 'index.scip', got %q", config.IndexPath)
 	}
 	if config.IncrementalThreshold != 50 {
 		t.Errorf("expected IncrementalThreshold 50, got %d", config.IncrementalThreshold)

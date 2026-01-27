@@ -26,6 +26,7 @@ func testMiddlewareDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
 	}
+	db.SetMaxOpenConns(1)
 	return db
 }
 
