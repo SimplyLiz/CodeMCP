@@ -29,7 +29,7 @@ var refreshCmd = &cobra.Command{
 	Long: `Regenerate the SCIP index for the current repository.
 
 This command runs scip-go to create a fresh index of all symbols, references,
-and relationships in your Go codebase. The index is stored at .scip/index.scip
+and relationships in your Go codebase. The index is stored at index.scip
 by default.
 
 After refreshing, all CKB queries will use the updated index.`,

@@ -42,12 +42,44 @@ var configEnvCmd = &cobra.Command{
 	Run:   runConfigEnv,
 }
 
+var configSetCmd = &cobra.Command{
+	Use:   "set <key> <value>",
+	Short: "Set a configuration value",
+	Long: `Set a configuration value in .ckb/config.json.
+
+Supported keys:
+  scip.indexPath    Path to SCIP index file (default: index.scip)
+
+Examples:
+  ckb config set scip.indexPath index.scip
+  ckb config set scip.indexPath .scip/index.scip
+  ckb config set scip.indexPath build/index.scip`,
+	Args: cobra.ExactArgs(2),
+	Run:  runConfigSet,
+}
+
+var configGetCmd = &cobra.Command{
+	Use:   "get <key>",
+	Short: "Get a configuration value",
+	Long: `Get a configuration value from .ckb/config.json.
+
+Supported keys:
+  scip.indexPath    Path to SCIP index file
+
+Examples:
+  ckb config get scip.indexPath`,
+	Args: cobra.ExactArgs(1),
+	Run:  runConfigGet,
+}
+
 func init() {
 	configShowCmd.Flags().StringVar(&configFormat, "format", "human", "Output format (human, json)")
 	configShowCmd.Flags().BoolVar(&configShowDiff, "diff", false, "Only show non-default values")
 
 	configCmd.AddCommand(configShowCmd)
 	configCmd.AddCommand(configEnvCmd)
+	configCmd.AddCommand(configSetCmd)
+	configCmd.AddCommand(configGetCmd)
 	rootCmd.AddCommand(configCmd)
 }
 
@@ -387,4 +419,65 @@ func GetEnvVarMappings() []string {
 	vars := config.GetSupportedEnvVars()
 	sort.Strings(vars)
 	return vars
+}
+
+func runConfigSet(cmd *cobra.Command, args []string) {
+	key := args[0]
+	value := args[1]
+
+	repoRoot := mustGetRepoRoot()
+
+	// Load existing config
+	cfg, err := config.LoadConfig(repoRoot)
+	if err != nil {
+		// If config doesn't exist, start with defaults
+		cfg = config.DefaultConfig()
+	}
+
+	// Set the value based on key
+	switch key {
+	case "scip.indexPath":
+		cfg.Backends.Scip.IndexPath = value
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown config key: %s\n", key)
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Supported keys:")
+		fmt.Fprintln(os.Stderr, "  scip.indexPath    Path to SCIP index file")
+		os.Exit(1)
+	}
+
+	// Save the config
+	if err := config.SaveConfig(repoRoot, cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Error saving config: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Set %s = %s\n", key, value)
+}
+
+func runConfigGet(cmd *cobra.Command, args []string) {
+	key := args[0]
+
+	repoRoot := mustGetRepoRoot()
+
+	// Load config
+	cfg, err := config.LoadConfig(repoRoot)
+	if err != nil {
+		cfg = config.DefaultConfig()
+	}
+
+	// Get the value based on key
+	var value string
+	switch key {
+	case "scip.indexPath":
+		value = cfg.Backends.Scip.IndexPath
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown config key: %s\n", key)
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Supported keys:")
+		fmt.Fprintln(os.Stderr, "  scip.indexPath    Path to SCIP index file")
+		os.Exit(1)
+	}
+
+	fmt.Println(value)
 }

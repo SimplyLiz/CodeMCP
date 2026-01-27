@@ -97,8 +97,8 @@ func runIndex(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	// Get SCIP index path from config (default: .scip/index.scip)
-	indexPath := ".scip/index.scip"
+	// Get SCIP index path from config (default: index.scip in root)
+	indexPath := "index.scip"
 	if cfg, loadErr := config.LoadConfig(repoRoot); loadErr == nil && cfg.Backends.Scip.IndexPath != "" {
 		indexPath = cfg.Backends.Scip.IndexPath
 	}
@@ -106,6 +106,9 @@ func runIndex(cmd *cobra.Command, args []string) {
 	if !filepath.IsAbs(indexPath) {
 		indexPath = filepath.Join(repoRoot, indexPath)
 	}
+
+	// Migration: move legacy .scip/index.scip to root if needed
+	migrateIndexPath(repoRoot, indexPath)
 
 	// Check index freshness (unless --force)
 	if !indexForce {
@@ -192,15 +195,28 @@ func runIndex(cmd *cobra.Command, args []string) {
 
 	fmt.Printf("Detected %s project (from %s)\n", project.LanguageDisplayName(lang), manifest)
 
-	// Get indexer info
+	// Get indexer info (for install/check commands)
 	indexer := project.GetIndexerInfo(lang)
 	if indexer == nil {
 		fmt.Fprintf(os.Stderr, "No SCIP indexer available for %s\n", project.LanguageDisplayName(lang))
 		os.Exit(1)
 	}
 
+	// Check if using non-default index path (requires --output flag)
+	defaultIndexPath := filepath.Join(repoRoot, "index.scip")
+	needsOutputFlag := indexPath != defaultIndexPath
+
+	// Ensure output directory exists (for custom paths)
+	if needsOutputFlag {
+		outputDir := filepath.Dir(indexPath)
+		if err := os.MkdirAll(outputDir, 0755); err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating index directory %s: %v\n", outputDir, err)
+			os.Exit(1)
+		}
+	}
+
 	// Build command - some languages need special handling
-	command := indexer.Command
+	var command string
 	switch lang {
 	case project.LangCpp:
 		cppCmd, err := project.BuildCppCommand(repoRoot, indexCompdb)
@@ -215,6 +231,9 @@ func runIndex(cmd *cobra.Command, args []string) {
 			os.Exit(1)
 		}
 		command = cppCmd
+		if needsOutputFlag {
+			command = fmt.Sprintf("%s --output %s", command, indexPath)
+		}
 
 	case project.LangRuby:
 		rubyCmd, err := project.BuildRubyCommand(repoRoot)
@@ -224,6 +243,9 @@ func runIndex(cmd *cobra.Command, args []string) {
 			os.Exit(1)
 		}
 		command = rubyCmd
+		if needsOutputFlag {
+			command = fmt.Sprintf("%s --output %s", command, indexPath)
+		}
 
 	case project.LangPHP:
 		warning, err := project.ValidatePHPSetup(repoRoot)
@@ -238,16 +260,17 @@ func runIndex(cmd *cobra.Command, args []string) {
 			fmt.Fprintln(os.Stderr, "  composer install")
 			os.Exit(1)
 		}
-
-	case project.LangGo, project.LangTypeScript, project.LangJavaScript, project.LangPython:
-		// Ensure output directory exists
-		outputDir := filepath.Dir(indexPath)
-		if err := os.MkdirAll(outputDir, 0755); err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating index directory %s: %v\n", outputDir, err)
-			os.Exit(1)
+		command = indexer.Command
+		if needsOutputFlag {
+			command = fmt.Sprintf("%s --output %s", command, indexPath)
 		}
-		// Add --output flag to use configured path
-		command = fmt.Sprintf("%s --output %s", command, indexPath)
+
+	default:
+		// Standard languages: use base command, add --output only if needed
+		command = indexer.Command
+		if needsOutputFlag {
+			command = fmt.Sprintf("%s --output %s", command, indexPath)
+		}
 	}
 
 	// Check if indexer is installed
@@ -459,6 +482,33 @@ func parseLanguageFlag(flag string) project.Language {
 		return project.LangPHP
 	default:
 		return project.LangUnknown
+	}
+}
+
+// migrateIndexPath moves legacy .scip/index.scip to root if needed.
+// This handles migration from older CKB versions that used .scip/ subdirectory.
+func migrateIndexPath(repoRoot, targetPath string) {
+	legacyPath := filepath.Join(repoRoot, ".scip", "index.scip")
+
+	// Only migrate if legacy exists and target doesn't
+	if _, err := os.Stat(legacyPath); os.IsNotExist(err) {
+		return // No legacy index
+	}
+	if _, err := os.Stat(targetPath); err == nil {
+		return // Target already exists
+	}
+
+	// Move legacy to target
+	if err := os.Rename(legacyPath, targetPath); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Could not migrate index from %s to %s: %v\n", legacyPath, targetPath, err)
+		return
+	}
+
+	fmt.Printf("Migrated index: %s -> %s\n", legacyPath, targetPath)
+
+	// Clean up empty .scip directory
+	if entries, err := os.ReadDir(filepath.Join(repoRoot, ".scip")); err == nil && len(entries) == 0 {
+		os.Remove(filepath.Join(repoRoot, ".scip"))
 	}
 }
 
@@ -681,8 +731,8 @@ func tryIncrementalIndex(repoRoot, ckbDir string, lang project.Language) bool {
 	}
 	defer func() { _ = db.Close() }()
 
-	// Get SCIP index path from config (default: .scip/index.scip)
-	indexPath := ".scip/index.scip"
+	// Get SCIP index path from config (default: index.scip in root)
+	indexPath := "index.scip"
 	if cfg, loadErr := config.LoadConfig(repoRoot); loadErr == nil && cfg.Backends.Scip.IndexPath != "" {
 		indexPath = cfg.Backends.Scip.IndexPath
 	}
@@ -757,8 +807,8 @@ func populateIncrementalTracking(repoRoot string, lang project.Language) {
 	}
 	defer func() { _ = db.Close() }()
 
-	// Get SCIP index path from config (default: .scip/index.scip)
-	indexPath := ".scip/index.scip"
+	// Get SCIP index path from config (default: index.scip in root)
+	indexPath := "index.scip"
 	if cfg, loadErr := config.LoadConfig(repoRoot); loadErr == nil && cfg.Backends.Scip.IndexPath != "" {
 		indexPath = cfg.Backends.Scip.IndexPath
 	}

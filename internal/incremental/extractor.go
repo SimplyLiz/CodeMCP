@@ -22,7 +22,7 @@ type SCIPExtractor struct {
 }
 
 // NewSCIPExtractor creates a new SCIP extractor
-// indexPath should be the configured SCIP index path (default: .scip/index.scip)
+// indexPath should be the configured SCIP index path (default: index.scip)
 func NewSCIPExtractor(repoRoot string, indexPath string, logger *slog.Logger) *SCIPExtractor {
 	// If indexPath is relative, make it absolute from repoRoot
 	if !filepath.IsAbs(indexPath) {

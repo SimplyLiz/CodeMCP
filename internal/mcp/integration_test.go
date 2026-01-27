@@ -160,12 +160,12 @@ func newTestMCPServerWithSCIP(t *testing.T, scipIndexPath string) *MCPServer {
 // found by search couldn't be looked up by getSymbol.
 func TestSearchThenGetSymbol_EndToEnd(t *testing.T) {
 	// Skip if SCIP index doesn't exist
-	if !fileExists("../../.scip/index.scip") {
-		t.Skip("Skipping: SCIP index not found at ../../.scip/index.scip")
+	if !fileExists("../../index.scip") {
+		t.Skip("Skipping: SCIP index not found at ../../index.scip")
 	}
 
 	// Load SCIP index to get a valid symbol ID
-	index, err := scip.LoadSCIPIndex("../../.scip/index.scip")
+	index, err := scip.LoadSCIPIndex("../../index.scip")
 	if err != nil {
 		t.Skipf("Skipping: Failed to load SCIP index: %v", err)
 	}
@@ -183,7 +183,7 @@ func TestSearchThenGetSymbol_EndToEnd(t *testing.T) {
 		t.Skip("Skipping: No suitable test symbol found")
 	}
 
-	server := newTestMCPServerWithSCIP(t, "../../.scip/index.scip")
+	server := newTestMCPServerWithSCIP(t, "../../index.scip")
 
 	// Build getSymbol request
 	getSymbolReq := map[string]interface{}{
@@ -251,11 +251,11 @@ func TestSearchThenGetSymbol_EndToEnd(t *testing.T) {
 
 // TestExplainSymbol_WithSCIPFallback tests that explainSymbol works with raw SCIP IDs
 func TestExplainSymbol_WithSCIPFallback(t *testing.T) {
-	if !fileExists("../../.scip/index.scip") {
+	if !fileExists("../../index.scip") {
 		t.Skip("Skipping: SCIP index not found")
 	}
 
-	index, err := scip.LoadSCIPIndex("../../.scip/index.scip")
+	index, err := scip.LoadSCIPIndex("../../index.scip")
 	if err != nil {
 		t.Skipf("Skipping: Failed to load SCIP index: %v", err)
 	}
@@ -272,7 +272,7 @@ func TestExplainSymbol_WithSCIPFallback(t *testing.T) {
 		t.Skip("Skipping: No suitable test symbol found")
 	}
 
-	server := newTestMCPServerWithSCIP(t, "../../.scip/index.scip")
+	server := newTestMCPServerWithSCIP(t, "../../index.scip")
 
 	req := map[string]interface{}{
 		"jsonrpc": "2.0",
@@ -312,11 +312,11 @@ func TestExplainSymbol_WithSCIPFallback(t *testing.T) {
 
 // TestGetCallGraph_WithSCIPFallback tests that getCallGraph works with raw SCIP IDs
 func TestGetCallGraph_WithSCIPFallback(t *testing.T) {
-	if !fileExists("../../.scip/index.scip") {
+	if !fileExists("../../index.scip") {
 		t.Skip("Skipping: SCIP index not found")
 	}
 
-	index, err := scip.LoadSCIPIndex("../../.scip/index.scip")
+	index, err := scip.LoadSCIPIndex("../../index.scip")
 	if err != nil {
 		t.Skipf("Skipping: Failed to load SCIP index: %v", err)
 	}
@@ -334,7 +334,7 @@ func TestGetCallGraph_WithSCIPFallback(t *testing.T) {
 		t.Skip("Skipping: No suitable test symbol found")
 	}
 
-	server := newTestMCPServerWithSCIP(t, "../../.scip/index.scip")
+	server := newTestMCPServerWithSCIP(t, "../../index.scip")
 
 	req := map[string]interface{}{
 		"jsonrpc": "2.0",

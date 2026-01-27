@@ -268,12 +268,8 @@ func TestLiveIncrementalIndex_Go(t *testing.T) {
 
 	// WORKAROUND: Run scip-go BEFORE initializing git to avoid the
 	// "project root is outside the repository" error in temp directories
-	scipDir := filepath.Join(tmpDir, ".scip")
-	if err := os.MkdirAll(scipDir, 0755); err != nil {
-		t.Fatalf("failed to create .scip dir: %v", err)
-	}
-
-	cmd := exec.Command(getScipGoPath(), "--output", filepath.Join(scipDir, "index.scip"))
+	// scip-go defaults to outputting index.scip in current directory
+	cmd := exec.Command(getScipGoPath())
 	cmd.Dir = tmpDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -351,11 +347,8 @@ func TestLiveIncrementalIndex_NoChanges(t *testing.T) {
 
 	// WORKAROUND: Run scip-go BEFORE initializing git to avoid the
 	// "project root is outside the repository" error in temp directories
-	scipDir := filepath.Join(tmpDir, ".scip")
-	if err := os.MkdirAll(scipDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	cmd := exec.Command(getScipGoPath(), "--output", filepath.Join(scipDir, "index.scip"))
+	// scip-go defaults to outputting index.scip in current directory
+	cmd := exec.Command(getScipGoPath())
 	cmd.Dir = tmpDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {

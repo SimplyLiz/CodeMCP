@@ -44,7 +44,7 @@ func NewIncrementalIndexer(repoRoot string, db *storage.DB, config *Config, logg
 	// Ensure IndexPath has a sensible default
 	indexPath := config.IndexPath
 	if indexPath == "" {
-		indexPath = ".scip/index.scip"
+		indexPath = "index.scip"
 	}
 
 	store := NewStore(db, logger)
