@@ -61,8 +61,8 @@ func TestChecker_Check_DisabledByEnv(t *testing.T) {
 	defer func() { _ = os.Unsetenv("CKB_NO_UPDATE_CHECK") }()
 
 	checker := &Checker{
-		cache:     NewCache(),
-		isNpmPath: true, // Pretend we're an npm install
+		cache:         NewCache(),
+		installMethod: InstallMethodNPM, // Pretend we're an npm install
 	}
 
 	result := checker.Check(context.Background())
@@ -83,7 +83,7 @@ func TestChecker_CheckCached_EmptyCache(t *testing.T) {
 		cache: &Cache{
 			path: filepath.Join(tmpDir, "update-check.json"),
 		},
-		isNpmPath: false,
+		installMethod: InstallMethodUnknown,
 	}
 
 	result := checker.CheckCached()
@@ -107,8 +107,8 @@ func TestChecker_CheckCached_WithCachedUpdate(t *testing.T) {
 	cache.Set("99.0.0")
 
 	checker := &Checker{
-		cache:     cache,
-		isNpmPath: false,
+		cache:         cache,
+		installMethod: InstallMethodUnknown,
 	}
 
 	result := checker.CheckCached()
@@ -138,8 +138,8 @@ func TestChecker_CheckCached_NpmInstall(t *testing.T) {
 	cache.Set("99.0.0")
 
 	checker := &Checker{
-		cache:     cache,
-		isNpmPath: true, // npm install
+		cache:         cache,
+		installMethod: InstallMethodNPM, // npm install
 	}
 
 	result := checker.CheckCached()
@@ -154,8 +154,8 @@ func TestChecker_CheckCached_NpmInstall(t *testing.T) {
 
 func TestChecker_FetchLatestVersion_Timeout(t *testing.T) {
 	checker := &Checker{
-		cache:     NewCache(),
-		isNpmPath: false,
+		cache:         NewCache(),
+		installMethod: InstallMethodUnknown,
 	}
 
 	// Test with a very short timeout context
@@ -281,4 +281,128 @@ func TestUpdateInfo_FormatUpdateMessage(t *testing.T) {
 			t.Error("expected non-empty plain message")
 		}
 	})
+
+	t.Run("brew command", func(t *testing.T) {
+		info := &UpdateInfo{
+			CurrentVersion: "7.3.0",
+			LatestVersion:  "7.4.0",
+			UpdateCommand:  "brew upgrade ckb",
+		}
+
+		msg := info.FormatUpdateMessage()
+		if !strings.Contains(msg, "Run:") {
+			t.Error("expected 'Run:' prefix for brew command")
+		}
+		if !strings.Contains(msg, "brew upgrade") {
+			t.Error("expected brew upgrade command in message")
+		}
+	})
+
+	t.Run("go install command", func(t *testing.T) {
+		info := &UpdateInfo{
+			CurrentVersion: "7.3.0",
+			LatestVersion:  "7.4.0",
+			UpdateCommand:  "go install github.com/SimplyLiz/CodeMCP/cmd/ckb@latest",
+		}
+
+		msg := info.FormatUpdateMessage()
+		if !strings.Contains(msg, "Run:") {
+			t.Error("expected 'Run:' prefix for go install command")
+		}
+		if !strings.Contains(msg, "go install") {
+			t.Error("expected go install command in message")
+		}
+	})
+}
+
+func TestDetectNpmInstall(t *testing.T) {
+	tests := []struct {
+		path     string
+		expected bool
+	}{
+		{"/usr/local/lib/node_modules/@tastehub/ckb-darwin-arm64/bin/ckb", true},
+		{"/home/user/.npm-global/lib/node_modules/@tastehub/ckb/bin/ckb", true},
+		{"/opt/homebrew/Cellar/ckb/8.0.0/bin/ckb", false},
+		{"/home/user/go/bin/ckb", false},
+		{"/usr/local/bin/ckb", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			result := detectNpmInstall(tt.path)
+			if result != tt.expected {
+				t.Errorf("detectNpmInstall(%q) = %v, want %v", tt.path, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestDetectBrewInstall(t *testing.T) {
+	tests := []struct {
+		path     string
+		expected bool
+	}{
+		{"/opt/homebrew/Cellar/ckb/8.0.0/bin/ckb", true},
+		{"/usr/local/Cellar/ckb/8.0.0/bin/ckb", true},
+		{"/home/linuxbrew/.linuxbrew/Cellar/ckb/8.0.0/bin/ckb", true},
+		{"/usr/local/lib/node_modules/@tastehub/ckb/bin/ckb", false},
+		{"/home/user/go/bin/ckb", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			result := detectBrewInstall(tt.path)
+			if result != tt.expected {
+				t.Errorf("detectBrewInstall(%q) = %v, want %v", tt.path, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestDetectGoInstall(t *testing.T) {
+	home, _ := os.UserHomeDir()
+
+	tests := []struct {
+		path     string
+		expected bool
+	}{
+		{filepath.Join(home, "go", "bin", "ckb"), true},
+		{"/home/user/go/bin/ckb", true},
+		{"/opt/homebrew/Cellar/ckb/8.0.0/bin/ckb", false},
+		{"/usr/local/lib/node_modules/@tastehub/ckb/bin/ckb", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			result := detectGoInstall(tt.path)
+			if result != tt.expected {
+				t.Errorf("detectGoInstall(%q) = %v, want %v", tt.path, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestChecker_GetUpgradeCommand(t *testing.T) {
+	tests := []struct {
+		method   InstallMethod
+		expected string
+	}{
+		{InstallMethodNPM, "npm update -g @tastehub/ckb"},
+		{InstallMethodBrew, "brew upgrade ckb"},
+		{InstallMethodGo, "go install github.com/SimplyLiz/CodeMCP/cmd/ckb@latest"},
+		{InstallMethodUnknown, githubReleasesPage},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.method), func(t *testing.T) {
+			checker := &Checker{
+				cache:         NewCache(),
+				installMethod: tt.method,
+			}
+			result := checker.getUpgradeCommand()
+			if result != tt.expected {
+				t.Errorf("getUpgradeCommand() for %s = %q, want %q", tt.method, result, tt.expected)
+			}
+		})
+	}
 }

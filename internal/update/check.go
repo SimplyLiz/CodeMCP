@@ -1,5 +1,6 @@
-// Package update provides npm update checking for CKB.
-// It checks if a newer version is available on npm and notifies the user.
+// Package update provides update checking for CKB.
+// It checks if a newer version is available and notifies the user with
+// the appropriate update command based on their installation method.
 package update
 
 import (
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -30,6 +32,26 @@ const (
 
 	// npmPackageName is the npm package name
 	npmPackageName = "@tastehub/ckb"
+
+	// goModulePath is the Go module path for go install
+	goModulePath = "github.com/SimplyLiz/CodeMCP/cmd/ckb"
+
+	// brewPackageName is the Homebrew formula name
+	brewPackageName = "ckb"
+)
+
+// InstallMethod represents how CKB was installed
+type InstallMethod string
+
+const (
+	// InstallMethodNPM indicates installation via npm
+	InstallMethodNPM InstallMethod = "npm"
+	// InstallMethodBrew indicates installation via Homebrew
+	InstallMethodBrew InstallMethod = "brew"
+	// InstallMethodGo indicates installation via go install
+	InstallMethodGo InstallMethod = "go"
+	// InstallMethodUnknown indicates unknown installation method
+	InstallMethodUnknown InstallMethod = "unknown"
 )
 
 // githubReleaseInfo represents the relevant fields from GitHub Releases API
@@ -46,24 +68,24 @@ type UpdateInfo struct {
 
 // Checker handles update checking with caching
 type Checker struct {
-	cache     *Cache
-	isNpmPath bool
+	cache         *Cache
+	installMethod InstallMethod
 }
 
 // NewChecker creates a new update checker.
-// It automatically detects if running from an npm installation.
+// It automatically detects the installation method (npm, brew, go, or unknown).
 func NewChecker() *Checker {
 	return &Checker{
-		cache:     NewCache(),
-		isNpmPath: detectNpmInstall(),
+		cache:         NewCache(),
+		installMethod: detectInstallMethod(),
 	}
 }
 
-// detectNpmInstall checks if the current executable is running from an npm installation
-func detectNpmInstall() bool {
+// detectInstallMethod detects how CKB was installed based on the executable path
+func detectInstallMethod() InstallMethod {
 	execPath, err := os.Executable()
 	if err != nil {
-		return false
+		return InstallMethodUnknown
 	}
 
 	// Resolve symlinks to get the real path
@@ -72,15 +94,101 @@ func detectNpmInstall() bool {
 		realPath = execPath
 	}
 
+	// Check each installation method
+	if detectNpmInstall(realPath) {
+		return InstallMethodNPM
+	}
+	if detectBrewInstall(realPath) {
+		return InstallMethodBrew
+	}
+	if detectGoInstall(realPath) {
+		return InstallMethodGo
+	}
+
+	return InstallMethodUnknown
+}
+
+// detectNpmInstall checks if the path indicates an npm installation
+func detectNpmInstall(realPath string) bool {
 	// Check if path contains node_modules/@tastehub/ckb
 	return strings.Contains(realPath, "node_modules") &&
 		strings.Contains(realPath, "@tastehub") &&
 		strings.Contains(realPath, "ckb")
 }
 
+// detectBrewInstall checks if the path indicates a Homebrew installation
+func detectBrewInstall(realPath string) bool {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		return false
+	}
+
+	// macOS Apple Silicon: /opt/homebrew/Cellar/ckb/...
+	// macOS Intel / Linux: /usr/local/Cellar/ckb/...
+	// Also check for /home/linuxbrew/.linuxbrew/Cellar/...
+	brewPrefixes := []string{
+		"/opt/homebrew/Cellar/",
+		"/usr/local/Cellar/",
+		"/home/linuxbrew/.linuxbrew/Cellar/",
+	}
+
+	for _, prefix := range brewPrefixes {
+		if strings.HasPrefix(realPath, prefix) {
+			return true
+		}
+	}
+
+	// Also check HOMEBREW_PREFIX environment variable
+	if homebrewPrefix := os.Getenv("HOMEBREW_PREFIX"); homebrewPrefix != "" {
+		cellarPath := filepath.Join(homebrewPrefix, "Cellar")
+		if strings.HasPrefix(realPath, cellarPath) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// detectGoInstall checks if the path indicates a go install installation
+func detectGoInstall(realPath string) bool {
+	// Check for common Go binary locations
+	// $GOPATH/bin (defaults to ~/go/bin)
+	// $GOBIN if set
+
+	// Check GOBIN first
+	if goBin := os.Getenv("GOBIN"); goBin != "" {
+		if strings.HasPrefix(realPath, goBin) {
+			return true
+		}
+	}
+
+	// Check GOPATH/bin
+	goPath := os.Getenv("GOPATH")
+	if goPath == "" {
+		// Default GOPATH is ~/go
+		if home, err := os.UserHomeDir(); err == nil {
+			goPath = filepath.Join(home, "go")
+		}
+	}
+
+	if goPath != "" {
+		goBinPath := filepath.Join(goPath, "bin")
+		if strings.HasPrefix(realPath, goBinPath) {
+			return true
+		}
+	}
+
+	// Also check for /go/bin pattern anywhere in path (covers non-standard setups)
+	return strings.Contains(realPath, string(filepath.Separator)+"go"+string(filepath.Separator)+"bin"+string(filepath.Separator))
+}
+
+// InstallMethod returns the detected installation method
+func (c *Checker) InstallMethod() InstallMethod {
+	return c.installMethod
+}
+
 // IsNpmInstall returns true if running from an npm installation
 func (c *Checker) IsNpmInstall() bool {
-	return c.isNpmPath
+	return c.installMethod == InstallMethodNPM
 }
 
 // CheckCached checks the cache for a pending update notification.
@@ -222,10 +330,16 @@ func (c *Checker) compareVersions(latest string) *UpdateInfo {
 
 // getUpgradeCommand returns the appropriate upgrade command based on install method
 func (c *Checker) getUpgradeCommand() string {
-	if c.isNpmPath {
+	switch c.installMethod {
+	case InstallMethodNPM:
 		return "npm update -g " + npmPackageName
+	case InstallMethodBrew:
+		return "brew upgrade " + brewPackageName
+	case InstallMethodGo:
+		return "go install " + goModulePath + "@latest"
+	default:
+		return githubReleasesPage
 	}
-	return githubReleasesPage
 }
 
 // isNewerVersion returns true if version a is newer than version b.
