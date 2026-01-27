@@ -239,7 +239,7 @@ func runIndex(cmd *cobra.Command, args []string) {
 			os.Exit(1)
 		}
 
-	case project.LangGo:
+	case project.LangGo, project.LangTypeScript, project.LangJavaScript, project.LangPython:
 		// Ensure output directory exists
 		outputDir := filepath.Dir(indexPath)
 		if err := os.MkdirAll(outputDir, 0755); err != nil {
