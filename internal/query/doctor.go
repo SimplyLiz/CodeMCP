@@ -10,6 +10,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/project"
 )
 
 // DoctorResponse is the response for the doctor command.
@@ -161,14 +164,14 @@ func (e *Engine) checkScip(ctx context.Context) DoctorCheck {
 
 	if e.scipAdapter == nil {
 		check.Status = "warn"
-		check.Message = "SCIP backend not configured"
+		check.Message = "SCIP index not configured — run 'ckb init' to set up"
 		check.SuggestedFixes = e.getSCIPInstallSuggestions()
 		return check
 	}
 
 	if !e.scipAdapter.IsAvailable() {
 		check.Status = "warn"
-		check.Message = "SCIP index not found"
+		check.Message = e.scipNotFoundMessage()
 		check.SuggestedFixes = e.getSCIPInstallSuggestions()
 		return check
 	}
@@ -201,6 +204,7 @@ func (e *Engine) checkScip(ctx context.Context) DoctorCheck {
 }
 
 // checkLsp verifies LSP servers are configured and their commands are available.
+// Only checks servers relevant to the detected project languages.
 func (e *Engine) checkLsp(ctx context.Context) DoctorCheck {
 	check := DoctorCheck{
 		Name: "lsp",
@@ -219,15 +223,18 @@ func (e *Engine) checkLsp(ctx context.Context) DoctorCheck {
 		return check
 	}
 
-	// Test each configured server command
+	// Detect project languages to filter relevant LSP servers
+	relevantServers := e.filterRelevantLspServers(servers)
+
+	// Test each relevant server command
 	var available, missing []string
 	var fixes []FixAction
 
-	for lang, cfg := range servers {
+	for lang, cfg := range relevantServers {
 		if _, err := exec.LookPath(cfg.Command); err == nil {
 			available = append(available, lang)
 		} else {
-			missing = append(missing, fmt.Sprintf("%s (%s)", lang, cfg.Command))
+			missing = append(missing, lang)
 			fixes = append(fixes, e.getLspInstallFix(lang, cfg.Command))
 		}
 	}
@@ -240,20 +247,70 @@ func (e *Engine) checkLsp(ctx context.Context) DoctorCheck {
 		check.Status = "pass"
 		check.Message = fmt.Sprintf("LSP ready: %s (starts on-demand)",
 			strings.Join(available, ", "))
-	} else if len(available) > 0 {
-		check.Status = "warn"
-		check.Message = fmt.Sprintf("LSP ready: %s | missing: %s",
-			strings.Join(available, ", "),
-			strings.Join(missing, ", "))
-		check.SuggestedFixes = fixes
 	} else {
 		check.Status = "warn"
-		check.Message = fmt.Sprintf("LSP commands not found: %s",
-			strings.Join(missing, ", "))
+		var parts []string
+		for _, lang := range missing {
+			cfg := relevantServers[lang]
+			fix := e.getLspInstallFix(lang, cfg.Command)
+			if fix.Command != "" {
+				parts = append(parts, fmt.Sprintf("LSP not installed for %s — install %s: %s",
+					lang, cfg.Command, fix.Command))
+			} else {
+				parts = append(parts, fmt.Sprintf("LSP not installed for %s — install %s",
+					lang, cfg.Command))
+			}
+		}
+		check.Message = strings.Join(parts, "; ")
 		check.SuggestedFixes = fixes
 	}
 
 	return check
+}
+
+// langToLspServer maps project.Language values to LSP server config keys.
+var langToLspServer = map[project.Language]string{
+	project.LangGo:         "go",
+	project.LangTypeScript: "typescript",
+	project.LangJavaScript: "typescript", // JS uses typescript-language-server
+	project.LangPython:     "python",
+	project.LangDart:       "dart",
+	project.LangRust:       "rust",
+	project.LangJava:       "java",
+	project.LangKotlin:     "kotlin",
+	project.LangCpp:        "cpp",
+	project.LangRuby:       "ruby",
+	project.LangCSharp:     "csharp",
+	project.LangPHP:        "php",
+}
+
+// filterRelevantLspServers returns only the LSP servers that match detected
+// project languages. Falls back to all servers if no languages are detected.
+func (e *Engine) filterRelevantLspServers(servers map[string]config.LspServerCfg) map[string]config.LspServerCfg {
+	_, _, allLangs := project.DetectAllLanguages(e.repoRoot)
+	if len(allLangs) == 0 {
+		return servers // Fall back to checking all
+	}
+
+	// Build set of relevant LSP server keys
+	relevant := make(map[string]bool)
+	for _, lang := range allLangs {
+		if serverKey, ok := langToLspServer[lang]; ok {
+			relevant[serverKey] = true
+		}
+	}
+
+	filtered := make(map[string]config.LspServerCfg)
+	for key, cfg := range servers {
+		if relevant[key] {
+			filtered[key] = cfg
+		}
+	}
+
+	if len(filtered) == 0 {
+		return servers // Fall back if no configured servers match
+	}
+	return filtered
 }
 
 // getLspInstallFix returns installation instructions for an LSP server command.
@@ -347,11 +404,32 @@ func (e *Engine) checkStorage(ctx context.Context) DoctorCheck {
 	return check
 }
 
+// scipNotFoundMessage returns a contextual "SCIP index not found" message
+// based on the detected project language.
+func (e *Engine) scipNotFoundMessage() string {
+	lang, _, ok := project.DetectLanguage(e.repoRoot)
+	if !ok {
+		return "SCIP index not found — run 'ckb index' to generate"
+	}
+	indexer := project.GetIndexerConfig(lang)
+	if indexer == nil {
+		return "SCIP index not found — run 'ckb index' to generate"
+	}
+	return fmt.Sprintf("SCIP index not found — run 'ckb index' (uses %s)", indexer.Cmd)
+}
+
 // getSCIPInstallSuggestions returns suggestions for installing SCIP.
 func (e *Engine) getSCIPInstallSuggestions() []FixAction {
-	suggestions := make([]FixAction, 0)
+	suggestions := []FixAction{
+		{
+			Type:        "run-command",
+			Command:     "ckb index",
+			Safe:        true,
+			Description: "Generate SCIP index (auto-detects language)",
+		},
+	}
 
-	// Detect language and suggest appropriate indexer
+	// Detect language and suggest appropriate indexer install
 	if e.hasFile("package.json") || e.hasFile("tsconfig.json") {
 		suggestions = append(suggestions, FixAction{
 			Type:        "run-command",
@@ -376,14 +454,6 @@ func (e *Engine) getSCIPInstallSuggestions() []FixAction {
 			Command:     "cargo install scip-rust && scip-rust",
 			Safe:        true,
 			Description: "Install and run scip-rust",
-		})
-	}
-
-	if len(suggestions) == 0 {
-		suggestions = append(suggestions, FixAction{
-			Type:        "open-docs",
-			URL:         "https://sourcegraph.com/docs/code-intelligence/references/indexers",
-			Description: "Find SCIP indexer for your language",
 		})
 	}
 
