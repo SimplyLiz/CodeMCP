@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"bufio"
+	stderrors "errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -524,6 +525,34 @@ func (s *MCPServer) switchToClientRoot(clientRoot string) {
 	s.logger.Info("Switched to client root",
 		"root", clientRootClean,
 	)
+}
+
+// enrichNotFoundError adds repo context to "not found" errors when the client
+// didn't provide roots (e.g. Cursor). This prevents AI agents from hallucinating
+// explanations for missing symbols/paths that are actually caused by a repo mismatch.
+func (s *MCPServer) enrichNotFoundError(err error) error {
+	// If client supports roots, auto-switch should have handled it — don't add noise
+	if s.roots != nil && s.roots.IsClientSupported() {
+		return err
+	}
+
+	var ckbErr *errors.CkbError
+	if !stderrors.As(err, &ckbErr) {
+		return err
+	}
+
+	if ckbErr.Code != errors.ResourceNotFound && ckbErr.Code != errors.SymbolNotFound {
+		return err
+	}
+
+	engine := s.engine()
+	if engine == nil {
+		return err
+	}
+
+	enriched := fmt.Sprintf("%s (note: CKB index is for %s — if your project is in a different directory, restart CKB there or run 'ckb setup' from that repo)",
+		ckbErr.Message, engine.GetRepoRoot())
+	return errors.NewCkbError(ckbErr.Code, enriched, ckbErr.Unwrap(), ckbErr.SuggestedFixes, ckbErr.Drilldowns)
 }
 
 // recordBinaryInfo records the current binary's path and modification time

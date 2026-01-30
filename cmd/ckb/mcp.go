@@ -195,15 +195,12 @@ func runMCP(cmd *cobra.Command, args []string) error {
 		logger = slogutil.NewTeeLogger(fileLogger.Handler(), stderrHandler)
 	}
 
-	// Create server if not already created (legacy single-engine mode with lazy loading)
-	if server == nil {
-		// Use lazy loading for fast MCP handshake
-		// Capture repoRoot and logger for the closure
-		root, log := repoRoot, logger
-		server = mcp.NewMCPServerLazy(version.Version, func() (*query.Engine, error) {
-			return getEngine(root, log)
-		}, logger)
-	}
+	// Use lazy loading for fast MCP handshake
+	// Capture repoRoot and logger for the closure
+	root, log := repoRoot, logger
+	server = mcp.NewMCPServerLazy(version.Version, func() (*query.Engine, error) {
+		return getEngine(root, log)
+	}, logger)
 
 	// Apply preset configuration
 	if err := server.SetPreset(mcpPreset); err != nil {
