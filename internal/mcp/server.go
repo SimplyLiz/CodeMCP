@@ -575,7 +575,7 @@ func (s *MCPServer) switchProject(path string) (string, error) {
 
 	// Check if .ckb/ exists (initialized)
 	ckbDir := filepath.Join(gitRoot, ".ckb")
-	if _, err := os.Stat(ckbDir); os.IsNotExist(err) {
+	if _, statErr := os.Stat(ckbDir); os.IsNotExist(statErr) {
 		return "", fmt.Errorf("CKB not initialized for %s — run 'ckb setup' from that directory first", gitRoot)
 	}
 
@@ -590,8 +590,8 @@ func (s *MCPServer) switchProject(path string) (string, error) {
 
 	// Close old engine if any
 	if currentEngine != nil && currentEngine.DB() != nil {
-		if err := currentEngine.DB().Close(); err != nil {
-			s.logger.Warn("Failed to close old engine database", "error", err.Error())
+		if closeErr := currentEngine.DB().Close(); closeErr != nil {
+			s.logger.Warn("Failed to close old engine database", "error", closeErr.Error())
 		}
 	}
 
