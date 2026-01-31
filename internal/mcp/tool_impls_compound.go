@@ -145,6 +145,27 @@ func (s *MCPServer) toolPrepareChange(params map[string]interface{}) (*envelope.
 		Build(), nil
 }
 
+// toolSwitchProject switches CKB to a different project directory
+func (s *MCPServer) toolSwitchProject(params map[string]interface{}) (*envelope.Response, error) {
+	path, ok := params["path"].(string)
+	if !ok || path == "" {
+		return nil, errors.NewInvalidParameterError("path", "required")
+	}
+
+	newRoot, err := s.switchProject(path)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewToolResponse().
+		Data(map[string]interface{}{
+			"switched": true,
+			"repoRoot": newRoot,
+			"message":  "Successfully switched to " + newRoot,
+		}).
+		Build(), nil
+}
+
 // toolBatchGet retrieves multiple symbols by ID
 func (s *MCPServer) toolBatchGet(params map[string]interface{}) (*envelope.Response, error) {
 	symbolIds, ok := params["symbolIds"].([]interface{})

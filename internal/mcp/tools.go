@@ -1977,6 +1977,21 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				"properties": map[string]interface{}{},
 			},
 		},
+		// v8.1 Dynamic project switching
+		{
+			Name:        "switchProject",
+			Description: "Switch CKB to a different project directory. Use this when CKB is indexed for the wrong project. Accepts any git repository path — it does not need to be pre-registered.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"path": map[string]interface{}{
+						"type":        "string",
+						"description": "Absolute path to the project directory (must be a git repository with CKB initialized)",
+					},
+				},
+				"required": []string{"path"},
+			},
+		},
 		// v8.0 Compound Tools - aggregate multiple queries to reduce tool calls
 		{
 			Name:        "explore",
@@ -2210,6 +2225,8 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["listRepos"] = s.toolListRepos
 	s.tools["switchRepo"] = s.toolSwitchRepo
 	s.tools["getActiveRepo"] = s.toolGetActiveRepo
+	// v8.1 Dynamic project switching
+	s.tools["switchProject"] = s.toolSwitchProject
 	// v8.0 Compound Tools
 	s.tools["explore"] = s.toolExplore
 	s.tools["understand"] = s.toolUnderstand

@@ -550,9 +550,71 @@ func (s *MCPServer) enrichNotFoundError(err error) error {
 		return err
 	}
 
-	enriched := fmt.Sprintf("%s (note: CKB index is for %s — if your project is in a different directory, restart CKB there or run 'ckb setup' from that repo)",
+	enriched := fmt.Sprintf("%s (note: CKB index is for %s — if your project is in a different directory, call the switchProject tool with the correct path to switch)",
 		ckbErr.Message, engine.GetRepoRoot())
 	return errors.NewCkbError(ckbErr.Code, enriched, ckbErr.Unwrap(), ckbErr.SuggestedFixes, ckbErr.Drilldowns)
+}
+
+// switchProject switches the active engine to a different project directory.
+// Works in all modes: single-engine, lazy, and multi-repo.
+func (s *MCPServer) switchProject(path string) (string, error) {
+	// Validate path exists and is a directory
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", fmt.Errorf("path does not exist: %w", err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("path is not a directory: %s", path)
+	}
+
+	// Find git root
+	gitRoot := repos.FindGitRoot(path)
+	if gitRoot == "" {
+		return "", fmt.Errorf("not a git repository: %s", path)
+	}
+
+	// Check if .ckb/ exists (initialized)
+	ckbDir := filepath.Join(gitRoot, ".ckb")
+	if _, err := os.Stat(ckbDir); os.IsNotExist(err) {
+		return "", fmt.Errorf("CKB not initialized for %s — run 'ckb setup' from that directory first", gitRoot)
+	}
+
+	// Check if we're already on this root
+	currentEngine := s.engine()
+	if currentEngine != nil {
+		currentRoot := filepath.Clean(currentEngine.GetRepoRoot())
+		if currentRoot == filepath.Clean(gitRoot) {
+			return gitRoot, nil // already there
+		}
+	}
+
+	// Close old engine if any
+	if currentEngine != nil && currentEngine.DB() != nil {
+		if err := currentEngine.DB().Close(); err != nil {
+			s.logger.Warn("Failed to close old engine database", "error", err.Error())
+		}
+	}
+
+	// Create new engine for the target root
+	newEngine, err := s.createEngineForRoot(gitRoot)
+	if err != nil {
+		return "", fmt.Errorf("failed to create engine for %s: %w", gitRoot, err)
+	}
+
+	// Update engine state
+	s.mu.Lock()
+	s.legacyEngine = newEngine
+	s.engineOnce = sync.Once{} // reset for lazy mode
+	s.engineErr = nil
+	s.mu.Unlock()
+
+	// Wire up metrics persistence
+	if newEngine.DB() != nil {
+		SetMetricsDB(newEngine.DB())
+	}
+
+	s.logger.Info("Switched project", "root", gitRoot)
+	return gitRoot, nil
 }
 
 // recordBinaryInfo records the current binary's path and modification time
