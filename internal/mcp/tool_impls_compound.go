@@ -57,9 +57,11 @@ func (s *MCPServer) toolExplore(params map[string]interface{}) (*envelope.Respon
 		return nil, s.enrichNotFoundError(err)
 	}
 
-	return NewToolResponse().
-		Data(result).
-		Build(), nil
+	resp := NewToolResponse().Data(result)
+	for _, dw := range engine.GetDegradationWarnings() {
+		resp.Warning(dw.Message)
+	}
+	return resp.Build(), nil
 }
 
 // toolUnderstand provides comprehensive symbol deep-dive
@@ -100,9 +102,11 @@ func (s *MCPServer) toolUnderstand(params map[string]interface{}) (*envelope.Res
 		return nil, s.enrichNotFoundError(err)
 	}
 
-	return NewToolResponse().
-		Data(result).
-		Build(), nil
+	resp := NewToolResponse().Data(result)
+	for _, dw := range engine.GetDegradationWarnings() {
+		resp.Warning(dw.Message)
+	}
+	return resp.Build(), nil
 }
 
 // toolPrepareChange provides pre-change analysis
@@ -123,7 +127,22 @@ func (s *MCPServer) toolPrepareChange(params map[string]interface{}) (*envelope.
 			changeType = query.ChangeDelete
 		case "extract":
 			changeType = query.ChangeExtract
+		case "move":
+			changeType = query.ChangeMove
 		}
+	}
+
+	var targetPath string
+	if v, ok := params["targetPath"].(string); ok {
+		targetPath = v
+	}
+
+	var startLine, endLine int
+	if v, ok := params["startLine"].(float64); ok {
+		startLine = int(v)
+	}
+	if v, ok := params["endLine"].(float64); ok {
+		endLine = int(v)
 	}
 
 	engine, err := s.GetEngine()
@@ -135,14 +154,19 @@ func (s *MCPServer) toolPrepareChange(params map[string]interface{}) (*envelope.
 	result, err := engine.PrepareChange(ctx, query.PrepareChangeOptions{
 		Target:     target,
 		ChangeType: changeType,
+		TargetPath: targetPath,
+		StartLine:  startLine,
+		EndLine:    endLine,
 	})
 	if err != nil {
 		return nil, s.enrichNotFoundError(err)
 	}
 
-	return NewToolResponse().
-		Data(result).
-		Build(), nil
+	resp := NewToolResponse().Data(result)
+	for _, dw := range engine.GetDegradationWarnings() {
+		resp.Warning(dw.Message)
+	}
+	return resp.Build(), nil
 }
 
 // toolSwitchProject switches CKB to a different project directory
@@ -256,4 +280,54 @@ func (s *MCPServer) toolBatchSearch(params map[string]interface{}) (*envelope.Re
 	return NewToolResponse().
 		Data(result).
 		Build(), nil
+}
+
+// toolPlanRefactor provides unified refactoring planning
+func (s *MCPServer) toolPlanRefactor(params map[string]interface{}) (*envelope.Response, error) {
+	target, ok := params["target"].(string)
+	if !ok || target == "" {
+		return nil, errors.NewInvalidParameterError("target", "required")
+	}
+
+	changeType := query.ChangeModify
+	if v, ok := params["changeType"].(string); ok {
+		switch v {
+		case "modify":
+			changeType = query.ChangeModify
+		case "rename":
+			changeType = query.ChangeRename
+		case "delete":
+			changeType = query.ChangeDelete
+		case "extract":
+			changeType = query.ChangeExtract
+		case "move":
+			changeType = query.ChangeMove
+		}
+	}
+
+	var targetPath string
+	if v, ok := params["targetPath"].(string); ok {
+		targetPath = v
+	}
+
+	engine, err := s.GetEngine()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := context.Background()
+	result, err := engine.PlanRefactor(ctx, query.PlanRefactorOptions{
+		Target:     target,
+		ChangeType: changeType,
+		TargetPath: targetPath,
+	})
+	if err != nil {
+		return nil, s.enrichNotFoundError(err)
+	}
+
+	resp := NewToolResponse().Data(result)
+	for _, dw := range engine.GetDegradationWarnings() {
+		resp.Warning(dw.Message)
+	}
+	return resp.Build(), nil
 }

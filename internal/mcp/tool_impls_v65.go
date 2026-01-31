@@ -215,17 +215,31 @@ func (s *MCPServer) toolAuditRisk(params map[string]interface{}) (*envelope.Resp
 		return nil, errors.NewOperationError("audit risk", err)
 	}
 
+	// Collect degradation warnings
+	var degradationWarnings []string
+	engine, engineErr := s.GetEngine()
+	if engineErr == nil {
+		for _, dw := range engine.GetDegradationWarnings() {
+			degradationWarnings = append(degradationWarnings, dw.Message)
+		}
+	}
+
 	// If quickWins mode, return only quick wins
 	if quickWins {
-		return NewToolResponse().
+		resp := NewToolResponse().
 			Data(map[string]interface{}{
 				"quickWins": result.QuickWins,
 				"summary":   result.Summary,
-			}).
-			Build(), nil
+			})
+		for _, w := range degradationWarnings {
+			resp.Warning(w)
+		}
+		return resp.Build(), nil
 	}
 
-	return NewToolResponse().
-		Data(result).
-		Build(), nil
+	resp := NewToolResponse().Data(result)
+	for _, w := range degradationWarnings {
+		resp.Warning(w)
+	}
+	return resp.Build(), nil
 }

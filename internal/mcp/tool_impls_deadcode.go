@@ -64,8 +64,17 @@ func (s *MCPServer) toolFindDeadCode(params map[string]interface{}) (*envelope.R
 		return nil, err
 	}
 
-	// Build response
-	return NewToolResponse().
-		Data(result).
-		Build(), nil
+	// Build response with degradation warnings
+	resp := NewToolResponse().Data(result)
+	engine, engineErr := s.GetEngine()
+	if engineErr == nil {
+		for _, dw := range engine.GetDegradationWarnings() {
+			resp.Warning(dw.Message)
+		}
+	}
+	// Warn specifically if results are empty — likely missing SCIP
+	if result != nil && len(result.DeadCode) == 0 {
+		resp.Warning("Dead code detection requires SCIP index. Run 'ckb index' to enable.")
+	}
+	return resp.Build(), nil
 }

@@ -258,11 +258,11 @@ func main() {
 		t.Fatal(err)
 	}
 
-	complexity := analyzer.getComplexity(testFile)
+	complexity := analyzer.getComplexityHeuristic(testFile)
 	// Should detect: 2 if, 1 for, 1 switch, 2 case, 1 &&
 	// Base complexity 1 + 2 + 1 + 1 + 2 + 1 = 8
 	if complexity < 5 {
-		t.Errorf("getComplexity() = %d, want >= 5", complexity)
+		t.Errorf("getComplexityHeuristic() = %d, want >= 5", complexity)
 	}
 }
 
@@ -270,9 +270,9 @@ func TestGetComplexityNonexistent(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	analyzer := NewAnalyzer("/tmp", logger)
 
-	complexity := analyzer.getComplexity("/nonexistent/file.go")
+	complexity := analyzer.getComplexityHeuristic("/nonexistent/file.go")
 	if complexity != 0 {
-		t.Errorf("getComplexity() for nonexistent file = %d, want 0", complexity)
+		t.Errorf("getComplexityHeuristic() for nonexistent file = %d, want 0", complexity)
 	}
 }
 
