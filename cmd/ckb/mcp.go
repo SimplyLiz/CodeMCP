@@ -15,6 +15,7 @@ import (
 	"github.com/SimplyLiz/CodeMCP/internal/index"
 	"github.com/SimplyLiz/CodeMCP/internal/mcp"
 	"github.com/SimplyLiz/CodeMCP/internal/project"
+	"github.com/SimplyLiz/CodeMCP/internal/query"
 	"github.com/SimplyLiz/CodeMCP/internal/repos"
 	"github.com/SimplyLiz/CodeMCP/internal/repostate"
 	"github.com/SimplyLiz/CodeMCP/internal/slogutil"
@@ -118,10 +119,9 @@ func runMCP(cmd *cobra.Command, args []string) error {
 			repoName = mcpRepo
 			fmt.Fprintf(os.Stderr, "Repository: %s (%s) [%s]\n", repoName, repoRoot, state)
 
-			// Use multi-repo mode
-			server = mcp.NewMCPServerWithRegistry(version.Version, registry, logger)
-			engine := mustGetEngine(repoRoot, logger)
-			server.SetActiveRepo(repoName, repoRoot, engine)
+			// Skip multi-repo mode - use lazy loading path instead
+			// TODO: Add lazy loading support to multi-repo mode
+			_ = registry // silence unused warning
 		}
 	} else {
 		// No --repo flag - use smart resolution
@@ -160,13 +160,9 @@ func runMCP(cmd *cobra.Command, args []string) error {
 				}
 			}
 
-			// Use multi-repo mode if registry is available
-			registry, err := repos.LoadRegistry()
-			if err == nil && resolved.Source != repos.ResolvedFromCWDGit {
-				server = mcp.NewMCPServerWithRegistry(version.Version, registry, logger)
-				engine := mustGetEngine(repoRoot, logger)
-				server.SetActiveRepo(repoName, repoRoot, engine)
-			}
+			// Skip multi-repo mode for now - use lazy loading path instead
+			// TODO: Add lazy loading support to multi-repo mode
+			_ = repos.LoadRegistry // silence unused warning
 		} else {
 			// No repo found - fall back to current directory
 			repoRoot = mustGetRepoRoot()
@@ -199,11 +195,12 @@ func runMCP(cmd *cobra.Command, args []string) error {
 		logger = slogutil.NewTeeLogger(fileLogger.Handler(), stderrHandler)
 	}
 
-	// Create server if not already created (legacy single-engine mode)
-	if server == nil {
-		engine := mustGetEngine(repoRoot, logger)
-		server = mcp.NewMCPServer(version.Version, engine, logger)
-	}
+	// Use lazy loading for fast MCP handshake
+	// Capture repoRoot and logger for the closure
+	root, log := repoRoot, logger
+	server = mcp.NewMCPServerLazy(version.Version, func() (*query.Engine, error) {
+		return getEngine(root, log)
+	}, logger)
 
 	// Apply preset configuration
 	if err := server.SetPreset(mcpPreset); err != nil {

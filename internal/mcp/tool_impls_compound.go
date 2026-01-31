@@ -42,14 +42,19 @@ func (s *MCPServer) toolExplore(params map[string]interface{}) (*envelope.Respon
 		}
 	}
 
+	engine, err := s.GetEngine()
+	if err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
-	result, err := s.engine().Explore(ctx, query.ExploreOptions{
+	result, err := engine.Explore(ctx, query.ExploreOptions{
 		Target: target,
 		Depth:  depth,
 		Focus:  focus,
 	})
 	if err != nil {
-		return nil, err
+		return nil, s.enrichNotFoundError(err)
 	}
 
 	return NewToolResponse().
@@ -79,15 +84,20 @@ func (s *MCPServer) toolUnderstand(params map[string]interface{}) (*envelope.Res
 		maxReferences = int(v)
 	}
 
+	engine, err := s.GetEngine()
+	if err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
-	result, err := s.engine().Understand(ctx, query.UnderstandOptions{
+	result, err := engine.Understand(ctx, query.UnderstandOptions{
 		Query:             q,
 		IncludeReferences: includeReferences,
 		IncludeCallGraph:  includeCallGraph,
 		MaxReferences:     maxReferences,
 	})
 	if err != nil {
-		return nil, err
+		return nil, s.enrichNotFoundError(err)
 	}
 
 	return NewToolResponse().
@@ -116,17 +126,43 @@ func (s *MCPServer) toolPrepareChange(params map[string]interface{}) (*envelope.
 		}
 	}
 
+	engine, err := s.GetEngine()
+	if err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
-	result, err := s.engine().PrepareChange(ctx, query.PrepareChangeOptions{
+	result, err := engine.PrepareChange(ctx, query.PrepareChangeOptions{
 		Target:     target,
 		ChangeType: changeType,
 	})
+	if err != nil {
+		return nil, s.enrichNotFoundError(err)
+	}
+
+	return NewToolResponse().
+		Data(result).
+		Build(), nil
+}
+
+// toolSwitchProject switches CKB to a different project directory
+func (s *MCPServer) toolSwitchProject(params map[string]interface{}) (*envelope.Response, error) {
+	path, ok := params["path"].(string)
+	if !ok || path == "" {
+		return nil, errors.NewInvalidParameterError("path", "required")
+	}
+
+	newRoot, err := s.switchProject(path)
 	if err != nil {
 		return nil, err
 	}
 
 	return NewToolResponse().
-		Data(result).
+		Data(map[string]interface{}{
+			"switched": true,
+			"repoRoot": newRoot,
+			"message":  "Successfully switched to " + newRoot,
+		}).
 		Build(), nil
 }
 
@@ -148,8 +184,13 @@ func (s *MCPServer) toolBatchGet(params map[string]interface{}) (*envelope.Respo
 		return nil, errors.NewInvalidParameterError("symbolIds", "must contain string values")
 	}
 
+	engine, err := s.GetEngine()
+	if err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
-	result, err := s.engine().BatchGet(ctx, query.BatchGetOptions{
+	result, err := engine.BatchGet(ctx, query.BatchGetOptions{
 		SymbolIds: ids,
 	})
 	if err != nil {
@@ -199,12 +240,17 @@ func (s *MCPServer) toolBatchSearch(params map[string]interface{}) (*envelope.Re
 		return nil, errors.NewInvalidParameterError("queries", "must contain valid query objects")
 	}
 
+	engine, err := s.GetEngine()
+	if err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
-	result, err := s.engine().BatchSearch(ctx, query.BatchSearchOptions{
+	result, err := engine.BatchSearch(ctx, query.BatchSearchOptions{
 		Queries: queries,
 	})
 	if err != nil {
-		return nil, err
+		return nil, s.enrichNotFoundError(err)
 	}
 
 	return NewToolResponse().

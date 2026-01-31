@@ -59,6 +59,7 @@ var Presets = map[string][]string{
 
 		// System
 		"getStatus",
+		"switchProject", // v8.1: Dynamic project switching
 
 		// Meta (always included)
 		"expandToolset",
@@ -71,7 +72,7 @@ var Presets = map[string][]string{
 		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "listKeyConcepts",
-		"analyzeImpact", "getHotspots", "getStatus", "expandToolset",
+		"analyzeImpact", "getHotspots", "getStatus", "switchProject", "expandToolset",
 		// Review-specific
 		"summarizeDiff",
 		"summarizePr",
@@ -88,7 +89,7 @@ var Presets = map[string][]string{
 		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "listKeyConcepts",
-		"analyzeImpact", "getHotspots", "getStatus", "expandToolset",
+		"analyzeImpact", "getHotspots", "getStatus", "switchProject", "expandToolset",
 		// Refactor-specific
 		"justifySymbol",
 		"analyzeCoupling",
@@ -108,7 +109,7 @@ var Presets = map[string][]string{
 		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "listKeyConcepts",
-		"analyzeImpact", "getHotspots", "getStatus", "expandToolset",
+		"analyzeImpact", "getHotspots", "getStatus", "switchProject", "expandToolset",
 		// Federation-specific
 		"listFederations",
 		"federationStatus",
@@ -133,7 +134,7 @@ var Presets = map[string][]string{
 		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "listKeyConcepts",
-		"analyzeImpact", "getHotspots", "getStatus", "expandToolset",
+		"analyzeImpact", "getHotspots", "getStatus", "switchProject", "expandToolset",
 		// Docs-specific
 		"indexDocs",
 		"getDocsForSymbol",
@@ -150,7 +151,7 @@ var Presets = map[string][]string{
 		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "listKeyConcepts",
-		"analyzeImpact", "getHotspots", "getStatus", "expandToolset",
+		"analyzeImpact", "getHotspots", "getStatus", "switchProject", "expandToolset",
 		// Ops-specific
 		"doctor",
 		"reindex",
@@ -221,6 +222,7 @@ var coreToolOrder = []string{
 	"analyzeImpact",
 	"getHotspots",
 	"getStatus",
+	"switchProject",
 	"expandToolset",
 }
 
