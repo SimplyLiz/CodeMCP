@@ -1242,6 +1242,8 @@ type PrepareChangeOptions struct {
 	Target     string     // symbol ID or file path
 	ChangeType ChangeType // modify, rename, delete, extract, move
 	TargetPath string     // destination path (for move operations)
+	StartLine  int        // start line for extract operations (0 = whole file)
+	EndLine    int        // end line for extract operations (0 = whole file)
 }
 
 // PrepareChangeResponse provides comprehensive pre-change analysis.
@@ -1416,7 +1418,7 @@ func (e *Engine) PrepareChange(ctx context.Context, opts PrepareChangeOptions) (
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ed := e.getPrepareExtractDetail(target)
+			ed := e.getPrepareExtractDetail(target, opts.StartLine, opts.EndLine)
 			mu.Lock()
 			extractDetail = ed
 			mu.Unlock()

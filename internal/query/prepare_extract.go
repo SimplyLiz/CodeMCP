@@ -43,7 +43,7 @@ type ExtractDetail struct {
 // getPrepareExtractDetail builds extract-specific detail.
 // Uses tree-sitter-based variable flow analysis when CGO is available,
 // falls back to minimal boundary analysis otherwise.
-func (e *Engine) getPrepareExtractDetail(target *PrepareChangeTarget) *ExtractDetail {
+func (e *Engine) getPrepareExtractDetail(target *PrepareChangeTarget, reqStartLine, reqEndLine int) *ExtractDetail {
 	if target == nil || target.Path == "" {
 		return nil
 	}
@@ -57,9 +57,15 @@ func (e *Engine) getPrepareExtractDetail(target *PrepareChangeTarget) *ExtractDe
 	lines := strings.Split(string(content), "\n")
 	totalLines := len(lines)
 
-	// Default boundary: whole file (agents should specify precise boundaries)
+	// Use requested lines if provided, otherwise default to whole file
 	startLine := 1
 	endLine := totalLines
+	if reqStartLine > 0 {
+		startLine = reqStartLine
+	}
+	if reqEndLine > 0 {
+		endLine = reqEndLine
+	}
 
 	lang := inferLanguage(target.Path)
 

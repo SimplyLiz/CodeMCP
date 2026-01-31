@@ -137,6 +137,14 @@ func (s *MCPServer) toolPrepareChange(params map[string]interface{}) (*envelope.
 		targetPath = v
 	}
 
+	var startLine, endLine int
+	if v, ok := params["startLine"].(float64); ok {
+		startLine = int(v)
+	}
+	if v, ok := params["endLine"].(float64); ok {
+		endLine = int(v)
+	}
+
 	engine, err := s.GetEngine()
 	if err != nil {
 		return nil, err
@@ -147,6 +155,8 @@ func (s *MCPServer) toolPrepareChange(params map[string]interface{}) (*envelope.
 		Target:     target,
 		ChangeType: changeType,
 		TargetPath: targetPath,
+		StartLine:  startLine,
+		EndLine:    endLine,
 	})
 	if err != nil {
 		return nil, s.enrichNotFoundError(err)

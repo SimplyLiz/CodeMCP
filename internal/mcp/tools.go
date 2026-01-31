@@ -2068,6 +2068,14 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 						"type":        "string",
 						"description": "Destination path for move operations (required when changeType is 'move')",
 					},
+					"startLine": map[string]interface{}{
+						"type":        "integer",
+						"description": "Start line of extraction region (for extract operations)",
+					},
+					"endLine": map[string]interface{}{
+						"type":        "integer",
+						"description": "End line of extraction region (for extract operations)",
+					},
 				},
 				"required": []string{"target"},
 			},

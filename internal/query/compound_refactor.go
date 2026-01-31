@@ -16,6 +16,8 @@ type PlanRefactorOptions struct {
 	Target     string     // file or symbol
 	ChangeType ChangeType // modify, rename, delete, extract, move
 	TargetPath string     // destination path (for move operations)
+	StartLine  int        // start line for extract operations (0 = whole file)
+	EndLine    int        // end line for extract operations (0 = whole file)
 }
 
 // PlanRefactorResponse contains the combined result of all refactoring analysis.

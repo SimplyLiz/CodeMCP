@@ -155,7 +155,7 @@ func TestGetPrepareExtractDetail_NilTarget(t *testing.T) {
 	engine, cleanup := testEngine(t)
 	defer cleanup()
 
-	detail := engine.getPrepareExtractDetail(nil)
+	detail := engine.getPrepareExtractDetail(nil, 0, 0)
 	if detail != nil {
 		t.Error("expected nil for nil target")
 	}
@@ -166,7 +166,7 @@ func TestGetPrepareExtractDetail_EmptyPath(t *testing.T) {
 	engine, cleanup := testEngine(t)
 	defer cleanup()
 
-	detail := engine.getPrepareExtractDetail(&PrepareChangeTarget{Path: ""})
+	detail := engine.getPrepareExtractDetail(&PrepareChangeTarget{Path: ""}, 0, 0)
 	if detail != nil {
 		t.Error("expected nil for empty path")
 	}
@@ -187,7 +187,7 @@ func handler() {
 `)
 
 	target := &PrepareChangeTarget{Path: "handler.go"}
-	detail := engine.getPrepareExtractDetail(target)
+	detail := engine.getPrepareExtractDetail(target, 0, 0)
 
 	if detail == nil {
 		t.Fatal("expected non-nil ExtractDetail")
@@ -209,7 +209,7 @@ func TestGetPrepareExtractDetail_NonexistentFile(t *testing.T) {
 	defer cleanup()
 
 	target := &PrepareChangeTarget{Path: "nonexistent.go"}
-	detail := engine.getPrepareExtractDetail(target)
+	detail := engine.getPrepareExtractDetail(target, 0, 0)
 	if detail != nil {
 		t.Error("expected nil for nonexistent file")
 	}
