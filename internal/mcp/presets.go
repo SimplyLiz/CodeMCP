@@ -61,6 +61,9 @@ var Presets = map[string][]string{
 		"getStatus",
 		"switchProject", // v8.1: Dynamic project switching
 
+		// v8.1 Refactoring compound tool
+		"planRefactor",
+
 		// Meta (always included)
 		"expandToolset",
 	},
@@ -72,7 +75,9 @@ var Presets = map[string][]string{
 		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "listKeyConcepts",
-		"analyzeImpact", "getHotspots", "getStatus", "switchProject", "expandToolset",
+		"analyzeImpact", "getHotspots", "getStatus", "switchProject",
+		"planRefactor", // v8.1
+		"expandToolset",
 		// Review-specific
 		"summarizeDiff",
 		"summarizePr",
@@ -99,7 +104,9 @@ var Presets = map[string][]string{
 		"compareAPI",       // v7.6: Breaking change detection
 		"auditRisk",
 		"explainOrigin",
-		"scanSecrets", // v8.0: Secret detection for security audits
+		"scanSecrets",     // v8.0: Secret detection for security audits
+		"analyzeTestGaps", // v8.1: Test gap analysis
+		"planRefactor",    // v8.1: Unified refactor planning
 	},
 
 	// Federation: core + federation tools
@@ -109,7 +116,9 @@ var Presets = map[string][]string{
 		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "listKeyConcepts",
-		"analyzeImpact", "getHotspots", "getStatus", "switchProject", "expandToolset",
+		"analyzeImpact", "getHotspots", "getStatus", "switchProject",
+		"planRefactor", // v8.1
+		"expandToolset",
 		// Federation-specific
 		"listFederations",
 		"federationStatus",
@@ -134,7 +143,9 @@ var Presets = map[string][]string{
 		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "listKeyConcepts",
-		"analyzeImpact", "getHotspots", "getStatus", "switchProject", "expandToolset",
+		"analyzeImpact", "getHotspots", "getStatus", "switchProject",
+		"planRefactor", // v8.1
+		"expandToolset",
 		// Docs-specific
 		"indexDocs",
 		"getDocsForSymbol",
@@ -151,7 +162,9 @@ var Presets = map[string][]string{
 		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "listKeyConcepts",
-		"analyzeImpact", "getHotspots", "getStatus", "switchProject", "expandToolset",
+		"analyzeImpact", "getHotspots", "getStatus", "switchProject",
+		"planRefactor", // v8.1
+		"expandToolset",
 		// Ops-specific
 		"doctor",
 		"reindex",
@@ -223,6 +236,7 @@ var coreToolOrder = []string{
 	"getHotspots",
 	"getStatus",
 	"switchProject",
+	"planRefactor", // v8.1
 	"expandToolset",
 }
 

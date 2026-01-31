@@ -2122,6 +2122,52 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				"required": []string{"queries"},
 			},
 		},
+		// v8.1 Test Gap Analysis
+		{
+			Name:        "analyzeTestGaps",
+			Description: "Find functions that lack test coverage. Returns untested functions sorted by complexity (highest-risk untested code first). Uses SCIP references when available, falls back to heuristic name matching.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"target": map[string]interface{}{
+						"type":        "string",
+						"description": "File or directory path to analyze (relative to repo root)",
+					},
+					"minLines": map[string]interface{}{
+						"type":        "integer",
+						"default":     3,
+						"description": "Minimum function lines to include (skips trivial getters/setters)",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"default":     50,
+						"description": "Maximum number of gaps to return",
+					},
+				},
+				"required": []string{"target"},
+			},
+		},
+		// v8.1 Unified Refactor Planning
+		{
+			Name:        "planRefactor",
+			Description: "Plan a refactoring operation with combined risk assessment, impact analysis, test strategy, and ordered steps. Aggregates prepareChange + auditRisk + analyzeTestGaps into a single call.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"target": map[string]interface{}{
+						"type":        "string",
+						"description": "File path or symbol ID to refactor",
+					},
+					"changeType": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"modify", "rename", "delete", "extract"},
+						"default":     "modify",
+						"description": "Type of refactoring change",
+					},
+				},
+				"required": []string{"target"},
+			},
+		},
 	}
 }
 
@@ -2233,6 +2279,10 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["prepareChange"] = s.toolPrepareChange
 	s.tools["batchGet"] = s.toolBatchGet
 	s.tools["batchSearch"] = s.toolBatchSearch
+	// v8.1 Test Gap Analysis
+	s.tools["analyzeTestGaps"] = s.toolAnalyzeTestGaps
+	// v8.1 Unified Refactor Planning
+	s.tools["planRefactor"] = s.toolPlanRefactor
 
 	// v8.0 Streaming support
 	s.RegisterStreamableTools()

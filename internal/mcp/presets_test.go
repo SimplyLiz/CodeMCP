@@ -12,10 +12,10 @@ func TestPresetFiltering(t *testing.T) {
 	server := NewMCPServer("test", nil, logger)
 
 	// Test core preset (default)
-	// v8.1: Core now includes 5 compound tools + switchProject
+	// v8.1: Core now includes 5 compound tools + switchProject + planRefactor
 	coreTools := server.GetFilteredTools()
-	if len(coreTools) != 20 {
-		t.Errorf("expected 20 core tools (v8.1 includes switchProject), got %d", len(coreTools))
+	if len(coreTools) != 21 {
+		t.Errorf("expected 21 core tools (v8.1 includes planRefactor), got %d", len(coreTools))
 	}
 
 	// Verify compound tools come first (preferred for AI workflows)
@@ -24,7 +24,8 @@ func TestPresetFiltering(t *testing.T) {
 		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "listKeyConcepts",
-		"analyzeImpact", "getHotspots", "getStatus", "switchProject", "expandToolset",
+		"analyzeImpact", "getHotspots", "getStatus", "switchProject",
+		"planRefactor", "expandToolset",
 	}
 	for i, expected := range expectedFirst {
 		if i >= len(coreTools) {
@@ -41,9 +42,9 @@ func TestPresetFiltering(t *testing.T) {
 		t.Fatalf("failed to set full preset: %v", err)
 	}
 	fullTools := server.GetFilteredTools()
-	// v8.1: Full now includes switchProject (88 = 87 + 1)
-	if len(fullTools) != 88 {
-		t.Errorf("expected 88 full tools (v8.1 includes switchProject), got %d", len(fullTools))
+	// v8.1: Full now includes switchProject + analyzeTestGaps + planRefactor (90 = 88 + 2)
+	if len(fullTools) != 90 {
+		t.Errorf("expected 90 full tools (v8.1 includes analyzeTestGaps + planRefactor), got %d", len(fullTools))
 	}
 
 	// Full preset should still have core tools first
