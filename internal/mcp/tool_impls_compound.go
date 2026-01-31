@@ -127,7 +127,14 @@ func (s *MCPServer) toolPrepareChange(params map[string]interface{}) (*envelope.
 			changeType = query.ChangeDelete
 		case "extract":
 			changeType = query.ChangeExtract
+		case "move":
+			changeType = query.ChangeMove
 		}
+	}
+
+	var targetPath string
+	if v, ok := params["targetPath"].(string); ok {
+		targetPath = v
 	}
 
 	engine, err := s.GetEngine()
@@ -139,6 +146,7 @@ func (s *MCPServer) toolPrepareChange(params map[string]interface{}) (*envelope.
 	result, err := engine.PrepareChange(ctx, query.PrepareChangeOptions{
 		Target:     target,
 		ChangeType: changeType,
+		TargetPath: targetPath,
 	})
 	if err != nil {
 		return nil, s.enrichNotFoundError(err)
@@ -282,7 +290,14 @@ func (s *MCPServer) toolPlanRefactor(params map[string]interface{}) (*envelope.R
 			changeType = query.ChangeDelete
 		case "extract":
 			changeType = query.ChangeExtract
+		case "move":
+			changeType = query.ChangeMove
 		}
+	}
+
+	var targetPath string
+	if v, ok := params["targetPath"].(string); ok {
+		targetPath = v
 	}
 
 	engine, err := s.GetEngine()
@@ -294,6 +309,7 @@ func (s *MCPServer) toolPlanRefactor(params map[string]interface{}) (*envelope.R
 	result, err := engine.PlanRefactor(ctx, query.PlanRefactorOptions{
 		Target:     target,
 		ChangeType: changeType,
+		TargetPath: targetPath,
 	})
 	if err != nil {
 		return nil, s.enrichNotFoundError(err)

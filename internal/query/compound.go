@@ -1234,12 +1234,14 @@ const (
 	ChangeRename  ChangeType = "rename"
 	ChangeDelete  ChangeType = "delete"
 	ChangeExtract ChangeType = "extract"
+	ChangeMove    ChangeType = "move"
 )
 
 // PrepareChangeOptions controls prepareChange behavior.
 type PrepareChangeOptions struct {
 	Target     string     // symbol ID or file path
-	ChangeType ChangeType // modify, rename, delete, extract
+	ChangeType ChangeType // modify, rename, delete, extract, move
+	TargetPath string     // destination path (for move operations)
 }
 
 // PrepareChangeResponse provides comprehensive pre-change analysis.
@@ -1253,6 +1255,7 @@ type PrepareChangeResponse struct {
 	RiskAssessment   *PrepareRisk         `json:"riskAssessment"`
 	RenameDetail     *RenameDetail        `json:"renameDetail,omitempty"`
 	ExtractDetail    *ExtractDetail       `json:"extractDetail,omitempty"`
+	MoveDetail       *MoveDetail          `json:"moveDetail,omitempty"`
 }
 
 // PrepareChangeTarget describes what will be changed.
@@ -1336,6 +1339,7 @@ func (e *Engine) PrepareChange(ctx context.Context, opts PrepareChangeOptions) (
 	var coChangeFiles []PrepareCoChange
 	var renameDetail *RenameDetail
 	var extractDetail *ExtractDetail
+	var moveDetail *MoveDetail
 	var riskFactors []string
 	var warnings []string
 
@@ -1419,6 +1423,18 @@ func (e *Engine) PrepareChange(ctx context.Context, opts PrepareChangeOptions) (
 		}()
 	}
 
+	// Get move detail for move operations
+	if opts.ChangeType == ChangeMove && opts.TargetPath != "" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			md := e.getPrepareMove(ctx, target, opts.TargetPath)
+			mu.Lock()
+			moveDetail = md
+			mu.Unlock()
+		}()
+	}
+
 	wg.Wait()
 
 	// Calculate risk assessment
@@ -1462,6 +1478,7 @@ func (e *Engine) PrepareChange(ctx context.Context, opts PrepareChangeOptions) (
 		RiskAssessment:   risk,
 		RenameDetail:     renameDetail,
 		ExtractDetail:    extractDetail,
+		MoveDetail:       moveDetail,
 	}, nil
 }
 

@@ -104,9 +104,11 @@ var Presets = map[string][]string{
 		"compareAPI",       // v7.6: Breaking change detection
 		"auditRisk",
 		"explainOrigin",
-		"scanSecrets",     // v8.0: Secret detection for security audits
-		"analyzeTestGaps", // v8.1: Test gap analysis
-		"planRefactor",    // v8.1: Unified refactor planning
+		"scanSecrets",         // v8.0: Secret detection for security audits
+		"analyzeTestGaps",     // v8.1: Test gap analysis
+		"planRefactor",        // v8.1: Unified refactor planning
+		"findCycles",          // v8.1: Dependency cycle detection
+		"suggestRefactorings", // v8.1: Proactive refactoring suggestions
 	},
 
 	// Federation: core + federation tools

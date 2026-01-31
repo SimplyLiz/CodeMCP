@@ -2050,7 +2050,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "prepareChange",
-			Description: "Pre-change impact analysis showing blast radius, affected tests, coupled files, and risk score. Essential before modifying, renaming, or deleting code to prevent breaking changes.",
+			Description: "Pre-change impact analysis showing blast radius, affected tests, coupled files, and risk score. Essential before modifying, renaming, deleting, or moving code to prevent breaking changes.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -2060,9 +2060,13 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 					},
 					"changeType": map[string]interface{}{
 						"type":        "string",
-						"enum":        []string{"modify", "rename", "delete", "extract"},
+						"enum":        []string{"modify", "rename", "delete", "extract", "move"},
 						"default":     "modify",
 						"description": "Type of change being planned",
+					},
+					"targetPath": map[string]interface{}{
+						"type":        "string",
+						"description": "Destination path for move operations (required when changeType is 'move')",
 					},
 				},
 				"required": []string{"target"},
@@ -2160,12 +2164,74 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 					},
 					"changeType": map[string]interface{}{
 						"type":        "string",
-						"enum":        []string{"modify", "rename", "delete", "extract"},
+						"enum":        []string{"modify", "rename", "delete", "extract", "move"},
 						"default":     "modify",
 						"description": "Type of refactoring change",
 					},
+					"targetPath": map[string]interface{}{
+						"type":        "string",
+						"description": "Destination path for move operations",
+					},
 				},
 				"required": []string{"target"},
+			},
+		},
+		// v8.1 Cycle Detection
+		{
+			Name:        "findCycles",
+			Description: "Detect circular dependencies in module/directory/file dependency graphs. Uses Tarjan's SCC algorithm and suggests which edge to break (lowest import count).",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"granularity": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"module", "directory", "file"},
+						"default":     "directory",
+						"description": "Level of analysis granularity",
+					},
+					"targetPath": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional path to focus on (relative to repo root)",
+					},
+					"maxCycles": map[string]interface{}{
+						"type":        "number",
+						"default":     20,
+						"description": "Maximum number of cycles to return",
+					},
+				},
+			},
+		},
+		// v8.1 Suggested Refactorings
+		{
+			Name:        "suggestRefactorings",
+			Description: "Proactively detect refactoring opportunities by analyzing complexity, coupling, dead code, and test gaps. Returns a prioritized list of actionable suggestions.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"scope": map[string]interface{}{
+						"type":        "string",
+						"description": "Directory or file path to analyze (relative to repo root)",
+					},
+					"minSeverity": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"critical", "high", "medium", "low"},
+						"default":     "low",
+						"description": "Minimum severity level to include",
+					},
+					"types": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+							"enum": []string{"extract_function", "split_file", "reduce_coupling", "remove_dead_code", "add_tests", "simplify_function"},
+						},
+						"description": "Filter by suggestion types (empty = all)",
+					},
+					"limit": map[string]interface{}{
+						"type":        "number",
+						"default":     50,
+						"description": "Maximum number of suggestions to return",
+					},
+				},
 			},
 		},
 	}
@@ -2283,6 +2349,10 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["analyzeTestGaps"] = s.toolAnalyzeTestGaps
 	// v8.1 Unified Refactor Planning
 	s.tools["planRefactor"] = s.toolPlanRefactor
+	// v8.1 Cycle Detection
+	s.tools["findCycles"] = s.toolFindCycles
+	// v8.1 Suggested Refactorings
+	s.tools["suggestRefactorings"] = s.toolSuggestRefactorings
 
 	// v8.0 Streaming support
 	s.RegisterStreamableTools()

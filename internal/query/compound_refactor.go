@@ -14,7 +14,8 @@ import (
 // PlanRefactorOptions configures the unified refactoring planner.
 type PlanRefactorOptions struct {
 	Target     string     // file or symbol
-	ChangeType ChangeType // modify, rename, delete, extract
+	ChangeType ChangeType // modify, rename, delete, extract, move
+	TargetPath string     // destination path (for move operations)
 }
 
 // PlanRefactorResponse contains the combined result of all refactoring analysis.
@@ -264,6 +265,8 @@ func generateRefactoringSteps(changeType ChangeType, resp *PlanRefactorResponse)
 		return generateExtractSteps(resp)
 	case ChangeDelete:
 		return generateDeleteSteps(resp)
+	case ChangeMove:
+		return generateMoveSteps(resp)
 	default:
 		return generateModifySteps(resp)
 	}
@@ -326,6 +329,19 @@ func generateModifySteps(resp *PlanRefactorResponse) []RefactoringStep {
 		{Order: 2, Action: "Update implementation", Description: "Apply changes to the target", Risk: "medium"},
 		{Order: 3, Action: "Run affected tests", Description: "Execute tests related to modified code", Risk: "low"},
 		{Order: 4, Action: "Check coupling", Description: "Verify co-change files don't need updates", Risk: "low"},
+	}
+}
+
+func generateMoveSteps(resp *PlanRefactorResponse) []RefactoringStep {
+	dependents := 0
+	if resp.ImpactAnalysis != nil {
+		dependents = resp.ImpactAnalysis.DirectDependents
+	}
+	return []RefactoringStep{
+		{Order: 1, Action: "Verify target location", Description: "Check target directory for conflicts and ensure it exists", Risk: "low"},
+		{Order: 2, Action: "Move file/symbol", Description: "Relocate the source to the target location", Risk: "low"},
+		{Order: 3, Action: "Update imports", Description: fmt.Sprintf("Update import statements across %d dependent file(s)", dependents), Risk: stepRisk(dependents, 10, 50)},
+		{Order: 4, Action: "Run affected tests", Description: "Execute tests to verify move didn't break anything", Risk: "low"},
 	}
 }
 

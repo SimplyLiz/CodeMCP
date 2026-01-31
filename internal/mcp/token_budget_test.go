@@ -15,7 +15,7 @@ const (
 	// v8.0: Increased budgets for compound tools (explore, understand, prepareChange, batchGet, batchSearch)
 	maxCorePresetBytes   = 60000  // ~15k tokens - v8.0: core now includes 5 compound tools
 	maxReviewPresetBytes = 80000  // ~20k tokens - review adds a few tools
-	maxFullPresetBytes   = 270000 // ~67k tokens - all 86 tools (v8.0: 81 + 5 compound)
+	maxFullPresetBytes   = 280000 // ~70k tokens - all 92 tools (v8.1: +findCycles, +suggestRefactorings)
 
 	// Per-tool schema budget (bytes) - catches bloated schemas
 	maxToolSchemaBytes = 6000 // ~1500 tokens per tool
@@ -35,7 +35,7 @@ func TestToolsListTokenBudget(t *testing.T) {
 	}{
 		{PresetCore, maxCorePresetBytes, 17, 21},     // v8.0: 19 tools (14 + 5 compound)
 		{PresetReview, maxReviewPresetBytes, 22, 27}, // v8.0: 24 tools (19 + 5 review-specific)
-		{PresetFull, maxFullPresetBytes, 80, 90},     // v8.0: 86 tools (81 + 5 compound)
+		{PresetFull, maxFullPresetBytes, 80, 92},     // v8.1: 92 tools (+findCycles, +suggestRefactorings)
 	}
 
 	for _, tt := range tests {
