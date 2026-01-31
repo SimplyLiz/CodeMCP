@@ -14,14 +14,25 @@ type RiskAnalysis struct {
 	QuickWins  []QuickWin  `json:"quickWins"`
 }
 
+// FunctionRisk contains per-function complexity metrics within a risky file.
+type FunctionRisk struct {
+	Name       string `json:"name"`
+	StartLine  int    `json:"startLine"`
+	EndLine    int    `json:"endLine"`
+	Cyclomatic int    `json:"cyclomatic"`
+	Cognitive  int    `json:"cognitive"`
+	Lines      int    `json:"lines"`
+}
+
 // RiskItem represents a single file/module with risk assessment
 type RiskItem struct {
-	File           string       `json:"file"`
-	Module         string       `json:"module,omitempty"`
-	RiskScore      float64      `json:"riskScore"` // 0-100
-	RiskLevel      string       `json:"riskLevel"` // "critical" | "high" | "medium" | "low"
-	Factors        []RiskFactor `json:"factors"`
-	Recommendation string       `json:"recommendation,omitempty"`
+	File               string         `json:"file"`
+	Module             string         `json:"module,omitempty"`
+	RiskScore          float64        `json:"riskScore"` // 0-100
+	RiskLevel          string         `json:"riskLevel"` // "critical" | "high" | "medium" | "low"
+	Factors            []RiskFactor   `json:"factors"`
+	Recommendation     string         `json:"recommendation,omitempty"`
+	FunctionComplexity []FunctionRisk `json:"functionComplexity,omitempty"`
 }
 
 // RiskFactor represents a contributing factor to the risk score

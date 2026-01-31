@@ -11,22 +11,29 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SimplyLiz/CodeMCP/internal/complexity"
 	"github.com/SimplyLiz/CodeMCP/internal/coupling"
 )
 
 // Analyzer performs risk analysis on codebases
 type Analyzer struct {
-	repoRoot         string
-	logger           *slog.Logger
-	couplingAnalyzer *coupling.Analyzer
+	repoRoot            string
+	logger              *slog.Logger
+	couplingAnalyzer    *coupling.Analyzer
+	complexityAnalyzer  *complexity.Analyzer
 }
 
 // NewAnalyzer creates a new risk analyzer
 func NewAnalyzer(repoRoot string, logger *slog.Logger) *Analyzer {
+	var ca *complexity.Analyzer
+	if complexity.IsAvailable() {
+		ca = complexity.NewAnalyzer()
+	}
 	return &Analyzer{
-		repoRoot:         repoRoot,
-		logger:           logger,
-		couplingAnalyzer: coupling.NewAnalyzer(repoRoot, logger),
+		repoRoot:           repoRoot,
+		logger:             logger,
+		couplingAnalyzer:   coupling.NewAnalyzer(repoRoot, logger),
+		complexityAnalyzer: ca,
 	}
 }
 
@@ -116,12 +123,12 @@ func (a *Analyzer) analyzeFile(ctx context.Context, repoRoot, file string) (*Ris
 	factors := make([]RiskFactor, 0, 8)
 	fullPath := filepath.Join(repoRoot, file)
 
-	// 1. Complexity (0-20 contribution)
-	complexity := a.getComplexity(fullPath)
-	complexityContrib := min(float64(complexity)/100, 1.0) * 20
+	// 1. Complexity (0-20 contribution) with per-function breakdown
+	totalComplexity, functionRisks := a.getComplexityDetailed(ctx, fullPath)
+	complexityContrib := min(float64(totalComplexity)/100, 1.0) * 20
 	factors = append(factors, RiskFactor{
 		Factor:       FactorComplexity,
-		Value:        fmt.Sprintf("%d", complexity),
+		Value:        fmt.Sprintf("%d", totalComplexity),
 		Weight:       RiskWeights[FactorComplexity],
 		Contribution: complexityContrib,
 	})
@@ -230,11 +237,12 @@ func (a *Analyzer) analyzeFile(ctx context.Context, repoRoot, file string) (*Ris
 	recommendation := a.generateRecommendation(factors)
 
 	return &RiskItem{
-		File:           file,
-		RiskScore:      totalScore,
-		RiskLevel:      GetRiskLevel(totalScore),
-		Factors:        factors,
-		Recommendation: recommendation,
+		File:               file,
+		RiskScore:          totalScore,
+		RiskLevel:          GetRiskLevel(totalScore),
+		Factors:            factors,
+		Recommendation:     recommendation,
+		FunctionComplexity: functionRisks,
 	}, nil
 }
 
@@ -269,18 +277,51 @@ func (a *Analyzer) findSourceFiles(repoRoot string) ([]string, error) {
 	return files, err
 }
 
-// getComplexity estimates complexity based on file size and structure
-func (a *Analyzer) getComplexity(filePath string) int {
+// getComplexityDetailed returns total complexity and per-function breakdown.
+// When the tree-sitter complexity analyzer is available, delegates to it for
+// accurate per-function cyclomatic+cognitive scores. Falls back to string-counting heuristic.
+func (a *Analyzer) getComplexityDetailed(ctx context.Context, filePath string) (int, []FunctionRisk) {
+	// Try tree-sitter analyzer first
+	if a.complexityAnalyzer != nil {
+		fc, err := a.complexityAnalyzer.AnalyzeFile(ctx, filePath)
+		if err == nil && fc != nil && fc.Error == "" && len(fc.Functions) > 0 {
+			// Convert to FunctionRisk and sort by cyclomatic descending
+			risks := make([]FunctionRisk, 0, len(fc.Functions))
+			for _, f := range fc.Functions {
+				risks = append(risks, FunctionRisk{
+					Name:       f.Name,
+					StartLine:  f.StartLine,
+					EndLine:    f.EndLine,
+					Cyclomatic: f.Cyclomatic,
+					Cognitive:  f.Cognitive,
+					Lines:      f.Lines,
+				})
+			}
+			sort.Slice(risks, func(i, j int) bool {
+				return risks[i].Cyclomatic > risks[j].Cyclomatic
+			})
+			// Cap at top 10 per file
+			if len(risks) > 10 {
+				risks = risks[:10]
+			}
+			return fc.TotalCyclomatic, risks
+		}
+	}
+
+	// Fallback: simple heuristic, no per-function breakdown
+	return a.getComplexityHeuristic(filePath), nil
+}
+
+// getComplexityHeuristic estimates complexity based on string counting.
+func (a *Analyzer) getComplexityHeuristic(filePath string) int {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return 0
 	}
 
-	// Simple heuristic: count decision points
 	text := string(content)
 	complexity := 1 // Base complexity
 
-	// Count various complexity indicators
 	complexity += strings.Count(text, "if ") + strings.Count(text, "if(")
 	complexity += strings.Count(text, "else ")
 	complexity += strings.Count(text, "for ") + strings.Count(text, "for(")
