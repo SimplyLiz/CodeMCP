@@ -4,7 +4,6 @@ package extract
 
 import (
 	"context"
-	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
 
@@ -36,11 +35,8 @@ func (a *Analyzer) Analyze(ctx context.Context, opts AnalyzeOptions) (*FlowAnaly
 
 	root, err := a.parser.Parse(ctx, opts.Source, lang)
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
-
-	lines := strings.Split(string(opts.Source), "\n")
-	_ = lines
 
 	// Find the containing function for StartLine
 	containingFunc := findContainingFunction(root, opts.StartLine, opts.Language)

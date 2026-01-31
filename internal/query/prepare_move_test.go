@@ -1,6 +1,7 @@
 package query
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -69,7 +70,7 @@ func TestGetPrepareMove_NilTarget(t *testing.T) {
 	engine, cleanup := testEngine(t)
 	defer cleanup()
 
-	result := engine.getPrepareMove(nil, nil, "dest")
+	result := engine.getPrepareMove(context.TODO(), nil, "dest")
 	if result != nil {
 		t.Error("expected nil for nil target")
 	}
@@ -81,7 +82,7 @@ func TestGetPrepareMove_EmptyTargetPath(t *testing.T) {
 	defer cleanup()
 
 	target := &PrepareChangeTarget{Path: "src/handler.go"}
-	result := engine.getPrepareMove(nil, target, "")
+	result := engine.getPrepareMove(context.TODO(), target, "")
 	if result != nil {
 		t.Error("expected nil for empty targetPath")
 	}
@@ -96,7 +97,7 @@ func TestGetPrepareMove_Basic(t *testing.T) {
 	createTestDirectory(t, engine, "dest")
 
 	target := &PrepareChangeTarget{Path: "src/handler.go"}
-	result := engine.getPrepareMove(nil, target, "dest/handler.go")
+	result := engine.getPrepareMove(context.TODO(), target, "dest/handler.go")
 
 	if result == nil {
 		t.Fatal("expected non-nil MoveDetail")

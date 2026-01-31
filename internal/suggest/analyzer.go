@@ -367,7 +367,10 @@ func (a *Analyzer) listSourceFiles(scope string) []string {
 
 	var files []string
 	_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
 			return nil
 		}
 		ext := filepath.Ext(path)
