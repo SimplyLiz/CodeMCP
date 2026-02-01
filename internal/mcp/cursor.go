@@ -7,8 +7,10 @@ import (
 	"github.com/SimplyLiz/CodeMCP/internal/errors"
 )
 
-// DefaultPageSize is the default number of tools per page
-const DefaultPageSize = 15
+// DefaultPageSize is the default number of tools per page.
+// Must be >= number of core preset tools so all core tools appear on page 1
+// (Cursor and some other MCP clients don't request subsequent pages).
+const DefaultPageSize = 40
 
 // ToolsCursorPayload contains pagination state for tools/list
 //

@@ -294,6 +294,12 @@ func (e *Engine) Explore(ctx context.Context, opts ExploreOptions) (*ExploreResp
 		completeness.Reason = "limited-scip-unavailable"
 	}
 
+	// Add degradation warnings
+	degradationWarnings := e.GetDegradationWarnings()
+	for _, dw := range degradationWarnings {
+		warnings = append(warnings, dw.Message)
+	}
+
 	health.Warnings = warnings
 
 	return &ExploreResponse{
@@ -1228,12 +1234,16 @@ const (
 	ChangeRename  ChangeType = "rename"
 	ChangeDelete  ChangeType = "delete"
 	ChangeExtract ChangeType = "extract"
+	ChangeMove    ChangeType = "move"
 )
 
 // PrepareChangeOptions controls prepareChange behavior.
 type PrepareChangeOptions struct {
 	Target     string     // symbol ID or file path
-	ChangeType ChangeType // modify, rename, delete, extract
+	ChangeType ChangeType // modify, rename, delete, extract, move
+	TargetPath string     // destination path (for move operations)
+	StartLine  int        // start line for extract operations (0 = whole file)
+	EndLine    int        // end line for extract operations (0 = whole file)
 }
 
 // PrepareChangeResponse provides comprehensive pre-change analysis.
@@ -1245,6 +1255,9 @@ type PrepareChangeResponse struct {
 	RelatedTests     []PrepareTest        `json:"relatedTests"`
 	CoChangeFiles    []PrepareCoChange    `json:"coChangeFiles,omitempty"`
 	RiskAssessment   *PrepareRisk         `json:"riskAssessment"`
+	RenameDetail     *RenameDetail        `json:"renameDetail,omitempty"`
+	ExtractDetail    *ExtractDetail       `json:"extractDetail,omitempty"`
+	MoveDetail       *MoveDetail          `json:"moveDetail,omitempty"`
 }
 
 // PrepareChangeTarget describes what will be changed.
@@ -1326,6 +1339,9 @@ func (e *Engine) PrepareChange(ctx context.Context, opts PrepareChangeOptions) (
 	var transitiveImpact *PrepareTransitive
 	var relatedTests []PrepareTest
 	var coChangeFiles []PrepareCoChange
+	var renameDetail *RenameDetail
+	var extractDetail *ExtractDetail
+	var moveDetail *MoveDetail
 	var riskFactors []string
 	var warnings []string
 
@@ -1385,6 +1401,42 @@ func (e *Engine) PrepareChange(ctx context.Context, opts PrepareChangeOptions) (
 		}()
 	}
 
+	// Get rename detail for rename operations
+	if opts.ChangeType == ChangeRename && target.SymbolId != "" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			rd := e.getPrepareRenameDetail(ctx, target.SymbolId)
+			mu.Lock()
+			renameDetail = rd
+			mu.Unlock()
+		}()
+	}
+
+	// Get extract detail for extract operations
+	if opts.ChangeType == ChangeExtract {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ed := e.getPrepareExtractDetail(target, opts.StartLine, opts.EndLine)
+			mu.Lock()
+			extractDetail = ed
+			mu.Unlock()
+		}()
+	}
+
+	// Get move detail for move operations
+	if opts.ChangeType == ChangeMove && opts.TargetPath != "" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			md := e.getPrepareMove(ctx, target, opts.TargetPath)
+			mu.Lock()
+			moveDetail = md
+			mu.Unlock()
+		}()
+	}
+
 	wg.Wait()
 
 	// Calculate risk assessment
@@ -1426,6 +1478,9 @@ func (e *Engine) PrepareChange(ctx context.Context, opts PrepareChangeOptions) (
 		RelatedTests:     relatedTests,
 		CoChangeFiles:    coChangeFiles,
 		RiskAssessment:   risk,
+		RenameDetail:     renameDetail,
+		ExtractDetail:    extractDetail,
+		MoveDetail:       moveDetail,
 	}, nil
 }
 

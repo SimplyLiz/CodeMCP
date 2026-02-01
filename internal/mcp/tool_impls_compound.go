@@ -42,19 +42,26 @@ func (s *MCPServer) toolExplore(params map[string]interface{}) (*envelope.Respon
 		}
 	}
 
+	engine, err := s.GetEngine()
+	if err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
-	result, err := s.engine().Explore(ctx, query.ExploreOptions{
+	result, err := engine.Explore(ctx, query.ExploreOptions{
 		Target: target,
 		Depth:  depth,
 		Focus:  focus,
 	})
 	if err != nil {
-		return nil, err
+		return nil, s.enrichNotFoundError(err)
 	}
 
-	return NewToolResponse().
-		Data(result).
-		Build(), nil
+	resp := NewToolResponse().Data(result)
+	for _, dw := range engine.GetDegradationWarnings() {
+		resp.Warning(dw.Message)
+	}
+	return resp.Build(), nil
 }
 
 // toolUnderstand provides comprehensive symbol deep-dive
@@ -79,20 +86,27 @@ func (s *MCPServer) toolUnderstand(params map[string]interface{}) (*envelope.Res
 		maxReferences = int(v)
 	}
 
+	engine, err := s.GetEngine()
+	if err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
-	result, err := s.engine().Understand(ctx, query.UnderstandOptions{
+	result, err := engine.Understand(ctx, query.UnderstandOptions{
 		Query:             q,
 		IncludeReferences: includeReferences,
 		IncludeCallGraph:  includeCallGraph,
 		MaxReferences:     maxReferences,
 	})
 	if err != nil {
-		return nil, err
+		return nil, s.enrichNotFoundError(err)
 	}
 
-	return NewToolResponse().
-		Data(result).
-		Build(), nil
+	resp := NewToolResponse().Data(result)
+	for _, dw := range engine.GetDegradationWarnings() {
+		resp.Warning(dw.Message)
+	}
+	return resp.Build(), nil
 }
 
 // toolPrepareChange provides pre-change analysis
@@ -113,20 +127,66 @@ func (s *MCPServer) toolPrepareChange(params map[string]interface{}) (*envelope.
 			changeType = query.ChangeDelete
 		case "extract":
 			changeType = query.ChangeExtract
+		case "move":
+			changeType = query.ChangeMove
 		}
 	}
 
+	var targetPath string
+	if v, ok := params["targetPath"].(string); ok {
+		targetPath = v
+	}
+
+	var startLine, endLine int
+	if v, ok := params["startLine"].(float64); ok {
+		startLine = int(v)
+	}
+	if v, ok := params["endLine"].(float64); ok {
+		endLine = int(v)
+	}
+
+	engine, err := s.GetEngine()
+	if err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
-	result, err := s.engine().PrepareChange(ctx, query.PrepareChangeOptions{
+	result, err := engine.PrepareChange(ctx, query.PrepareChangeOptions{
 		Target:     target,
 		ChangeType: changeType,
+		TargetPath: targetPath,
+		StartLine:  startLine,
+		EndLine:    endLine,
 	})
+	if err != nil {
+		return nil, s.enrichNotFoundError(err)
+	}
+
+	resp := NewToolResponse().Data(result)
+	for _, dw := range engine.GetDegradationWarnings() {
+		resp.Warning(dw.Message)
+	}
+	return resp.Build(), nil
+}
+
+// toolSwitchProject switches CKB to a different project directory
+func (s *MCPServer) toolSwitchProject(params map[string]interface{}) (*envelope.Response, error) {
+	path, ok := params["path"].(string)
+	if !ok || path == "" {
+		return nil, errors.NewInvalidParameterError("path", "required")
+	}
+
+	newRoot, err := s.switchProject(path)
 	if err != nil {
 		return nil, err
 	}
 
 	return NewToolResponse().
-		Data(result).
+		Data(map[string]interface{}{
+			"switched": true,
+			"repoRoot": newRoot,
+			"message":  "Successfully switched to " + newRoot,
+		}).
 		Build(), nil
 }
 
@@ -148,8 +208,13 @@ func (s *MCPServer) toolBatchGet(params map[string]interface{}) (*envelope.Respo
 		return nil, errors.NewInvalidParameterError("symbolIds", "must contain string values")
 	}
 
+	engine, err := s.GetEngine()
+	if err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
-	result, err := s.engine().BatchGet(ctx, query.BatchGetOptions{
+	result, err := engine.BatchGet(ctx, query.BatchGetOptions{
 		SymbolIds: ids,
 	})
 	if err != nil {
@@ -199,15 +264,70 @@ func (s *MCPServer) toolBatchSearch(params map[string]interface{}) (*envelope.Re
 		return nil, errors.NewInvalidParameterError("queries", "must contain valid query objects")
 	}
 
+	engine, err := s.GetEngine()
+	if err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
-	result, err := s.engine().BatchSearch(ctx, query.BatchSearchOptions{
+	result, err := engine.BatchSearch(ctx, query.BatchSearchOptions{
 		Queries: queries,
 	})
 	if err != nil {
-		return nil, err
+		return nil, s.enrichNotFoundError(err)
 	}
 
 	return NewToolResponse().
 		Data(result).
 		Build(), nil
+}
+
+// toolPlanRefactor provides unified refactoring planning
+func (s *MCPServer) toolPlanRefactor(params map[string]interface{}) (*envelope.Response, error) {
+	target, ok := params["target"].(string)
+	if !ok || target == "" {
+		return nil, errors.NewInvalidParameterError("target", "required")
+	}
+
+	changeType := query.ChangeModify
+	if v, ok := params["changeType"].(string); ok {
+		switch v {
+		case "modify":
+			changeType = query.ChangeModify
+		case "rename":
+			changeType = query.ChangeRename
+		case "delete":
+			changeType = query.ChangeDelete
+		case "extract":
+			changeType = query.ChangeExtract
+		case "move":
+			changeType = query.ChangeMove
+		}
+	}
+
+	var targetPath string
+	if v, ok := params["targetPath"].(string); ok {
+		targetPath = v
+	}
+
+	engine, err := s.GetEngine()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := context.Background()
+	result, err := engine.PlanRefactor(ctx, query.PlanRefactorOptions{
+		Target:     target,
+		ChangeType: changeType,
+		TargetPath: targetPath,
+	})
+	if err != nil {
+		return nil, s.enrichNotFoundError(err)
+	}
+
+	resp := NewToolResponse().Data(result)
+	for _, dw := range engine.GetDegradationWarnings() {
+		resp.Warning(dw.Message)
+	}
+	return resp.Build(), nil
 }

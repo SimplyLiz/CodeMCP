@@ -373,7 +373,8 @@ func configureTool(tool *aiTool, global bool, ckbCommand string, ckbArgs []strin
 		case "vscode":
 			return configureVSCodeGlobal(ckbCommand, ckbArgs)
 		case "grok":
-			return configureGrokGlobal(ckbCommand, ckbArgs)
+			_, err := configureGrokGlobal(ckbCommand, ckbArgs)
+			return err
 		}
 	}
 
@@ -646,9 +647,44 @@ func writeGrokConfig(path, command string, args []string) error {
 	return os.WriteFile(path, data, 0644)
 }
 
-func configureGrokGlobal(ckbCommand string, ckbArgs []string) error {
+func configureGrokGlobal(ckbCommand string, ckbArgs []string) (bool, error) {
 	// Try using grok mcp add command first
 	if isGrokAvailable() {
+		newCommand := formatCommand(ckbCommand, ckbArgs)
+
+		// Check existing config before calling CLI
+		existing, _ := getGrokMcpConfig()
+		if existing != nil {
+			existingCommand := formatCommand(existing.Command, existing.Args)
+
+			if existingCommand == newCommand {
+				fmt.Println("CKB is already configured correctly.")
+				fmt.Printf("  Command: %s\n", existingCommand)
+				return false, nil
+			}
+
+			// Different config - warn and update
+			fmt.Println("CKB is already configured with a different path:")
+			fmt.Printf("  Current:  %s\n", existingCommand)
+			fmt.Printf("  New:      %s\n", newCommand)
+
+			if isNpxCommand(existing.Command) && !isNpxCommand(ckbCommand) {
+				fmt.Println("\n  Note: Switching from npx to local binary.")
+			} else if !isNpxCommand(existing.Command) && isNpxCommand(ckbCommand) {
+				fmt.Println("\n  Note: Switching from local binary to npx.")
+			}
+
+			fmt.Println("\nUpdating configuration...")
+
+			// Remove existing entry first
+			removeCmd := exec.Command("grok", "mcp", "remove", "ckb")
+			removeCmd.Stdout = os.Stdout
+			removeCmd.Stderr = os.Stderr
+			if err := removeCmd.Run(); err != nil {
+				return false, fmt.Errorf("failed to remove existing CKB config from Grok: %w", err)
+			}
+		}
+
 		cmdArgs := []string{"mcp", "add", "ckb", "--transport", "stdio", "--command", ckbCommand}
 		for _, arg := range ckbArgs {
 			cmdArgs = append(cmdArgs, "--args", arg)
@@ -661,26 +697,26 @@ func configureGrokGlobal(ckbCommand string, ckbArgs []string) error {
 		execCmd.Stderr = os.Stderr
 
 		if err := execCmd.Run(); err != nil {
-			return fmt.Errorf("failed to add CKB to Grok: %w", err)
+			return false, fmt.Errorf("failed to add CKB to Grok: %w", err)
 		}
 
 		fmt.Println("\n✓ CKB added to Grok globally.")
 		fmt.Println("Restart Grok to load the new configuration.")
-		return nil
+		return true, nil
 	}
 
 	// Fallback to writing ~/.grok/user-settings.json
 	fmt.Println("Grok CLI not found, using fallback configuration...")
 	configPath := getConfigPath("grok", true)
 	if err := writeGrokConfig(configPath, ckbCommand, ckbArgs); err != nil {
-		return err
+		return false, err
 	}
 
 	fmt.Printf("\n✓ Added CKB to %s\n", configPath)
 	fmt.Printf("  Command: %s %s\n", ckbCommand, strings.Join(ckbArgs, " "))
 	fmt.Println("\nRestart Grok to load the new configuration.")
 
-	return nil
+	return true, nil
 }
 
 func isGrokAvailable() bool {
@@ -691,22 +727,15 @@ func isGrokAvailable() bool {
 func configureClaudeCodeGlobal(ckbCommand string, ckbArgs []string) error {
 	// Try using claude mcp add command first
 	if isClaudeAvailable() {
-		cmdArgs := []string{"mcp", "add", "--transport", "stdio", "ckb", "--scope", "user", "--"}
-		cmdArgs = append(cmdArgs, ckbCommand)
-		cmdArgs = append(cmdArgs, ckbArgs...)
-
-		fmt.Printf("Running: claude %s\n", formatArgs(cmdArgs))
-
-		execCmd := exec.Command("claude", cmdArgs...)
-		execCmd.Stdout = os.Stdout
-		execCmd.Stderr = os.Stderr
-
-		if err := execCmd.Run(); err != nil {
-			return fmt.Errorf("failed to add CKB to Claude: %w", err)
+		changed, err := claudeMcpAdd(ckbCommand, ckbArgs)
+		if err != nil {
+			return err
 		}
 
-		fmt.Println("\n✓ CKB added to Claude Code globally.")
-		fmt.Println("Restart Claude Code to load the new configuration.")
+		if changed {
+			fmt.Println("\n✓ CKB configured for Claude Code globally.")
+			fmt.Println("Restart Claude Code to load the new configuration.")
+		}
 		return nil
 	}
 
@@ -731,8 +760,35 @@ func configureVSCodeGlobal(ckbCommand string, ckbArgs []string) error {
 		return fmt.Errorf("VS Code CLI (code) not found. Please ensure VS Code is installed and 'code' is in your PATH")
 	}
 
+	newCommand := formatCommand(ckbCommand, ckbArgs)
+
+	// Check existing config before calling CLI
+	existing, _ := getVSCodeGlobalMcpConfig()
+	if existing != nil {
+		existingCommand := formatCommand(existing.Command, existing.Args)
+
+		if existingCommand == newCommand {
+			fmt.Println("CKB is already configured correctly.")
+			fmt.Printf("  Command: %s\n", existingCommand)
+			return nil
+		}
+
+		// Different config - warn and proceed (code --add-mcp overwrites)
+		fmt.Println("CKB is already configured with a different path:")
+		fmt.Printf("  Current:  %s\n", existingCommand)
+		fmt.Printf("  New:      %s\n", newCommand)
+
+		if isNpxCommand(existing.Command) && !isNpxCommand(ckbCommand) {
+			fmt.Println("\n  Note: Switching from npx to local binary.")
+		} else if !isNpxCommand(existing.Command) && isNpxCommand(ckbCommand) {
+			fmt.Println("\n  Note: Switching from local binary to npx.")
+		}
+
+		fmt.Println("\nUpdating configuration...")
+	}
+
 	// Build the MCP server JSON
-	serverConfig := map[string]interface{}{
+	serverConfig := map[string]any{
 		"name":    "ckb",
 		"type":    "stdio",
 		"command": ckbCommand,
@@ -763,6 +819,208 @@ func configureVSCodeGlobal(ckbCommand string, ckbArgs []string) error {
 func isClaudeAvailable() bool {
 	_, err := exec.LookPath("claude")
 	return err == nil
+}
+
+// claudeConfigEntry represents an MCP server entry in Claude's config
+type claudeConfigEntry struct {
+	Type    string   `json:"type"`
+	Command string   `json:"command"`
+	Args    []string `json:"args"`
+}
+
+// getClaudeMcpConfig reads the existing ckb MCP config from ~/.claude.json
+func getClaudeMcpConfig() (*claudeConfigEntry, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+
+	configPath := filepath.Join(home, ".claude.json")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, err // File doesn't exist or can't read
+	}
+
+	var config struct {
+		McpServers map[string]claudeConfigEntry `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, err
+	}
+
+	if entry, ok := config.McpServers["ckb"]; ok {
+		return &entry, nil
+	}
+	return nil, nil // Not configured
+}
+
+// getGrokMcpConfig reads the existing ckb MCP config from ~/.grok/user-settings.json
+func getGrokMcpConfig() (*grokMcpEntry, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+
+	configPath := filepath.Join(home, ".grok", "user-settings.json")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, err // File doesn't exist or can't read
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, err
+	}
+
+	mcpServersRaw, ok := raw["mcpServers"]
+	if !ok {
+		return nil, nil
+	}
+
+	var mcpServers map[string]grokMcpEntry
+	if err := json.Unmarshal(mcpServersRaw, &mcpServers); err != nil {
+		return nil, err
+	}
+
+	if entry, ok := mcpServers["ckb"]; ok {
+		return &entry, nil
+	}
+	return nil, nil // Not configured
+}
+
+// vsCodeMcpEntry represents an MCP server entry in VS Code's user settings
+type vsCodeMcpEntry struct {
+	Type    string   `json:"type"`
+	Command string   `json:"command"`
+	Args    []string `json:"args"`
+}
+
+// getVSCodeGlobalMcpConfig reads the existing ckb MCP config from VS Code's user settings.json
+func getVSCodeGlobalMcpConfig() (*vsCodeMcpEntry, error) {
+	var settingsPath string
+	switch runtime.GOOS {
+	case "darwin":
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+		settingsPath = filepath.Join(home, "Library", "Application Support", "Code", "User", "settings.json")
+	case "linux":
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+		settingsPath = filepath.Join(home, ".config", "Code", "User", "settings.json")
+	case "windows":
+		settingsPath = filepath.Join(os.Getenv("APPDATA"), "Code", "User", "settings.json")
+	default:
+		return nil, fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+	}
+
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return nil, err // File doesn't exist or can't read
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, err
+	}
+
+	mcpRaw, ok := raw["mcp"]
+	if !ok {
+		return nil, nil
+	}
+
+	var mcpSection map[string]json.RawMessage
+	if err := json.Unmarshal(mcpRaw, &mcpSection); err != nil {
+		return nil, err
+	}
+
+	serversRaw, ok := mcpSection["servers"]
+	if !ok {
+		return nil, nil
+	}
+
+	var servers map[string]vsCodeMcpEntry
+	if err := json.Unmarshal(serversRaw, &servers); err != nil {
+		return nil, err
+	}
+
+	if entry, ok := servers["ckb"]; ok {
+		return &entry, nil
+	}
+	return nil, nil // Not configured
+}
+
+// formatCommand returns a human-readable command string
+func formatCommand(command string, args []string) string {
+	if len(args) > 0 {
+		return command + " " + strings.Join(args, " ")
+	}
+	return command
+}
+
+// isNpxCommand checks if a command is using npx
+func isNpxCommand(command string) bool {
+	return command == "npx" || strings.HasSuffix(command, "/npx")
+}
+
+// claudeMcpAdd adds ckb to Claude Code, handling the case where it already exists.
+// Returns (changed, error) where changed indicates if the config was modified.
+func claudeMcpAdd(ckbCommand string, ckbArgs []string) (bool, error) {
+	// Check existing config first
+	existing, _ := getClaudeMcpConfig()
+
+	newCommand := formatCommand(ckbCommand, ckbArgs)
+
+	if existing != nil {
+		existingCommand := formatCommand(existing.Command, existing.Args)
+
+		// Check if already configured with the same command
+		if existingCommand == newCommand {
+			fmt.Println("CKB is already configured correctly.")
+			fmt.Printf("  Command: %s\n", existingCommand)
+			return false, nil
+		}
+
+		// Different paths - warn and update
+		fmt.Println("CKB is already configured with a different path:")
+		fmt.Printf("  Current:  %s\n", existingCommand)
+		fmt.Printf("  New:      %s\n", newCommand)
+
+		// Extra warning for npx vs binary mismatch
+		if isNpxCommand(existing.Command) && !isNpxCommand(ckbCommand) {
+			fmt.Println("\n  Note: Switching from npx to local binary.")
+		} else if !isNpxCommand(existing.Command) && isNpxCommand(ckbCommand) {
+			fmt.Println("\n  Note: Switching from local binary to npx.")
+		}
+
+		fmt.Println("\nUpdating configuration...")
+
+		// Remove existing entry
+		removeCmd := exec.Command("claude", "mcp", "remove", "ckb", "--scope", "user")
+		removeCmd.Stdout = os.Stdout
+		removeCmd.Stderr = os.Stderr
+		if err := removeCmd.Run(); err != nil {
+			return false, fmt.Errorf("failed to remove existing CKB config: %w", err)
+		}
+	}
+
+	// Add new entry
+	cmdArgs := []string{"mcp", "add", "--transport", "stdio", "ckb", "--scope", "user", "--"}
+	cmdArgs = append(cmdArgs, ckbCommand)
+	cmdArgs = append(cmdArgs, ckbArgs...)
+
+	execCmd := exec.Command("claude", cmdArgs...)
+	execCmd.Stdout = os.Stdout
+	execCmd.Stderr = os.Stderr
+
+	if err := execCmd.Run(); err != nil {
+		return false, fmt.Errorf("failed to add CKB to Claude: %w", err)
+	}
+
+	return true, nil
 }
 
 func formatArgs(args []string) string {

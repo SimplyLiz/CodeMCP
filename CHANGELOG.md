@@ -2,7 +2,7 @@
 
 All notable changes to CKB will be documented in this file.
 
-## [8.1.0] - Unreleased
+## [8.1.0] - 2026-01-31
 
 ### Added
 
@@ -60,6 +60,53 @@ Run command:
 The `--include-tests` flag now works end-to-end in `ckb impact diff`:
 - Properly sets `IsTest` flag on references based on file path
 - Filters test files from changed symbols when `--include-tests=false`
+
+#### Dependency Cycle Detection (`findCycles`)
+Detect circular dependencies in module, directory, or file dependency graphs using Tarjan's SCC algorithm:
+
+```bash
+# Via MCP
+findCycles { "granularity": "directory", "targetPath": "internal/" }
+```
+
+- Uses Tarjan's strongly connected components to find real cycles
+- Recommends which edge to break (lowest coupling cost)
+- Severity classification: size ≥5 = high, ≥3 = medium, 2 = low
+- Available in `refactor` preset
+
+#### Move/Relocate Change Type
+`prepareChange` and `planRefactor` now support `changeType: "move"` with a `targetPath` parameter:
+
+```bash
+prepareChange { "target": "internal/old/handler.go", "changeType": "move", "targetPath": "pkg/handler.go" }
+```
+
+- Scans all source files for import path references that need updating
+- Detects target directory conflicts (existing files with same name)
+- Generates move-specific refactoring steps in `planRefactor`
+
+#### Extract Variable Flow Analysis
+`prepareChange` with `changeType: "extract"` now provides tree-sitter-based variable flow analysis when CGO is available:
+
+- Identifies parameters (variables defined outside selection, used inside)
+- Identifies return values (variables defined inside, used after selection)
+- Classifies local variables (defined and consumed within selection)
+- Generates language-appropriate function signatures (Go, Python, JS/TS)
+- Graceful degradation: falls back to line-count heuristics without CGO
+
+#### Suggested Refactoring Detection (`suggestRefactorings`)
+Proactive detection of refactoring opportunities by combining existing analyzers in parallel:
+
+```bash
+suggestRefactorings { "scope": "internal/query", "minSeverity": "medium" }
+```
+
+- **Complexity**: High cyclomatic/cognitive functions → `extract_function`, `simplify_function`
+- **Coupling**: Highly correlated file pairs → `reduce_coupling`, `split_file`
+- **Dead code**: Unused symbols → `remove_dead_code`
+- **Test gaps**: High-risk untested code → `add_tests`
+- Each suggestion includes severity, effort estimate, and priority score
+- Available in `refactor` preset
 
 ## [8.0.2] - 2026-01-22
 
