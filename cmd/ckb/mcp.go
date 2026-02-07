@@ -118,10 +118,6 @@ func runMCP(cmd *cobra.Command, args []string) error {
 			repoRoot = entry.Path
 			repoName = mcpRepo
 			fmt.Fprintf(os.Stderr, "Repository: %s (%s) [%s]\n", repoName, repoRoot, state)
-
-			// Skip multi-repo mode - use lazy loading path instead
-			// TODO: Add lazy loading support to multi-repo mode
-			_ = registry // silence unused warning
 		}
 	} else {
 		// No --repo flag - use smart resolution
@@ -160,9 +156,6 @@ func runMCP(cmd *cobra.Command, args []string) error {
 				}
 			}
 
-			// Skip multi-repo mode for now - use lazy loading path instead
-			// TODO: Add lazy loading support to multi-repo mode
-			_ = repos.LoadRegistry // silence unused warning
 		} else {
 			// No repo found - fall back to current directory
 			repoRoot = mustGetRepoRoot()
@@ -368,6 +361,11 @@ func triggerReindex(repoRoot, ckbDir string, trigger index.RefreshTrigger, trigg
 
 	if err := newMeta.Save(ckbDir); err != nil {
 		logger.Error("Failed to save index metadata", "error", err.Error())
+	}
+
+	// Populate incremental tracking tables so subsequent incremental updates work
+	if project.SupportsIncrementalIndexing(config.Language) {
+		populateIncrementalTracking(repoRoot, config.Language)
 	}
 
 	logger.Info("Reindex complete",
