@@ -65,12 +65,12 @@ jobs:
       total_findings: ${{ steps.summary.outputs.total }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # ==================== Go Setup (if needed) ====================
       - name: Set up Go
         if: inputs.has_go && (inputs.scan_govulncheck || inputs.scan_trivy)
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -78,7 +78,7 @@ jobs:
       # ==================== Trivy ====================
       - name: Setup Trivy
         if: inputs.scan_trivy
-        uses: aquasecurity/setup-trivy@v0.2.3
+        uses: aquasecurity/setup-trivy@v0.2.5
         with:
           cache: true
           version: latest
@@ -149,7 +149,7 @@ jobs:
 
       - name: Attest SBOM
         if: inputs.scan_trivy && inputs.generate_sbom && github.event_name != 'pull_request' && hashFiles('sbom.json') != ''
-        uses: actions/attest-sbom@v2
+        uses: actions/attest-sbom@v3
         with:
           subject-path: 'sbom.json'
           sbom-path: 'sbom.json'
@@ -214,7 +214,7 @@ jobs:
           echo "| **Total** | **$TOTAL** |" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: dependency-scan-results
