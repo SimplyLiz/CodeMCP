@@ -35,7 +35,9 @@ func WriteError(w http.ResponseWriter, err error, status int) {
 		resp.Code = "INTERNAL_ERROR"
 	}
 
-	_ = json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		// Log encoding error, but don't fail the response since headers are already sent
+	}
 }
 
 // WriteCkbError writes a CkbError with automatic status code mapping
@@ -51,7 +53,9 @@ func MapCkbErrorToStatus(code errors.ErrorCode) int {
 		return http.StatusServiceUnavailable // 503
 	case errors.IndexMissing:
 		return http.StatusNotFound // 404
-	case errors.IndexStale:
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		// Log encoding error, but don't fail the response since headers are already sent
+	}
 		return http.StatusPreconditionFailed // 412
 	case errors.WorkspaceNotReady:
 		return http.StatusServiceUnavailable // 503
