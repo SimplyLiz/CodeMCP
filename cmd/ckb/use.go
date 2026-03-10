@@ -104,8 +104,8 @@ func runUse(cmd *cobra.Command, args []string) error {
 	switch state {
 	case repos.RepoStateMissing:
 		fmt.Fprintf(os.Stderr, "Warning: repository path no longer exists: %s\n", entry.Path)
-		fmt.Fprintf(os.Stderr, "Consider running: ckb repo remove %s\n\n", name)
-	case repos.RepoStateUninitialized:
+		// Log the error but continue - this is non-critical for repo switching
+		fmt.Fprintf(os.Stderr, "Warning: failed to update last used time: %v\n", err)
 		fmt.Fprintf(os.Stderr, "Warning: repository not initialized\n")
 		fmt.Fprintf(os.Stderr, "Run: cd %s && ckb init\n\n", entry.Path)
 	}
