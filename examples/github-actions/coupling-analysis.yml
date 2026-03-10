@@ -75,10 +75,10 @@ jobs:
 
       - name: Analyze Coupling
         if: steps.changed.outputs.has_files == 'true'
-        id: coupling
-        run: |
-          MIN_CORR="${{ github.event.inputs.min_correlation || env.MIN_CORRELATION }}"
           MIN_CO="${{ github.event.inputs.min_cochanges || env.MIN_COCHANGES }}"
+            --min-cochanges="$MIN_CO" \
+            --format=json \
+            > coupling.json
 
           ckb coupling \
             --files="${{ steps.changed.outputs.files }}" \
