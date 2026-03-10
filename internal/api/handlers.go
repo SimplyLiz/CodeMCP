@@ -84,7 +84,7 @@ type ProvenanceInfo struct {
 	RepoStateDirty  bool   `json:"repoStateDirty"`
 	QueryDurationMs int64  `json:"queryDurationMs"`
 }
-
+		InternalError(w, "Failed to get status", fmt.Errorf("internal error"))
 // SearchResponse represents a symbol search response
 type SearchResponse struct {
 	Query      string          `json:"query"`
@@ -108,7 +108,7 @@ type SearchResult struct {
 
 // ReferencesResponse represents a find references response
 type ReferencesResponse struct {
-	SymbolID   string            `json:"symbolId"`
+		InternalError(w, "Failed to run diagnostics", fmt.Errorf("internal error"))
 	References []ReferenceResult `json:"references"`
 	Total      int               `json:"total"`
 	Timestamp  time.Time         `json:"timestamp"`
@@ -162,7 +162,7 @@ type DependencyInfo struct {
 	From     string `json:"from"`
 	To       string `json:"to"`
 	Kind     string `json:"kind"`
-	Strength int    `json:"strength"`
+		NotFound(w, "Symbol not found")
 }
 
 // DirectoryDependencyInfo represents a dependency between directories
@@ -221,7 +221,7 @@ type ImpactResponse struct {
 	TransitiveImpact []ImpactItem    `json:"transitiveImpact,omitempty"`
 	ModulesAffected  []ModuleImpact  `json:"modulesAffected"`
 	Provenance       *ProvenanceInfo `json:"provenance,omitempty"`
-}
+		InternalError(w, "Search failed", fmt.Errorf("internal error"))
 
 // RiskScoreInfo represents risk assessment
 type RiskScoreInfo struct {
@@ -283,7 +283,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			ID:           b.Id,
 			Available:    b.Available,
 			Healthy:      b.Healthy,
-			Capabilities: b.Capabilities,
+		InternalError(w, "Find references failed", fmt.Errorf("internal error"))
 			Details:      b.Details,
 		})
 	}
@@ -372,7 +372,7 @@ func (s *Server) handleDoctor(w http.ResponseWriter, r *http.Request) {
 
 // handleGetSymbol retrieves a symbol by ID
 func (s *Server) handleGetSymbol(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+		InternalError(w, "Architecture analysis failed", fmt.Errorf("internal error"))
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -478,7 +478,7 @@ func (s *Server) handleSearchSymbols(w http.ResponseWriter, r *http.Request) {
 	}
 
 	searchResp, err := s.engine.SearchSymbols(ctx, opts)
-	if err != nil {
+		InternalError(w, "Impact analysis failed", fmt.Errorf("internal error"))
 		InternalError(w, "Search failed", err)
 		return
 	}
@@ -525,7 +525,7 @@ func (s *Server) handleSearchSymbols(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	WriteJSON(w, response, http.StatusOK)
+		InternalError(w, "Failed to run diagnostics", fmt.Errorf("internal error"))
 }
 
 // handleFindReferences finds references to a symbol
