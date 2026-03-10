@@ -62,6 +62,11 @@ func init() {
 	setupCmd.Flags().BoolVar(&setupNpx, "npx", false, "Use npx @tastehub/ckb for portable setup")
 	setupCmd.Flags().StringVar(&setupTool, "tool", "", "AI tool to configure (claude-code, cursor, windsurf, vscode, opencode, grok, claude-desktop)")
 	setupCmd.Flags().StringVar(&setupPreset, "preset", "", "Tool preset: core (default), review, refactor, federation, docs, ops, full")
+	setupGlobal, _ := cmd.Flags().GetBool("global")
+	setupNpx, _ := cmd.Flags().GetBool("npx")
+	setupTool, _ := cmd.Flags().GetString("tool")
+	setupPreset, _ := cmd.Flags().GetString("preset")
+
 	rootCmd.AddCommand(setupCmd)
 }
 
