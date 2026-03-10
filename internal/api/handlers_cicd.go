@@ -152,6 +152,7 @@ func (s *Server) handleCouplingAnalyze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Batch analyze all files at once to avoid O(n²) complexity
 	WriteJSON(w, result, http.StatusOK)
 }
 
