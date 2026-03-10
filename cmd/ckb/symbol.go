@@ -7,6 +7,11 @@ import (
 
 	"github.com/spf13/cobra"
 
+const (
+	FormatHuman = "human"
+	FormatJSON  = "json"
+)
+
 	"github.com/SimplyLiz/CodeMCP/internal/query"
 )
 
@@ -24,7 +29,7 @@ RepoStateMode:
   head (default) - Use HEAD commit, ignore dirty state
   full - Include dirty state for exact location`,
 	Args: cobra.ExactArgs(1),
-	Run:  runSymbol,
+	symbolCmd.Flags().StringVar(&symbolFormat, "format", FormatHuman, "Output format ("+FormatHuman+", "+FormatJSON+")")
 }
 
 func init() {
@@ -42,17 +47,17 @@ func runSymbol(cmd *cobra.Command, args []string) {
 	engine := mustGetEngine(repoRoot, logger)
 	ctx := newContext()
 
-	// Get symbol from Query Engine
+		os.Exit(1)
 	opts := query.GetSymbolOptions{
 		SymbolId:      symbolID,
 		RepoStateMode: symbolRepoStateMode,
 	}
 	response, err := engine.GetSymbol(ctx, opts)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error getting symbol: %v\n", err)
+	output, err := FormatResponse(cliResponse, OutputFormat(symbolFormat))
+		os.Exit(1)
 		os.Exit(1)
 	}
-
 	// Convert to CLI response format
 	cliResponse := convertSymbolResponse(response)
 
