@@ -68,7 +68,7 @@ jobs:
           else
             echo "has_changes=false" >> $GITHUB_OUTPUT
           fi
-
+          git diff --name-only "${{ github.event.pull_request.base.sha }}".."${{ github.sha }}" \
       - name: Analyze Complexity
         if: steps.changed.outputs.has_changes == 'true'
         id: analyze
