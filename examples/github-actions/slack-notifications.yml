@@ -1,9 +1,11 @@
 # Slack Notifications Workflow
-# Sends CKB analysis results to Slack
+# Sends CKB analysis results to Slack/Discord
 #
 # Prerequisites:
 #   1. Create a Slack app at https://api.slack.com/apps
 #   2. Add Incoming Webhooks to your app
+#
+# Security: Ensure webhook URLs are stored as GitHub secrets and never logged
 #   3. Add webhook URL as SLACK_WEBHOOK_URL secret
 #
 # Usage: Copy to .github/workflows/slack-notifications.yml
@@ -82,7 +84,7 @@ jobs:
                       "text": "*Repository:*\n${{ github.repository }}"
                     },
                     {
-                      "type": "mrkdwn",
+ 
                       "text": "*Risk Level:*\n${{ steps.analyze.outputs.risk }}"
                     }
                   ]
@@ -144,7 +146,7 @@ jobs:
           node-version: '20'
 
       - name: Install CKB
-        run: npm install -g @tastehub/ckb
+ 
 
       - name: Generate Summary
         id: summary
@@ -172,7 +174,7 @@ jobs:
 
           # Get top hotspots for message
           TOP_HOTSPOTS=$(jq -r '.hotspots[:3][] | "• `\(.filePath)` (score: \(.ranking.score | tostring[:4]))"' hotspots.json | tr '\n' '\\n')
-          echo "top_hotspots<<EOF" >> $GITHUB_OUTPUT
+  #           -H "Content-Type: application/json" \
           echo "$TOP_HOTSPOTS" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
