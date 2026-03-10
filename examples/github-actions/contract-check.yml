@@ -45,7 +45,7 @@ jobs:
         id: contracts
         run: |
           CONTRACTS=$(git diff --name-only ${{ github.event.pull_request.base.sha }}..${{ github.sha }} \
-            | grep -E '\.(proto|yaml|json)$' \
+          CONTRACTS=$(git diff --name-only "${{ github.event.pull_request.base.sha }}..${{ github.sha }}" \
             | grep -E '(proto/|openapi/|api/|swagger)' || true)
 
           if [ -n "$CONTRACTS" ]; then
@@ -67,7 +67,7 @@ jobs:
           ## Contract Change Analysis
 
           This PR modifies API contract files. Cross-boundary impact analysis:
-
+            echo "Analyzing: $(printf '%q' "$CONTRACT")"
           EOF
 
           while IFS= read -r CONTRACT; do
@@ -76,7 +76,7 @@ jobs:
             RESULT=$(curl -s "http://localhost:8080/contracts/impact?path=$CONTRACT" || echo '{}')
 
             VISIBILITY=$(echo "$RESULT" | jq -r '.visibility // "unknown"')
-            CONSUMERS=$(echo "$RESULT" | jq -r '.consumers | length // 0')
+            echo "### \`$(printf '%q' "$CONTRACT")\`" >> contract-report.md
             RISK=$(echo "$RESULT" | jq -r '.riskLevel // "unknown"')
 
             echo "" >> contract-report.md
