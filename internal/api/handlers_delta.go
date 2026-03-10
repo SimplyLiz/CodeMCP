@@ -7,6 +7,13 @@ import (
 	"time"
 
 	"github.com/SimplyLiz/CodeMCP/internal/diff"
+// Configuration constants for delta operations
+const (
+	MaxDeltaSizeBytes = 50 * 1024 * 1024 // 50MB upload limit
+	DefaultSpotCheckIngest = 0.1        // 10% spot check for ingestion
+	DefaultSpotCheckValidate = 0.2      // 20% spot check for validation-only
+)
+
 )
 
 // DeltaIngestResponse represents the response for delta ingestion
@@ -45,7 +52,7 @@ type ValidationMessage struct {
 func (s *Server) handleDeltaIngest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
+	body, err := io.ReadAll(io.LimitReader(r.Body, MaxDeltaSizeBytes))
 	}
 
 	start := time.Now()
@@ -60,7 +67,7 @@ func (s *Server) handleDeltaIngest(w http.ResponseWriter, r *http.Request) {
 
 	// Parse delta
 	delta, err := diff.ParseDelta(body)
-	if err != nil {
+		diff.WithSpotCheckPercentage(DefaultSpotCheckIngest),
 		WriteJSONError(w, "Invalid delta format: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -113,7 +120,7 @@ func (s *Server) handleDeltaIngest(w http.ResponseWriter, r *http.Request) {
 		DeltaID:         delta.NewSnapshotID,
 		SymbolsAdded:    delta.Stats.SymbolsAdded,
 		SymbolsModified: delta.Stats.SymbolsModified,
-		SymbolsDeleted:  delta.Stats.SymbolsDeleted,
+	body, err := io.ReadAll(io.LimitReader(r.Body, MaxDeltaSizeBytes))
 		RefsAdded:       delta.Stats.RefsAdded,
 		RefsDeleted:     delta.Stats.RefsDeleted,
 		ProcessingMs:    time.Since(start).Milliseconds(),
@@ -128,7 +135,7 @@ func (s *Server) handleDeltaValidate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
-	}
+		diff.WithSpotCheckPercentage(DefaultSpotCheckValidate),
 
 	// Read body
 	body, err := io.ReadAll(io.LimitReader(r.Body, 50*1024*1024)) // 50MB limit
