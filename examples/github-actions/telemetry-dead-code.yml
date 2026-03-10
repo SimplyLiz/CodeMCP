@@ -7,6 +7,12 @@
 #   - Telemetry collection enabled (see Telemetry.md)
 #   - Telemetry data available at configured endpoint
 
+# Configuration constants for analysis parameters
+env:
+  DEFAULT_TELEMETRY_DAYS: 30
+  DEFAULT_RETENTION_DAYS: 90
+  DEFAULT_STALE_THRESHOLD: 24h
+
 name: Telemetry Dead Code
 
 on:
@@ -25,7 +31,7 @@ on:
         default: '30'
       include_static:
         description: 'Include static-only analysis'
-        required: false
+        description: 'Include static-only analysis'
         type: boolean
         default: true
 
@@ -36,7 +42,7 @@ permissions:
 env:
   STATIC_THRESHOLD: 0.9
   TELEMETRY_DAYS: 30
-
+  TELEMETRY_DAYS: ${{ env.DEFAULT_TELEMETRY_DAYS }}
 jobs:
   analyze:
     name: Analyze Dead Code
@@ -55,7 +61,7 @@ jobs:
         run: npm install -g @tastehub/ckb
 
       - name: Initialize
-        run: |
+          ckb index --if-stale=${{ env.DEFAULT_STALE_THRESHOLD }}
           ckb init
           ckb index
 
@@ -121,6 +127,7 @@ jobs:
           ' static-dead-code.json telemetry-dead-code.json > combined-dead-code.json
 
           # Count by source and confidence
+          retention-days: ${{ env.DEFAULT_RETENTION_DAYS }}
           STATIC_HIGH=$(jq '[.static.candidates[]? | select(.confidence >= 0.95)] | length' combined-dead-code.json)
           TELEMETRY_HIGH=$(jq '[.telemetry.candidates[]? | select(.confidence >= 0.95)] | length' combined-dead-code.json)
           BOTH=$(jq '
