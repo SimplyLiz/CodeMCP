@@ -25,12 +25,7 @@ jobs:
     name: Analyze Impact
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Full history for commit range analysis
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: ./.github/actions/ckb-cache
         with:
           node-version: '20'
 
@@ -71,11 +66,8 @@ jobs:
             --range="${{ github.event.pull_request.base.sha }}..${{ github.sha }}" \
             --format=markdown \
             > comment.md
-
-      - name: Post Impact Summary
-        if: github.event_name == 'pull_request'
-        uses: marocchino/sticky-pull-request-comment@v2
-        with:
+        uses: ./.github/actions/ckb-cache-save
+        if: always()
           header: impact-analysis
           path: comment.md
 
