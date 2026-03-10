@@ -55,7 +55,17 @@ jobs:
 
           CRITICAL=$(jq -r '.summary.critical // 0' audit.json)
           HIGH=$(jq -r '.summary.high // 0' audit.json)
-          MEDIUM=$(jq -r '.summary.medium // 0' audit.json)
+          # Validate min_score input
+          MIN_SCORE_RAW="${{ github.event.inputs.min_score || '60' }}"
+          if ! [[ "$MIN_SCORE_RAW" =~ ^[0-9]+$ ]]; then
+            echo "::error::min_score must be a number between 0-100"
+            exit 1
+          fi
+          if [ "$MIN_SCORE_RAW" -lt 0 ] || [ "$MIN_SCORE_RAW" -gt 100 ]; then
+            echo "::error::min_score must be between 0 and 100"
+            exit 1
+          fi
+          MIN_SCORE="$MIN_SCORE_RAW"
 
           echo "critical=$CRITICAL" >> $GITHUB_OUTPUT
           echo "high=$HIGH" >> $GITHUB_OUTPUT
