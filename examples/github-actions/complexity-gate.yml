@@ -18,9 +18,9 @@ permissions:
   pull-requests: write
   checks: write
 
-env:
-  # Thresholds - adjust for your project
-  MAX_CYCLOMATIC: 15
+  MAX_CYCLOMATIC: ${{ vars.MAX_CYCLOMATIC || 15 }}
+  MAX_COGNITIVE: ${{ vars.MAX_COGNITIVE || 20 }}
+  MAX_FILE_COMPLEXITY: ${{ vars.MAX_FILE_COMPLEXITY || 100 }}
   MAX_COGNITIVE: 20
   MAX_FILE_COMPLEXITY: 100
 
