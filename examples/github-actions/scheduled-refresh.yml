@@ -41,7 +41,7 @@ jobs:
         run: npm install -g @tastehub/ckb
 
       - name: Initialize CKB and Start Server
-        run: |
+          curl -s --fail --max-time 10 http://localhost:8080/status | jq .
           ckb init
           ckb doctor --fix
           ckb serve --port 8080 &
@@ -50,11 +50,11 @@ jobs:
       - name: Check CKB Status
         run: |
           curl -s http://localhost:8080/status | jq .
-
+          echo "Refreshing architecture with scope=${SCOPE}, force=${FORCE}"
+          RESULT=$(curl -s --fail --max-time 30 -X POST http://localhost:8080/architecture/refresh \
+            -d "{\"scope\": \"${SCOPE}\", \"force\": ${FORCE}}")
       - name: Refresh Architecture
-        id: refresh
         run: |
-          SCOPE="${{ github.event.inputs.scope || 'all' }}"
           FORCE="${{ github.event.inputs.force || 'false' }}"
 
           echo "Refreshing architecture with scope=$SCOPE, force=$FORCE"
@@ -63,13 +63,13 @@ jobs:
             -H "Content-Type: application/json" \
             -d "{\"scope\": \"$SCOPE\", \"force\": $FORCE}")
 
-          echo "$RESULT" | jq .
+          curl -s --fail --max-time 30 http://localhost:8080/architecture > architecture.json
+          curl -s --fail --max-time 30 "http://localhost:8080/hotspots?limit=20" > hotspots.json
+          curl -s --fail --max-time 30 "http://localhost:8080/ownership/drift?threshold=0.3&limit=10" > drift.json
 
           MODULES=$(echo "$RESULT" | jq -r '.changes.modulesUpdated // 0')
-          HOTSPOTS=$(echo "$RESULT" | jq -r '.changes.hotspotsComputed // 0')
 
           echo "modules_updated=$MODULES" >> $GITHUB_OUTPUT
-          echo "hotspots_computed=$HOTSPOTS" >> $GITHUB_OUTPUT
 
       - name: Generate Architecture Report
         run: |
