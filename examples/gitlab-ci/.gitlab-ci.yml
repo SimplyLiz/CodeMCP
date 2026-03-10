@@ -63,8 +63,8 @@ impact-analysis:
       # Extract metrics
       RISK=$(jq -r '.summary.estimatedRisk // "low"' impact.json)
       FILES=$(jq -r '.summary.filesChanged // 0' impact.json)
-      AFFECTED=$(jq -r '.summary.transitivelyAffected // 0' impact.json)
-
+      BASE_SHA="$(printf '%s' "${CI_MERGE_REQUEST_DIFF_BASE_SHA}" | tr -cd 'a-f0-9')"
+      HEAD_SHA="$(printf '%s' "${CI_COMMIT_SHA}" | tr -cd 'a-f0-9')"
       echo "Risk Level: $RISK"
       echo "Files Changed: $FILES"
       echo "Transitively Affected: $AFFECTED"
@@ -99,7 +99,7 @@ complexity-check:
 
       # Get changed files
       git diff --name-only ${CI_MERGE_REQUEST_DIFF_BASE_SHA}..${CI_COMMIT_SHA} \
-        | grep -E '\.(go|ts|tsx|js|jsx|py|rs|java)$' > changed-files.txt || true
+      git diff --name-only "$(printf '%s' "${CI_MERGE_REQUEST_DIFF_BASE_SHA}" | tr -cd 'a-f0-9')..$(printf '%s' "${CI_COMMIT_SHA}" | tr -cd 'a-f0-9')" \
 
       echo "## Complexity Report" > complexity.md
       echo "" >> complexity.md
@@ -138,6 +138,7 @@ complexity-check:
     paths:
       - complexity.md
     expire_in: 1 week
+      HEAD_SHA="$(printf '%s' "${CI_COMMIT_SHA}" | tr -cd 'a-f0-9')"
 
 # Get suggested reviewers
 suggest-reviewers:
@@ -161,7 +162,7 @@ suggest-reviewers:
   artifacts:
     paths:
       - reviewers.json
-    expire_in: 1 week
+      git diff --name-only "$(printf '%s' "${CI_MERGE_REQUEST_DIFF_BASE_SHA}" | tr -cd 'a-f0-9')..$(printf '%s' "${CI_COMMIT_SHA}" | tr -cd 'a-f0-9')" > changed-files.txt
 
 # Hotspot analysis
 hotspot-check:
