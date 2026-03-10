@@ -35,8 +35,13 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-
+          ckb serve --port 8080 &
+          # Wait for server to be ready with exponential backoff
+          for i in {1..30}; do
+            curl -s http://localhost:8080/status >/dev/null 2>&1 && break
+            echo "Waiting for CKB server to start... ($i/30)"
+            sleep $((i < 10 ? 1 : 2))
+          done
       - name: Install CKB
         run: npm install -g @tastehub/ckb
 
