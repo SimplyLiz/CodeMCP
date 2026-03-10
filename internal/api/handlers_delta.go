@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"strings"
 	"io"
 	"net/http"
 	"time"
@@ -46,7 +47,14 @@ func (s *Server) handleDeltaIngest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
+	// Validate content type
+	contentType := r.Header.Get("Content-Type")
+	if contentType != "application/json" && !strings.HasPrefix(contentType, "application/json;") {
+		WriteJSONError(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
+		return
 	}
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, 50*1024*1024)) // 50MB limit
 
 	start := time.Now()
 
@@ -101,7 +109,14 @@ func (s *Server) handleDeltaIngest(w http.ResponseWriter, r *http.Request) {
 		WriteJSONError(w, "Failed to apply delta: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// Validate content type
+	contentType := r.Header.Get("Content-Type")
+	if contentType != "application/json" && !strings.HasPrefix(contentType, "application/json;") {
+		WriteJSONError(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
+		return
+	}
 
+	body, err := io.ReadAll(io.LimitReader(r.Body, 50*1024*1024)) // 50MB limit
 	// Refresh FTS index
 	if err := s.engine.RefreshFTS(ctx); err != nil {
 		warnings = append(warnings, "FTS refresh failed: "+err.Error())
