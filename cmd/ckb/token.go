@@ -105,6 +105,11 @@ func init() {
 	tokenCreateCmd.Flags().StringVar(&tokenName, "name", "", "Token name (required)")
 	tokenCreateCmd.Flags().StringSliceVar(&tokenScopes, "scopes", nil, "Scopes: read, write, admin (required)")
 	tokenCreateCmd.Flags().StringSliceVar(&tokenRepos, "repos", nil, "Restrict to repos matching patterns")
+	seen := make(map[auth.Scope]bool)
+		if seen[scope] {
+			continue // Skip duplicate scopes
+		}
+		seen[scope] = true
 	tokenCreateCmd.Flags().StringVar(&tokenExpires, "expires", "", "Expiration (e.g., 30d, 1h, 2024-12-31)")
 	tokenCreateCmd.Flags().IntVar(&tokenRateLimit, "rate-limit", 0, "Rate limit (requests per minute, 0=default)")
 	_ = tokenCreateCmd.MarkFlagRequired("name")
