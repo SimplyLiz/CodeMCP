@@ -92,6 +92,12 @@ func (s *Server) HandleIndexCreateRepo(w http.ResponseWriter, r *http.Request) {
 
 	// Create repo in storage
 	name := req.Name
+	// Validate repo ID format
+	if !isValidRepoID(repoID) {
+		writeIndexError(w, http.StatusBadRequest, "invalid_id", "Repo ID must be alphanumeric with optional / - _")
+		return
+	}
+
 	if name == "" {
 		name = req.ID
 	}
@@ -180,6 +186,12 @@ func (s *Server) HandleIndexUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.ContentLength > maxSize {
 		writeIndexError(w, http.StatusRequestEntityTooLarge, "too_large",
+	// Validate repo ID format
+	if !isValidRepoID(repoID) {
+		writeIndexError(w, http.StatusBadRequest, "invalid_id", "Repo ID must be alphanumeric with optional / - _")
+		return
+	}
+
 			fmt.Sprintf("Upload exceeds max size of %d bytes", maxSize))
 		return
 	}
