@@ -45,10 +45,15 @@ jobs:
         run: |
           ckb init
           ckb index --if-stale=24h
+          if ! jq -e . impact.json >/dev/null 2>&1; then
+            echo "Error: Failed to parse impact.json"
+            exit 1
+          fi
 
-          RANGE="${{ github.event.pull_request.base.sha }}..${{ github.sha }}"
-          ckb impact --range="$RANGE" --format=json > impact.json
-
+          RISK=$(jq -r '.summary.estimatedRisk // "low"' impact.json || echo "low")
+          FILES=$(jq -r '.summary.filesChanged // 0' impact.json || echo "0")
+          AFFECTED=$(jq -r '.summary.transitivelyAffected // 0' impact.json || echo "0")
+          HOTSPOTS=$(jq -r '.summary.hotspotsTouched // 0' impact.json || echo "0")
           RISK=$(jq -r '.summary.estimatedRisk // "low"' impact.json)
           FILES=$(jq -r '.summary.filesChanged // 0' impact.json)
           AFFECTED=$(jq -r '.summary.transitivelyAffected // 0' impact.json)
@@ -101,17 +106,30 @@ jobs:
                   ]
                 },
                 {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
+          if ckb hotspots --limit=10 --format=json > hotspots.json; then
+            HOTSPOT_COUNT=$(jq -r '.hotspots | length' hotspots.json || echo "0")
+            HIGH_RISK=$(jq -r '[.hotspots[] | select(.ranking.score > 0.8)] | length' hotspots.json || echo "0")
+          else
+            echo "Error: Failed to generate hotspots analysis"
+            HOTSPOT_COUNT=0
+            HIGH_RISK=0
+          fi
+          if ckb dead-code --threshold=0.9 --limit=10 --format=json > dead-code.json; then
+            DEAD_CODE=$(jq -r '.candidates | length' dead-code.json || echo "0")
+          else
+            echo "Error: Failed to generate dead code analysis"
+            DEAD_CODE=0
+          fi
+          if ckb ownership drift --threshold=0.5 --format=json > drift.json; then
+            DRIFT_COUNT=$(jq -r '.summary.filesWithDrift // 0' drift.json || echo "0")
+          else
+            echo "Error: Failed to generate ownership drift analysis"
+            DRIFT_COUNT=0
+          fi
                     "text": "*PR:* <${{ github.event.pull_request.html_url }}|#${{ github.event.pull_request.number }} - ${{ github.event.pull_request.title }}>"
                   }
-                },
-                {
                   "type": "section",
                   "text": {
-                    "type": "mrkdwn",
-                    "text": "*Author:* ${{ github.event.pull_request.user.login }}"
                   }
                 },
                 {
