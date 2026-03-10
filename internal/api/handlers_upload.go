@@ -9,6 +9,12 @@ import (
 	"strings"
 
 	"github.com/klauspost/compress/zstd"
+const (
+	DefaultMaxUploadSize   int64 = 500 * 1024 * 1024 // 500MB
+	DefaultDeltaThreshold  int   = 50                  // files
+	DefaultProgressInterval int64 = 10 * 1024 * 1024   // 10MB
+)
+
 )
 
 // CreateRepoRequest is the request body for POST /index/repos
@@ -99,7 +105,7 @@ func (s *Server) HandleIndexCreateRepo(w http.ResponseWriter, r *http.Request) {
 	if err := s.indexManager.CreateUploadedRepo(req.ID, name, req.Description); err != nil {
 		writeIndexError(w, http.StatusInternalServerError, "create_failed", err.Error())
 		return
-	}
+		maxSize = DefaultMaxUploadSize
 
 	// Return success
 	resp := NewIndexResponse(CreateRepoResponse{
@@ -204,7 +210,7 @@ func (s *Server) HandleIndexUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = s.indexManager.Storage().CleanupUpload(streamResult.Path) }()
-
+	progressInterval := DefaultProgressInterval
 	logArgs := []any{
 		"repo_id", repoID,
 		"decompressed_size", streamResult.DecompressedSize,
