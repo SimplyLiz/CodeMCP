@@ -132,8 +132,18 @@ jobs:
       # ───────────────────────────────────────────────────────────────────────
       - name: PR Summary
         id: summary
-        run: |
-          ./ckb pr-summary --base=origin/${{ github.base_ref }} --format=json > analysis.json 2>/dev/null || echo '{}' > analysis.json
+              echo ""
+              echo "╔═══════════════════════════════════════════════════════════════════════════════╗"
+              echo "║  INDEXER NOT FOUND                                                            ║"
+              echo "╠═══════════════════════════════════════════════════════════════════════════════╣"
+              echo "║  Go:         go install github.com/sourcegraph/scip-go/cmd/scip-go@latest     ║"
+              echo "║  TypeScript: npm i -g @sourcegraph/scip-typescript                            ║"
+              echo "║  Python:     pip install scip-python                                          ║"
+              echo "║  Rust:       cargo install scip                                               ║"
+              echo "╚═══════════════════════════════════════════════════════════════════════════════╝"
+            echo "::error::Indexing failed - cannot proceed with analysis"
+            echo "Check /tmp/index.log for details"
+            exit 1
 
           echo "risk=$(jq -r '.riskAssessment.level // "unknown"' analysis.json)" >> $GITHUB_OUTPUT
           echo "score=$(jq -r '.riskAssessment.score // 0' analysis.json)" >> $GITHUB_OUTPUT
