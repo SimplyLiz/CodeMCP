@@ -77,15 +77,17 @@ jobs:
             jq -r '.hotspots[].filePath' current-hotspots.json | sort > current-files.txt
             jq -r '.hotspots[].filePath' baseline/hotspots.json | sort > baseline-files.txt
 
-            # New hotspots (in current but not baseline)
-            NEW_HOTSPOTS=$(comm -23 current-files.txt baseline-files.txt | wc -l | tr -d ' ')
+            # Build lookup tables for efficient score comparison
+            jq -r '.hotspots[] | "\(.filePath)\t\(.ranking.score)"' current-hotspots.json > current-scores.tsv
+            jq -r '.hotspots[] | "\(.filePath)\t\(.ranking.score)"' baseline/hotspots.json > baseline-scores.tsv
 
-            # Check for worsened scores
-            while IFS= read -r file; do
-              CURRENT_SCORE=$(jq -r --arg f "$file" '.hotspots[] | select(.filePath == $f) | .ranking.score // 0' current-hotspots.json)
-              BASELINE_SCORE=$(jq -r --arg f "$file" '.hotspots[] | select(.filePath == $f) | .ranking.score // 0' baseline/hotspots.json)
+              CURRENT_SCORE=$(grep -F "$file	" current-scores.tsv | cut -f2 || echo "0")
+              BASELINE_SCORE=$(grep -F "$file	" baseline-scores.tsv | cut -f2 || echo "0")
+              # Score increased by more than 10%
+              DIFF=$(echo "$CURRENT_SCORE - $BASELINE_SCORE" | bc -l 2>/dev/null || echo "0")
+              if [ "$(echo "$DIFF > 0.1" | bc -l 2>/dev/null || echo "0")" -eq 1 ]; then
+                WORSENED=$((WORSENED + 1))
 
-              if [ -n "$CURRENT_SCORE" ] && [ -n "$BASELINE_SCORE" ]; then
                 # Score increased by more than 10%
                 DIFF=$(echo "$CURRENT_SCORE - $BASELINE_SCORE" | bc -l 2>/dev/null || echo "0")
                 if [ "$(echo "$DIFF > 0.1" | bc -l 2>/dev/null || echo "0")" -eq 1 ]; then
