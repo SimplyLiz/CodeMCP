@@ -69,7 +69,7 @@ jobs:
           This PR modifies API contract files. Cross-boundary impact analysis:
 
           EOF
-
+            RESULT=$(curl -s "http://localhost:8080/contracts/impact?path=$(printf '%s' "$CONTRACT" | jq -sRr @uri)" || echo '{}')
           while IFS= read -r CONTRACT; do
             echo "Analyzing: $CONTRACT"
 
