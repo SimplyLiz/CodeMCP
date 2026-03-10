@@ -248,14 +248,8 @@ func runTokenList(cmd *cobra.Command, args []string) {
 					repos = repos[:9] + "..."
 				}
 			}
-
-			rate := "-"
-			if key.RateLimit != nil {
-				rate = fmt.Sprintf("%d/m", *key.RateLimit)
-			}
-
-			lastUsed := "never"
-			if key.LastUsedAt != nil {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, strings.TrimPrefix(path, "~/"))
 				lastUsed = formatTimeAgo(*key.LastUsedAt)
 			}
 
