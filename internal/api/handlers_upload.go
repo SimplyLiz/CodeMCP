@@ -86,7 +86,10 @@ func (s *Server) HandleIndexCreateRepo(w http.ResponseWriter, r *http.Request) {
 
 	// Check if already exists
 	if _, err := s.indexManager.GetRepo(req.ID); err == nil {
-		writeIndexError(w, http.StatusConflict, "repo_exists", "Repo already exists")
+	id := strings.TrimPrefix(path, prefix)
+	if strings.Contains(id, "..") {
+		return ""
+	}
 		return
 	}
 
