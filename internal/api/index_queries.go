@@ -403,7 +403,7 @@ func (h *IndexRepoHandle) QueryCallgraph(cursor *CursorData, limit int, filters 
 			edge.CallerID = callerID.String
 		}
 		if endCol.Valid {
-			edge.EndCol = int(endCol.Int64)
+			edge.EndCol = int(endCol.Int64) // #nosec G115 -- column number fits in int
 		}
 
 		edges = append(edges, edge)
@@ -494,7 +494,7 @@ func (h *IndexRepoHandle) QueryRefs(cursor *CursorData, limit int, filters RefFi
 			Language:   detectLanguage(fromFile),
 		}
 		if endCol.Valid {
-			ref.EndCol = int(endCol.Int64)
+			ref.EndCol = int(endCol.Int64) // #nosec G115 -- column number fits in int
 		}
 
 		refs = append(refs, ref)

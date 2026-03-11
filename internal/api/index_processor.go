@@ -693,10 +693,10 @@ func buildLocation(path string, occ *scip.Occurrence) string {
 	}
 
 	if len(occ.Range) >= 1 {
-		loc["line"] = int(occ.Range[0]) + 1
+		loc["line"] = int(occ.Range[0]) + 1 // #nosec G115 -- SCIP int32 fits in int
 	}
 	if len(occ.Range) >= 2 {
-		loc["col"] = int(occ.Range[1]) + 1
+		loc["col"] = int(occ.Range[1]) + 1 // #nosec G115 -- SCIP int32 fits in int
 	}
 
 	data, _ := json.Marshal(loc)
@@ -728,7 +728,7 @@ func resolveCallerFromDoc(doc *scip.Document, callLine int, info map[string]*sci
 			continue
 		}
 
-		line := int(occ.Range[0]) + 1
+		line := int(occ.Range[0]) + 1 // #nosec G115 -- SCIP int32 fits in int
 		// Find the closest function definition before the call
 		if line <= callLine && line > bestLine {
 			bestMatch = occ.Symbol
