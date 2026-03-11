@@ -525,7 +525,7 @@ func LoadConfigWithDetails(repoRoot string) (*LoadResult, error) {
 
 // loadConfigFromPath loads a config file from a specific path
 func loadConfigFromPath(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- path is internally constructed
 	if err != nil {
 		return nil, err
 	}

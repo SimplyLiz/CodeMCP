@@ -92,7 +92,7 @@ func runSetupHooks(cmd *cobra.Command, args []string) {
 	hookContent := buildPreCommitHook(installSecrets, installImpact, existingHook)
 
 	// Write hook
-	if err := os.WriteFile(preCommitPath, []byte(hookContent), 0755); err != nil {
+	if err := os.WriteFile(preCommitPath, []byte(hookContent), 0755); err != nil { // #nosec G306 -- git hook must be executable
 		fmt.Fprintf(os.Stderr, "Error writing pre-commit hook: %v\n", err)
 		os.Exit(1)
 	}

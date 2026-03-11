@@ -226,7 +226,7 @@ func runDaemonBackground() error {
 		return fmt.Errorf("failed to create daemon directory: %w", dirErr)
 	}
 
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644) // #nosec G304 -- path is internally constructed
 	if err != nil {
 		return fmt.Errorf("failed to open log file: %w", err)
 	}
@@ -324,7 +324,7 @@ func runDaemonLogs(cmd *cobra.Command, args []string) error {
 }
 
 func showLastLines(path string, n int) error {
-	file, err := os.Open(path)
+	file, err := os.Open(path) // #nosec G304 -- path is internally constructed
 	if err != nil {
 		return err
 	}
@@ -349,7 +349,7 @@ func showLastLines(path string, n int) error {
 
 func followLogs(path string) error {
 	// Open file
-	file, err := os.Open(path)
+	file, err := os.Open(path) // #nosec G304 -- path is internally constructed
 	if err != nil {
 		return err
 	}

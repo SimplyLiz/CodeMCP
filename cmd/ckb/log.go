@@ -170,7 +170,7 @@ func showLogLines(path string, n int) error {
 }
 
 func followLogFile(path string) error {
-	file, err := os.Open(path)
+	file, err := os.Open(path) // #nosec G304 -- path is internally constructed
 	if err != nil {
 		return err
 	}
