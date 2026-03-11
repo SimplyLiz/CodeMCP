@@ -125,6 +125,25 @@ func (rm *RefreshManager) RunIncrementalRefreshWithTrigger(ctx context.Context, 
 	result.Duration = time.Since(start)
 	result.FilesChanged = stats.FilesAdded + stats.FilesChanged + stats.FilesDeleted
 
+	// Update metadata so freshness check stays in sync
+	ckbDir := filepath.Join(repoPath, ".ckb")
+	if rs, rsErr := repostate.ComputeRepoState(repoPath); rsErr == nil {
+		meta, metaErr := index.LoadMeta(ckbDir)
+		if metaErr == nil && meta != nil {
+			meta.CommitHash = rs.HeadCommit
+			meta.RepoStateID = rs.RepoStateID
+			meta.LastRefresh = &index.LastRefresh{
+				At:          time.Now(),
+				Trigger:     trigger,
+				TriggerInfo: triggerInfo,
+				DurationMs:  result.Duration.Milliseconds(),
+			}
+			if saveErr := meta.Save(ckbDir); saveErr != nil {
+				rm.stdLogger.Printf("Warning: could not update index metadata for %s: %v", repoPath, saveErr)
+			}
+		}
+	}
+
 	rm.stdLogger.Printf("Incremental refresh completed for %s: %d files changed in %v",
 		repoPath, result.FilesChanged, result.Duration.Round(time.Millisecond))
 
