@@ -472,7 +472,7 @@ func detectCodeowners(repoRoot string) *CodeownersStatusCLI {
 
 	for _, relPath := range codeownersLocations {
 		fullPath := filepath.Join(repoRoot, relPath)
-		content, err := os.ReadFile(fullPath) // #nosec G304 -- path is internally constructed
+		content, err := os.ReadFile(fullPath) // #nosec G703 -- path is internally constructed
 		if err == nil {
 			status.Found = true
 			status.Path = relPath

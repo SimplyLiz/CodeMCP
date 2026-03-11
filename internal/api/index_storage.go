@@ -210,7 +210,7 @@ func (s *IndexStorage) SaveMeta(repoID string, meta *RepoMeta) error {
 		return fmt.Errorf("failed to marshal metadata: %w", err)
 	}
 
-	if err := os.WriteFile(s.MetaPath(repoID), data, 0644); err != nil { // #nosec G306 -- non-sensitive metadata
+	if err := os.WriteFile(s.MetaPath(repoID), data, 0644); err != nil { // #nosec G703 -- non-sensitive metadata
 		return fmt.Errorf("failed to write metadata: %w", err)
 	}
 
@@ -254,7 +254,7 @@ func (s *IndexStorage) CleanupUpload(path string) error {
 	if !strings.HasPrefix(path, s.uploadDir) {
 		return fmt.Errorf("invalid upload path: %s", path)
 	}
-	return os.Remove(path) // #nosec G304 -- path validated against uploadDir above
+	return os.Remove(path) // #nosec G703 -- path validated against uploadDir above
 }
 
 // CleanupOldUploads removes uploads older than the given duration

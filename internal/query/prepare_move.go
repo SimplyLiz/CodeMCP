@@ -138,7 +138,7 @@ func (e *Engine) findAffectedImportsHeuristic(sourceDir, targetDir string) []Mov
 			return nil
 		}
 
-		f, err := os.Open(path)
+		f, err := os.Open(path) // #nosec G122 -- path from filepath.WalkDir in trusted repo
 		if err != nil {
 			return nil
 		}
