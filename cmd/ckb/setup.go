@@ -469,7 +469,7 @@ func getConfigPath(toolID string, global bool) string {
 			}
 		}
 		for _, path := range candidates {
-			if _, err := os.Stat(path); err == nil {
+			if _, err := os.Stat(path); err == nil { // #nosec G703 -- path is internally constructed
 				return path
 			}
 		}
@@ -513,7 +513,7 @@ func writeMcpServersConfigWithEnv(path, command string, args []string, env map[s
 		McpServers: make(map[string]mcpServer),
 	}
 
-	if data, err := os.ReadFile(path); err == nil {
+	if data, err := os.ReadFile(path); err == nil { // #nosec G703 -- path is internally constructed
 		if jsonErr := json.Unmarshal(data, &config); jsonErr != nil {
 			fmt.Printf("Warning: existing config is invalid, will overwrite\n")
 			config.McpServers = make(map[string]mcpServer)
@@ -536,7 +536,7 @@ func writeMcpServersConfigWithEnv(path, command string, args []string, env map[s
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0644) // #nosec G703 -- non-sensitive config file
 }
 
 func writeVSCodeConfig(path, command string, args []string) error {
@@ -545,7 +545,7 @@ func writeVSCodeConfig(path, command string, args []string) error {
 		Servers: make(map[string]vsCodeServer),
 	}
 
-	if data, err := os.ReadFile(path); err == nil {
+	if data, err := os.ReadFile(path); err == nil { // #nosec G703 -- path is internally constructed
 		if jsonErr := json.Unmarshal(data, &config); jsonErr != nil {
 			fmt.Printf("Warning: existing config is invalid, will overwrite\n")
 			config.Servers = make(map[string]vsCodeServer)
@@ -565,7 +565,7 @@ func writeVSCodeConfig(path, command string, args []string) error {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0644) // #nosec G703 -- non-sensitive config file
 }
 
 func writeOpenCodeConfig(path, command string, args []string, useNpx bool) error {
@@ -574,7 +574,7 @@ func writeOpenCodeConfig(path, command string, args []string, useNpx bool) error
 		Mcp: make(map[string]openCodeMcpEntry),
 	}
 
-	if data, err := os.ReadFile(path); err == nil {
+	if data, err := os.ReadFile(path); err == nil { // #nosec G703 -- path is internally constructed
 		if jsonErr := json.Unmarshal(data, &config); jsonErr != nil {
 			fmt.Printf("Warning: existing config is invalid, will overwrite\n")
 			config.Mcp = make(map[string]openCodeMcpEntry)
@@ -602,13 +602,13 @@ func writeOpenCodeConfig(path, command string, args []string, useNpx bool) error
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0644) // #nosec G703 -- non-sensitive config file
 }
 
 func writeGrokConfig(path, command string, args []string) error {
 	// Read existing config preserving other fields
 	var raw map[string]json.RawMessage
-	if data, err := os.ReadFile(path); err == nil {
+	if data, err := os.ReadFile(path); err == nil { // #nosec G703 -- path is internally constructed
 		if jsonErr := json.Unmarshal(data, &raw); jsonErr != nil {
 			fmt.Printf("Warning: existing config is invalid, will overwrite\n")
 			raw = make(map[string]json.RawMessage)
@@ -644,7 +644,7 @@ func writeGrokConfig(path, command string, args []string) error {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0644) // #nosec G703 -- non-sensitive config file
 }
 
 func configureGrokGlobal(ckbCommand string, ckbArgs []string) (bool, error) {
@@ -836,7 +836,7 @@ func getClaudeMcpConfig() (*claudeConfigEntry, error) {
 	}
 
 	configPath := filepath.Join(home, ".claude.json")
-	data, err := os.ReadFile(configPath)
+	data, err := os.ReadFile(configPath) // #nosec G703 -- path is internally constructed
 	if err != nil {
 		return nil, err // File doesn't exist or can't read
 	}
@@ -862,7 +862,7 @@ func getGrokMcpConfig() (*grokMcpEntry, error) {
 	}
 
 	configPath := filepath.Join(home, ".grok", "user-settings.json")
-	data, err := os.ReadFile(configPath)
+	data, err := os.ReadFile(configPath) // #nosec G703 -- path is internally constructed
 	if err != nil {
 		return nil, err // File doesn't exist or can't read
 	}
@@ -917,7 +917,7 @@ func getVSCodeGlobalMcpConfig() (*vsCodeMcpEntry, error) {
 		return nil, fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 	}
 
-	data, err := os.ReadFile(settingsPath)
+	data, err := os.ReadFile(settingsPath) // #nosec G703 -- path is internally constructed
 	if err != nil {
 		return nil, err // File doesn't exist or can't read
 	}

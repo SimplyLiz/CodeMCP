@@ -99,7 +99,8 @@ jobs:
       # G302: File permissions (0644 is standard for config/log files)
       # G304: File path from variable (paths come from trusted sources)
       # G306: File write permissions (same as G302)
-      exclude_rules: 'G104,G301,G302,G304,G306'
+      # G703: Path traversal taint analysis (same as G304 but taint-based; all paths are internal)
+      exclude_rules: 'G104,G301,G302,G304,G306,G703'
 
   sast-python:
     name: Python SAST

@@ -423,11 +423,11 @@ func formatTimeAgo(t time.Time) string {
 	case d < time.Minute:
 		return "just now"
 	case d < time.Hour:
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+		return fmt.Sprintf("%dm ago", int(d.Minutes())) // #nosec G115 -- duration fits in int
 	case d < 24*time.Hour:
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
+		return fmt.Sprintf("%dh ago", int(d.Hours())) // #nosec G115 -- duration fits in int
 	case d < 7*24*time.Hour:
-		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24)) // #nosec G115 -- duration fits in int
 	default:
 		return t.Format("Jan 2")
 	}

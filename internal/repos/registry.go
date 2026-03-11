@@ -64,7 +64,7 @@ func LoadRegistry() (*Registry, error) {
 		return nil, err
 	}
 
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G703 -- path is internally constructed
 	if os.IsNotExist(err) {
 		// Return empty registry
 		return &Registry{
@@ -129,11 +129,11 @@ func (r *Registry) Save() error {
 
 	// Write atomically
 	tmpPath := path + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+	if err := os.WriteFile(tmpPath, data, 0644); err != nil { // #nosec G703 -- non-sensitive registry file
 		return fmt.Errorf("failed to write registry: %w", err)
 	}
 	if err := os.Rename(tmpPath, path); err != nil {
-		_ = os.Remove(tmpPath)
+		_ = os.Remove(tmpPath) // #nosec G703 -- path is internally constructed
 		return fmt.Errorf("failed to rename registry: %w", err)
 	}
 
@@ -356,7 +356,7 @@ func acquireLock(path string) (*FileLock, error) {
 		return nil, err
 	}
 
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644) // #nosec G703 -- path is internally constructed
 	if err != nil {
 		return nil, err
 	}

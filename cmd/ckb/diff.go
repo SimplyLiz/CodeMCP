@@ -114,7 +114,7 @@ func runDiff(cmd *cobra.Command, args []string) {
 		}
 
 		if diffOutputPath != "" {
-			if err := os.WriteFile(diffOutputPath, data, 0644); err != nil {
+			if err := os.WriteFile(diffOutputPath, data, 0644); err != nil { // #nosec G703 -- non-sensitive output file
 				fmt.Fprintf(os.Stderr, "Error writing output: %v\n", err)
 				os.Exit(1)
 			}
@@ -140,7 +140,7 @@ func runDiff(cmd *cobra.Command, args []string) {
 
 func runDiffValidate(path string, logger *slog.Logger) {
 	// Read delta file
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G703 -- path from CLI arg
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading delta file: %v\n", err)
 		os.Exit(1)

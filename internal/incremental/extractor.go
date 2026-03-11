@@ -200,10 +200,10 @@ func (e *SCIPExtractor) extractFileDelta(doc *scip.Document, change ChangedFile)
 
 		// Parse range (SCIP is 0-indexed, we use 1-indexed)
 		if len(occ.Range) >= 1 {
-			sym.StartLine = int(occ.Range[0]) + 1
+			sym.StartLine = int(occ.Range[0]) + 1 // #nosec G115 -- SCIP int32 coordinates fit in int
 		}
 		if len(occ.Range) >= 3 {
-			sym.EndLine = int(occ.Range[2]) + 1
+			sym.EndLine = int(occ.Range[2]) + 1 // #nosec G115 -- SCIP int32 coordinates fit in int
 		} else {
 			sym.EndLine = sym.StartLine
 		}
@@ -242,7 +242,7 @@ func (e *SCIPExtractor) extractFileDelta(doc *scip.Document, change ChangedFile)
 		}
 
 		if len(occ.Range) >= 1 {
-			ref.FromLine = int(occ.Range[0]) + 1
+			ref.FromLine = int(occ.Range[0]) + 1 // #nosec G115 -- SCIP int32 coordinates fit in int
 		}
 
 		delta.Refs = append(delta.Refs, ref)
@@ -273,13 +273,13 @@ func (e *SCIPExtractor) extractFileDelta(doc *scip.Document, change ChangedFile)
 
 		// Parse location (SCIP is 0-indexed, we use 1-indexed)
 		if len(occ.Range) >= 1 {
-			edge.Line = int(occ.Range[0]) + 1
+			edge.Line = int(occ.Range[0]) + 1 // #nosec G115 -- SCIP int32 coordinates fit in int
 		}
 		if len(occ.Range) >= 2 {
-			edge.Column = int(occ.Range[1]) + 1
+			edge.Column = int(occ.Range[1]) + 1 // #nosec G115 -- SCIP int32 coordinates fit in int
 		}
 		if len(occ.Range) >= 4 {
-			edge.EndColumn = int(occ.Range[3]) + 1
+			edge.EndColumn = int(occ.Range[3]) + 1 // #nosec G115 -- SCIP int32 coordinates fit in int
 		}
 
 		// Resolve caller symbol (may be empty for top-level calls)

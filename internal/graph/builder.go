@@ -44,8 +44,8 @@ func BuildFromSCIP(ctx context.Context, idx *scip.SCIPIndex, weights EdgeWeights
 			if occ.SymbolRoles&scip.SymbolRoleDefinition != 0 {
 				symbolDefs[occ.Symbol] = &scip.Location{
 					FileId:    doc.RelativePath,
-					StartLine: int(occ.Range[0]),
-					EndLine:   int(occ.Range[0]),
+					StartLine: int(occ.Range[0]), // #nosec G115 -- SCIP int32 fits in int
+					EndLine:   int(occ.Range[0]), // #nosec G115 -- SCIP int32 fits in int
 				}
 			}
 		}

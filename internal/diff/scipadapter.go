@@ -86,21 +86,21 @@ func convertOccurrence(occ *scip.Occurrence) *OccurrenceInfo {
 		return nil
 	}
 
-	startLine := int(occ.Range[0]) + 1 // Convert to 1-indexed
+	startLine := int(occ.Range[0]) + 1 // #nosec G115 -- SCIP int32 fits in int
 	endLine := startLine
 	startCol := 0
 	endCol := 0
 
 	if len(occ.Range) >= 2 {
-		startCol = int(occ.Range[1])
+		startCol = int(occ.Range[1]) // #nosec G115 -- SCIP int32 fits in int
 	}
 	if len(occ.Range) >= 3 {
-		endCol = int(occ.Range[2])
+		endCol = int(occ.Range[2]) // #nosec G115 -- SCIP int32 fits in int
 		// If only 3 elements, end is on same line
 	}
 	if len(occ.Range) >= 4 {
-		endLine = int(occ.Range[2]) + 1 // Convert to 1-indexed
-		endCol = int(occ.Range[3])
+		endLine = int(occ.Range[2]) + 1 // #nosec G115 -- SCIP int32 fits in int
+		endCol = int(occ.Range[3])      // #nosec G115 -- SCIP int32 fits in int
 	}
 
 	isDefinition := (occ.SymbolRoles & scip.SymbolRoleDefinition) != 0
@@ -126,13 +126,13 @@ func convertSymbolDef(sym *scip.SymbolInformation, doc *scip.Document) *SymbolDe
 	for _, occ := range doc.Occurrences {
 		if occ.Symbol == sym.Symbol && (occ.SymbolRoles&scip.SymbolRoleDefinition) != 0 {
 			if len(occ.Range) >= 1 {
-				startLine = int(occ.Range[0]) + 1 // Convert to 1-indexed
+				startLine = int(occ.Range[0]) + 1 // #nosec G115 -- SCIP int32 fits in int
 			}
 			// Use enclosing range for end line if available
 			if len(occ.EnclosingRange) >= 3 {
-				endLine = int(occ.EnclosingRange[2]) + 1 // Convert to 1-indexed
+				endLine = int(occ.EnclosingRange[2]) + 1 // #nosec G115 -- SCIP int32 fits in int
 			} else if len(occ.Range) >= 3 {
-				endLine = int(occ.Range[2]) + 1
+				endLine = int(occ.Range[2]) + 1 // #nosec G115 -- SCIP int32 fits in int
 			} else {
 				endLine = startLine + 10 // Default assumption for body
 			}

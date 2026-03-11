@@ -233,18 +233,18 @@ func parseOccurrenceRange(occ *Occurrence, filePath string) *Location {
 
 	// SCIP range format: [startLine, startChar, endChar] for single-line
 	// or [startLine, startChar, endLine, endChar] for multi-line
-	startLine := int(occ.Range[0])
-	startColumn := int(occ.Range[1])
+	startLine := int(occ.Range[0])   // #nosec G115 -- SCIP int32 fits in int
+	startColumn := int(occ.Range[1]) // #nosec G115 -- SCIP int32 fits in int
 
 	var endLine, endColumn int
 	if len(occ.Range) == 3 {
 		// Single-line range
 		endLine = startLine
-		endColumn = int(occ.Range[2])
+		endColumn = int(occ.Range[2]) // #nosec G115 -- SCIP int32 fits in int
 	} else if len(occ.Range) >= 4 {
 		// Multi-line range
-		endLine = int(occ.Range[2])
-		endColumn = int(occ.Range[3])
+		endLine = int(occ.Range[2])   // #nosec G115 -- SCIP int32 fits in int
+		endColumn = int(occ.Range[3]) // #nosec G115 -- SCIP int32 fits in int
 	}
 
 	return &Location{

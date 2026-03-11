@@ -1,5 +1,7 @@
 package compression
 
+import "strconv"
+
 // TruncationReason indicates why data was truncated in a response
 type TruncationReason string
 
@@ -72,5 +74,5 @@ func (t *TruncationInfo) String() string {
 		return "no truncation"
 	}
 
-	return string(t.Reason) + ": dropped " + string(rune(t.DroppedCount)) + " of " + string(rune(t.OriginalCount)) + " items"
+	return string(t.Reason) + ": dropped " + strconv.Itoa(t.DroppedCount) + " of " + strconv.Itoa(t.OriginalCount) + " items"
 }
