@@ -174,20 +174,20 @@ func formatRelativeTime(t time.Time) string {
 		return "just now"
 	}
 	if d < time.Hour {
-		mins := int(d.Minutes())
+		mins := int(d.Minutes()) // #nosec G115 -- duration fits in int
 		if mins == 1 {
 			return "1m ago"
 		}
 		return fmt.Sprintf("%dm ago", mins)
 	}
 	if d < 24*time.Hour {
-		hours := int(d.Hours())
+		hours := int(d.Hours()) // #nosec G115 -- duration fits in int
 		if hours == 1 {
 			return "1h ago"
 		}
 		return fmt.Sprintf("%dh ago", hours)
 	}
-	days := int(d.Hours() / 24)
+	days := int(d.Hours() / 24) // #nosec G115 -- duration fits in int
 	if days == 1 {
 		return "1d ago"
 	}

@@ -659,13 +659,13 @@ func isCallableSymbol(symbolID string, info map[string]*scip.SymbolInformation) 
 
 func parseRange(r []int32) (line, col, endCol int) {
 	if len(r) >= 1 {
-		line = int(r[0]) + 1 // Convert to 1-indexed
+		line = int(r[0]) + 1 // #nosec G115 -- SCIP int32 fits in int
 	}
 	if len(r) >= 2 {
-		col = int(r[1]) + 1
+		col = int(r[1]) + 1 // #nosec G115 -- SCIP int32 fits in int
 	}
 	if len(r) >= 4 {
-		endCol = int(r[3]) + 1
+		endCol = int(r[3]) + 1 // #nosec G115 -- SCIP int32 fits in int
 	}
 	return
 }
