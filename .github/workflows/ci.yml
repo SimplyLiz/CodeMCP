@@ -113,7 +113,7 @@ jobs:
           govulncheck ./...
 
       - name: Run Trivy filesystem scan
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -140,7 +140,7 @@ jobs:
         run: ./ckb version
 
       - name: Upload binary
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ckb-linux-amd64
           path: ckb

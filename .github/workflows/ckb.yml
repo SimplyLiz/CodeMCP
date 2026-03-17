@@ -169,7 +169,7 @@ jobs:
           fi
 
       - name: Post Impact Comment
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: ckb-impact
           path: impact.md
@@ -958,7 +958,7 @@ jobs:
 
       - name: Upload
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ckb-analysis
           path: '*.json'
@@ -1031,7 +1031,7 @@ jobs:
           echo "| Language Quality | $(jq '.overallQuality * 100 | floor' reports/languages.json)% |" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ckb-refresh
           path: reports/
