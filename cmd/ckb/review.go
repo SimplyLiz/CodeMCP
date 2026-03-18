@@ -60,7 +60,7 @@ func init() {
 	reviewCmd.Flags().StringVar(&reviewFormat, "format", "human", "Output format (human, json, markdown, github-actions)")
 	reviewCmd.Flags().StringVar(&reviewBaseBranch, "base", "main", "Base branch to compare against")
 	reviewCmd.Flags().StringVar(&reviewHeadBranch, "head", "", "Head branch (default: current branch)")
-	reviewCmd.Flags().StringSliceVar(&reviewChecks, "checks", nil, "Comma-separated list of checks (breaking,secrets,tests,complexity,coupling,hotspots,risk,critical,generated)")
+	reviewCmd.Flags().StringSliceVar(&reviewChecks, "checks", nil, "Comma-separated list of checks (breaking,secrets,tests,complexity,coupling,hotspots,risk,critical,generated,classify,split)")
 	reviewCmd.Flags().BoolVar(&reviewCI, "ci", false, "CI mode: exit 1 on fail, exit 2 on warn")
 	reviewCmd.Flags().StringVar(&reviewFailOn, "fail-on", "", "Override fail level (error, warning, none)")
 
@@ -224,6 +224,35 @@ func formatReviewHuman(resp *query.ReviewPRResponse) string {
 		b.WriteString("\n")
 	}
 
+	// Review Effort
+	if resp.ReviewEffort != nil {
+		b.WriteString(fmt.Sprintf("Estimated Review: ~%dmin (%s)\n",
+			resp.ReviewEffort.EstimatedMinutes, resp.ReviewEffort.Complexity))
+		for _, f := range resp.ReviewEffort.Factors {
+			b.WriteString(fmt.Sprintf("  · %s\n", f))
+		}
+		b.WriteString("\n")
+	}
+
+	// Change Breakdown
+	if resp.ChangeBreakdown != nil && len(resp.ChangeBreakdown.Summary) > 0 {
+		b.WriteString("Change Breakdown:\n")
+		for cat, count := range resp.ChangeBreakdown.Summary {
+			b.WriteString(fmt.Sprintf("  %-12s %d files\n", cat, count))
+		}
+		b.WriteString("\n")
+	}
+
+	// PR Split Suggestion
+	if resp.SplitSuggestion != nil && resp.SplitSuggestion.ShouldSplit {
+		b.WriteString(fmt.Sprintf("PR Split: %s\n", resp.SplitSuggestion.Reason))
+		for i, c := range resp.SplitSuggestion.Clusters {
+			b.WriteString(fmt.Sprintf("  Cluster %d: %q — %d files (+%d −%d)\n",
+				i+1, c.Name, c.FileCount, c.Additions, c.Deletions))
+		}
+		b.WriteString("\n")
+	}
+
 	// Reviewers
 	if len(resp.Reviewers) > 0 {
 		b.WriteString("Suggested Reviewers:\n  ")
@@ -313,6 +342,50 @@ func formatReviewMarkdown(resp *query.ReviewPRResponse) string {
 			b.WriteString(fmt.Sprintf("| %s | %s | %s |\n", sevEmoji, loc, f.Message))
 		}
 		b.WriteString("\n</details>\n\n")
+	}
+
+	// Change Breakdown
+	if resp.ChangeBreakdown != nil && len(resp.ChangeBreakdown.Summary) > 0 {
+		b.WriteString("<details><summary>Change Breakdown</summary>\n\n")
+		b.WriteString("| Category | Files | Review Priority |\n")
+		b.WriteString("|----------|-------|-----------------|\n")
+		priorityEmoji := map[string]string{
+			"new": "🔴 Full review", "churn": "🔴 Stability concern",
+			"refactoring": "🟡 Verify correctness", "modified": "🟡 Standard review",
+			"test": "🟡 Verify coverage", "moved": "🟢 Quick check",
+			"config": "🟢 Quick check", "generated": "⚪ Skip (review source)",
+		}
+		for cat, count := range resp.ChangeBreakdown.Summary {
+			priority := priorityEmoji[cat]
+			if priority == "" {
+				priority = "🟡 Review"
+			}
+			b.WriteString(fmt.Sprintf("| %s | %d | %s |\n", cat, count, priority))
+		}
+		b.WriteString("\n</details>\n\n")
+	}
+
+	// PR Split Suggestion
+	if resp.SplitSuggestion != nil && resp.SplitSuggestion.ShouldSplit {
+		b.WriteString(fmt.Sprintf("<details><summary>✂️ Suggested PR Split (%d clusters)</summary>\n\n",
+			len(resp.SplitSuggestion.Clusters)))
+		b.WriteString("| Cluster | Files | Changes | Independent |\n")
+		b.WriteString("|---------|-------|---------|-------------|\n")
+		for _, c := range resp.SplitSuggestion.Clusters {
+			indep := "✅"
+			if !c.Independent {
+				indep = "❌"
+			}
+			b.WriteString(fmt.Sprintf("| %s | %d | +%d −%d | %s |\n",
+				c.Name, c.FileCount, c.Additions, c.Deletions, indep))
+		}
+		b.WriteString("\n</details>\n\n")
+	}
+
+	// Review Effort
+	if resp.ReviewEffort != nil {
+		b.WriteString(fmt.Sprintf("**Estimated review:** ~%dmin (%s)\n\n",
+			resp.ReviewEffort.EstimatedMinutes, resp.ReviewEffort.Complexity))
 	}
 
 	// Reviewers

@@ -1866,7 +1866,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 					"checks": map[string]interface{}{
 						"type":        "array",
 						"items":       map[string]interface{}{"type": "string"},
-						"description": "Limit to specific checks: breaking, secrets, tests, complexity, coupling, hotspots, risk, critical, generated",
+						"description": "Limit to specific checks: breaking, secrets, tests, complexity, coupling, hotspots, risk, critical, generated, classify, split",
 					},
 					"failOnLevel": map[string]interface{}{
 						"type":        "string",

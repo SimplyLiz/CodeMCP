@@ -61,7 +61,12 @@ type ReviewPRResponse struct {
 	Findings      []ReviewFinding      `json:"findings"`
 	Reviewers     []SuggestedReview    `json:"reviewers"`
 	Generated     []GeneratedFileInfo  `json:"generated,omitempty"`
-	Provenance    *Provenance          `json:"provenance,omitempty"`
+	// Batch 3: Large PR Intelligence
+	SplitSuggestion    *PRSplitSuggestion          `json:"splitSuggestion,omitempty"`
+	ChangeBreakdown    *ChangeBreakdown             `json:"changeBreakdown,omitempty"`
+	ReviewEffort       *ReviewEffort                `json:"reviewEffort,omitempty"`
+	ClusterReviewers   []ClusterReviewerAssignment  `json:"clusterReviewers,omitempty"`
+	Provenance         *Provenance                  `json:"provenance,omitempty"`
 }
 
 // ReviewSummary provides a high-level overview.
@@ -401,6 +406,39 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 	}
 	reviewers := e.getSuggestedReviewers(ctx, prFiles)
 
+	// --- Batch 3: Large PR Intelligence ---
+
+	// Change classification
+	var breakdown *ChangeBreakdown
+	if checkEnabled("classify") || len(diffStats) >= 10 {
+		breakdown = e.classifyChanges(ctx, diffStats, generatedSet, opts)
+	}
+
+	// PR split suggestion (when above threshold)
+	var splitSuggestion *PRSplitSuggestion
+	var clusterReviewers []ClusterReviewerAssignment
+	if checkEnabled("split") || len(diffStats) >= opts.Policy.SplitThreshold {
+		splitSuggestion = e.suggestPRSplit(ctx, diffStats, opts.Policy)
+		if splitSuggestion != nil && splitSuggestion.ShouldSplit {
+			clusterReviewers = e.assignClusterReviewers(ctx, splitSuggestion.Clusters)
+
+			// Add split check
+			addCheck(ReviewCheck{
+				Name:     "split",
+				Status:   "warn",
+				Severity: "warning",
+				Summary:  splitSuggestion.Reason,
+				Details:  splitSuggestion,
+			})
+		}
+	}
+
+	// Review effort estimation
+	effort := estimateReviewEffort(diffStats, breakdown, summary.CriticalFiles, len(modules))
+
+	// Re-sort after adding split check
+	sortChecks(checks)
+
 	// Get repo state
 	repoState, err := e.GetRepoState(ctx, "head")
 	if err != nil {
@@ -408,16 +446,20 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 	}
 
 	return &ReviewPRResponse{
-		CkbVersion:    version.Version,
-		SchemaVersion: "8.2",
-		Tool:          "reviewPR",
-		Verdict:       verdict,
-		Score:         score,
-		Summary:       summary,
-		Checks:        checks,
-		Findings:      findings,
-		Reviewers:     reviewers,
-		Generated:     generatedFiles,
+		CkbVersion:       version.Version,
+		SchemaVersion:    "8.2",
+		Tool:             "reviewPR",
+		Verdict:          verdict,
+		Score:            score,
+		Summary:          summary,
+		Checks:           checks,
+		Findings:         findings,
+		Reviewers:        reviewers,
+		Generated:        generatedFiles,
+		SplitSuggestion:  splitSuggestion,
+		ChangeBreakdown:  breakdown,
+		ReviewEffort:     effort,
+		ClusterReviewers: clusterReviewers,
 		Provenance: &Provenance{
 			RepoStateId:     repoState.RepoStateId,
 			RepoStateDirty:  repoState.Dirty,
