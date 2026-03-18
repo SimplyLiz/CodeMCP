@@ -1,0 +1,130 @@
+[
+  {
+    "type": "issue",
+    "check_name": "ckb/breaking/removed-symbol",
+    "description": "Removed public function HandleAuth()",
+    "categories": [
+      "Compatibility"
+    ],
+    "location": {
+      "path": "api/handler.go",
+      "lines": {
+        "begin": 42
+      }
+    },
+    "severity": "critical",
+    "fingerprint": "ddebf33febf83e49eb21b4acb86bbe10"
+  },
+  {
+    "type": "issue",
+    "check_name": "ckb/breaking/changed-signature",
+    "description": "Changed signature of ValidateToken()",
+    "categories": [
+      "Compatibility"
+    ],
+    "location": {
+      "path": "api/middleware.go",
+      "lines": {
+        "begin": 15
+      }
+    },
+    "severity": "critical",
+    "fingerprint": "55468b6c78d409683d77b03117163950"
+  },
+  {
+    "type": "issue",
+    "check_name": "ckb/critical/safety-path",
+    "description": "Safety-critical path changed (pattern: drivers/**)",
+    "content": {
+      "body": "Requires sign-off from safety team"
+    },
+    "categories": [
+      "Security",
+      "Bug Risk"
+    ],
+    "location": {
+      "path": "drivers/hw/plc_comm.go",
+      "lines": {
+        "begin": 78
+      }
+    },
+    "severity": "critical",
+    "fingerprint": "f5f83721df9e9da102b433f65ded16cc"
+  },
+  {
+    "type": "issue",
+    "check_name": "ckb/critical/safety-path",
+    "description": "Safety-critical path changed (pattern: protocol/**)",
+    "content": {
+      "body": "Requires sign-off from safety team"
+    },
+    "categories": [
+      "Security",
+      "Bug Risk"
+    ],
+    "location": {
+      "path": "protocol/modbus.go"
+    },
+    "severity": "critical",
+    "fingerprint": "5345e6b9c3896879a25c07dbe60d6238"
+  },
+  {
+    "type": "issue",
+    "check_name": "ckb/complexity/increase",
+    "description": "Complexity 12→20 in parseQuery()",
+    "content": {
+      "body": "Consider extracting helper functions"
+    },
+    "categories": [
+      "Complexity"
+    ],
+    "location": {
+      "path": "internal/query/engine.go",
+      "lines": {
+        "begin": 155,
+        "end": 210
+      }
+    },
+    "severity": "major",
+    "fingerprint": "87610dd70c92e2f17d937d70e5a1bc31"
+  },
+  {
+    "type": "issue",
+    "check_name": "ckb/coupling/missing-cochange",
+    "description": "Missing co-change: engine_test.go (87% co-change rate)",
+    "categories": [
+      "Duplication"
+    ],
+    "location": {
+      "path": "internal/query/engine.go"
+    },
+    "severity": "major",
+    "fingerprint": "d4c9562ec51cef9d16e46a2b6861372c"
+  },
+  {
+    "type": "issue",
+    "check_name": "ckb/coupling/missing-cochange",
+    "description": "Missing co-change: modbus_test.go (91% co-change rate)",
+    "categories": [
+      "Duplication"
+    ],
+    "location": {
+      "path": "protocol/modbus.go"
+    },
+    "severity": "major",
+    "fingerprint": "7c222e1f6619f439975e82681592d58c"
+  },
+  {
+    "type": "issue",
+    "check_name": "ckb/hotspots/volatile-file",
+    "description": "Hotspot file (score: 0.78) — extra review attention recommended",
+    "categories": [
+      "Bug Risk"
+    ],
+    "location": {
+      "path": "config/settings.go"
+    },
+    "severity": "minor",
+    "fingerprint": "a3d03fb0c9c16505cc72c55764a675af"
+  }
+]

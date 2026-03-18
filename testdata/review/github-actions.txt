@@ -1,0 +1,8 @@
+::error file=api/handler.go,line=42::Removed public function HandleAuth() [ckb/breaking/removed-symbol]
+::error file=api/middleware.go,line=15::Changed signature of ValidateToken() [ckb/breaking/changed-signature]
+::error file=drivers/hw/plc_comm.go,line=78::Safety-critical path changed (pattern: drivers/**) [ckb/critical/safety-path]
+::error file=protocol/modbus.go::Safety-critical path changed (pattern: protocol/**) [ckb/critical/safety-path]
+::warning file=internal/query/engine.go,line=155::Complexity 12→20 in parseQuery() [ckb/complexity/increase]
+::warning file=internal/query/engine.go::Missing co-change: engine_test.go (87% co-change rate) [ckb/coupling/missing-cochange]
+::warning file=protocol/modbus.go::Missing co-change: modbus_test.go (91% co-change rate) [ckb/coupling/missing-cochange]
+::notice file=config/settings.go::Hotspot file (score: 0.78) — extra review attention recommended [ckb/hotspots/volatile-file]

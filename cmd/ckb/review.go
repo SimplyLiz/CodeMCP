@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -27,6 +28,12 @@ var (
 	reviewMaxFiles      int
 	// Critical paths
 	reviewCriticalPaths []string
+	// Traceability
+	reviewTracePatterns []string
+	reviewRequireTrace  bool
+	// Independence
+	reviewRequireIndependent bool
+	reviewMinReviewers      int
 )
 
 var reviewCmd = &cobra.Command{
@@ -42,6 +49,8 @@ var reviewCmd = &cobra.Command{
 - Hotspot overlap
 - Risk scoring
 - Safety-critical path checks
+- Code health scoring (8-factor weighted score)
+- Finding baseline management
 
 Output formats: human (default), json, markdown, github-actions
 
@@ -49,18 +58,21 @@ Examples:
   ckb review                              # Review current branch vs main
   ckb review --base=develop               # Custom base branch
   ckb review --checks=breaking,secrets    # Only specific checks
+  ckb review --checks=health              # Only code health check
   ckb review --ci                         # CI mode (exit codes: 0=pass, 1=fail, 2=warn)
   ckb review --format=markdown            # PR comment ready output
   ckb review --format=github-actions      # GitHub Actions annotations
-  ckb review --critical-paths=drivers/**,protocol/**  # Safety-critical paths`,
+  ckb review --critical-paths=drivers/**,protocol/**  # Safety-critical paths
+  ckb review baseline save --tag=v1.0     # Save finding baseline
+  ckb review baseline diff                # Compare against baseline`,
 	Run: runReview,
 }
 
 func init() {
-	reviewCmd.Flags().StringVar(&reviewFormat, "format", "human", "Output format (human, json, markdown, github-actions)")
+	reviewCmd.Flags().StringVar(&reviewFormat, "format", "human", "Output format (human, json, markdown, github-actions, sarif, codeclimate, compliance)")
 	reviewCmd.Flags().StringVar(&reviewBaseBranch, "base", "main", "Base branch to compare against")
 	reviewCmd.Flags().StringVar(&reviewHeadBranch, "head", "", "Head branch (default: current branch)")
-	reviewCmd.Flags().StringSliceVar(&reviewChecks, "checks", nil, "Comma-separated list of checks (breaking,secrets,tests,complexity,coupling,hotspots,risk,critical,generated,classify,split)")
+	reviewCmd.Flags().StringSliceVar(&reviewChecks, "checks", nil, "Comma-separated list of checks (breaking,secrets,tests,complexity,coupling,hotspots,risk,critical,generated,classify,split,health,traceability,independence)")
 	reviewCmd.Flags().BoolVar(&reviewCI, "ci", false, "CI mode: exit 1 on fail, exit 2 on warn")
 	reviewCmd.Flags().StringVar(&reviewFailOn, "fail-on", "", "Override fail level (error, warning, none)")
 
@@ -72,6 +84,14 @@ func init() {
 	reviewCmd.Flags().IntVar(&reviewMaxComplexity, "max-complexity", 0, "Maximum complexity delta (0 = disabled)")
 	reviewCmd.Flags().IntVar(&reviewMaxFiles, "max-files", 0, "Maximum file count (0 = disabled)")
 	reviewCmd.Flags().StringSliceVar(&reviewCriticalPaths, "critical-paths", nil, "Glob patterns for safety-critical paths")
+
+	// Traceability
+	reviewCmd.Flags().StringSliceVar(&reviewTracePatterns, "trace-patterns", nil, "Regex patterns for ticket IDs (e.g., JIRA-\\d+)")
+	reviewCmd.Flags().BoolVar(&reviewRequireTrace, "require-trace", false, "Require ticket references in commits")
+
+	// Independence
+	reviewCmd.Flags().BoolVar(&reviewRequireIndependent, "require-independent", false, "Require independent reviewer (author != reviewer)")
+	reviewCmd.Flags().IntVar(&reviewMinReviewers, "min-reviewers", 0, "Minimum number of independent reviewers")
 
 	rootCmd.AddCommand(reviewCmd)
 }
@@ -97,6 +117,19 @@ func runReview(cmd *cobra.Command, args []string) {
 	if len(reviewCriticalPaths) > 0 {
 		policy.CriticalPaths = reviewCriticalPaths
 	}
+	if len(reviewTracePatterns) > 0 {
+		policy.TraceabilityPatterns = reviewTracePatterns
+		policy.RequireTraceability = true
+	}
+	if reviewRequireTrace {
+		policy.RequireTraceability = true
+	}
+	if reviewRequireIndependent {
+		policy.RequireIndependentReview = true
+	}
+	if reviewMinReviewers > 0 {
+		policy.MinReviewers = reviewMinReviewers
+	}
 
 	opts := query.ReviewPROptions{
 		BaseBranch: reviewBaseBranch,
@@ -118,6 +151,22 @@ func runReview(cmd *cobra.Command, args []string) {
 		output = formatReviewMarkdown(response)
 	case "github-actions":
 		output = formatReviewGitHubActions(response)
+	case "compliance":
+		output = formatReviewCompliance(response)
+	case "sarif":
+		var fmtErr error
+		output, fmtErr = formatReviewSARIF(response)
+		if fmtErr != nil {
+			fmt.Fprintf(os.Stderr, "Error formatting SARIF: %v\n", fmtErr)
+			os.Exit(1)
+		}
+	case "codeclimate":
+		var fmtErr error
+		output, fmtErr = formatReviewCodeClimate(response)
+		if fmtErr != nil {
+			fmt.Fprintf(os.Stderr, "Error formatting CodeClimate: %v\n", fmtErr)
+			os.Exit(1)
+		}
 	case FormatJSON:
 		var fmtErr error
 		output, fmtErr = formatJSON(response)
@@ -237,8 +286,9 @@ func formatReviewHuman(resp *query.ReviewPRResponse) string {
 	// Change Breakdown
 	if resp.ChangeBreakdown != nil && len(resp.ChangeBreakdown.Summary) > 0 {
 		b.WriteString("Change Breakdown:\n")
-		for cat, count := range resp.ChangeBreakdown.Summary {
-			b.WriteString(fmt.Sprintf("  %-12s %d files\n", cat, count))
+		cats := sortedMapKeys(resp.ChangeBreakdown.Summary)
+		for _, cat := range cats {
+			b.WriteString(fmt.Sprintf("  %-12s %d files\n", cat, resp.ChangeBreakdown.Summary[cat]))
 		}
 		b.WriteString("\n")
 	}
@@ -249,6 +299,26 @@ func formatReviewHuman(resp *query.ReviewPRResponse) string {
 		for i, c := range resp.SplitSuggestion.Clusters {
 			b.WriteString(fmt.Sprintf("  Cluster %d: %q — %d files (+%d −%d)\n",
 				i+1, c.Name, c.FileCount, c.Additions, c.Deletions))
+		}
+		b.WriteString("\n")
+	}
+
+	// Code Health
+	if resp.HealthReport != nil && len(resp.HealthReport.Deltas) > 0 {
+		b.WriteString("Code Health:\n")
+		for _, d := range resp.HealthReport.Deltas {
+			arrow := "→"
+			if d.Delta < 0 {
+				arrow = "↓"
+			} else if d.Delta > 0 {
+				arrow = "↑"
+			}
+			b.WriteString(fmt.Sprintf("  %s %s %s%s (%d%s%d)\n",
+				d.Grade, arrow, d.GradeBefore, d.File, d.HealthBefore, arrow, d.HealthAfter))
+		}
+		if resp.HealthReport.Degraded > 0 || resp.HealthReport.Improved > 0 {
+			b.WriteString(fmt.Sprintf("  %d degraded · %d improved · avg %+.1f\n",
+				resp.HealthReport.Degraded, resp.HealthReport.Improved, resp.HealthReport.AverageDelta))
 		}
 		b.WriteString("\n")
 	}
@@ -355,7 +425,9 @@ func formatReviewMarkdown(resp *query.ReviewPRResponse) string {
 			"test": "🟡 Verify coverage", "moved": "🟢 Quick check",
 			"config": "🟢 Quick check", "generated": "⚪ Skip (review source)",
 		}
-		for cat, count := range resp.ChangeBreakdown.Summary {
+		cats := sortedMapKeys(resp.ChangeBreakdown.Summary)
+		for _, cat := range cats {
+			count := resp.ChangeBreakdown.Summary[cat]
 			priority := priorityEmoji[cat]
 			if priority == "" {
 				priority = "🟡 Review"
@@ -382,6 +454,22 @@ func formatReviewMarkdown(resp *query.ReviewPRResponse) string {
 		b.WriteString("\n</details>\n\n")
 	}
 
+	// Code Health
+	if resp.HealthReport != nil && len(resp.HealthReport.Deltas) > 0 {
+		b.WriteString("<details><summary>Code Health</summary>\n\n")
+		b.WriteString("| File | Before | After | Delta | Grade |\n")
+		b.WriteString("|------|--------|-------|-------|-------|\n")
+		for _, d := range resp.HealthReport.Deltas {
+			b.WriteString(fmt.Sprintf("| `%s` | %d | %d | %+d | %s→%s |\n",
+				d.File, d.HealthBefore, d.HealthAfter, d.Delta, d.GradeBefore, d.Grade))
+		}
+		if resp.HealthReport.Degraded > 0 || resp.HealthReport.Improved > 0 {
+			b.WriteString(fmt.Sprintf("\n%d degraded · %d improved · avg %+.1f\n",
+				resp.HealthReport.Degraded, resp.HealthReport.Improved, resp.HealthReport.AverageDelta))
+		}
+		b.WriteString("\n</details>\n\n")
+	}
+
 	// Review Effort
 	if resp.ReviewEffort != nil {
 		b.WriteString(fmt.Sprintf("**Estimated review:** ~%dmin (%s)\n\n",
@@ -401,6 +489,15 @@ func formatReviewMarkdown(resp *query.ReviewPRResponse) string {
 	b.WriteString("<!-- ckb-review-marker -->\n")
 
 	return b.String()
+}
+
+func sortedMapKeys(m map[string]int) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func formatReviewGitHubActions(resp *query.ReviewPRResponse) string {

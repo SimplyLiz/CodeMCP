@@ -85,6 +85,16 @@ type ReviewConfig struct {
 
 	// Safety-critical paths
 	CriticalPaths []string `json:"criticalPaths" mapstructure:"criticalPaths"` // Glob patterns requiring extra scrutiny
+
+	// Traceability (commit-to-ticket linkage)
+	TraceabilityPatterns         []string `json:"traceabilityPatterns" mapstructure:"traceabilityPatterns"`                 // Regex: ["JIRA-\\d+", "#\\d+"]
+	TraceabilitySources          []string `json:"traceabilitySources" mapstructure:"traceabilitySources"`                   // Where to look: commit-message, branch-name
+	RequireTraceability          bool     `json:"requireTraceability" mapstructure:"requireTraceability"`                   // Enforce ticket references
+	RequireTraceForCriticalPaths bool     `json:"requireTraceForCriticalPaths" mapstructure:"requireTraceForCriticalPaths"` // Enforce for critical paths only
+
+	// Reviewer independence
+	RequireIndependentReview bool `json:"requireIndependentReview" mapstructure:"requireIndependentReview"` // Author != reviewer
+	MinReviewers             int  `json:"minReviewers" mapstructure:"minReviewers"`                         // Minimum reviewer count
 }
 
 // BackendsConfig contains backend-specific configuration

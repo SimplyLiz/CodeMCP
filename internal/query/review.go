@@ -47,6 +47,16 @@ type ReviewPolicy struct {
 	// Safety-critical paths
 	CriticalPaths    []string `json:"criticalPaths"`    // Glob patterns
 	CriticalSeverity string   `json:"criticalSeverity"` // default: "error"
+
+	// Traceability (commit-to-ticket linkage)
+	TraceabilityPatterns         []string `json:"traceabilityPatterns"`         // Regex patterns for ticket IDs
+	TraceabilitySources          []string `json:"traceabilitySources"`          // Where to look: "commit-message", "branch-name"
+	RequireTraceability          bool     `json:"requireTraceability"`          // Enforce ticket references
+	RequireTraceForCriticalPaths bool     `json:"requireTraceForCriticalPaths"` // Only enforce for critical paths
+
+	// Reviewer independence (regulated industry)
+	RequireIndependentReview bool `json:"requireIndependentReview"` // Author != reviewer
+	MinReviewers             int  `json:"minReviewers"`             // Minimum independent reviewers (default: 1)
 }
 
 // ReviewPRResponse is the unified review result.
@@ -66,6 +76,8 @@ type ReviewPRResponse struct {
 	ChangeBreakdown    *ChangeBreakdown             `json:"changeBreakdown,omitempty"`
 	ReviewEffort       *ReviewEffort                `json:"reviewEffort,omitempty"`
 	ClusterReviewers   []ClusterReviewerAssignment  `json:"clusterReviewers,omitempty"`
+	// Batch 4: Code Health & Baseline
+	HealthReport       *CodeHealthReport            `json:"healthReport,omitempty"`
 	Provenance         *Provenance                  `json:"provenance,omitempty"`
 }
 
@@ -332,6 +344,43 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 		}()
 	}
 
+	// Check: Code Health
+	var healthReport *CodeHealthReport
+	if checkEnabled("health") {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, ff, report := e.checkCodeHealth(ctx, reviewableFiles, opts)
+			addCheck(c)
+			addFindings(ff)
+			mu.Lock()
+			healthReport = report
+			mu.Unlock()
+		}()
+	}
+
+	// Check: Traceability (commit-to-ticket linkage)
+	if checkEnabled("traceability") && (opts.Policy.RequireTraceability || opts.Policy.RequireTraceForCriticalPaths) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, ff := e.checkTraceability(ctx, reviewableFiles, opts)
+			addCheck(c)
+			addFindings(ff)
+		}()
+	}
+
+	// Check: Reviewer Independence
+	if checkEnabled("independence") && opts.Policy.RequireIndependentReview {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, ff := e.checkReviewerIndependence(ctx, opts)
+			addCheck(c)
+			addFindings(ff)
+		}()
+	}
+
 	// Check: Generated files (info only)
 	if checkEnabled("generated") && len(generatedFiles) > 0 {
 		addCheck(ReviewCheck{
@@ -460,6 +509,7 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 		ChangeBreakdown:  breakdown,
 		ReviewEffort:     effort,
 		ClusterReviewers: clusterReviewers,
+		HealthReport:     healthReport,
 		Provenance: &Provenance{
 			RepoStateId:     repoState.RepoStateId,
 			RepoStateDirty:  repoState.Dirty,
@@ -967,5 +1017,27 @@ func mergeReviewConfig(policy *ReviewPolicy, rc *config.ReviewConfig) {
 	}
 	if policy.MaxFiles == 0 && rc.MaxFiles > 0 {
 		policy.MaxFiles = rc.MaxFiles
+	}
+
+	// Traceability
+	if len(policy.TraceabilityPatterns) == 0 && len(rc.TraceabilityPatterns) > 0 {
+		policy.TraceabilityPatterns = rc.TraceabilityPatterns
+	}
+	if len(policy.TraceabilitySources) == 0 && len(rc.TraceabilitySources) > 0 {
+		policy.TraceabilitySources = rc.TraceabilitySources
+	}
+	if !policy.RequireTraceability && rc.RequireTraceability {
+		policy.RequireTraceability = true
+	}
+	if !policy.RequireTraceForCriticalPaths && rc.RequireTraceForCriticalPaths {
+		policy.RequireTraceForCriticalPaths = true
+	}
+
+	// Reviewer independence
+	if !policy.RequireIndependentReview && rc.RequireIndependentReview {
+		policy.RequireIndependentReview = true
+	}
+	if policy.MinReviewers == 0 && rc.MinReviewers > 0 {
+		policy.MinReviewers = rc.MinReviewers
 	}
 }

@@ -1,0 +1,51 @@
+CKB Review: ⚠ WARN — 68/100
+============================================================
+25 files · +480 changes · 3 modules
+3 generated (excluded) · 22 reviewable · 2 critical
+
+Checks:
+  ✗ FAIL  breaking             2 breaking API changes detected
+  ✗ FAIL  critical             2 safety-critical files changed
+  ⚠ WARN  complexity           +8 cyclomatic (engine.go)
+  ⚠ WARN  coupling             2 missing co-change files
+  ✓ PASS  secrets              No secrets detected
+  ✓ PASS  tests                12 tests cover the changes
+  ✓ PASS  risk                 Risk score: 0.42 (low)
+  ✓ PASS  hotspots             No volatile files touched
+  ○ INFO  generated            3 generated files detected and excluded
+
+Top Findings:
+  ERROR   api/handler.go:42                        Removed public function HandleAuth()
+  ERROR   api/middleware.go:15                     Changed signature of ValidateToken()
+  ERROR   drivers/hw/plc_comm.go:78                Safety-critical path changed (pattern: drivers/**)
+  ERROR   protocol/modbus.go                       Safety-critical path changed (pattern: protocol/**)
+  WARNING internal/query/engine.go:155             Complexity 12→20 in parseQuery()
+  WARNING internal/query/engine.go                 Missing co-change: engine_test.go (87% co-change rate)
+  WARNING protocol/modbus.go                       Missing co-change: modbus_test.go (91% co-change rate)
+  INFO    config/settings.go                       Hotspot file (score: 0.78) — extra review attention recommended
+
+Estimated Review: ~95min (complex)
+  · 22 reviewable files (44min base)
+  · 3 module context switches (15min)
+  · 2 safety-critical files (20min)
+
+Change Breakdown:
+  generated    3 files
+  modified     10 files
+  new          5 files
+  refactoring  3 files
+  test         4 files
+
+PR Split: 25 files across 3 independent clusters — split recommended
+  Cluster 1: "API Handler Refactor" — 8 files (+240 −120)
+  Cluster 2: "Protocol Update" — 5 files (+130 −60)
+  Cluster 3: "Driver Changes" — 12 files (+80 −30)
+
+Code Health:
+  B ↓ Bapi/handler.go (82↓70)
+  C ↓ Binternal/query/engine.go (75↓68)
+  C ↑ Cprotocol/modbus.go (60↑65)
+  2 degraded · 1 improved · avg -4.7
+
+Suggested Reviewers:
+  @alice (85%) · @bob (45%)

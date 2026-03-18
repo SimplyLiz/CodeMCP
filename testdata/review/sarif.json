@@ -1,0 +1,263 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "api/handler.go"
+                },
+                "region": {
+                  "startLine": 42
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Removed public function HandleAuth()"
+          },
+          "partialFingerprints": {
+            "ckb/v1": "240d8f11ef76fe7e"
+          },
+          "ruleId": "ckb/breaking/removed-symbol"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "api/middleware.go"
+                },
+                "region": {
+                  "startLine": 15
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Changed signature of ValidateToken()"
+          },
+          "partialFingerprints": {
+            "ckb/v1": "0af5741d1513e4ca"
+          },
+          "ruleId": "ckb/breaking/changed-signature"
+        },
+        {
+          "fixes": [
+            {
+              "artifactChanges": null,
+              "description": {
+                "text": "Requires sign-off from safety team"
+              }
+            }
+          ],
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "drivers/hw/plc_comm.go"
+                },
+                "region": {
+                  "startLine": 78
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Safety-critical path changed (pattern: drivers/**)"
+          },
+          "partialFingerprints": {
+            "ckb/v1": "3560de9d31495454"
+          },
+          "ruleId": "ckb/critical/safety-path"
+        },
+        {
+          "fixes": [
+            {
+              "artifactChanges": null,
+              "description": {
+                "text": "Requires sign-off from safety team"
+              }
+            }
+          ],
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "protocol/modbus.go"
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Safety-critical path changed (pattern: protocol/**)"
+          },
+          "partialFingerprints": {
+            "ckb/v1": "4d1d167a0820404c"
+          },
+          "ruleId": "ckb/critical/safety-path"
+        },
+        {
+          "fixes": [
+            {
+              "artifactChanges": null,
+              "description": {
+                "text": "Consider extracting helper functions"
+              }
+            }
+          ],
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/query/engine.go"
+                },
+                "region": {
+                  "endLine": 210,
+                  "startLine": 155
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Complexity 12→20 in parseQuery()"
+          },
+          "partialFingerprints": {
+            "ckb/v1": "237a7a640d0c0d09"
+          },
+          "ruleId": "ckb/complexity/increase"
+        },
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/query/engine.go"
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Missing co-change: engine_test.go (87% co-change rate)"
+          },
+          "partialFingerprints": {
+            "ckb/v1": "eab286fec52665b4"
+          },
+          "ruleId": "ckb/coupling/missing-cochange"
+        },
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "protocol/modbus.go"
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Missing co-change: modbus_test.go (91% co-change rate)"
+          },
+          "partialFingerprints": {
+            "ckb/v1": "5a14fe5e0d062660"
+          },
+          "ruleId": "ckb/coupling/missing-cochange"
+        },
+        {
+          "level": "note",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "config/settings.go"
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Hotspot file (score: 0.78) — extra review attention recommended"
+          },
+          "partialFingerprints": {
+            "ckb/v1": "949cc432e21fd92d"
+          },
+          "ruleId": "ckb/hotspots/volatile-file"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/SimplyLiz/CodeMCP",
+          "name": "CKB",
+          "rules": [
+            {
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "id": "ckb/breaking/changed-signature",
+              "shortDescription": {
+                "text": "ckb/breaking/changed-signature"
+              }
+            },
+            {
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "id": "ckb/breaking/removed-symbol",
+              "shortDescription": {
+                "text": "ckb/breaking/removed-symbol"
+              }
+            },
+            {
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "id": "ckb/complexity/increase",
+              "shortDescription": {
+                "text": "ckb/complexity/increase"
+              }
+            },
+            {
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "id": "ckb/coupling/missing-cochange",
+              "shortDescription": {
+                "text": "ckb/coupling/missing-cochange"
+              }
+            },
+            {
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "id": "ckb/critical/safety-path",
+              "shortDescription": {
+                "text": "ckb/critical/safety-path"
+              }
+            },
+            {
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "id": "ckb/hotspots/volatile-file",
+              "shortDescription": {
+                "text": "ckb/hotspots/volatile-file"
+              }
+            }
+          ],
+          "semanticVersion": "8.1.0",
+          "version": "8.1.0"
+        }
+      }
+    }
+  ],
+  "version": "2.1.0"
+}

@@ -1,0 +1,150 @@
+name: 'CKB Code Review'
+description: 'Automated structural code review with quality gates'
+branding:
+  icon: 'check-circle'
+  color: 'blue'
+
+inputs:
+  checks:
+    description: 'Comma-separated list of checks to run (default: all)'
+    required: false
+    default: ''
+  fail-on:
+    description: 'Fail on level: error (default), warning, or none'
+    required: false
+    default: ''
+  comment:
+    description: 'Post PR comment with markdown results'
+    required: false
+    default: 'true'
+  sarif:
+    description: 'Upload SARIF to GitHub Code Scanning'
+    required: false
+    default: 'false'
+  critical-paths:
+    description: 'Comma-separated glob patterns for safety-critical paths'
+    required: false
+    default: ''
+  require-trace:
+    description: 'Require ticket references in commits'
+    required: false
+    default: 'false'
+  trace-patterns:
+    description: 'Comma-separated regex patterns for ticket IDs'
+    required: false
+    default: ''
+  require-independent:
+    description: 'Require independent reviewer (author != reviewer)'
+    required: false
+    default: 'false'
+
+outputs:
+  verdict:
+    description: 'Review verdict: pass, warn, or fail'
+    value: ${{ steps.review.outputs.verdict }}
+  score:
+    description: 'Review score (0-100)'
+    value: ${{ steps.review.outputs.score }}
+  findings:
+    description: 'Number of findings'
+    value: ${{ steps.review.outputs.findings }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install CKB
+      shell: bash
+      run: npm install -g @tastehub/ckb
+
+    - name: Index codebase
+      shell: bash
+      run: ckb index 2>/dev/null || echo "Indexing skipped (no supported indexer)"
+
+    - name: Build review flags
+      id: flags
+      shell: bash
+      run: |
+        FLAGS="--ci --format=json"
+        if [ -n "${{ inputs.checks }}" ]; then
+          FLAGS="$FLAGS --checks=${{ inputs.checks }}"
+        fi
+        if [ -n "${{ inputs.fail-on }}" ]; then
+          FLAGS="$FLAGS --fail-on=${{ inputs.fail-on }}"
+        fi
+        if [ -n "${{ inputs.critical-paths }}" ]; then
+          FLAGS="$FLAGS --critical-paths=${{ inputs.critical-paths }}"
+        fi
+        if [ "${{ inputs.require-trace }}" = "true" ]; then
+          FLAGS="$FLAGS --require-trace"
+        fi
+        if [ -n "${{ inputs.trace-patterns }}" ]; then
+          FLAGS="$FLAGS --trace-patterns=${{ inputs.trace-patterns }}"
+        fi
+        if [ "${{ inputs.require-independent }}" = "true" ]; then
+          FLAGS="$FLAGS --require-independent"
+        fi
+        echo "flags=$FLAGS" >> $GITHUB_OUTPUT
+
+    - name: Run review
+      id: review
+      shell: bash
+      run: |
+        set +e
+        ckb review ${{ steps.flags.outputs.flags }} > review.json 2>&1
+        EXIT_CODE=$?
+        set -e
+
+        # Extract outputs from JSON
+        echo "verdict=$(jq -r .verdict review.json)" >> $GITHUB_OUTPUT
+        echo "score=$(jq -r .score review.json)" >> $GITHUB_OUTPUT
+        echo "findings=$(jq -r '.findings | length' review.json)" >> $GITHUB_OUTPUT
+        echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+
+    - name: Generate GitHub Actions annotations
+      shell: bash
+      run: ckb review --format=github-actions --base=${{ github.event.pull_request.base.ref || 'main' }}
+
+    - name: Post PR comment
+      if: inputs.comment == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      run: |
+        MARKDOWN=$(ckb review --format=markdown --base=${{ github.event.pull_request.base.ref || 'main' }})
+        MARKER="<!-- ckb-review-marker -->"
+
+        # Find existing comment
+        COMMENT_ID=$(gh api \
+          repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
+          --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" \
+          2>/dev/null | head -1)
+
+        if [ -n "$COMMENT_ID" ]; then
+          # Update existing comment
+          gh api \
+            repos/${{ github.repository }}/issues/comments/$COMMENT_ID \
+            -X PATCH \
+            -f body="$MARKDOWN"
+        else
+          # Create new comment
+          gh api \
+            repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
+            -f body="$MARKDOWN"
+        fi
+      env:
+        GH_TOKEN: ${{ github.token }}
+
+    - name: Upload SARIF
+      if: inputs.sarif == 'true'
+      shell: bash
+      run: |
+        ckb review --format=sarif --base=${{ github.event.pull_request.base.ref || 'main' }} > results.sarif
+
+    - name: Upload SARIF to GitHub
+      if: inputs.sarif == 'true'
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: results.sarif
+
+    - name: Set exit code
+      shell: bash
+      if: steps.review.outputs.exit_code != '0'
+      run: exit ${{ steps.review.outputs.exit_code }}
