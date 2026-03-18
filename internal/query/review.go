@@ -1,0 +1,929 @@
+package query
+
+import (
+	"context"
+	"fmt"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/secrets"
+	"github.com/SimplyLiz/CodeMCP/internal/version"
+)
+
+// ReviewPROptions configures the unified PR review.
+type ReviewPROptions struct {
+	BaseBranch string        `json:"baseBranch"` // default: "main"
+	HeadBranch string        `json:"headBranch"` // default: HEAD
+	Policy     *ReviewPolicy `json:"policy"`     // Quality gates (or from .ckb/review.json)
+	Checks     []string      `json:"checks"`     // Filter which checks to run (default: all)
+	MaxInline  int           `json:"maxInline"`  // Max inline suggestions (default: 10)
+}
+
+// ReviewPolicy defines quality gates and behavior.
+type ReviewPolicy struct {
+	// Gates
+	NoBreakingChanges  bool    `json:"noBreakingChanges"`  // default: true
+	NoSecrets          bool    `json:"noSecrets"`          // default: true
+	RequireTests       bool    `json:"requireTests"`       // default: false
+	MaxRiskScore       float64 `json:"maxRiskScore"`       // default: 0.7 (0 = disabled)
+	MaxComplexityDelta int     `json:"maxComplexityDelta"` // default: 0 (disabled)
+	MaxFiles           int     `json:"maxFiles"`           // default: 0 (disabled)
+
+	// Behavior
+	FailOnLevel string `json:"failOnLevel"` // "error" (default), "warning", "none"
+	HoldTheLine bool   `json:"holdTheLine"` // Only flag issues on changed lines (default: true)
+
+	// Large PR handling
+	SplitThreshold int `json:"splitThreshold"` // Suggest split above N files (default: 50)
+
+	// Generated file detection
+	GeneratedPatterns []string `json:"generatedPatterns"` // Glob patterns
+	GeneratedMarkers  []string `json:"generatedMarkers"`  // Comment markers in first 10 lines
+
+	// Safety-critical paths
+	CriticalPaths    []string `json:"criticalPaths"`    // Glob patterns
+	CriticalSeverity string   `json:"criticalSeverity"` // default: "error"
+}
+
+// ReviewPRResponse is the unified review result.
+type ReviewPRResponse struct {
+	CkbVersion    string               `json:"ckbVersion"`
+	SchemaVersion string               `json:"schemaVersion"`
+	Tool          string               `json:"tool"`
+	Verdict       string               `json:"verdict"` // "pass", "warn", "fail"
+	Score         int                  `json:"score"`   // 0-100
+	Summary       ReviewSummary        `json:"summary"`
+	Checks        []ReviewCheck        `json:"checks"`
+	Findings      []ReviewFinding      `json:"findings"`
+	Reviewers     []SuggestedReview    `json:"reviewers"`
+	Generated     []GeneratedFileInfo  `json:"generated,omitempty"`
+	Provenance    *Provenance          `json:"provenance,omitempty"`
+}
+
+// ReviewSummary provides a high-level overview.
+type ReviewSummary struct {
+	TotalFiles      int      `json:"totalFiles"`
+	TotalChanges    int      `json:"totalChanges"`
+	GeneratedFiles  int      `json:"generatedFiles"`
+	ReviewableFiles int      `json:"reviewableFiles"`
+	CriticalFiles   int      `json:"criticalFiles"`
+	ChecksPassed    int      `json:"checksPassed"`
+	ChecksWarned    int      `json:"checksWarned"`
+	ChecksFailed    int      `json:"checksFailed"`
+	ChecksSkipped   int      `json:"checksSkipped"`
+	TopRisks        []string `json:"topRisks"`
+	Languages       []string `json:"languages"`
+	ModulesChanged  int      `json:"modulesChanged"`
+}
+
+// ReviewCheck represents a single check result.
+type ReviewCheck struct {
+	Name     string      `json:"name"`
+	Status   string      `json:"status"`   // "pass", "warn", "fail", "skip"
+	Severity string      `json:"severity"` // "error", "warning", "info"
+	Summary  string      `json:"summary"`
+	Details  interface{} `json:"details,omitempty"`
+	Duration int64       `json:"durationMs"`
+}
+
+// ReviewFinding is a single actionable finding.
+type ReviewFinding struct {
+	Check      string `json:"check"`
+	Severity   string `json:"severity"` // "error", "warning", "info"
+	File       string `json:"file"`
+	StartLine  int    `json:"startLine,omitempty"`
+	EndLine    int    `json:"endLine,omitempty"`
+	Message    string `json:"message"`
+	Detail     string `json:"detail,omitempty"`
+	Suggestion string `json:"suggestion,omitempty"`
+	Category   string `json:"category"`
+	RuleID     string `json:"ruleId,omitempty"`
+}
+
+// GeneratedFileInfo tracks a detected generated file.
+type GeneratedFileInfo struct {
+	File       string `json:"file"`
+	Reason     string `json:"reason"`
+	SourceFile string `json:"sourceFile,omitempty"`
+}
+
+// DefaultReviewPolicy returns sensible defaults.
+func DefaultReviewPolicy() *ReviewPolicy {
+	return &ReviewPolicy{
+		NoBreakingChanges: true,
+		NoSecrets:         true,
+		FailOnLevel:       "error",
+		HoldTheLine:       true,
+		SplitThreshold:    50,
+		GeneratedPatterns: []string{"*.generated.*", "*.pb.go", "*.pb.cc", "parser.tab.c", "lex.yy.c"},
+		GeneratedMarkers:  []string{"DO NOT EDIT", "Generated by", "AUTO-GENERATED", "This file is generated"},
+		CriticalSeverity:  "error",
+	}
+}
+
+// ReviewPR performs a comprehensive PR review by orchestrating multiple checks in parallel.
+func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRResponse, error) {
+	startTime := time.Now()
+
+	// Apply defaults
+	if opts.BaseBranch == "" {
+		opts.BaseBranch = "main"
+	}
+	if opts.HeadBranch == "" {
+		opts.HeadBranch = "HEAD"
+	}
+	if opts.Policy == nil {
+		opts.Policy = DefaultReviewPolicy()
+	}
+	// Merge config defaults into policy (config provides repo-level defaults,
+	// callers can override per-invocation)
+	if e.config != nil {
+		rc := e.config.Review
+		mergeReviewConfig(opts.Policy, &rc)
+	}
+	if opts.MaxInline <= 0 {
+		opts.MaxInline = 10
+	}
+
+	if e.gitAdapter == nil {
+		return nil, fmt.Errorf("git adapter not available")
+	}
+
+	// Get changed files
+	diffStats, err := e.gitAdapter.GetCommitRangeDiff(opts.BaseBranch, opts.HeadBranch)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get diff: %w", err)
+	}
+
+	if len(diffStats) == 0 {
+		return &ReviewPRResponse{
+			CkbVersion:    version.Version,
+			SchemaVersion: "8.2",
+			Tool:          "reviewPR",
+			Verdict:       "pass",
+			Score:         100,
+			Summary:       ReviewSummary{},
+			Checks:        []ReviewCheck{},
+			Findings:      []ReviewFinding{},
+		}, nil
+	}
+
+	// Build file list and basic stats
+	changedFiles := make([]string, 0, len(diffStats))
+	languages := make(map[string]bool)
+	modules := make(map[string]bool)
+	totalAdditions := 0
+	totalDeletions := 0
+
+	for _, df := range diffStats {
+		changedFiles = append(changedFiles, df.FilePath)
+		totalAdditions += df.Additions
+		totalDeletions += df.Deletions
+		if lang := detectLanguage(df.FilePath); lang != "" {
+			languages[lang] = true
+		}
+		if mod := e.resolveFileModule(df.FilePath); mod != "" {
+			modules[mod] = true
+		}
+	}
+
+	// Detect generated files
+	generatedSet := make(map[string]bool)
+	var generatedFiles []GeneratedFileInfo
+	for _, df := range diffStats {
+		if info, ok := detectGeneratedFile(df.FilePath, opts.Policy); ok {
+			generatedSet[df.FilePath] = true
+			generatedFiles = append(generatedFiles, info)
+		}
+	}
+
+	// Build reviewable file list (excluding generated)
+	reviewableFiles := make([]string, 0, len(changedFiles))
+	for _, f := range changedFiles {
+		if !generatedSet[f] {
+			reviewableFiles = append(reviewableFiles, f)
+		}
+	}
+
+	// Run checks in parallel
+	checkEnabled := func(name string) bool {
+		if len(opts.Checks) == 0 {
+			return true
+		}
+		for _, c := range opts.Checks {
+			if c == name {
+				return true
+			}
+		}
+		return false
+	}
+
+	var mu sync.Mutex
+	var checks []ReviewCheck
+	var findings []ReviewFinding
+
+	addCheck := func(c ReviewCheck) {
+		mu.Lock()
+		checks = append(checks, c)
+		mu.Unlock()
+	}
+	addFindings := func(ff []ReviewFinding) {
+		mu.Lock()
+		findings = append(findings, ff...)
+		mu.Unlock()
+	}
+
+	var wg sync.WaitGroup
+
+	// Check: Breaking Changes
+	if checkEnabled("breaking") {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, ff := e.checkBreakingChanges(ctx, opts)
+			addCheck(c)
+			addFindings(ff)
+		}()
+	}
+
+	// Check: Secrets
+	if checkEnabled("secrets") {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, ff := e.checkSecrets(ctx, reviewableFiles)
+			addCheck(c)
+			addFindings(ff)
+		}()
+	}
+
+	// Check: Affected Tests
+	if checkEnabled("tests") {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, ff := e.checkAffectedTests(ctx, opts)
+			addCheck(c)
+			addFindings(ff)
+		}()
+	}
+
+	// Check: Complexity Delta
+	if checkEnabled("complexity") {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, ff := e.checkComplexityDelta(ctx, reviewableFiles, opts)
+			addCheck(c)
+			addFindings(ff)
+		}()
+	}
+
+	// Check: Coupling Gaps
+	if checkEnabled("coupling") {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, ff := e.checkCouplingGaps(ctx, reviewableFiles)
+			addCheck(c)
+			addFindings(ff)
+		}()
+	}
+
+	// Check: Hotspots
+	if checkEnabled("hotspots") {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, ff := e.checkHotspots(ctx, reviewableFiles)
+			addCheck(c)
+			addFindings(ff)
+		}()
+	}
+
+	// Check: Risk Score (from PR summary)
+	if checkEnabled("risk") {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, ff := e.checkRiskScore(ctx, diffStats, opts)
+			addCheck(c)
+			addFindings(ff)
+		}()
+	}
+
+	// Check: Critical Paths
+	if checkEnabled("critical") && len(opts.Policy.CriticalPaths) > 0 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, ff := e.checkCriticalPaths(ctx, reviewableFiles, opts)
+			addCheck(c)
+			addFindings(ff)
+		}()
+	}
+
+	// Check: Generated files (info only)
+	if checkEnabled("generated") && len(generatedFiles) > 0 {
+		addCheck(ReviewCheck{
+			Name:     "generated",
+			Status:   "info",
+			Severity: "info",
+			Summary:  fmt.Sprintf("%d generated files detected and excluded", len(generatedFiles)),
+		})
+	}
+
+	wg.Wait()
+
+	// Sort checks by severity (fail first, then warn, then pass)
+	sortChecks(checks)
+
+	// Sort findings by severity
+	sortFindings(findings)
+
+	// Calculate summary
+	summary := ReviewSummary{
+		TotalFiles:      len(changedFiles),
+		TotalChanges:    totalAdditions + totalDeletions,
+		GeneratedFiles:  len(generatedFiles),
+		ReviewableFiles: len(reviewableFiles),
+		ModulesChanged:  len(modules),
+	}
+
+	for lang := range languages {
+		summary.Languages = append(summary.Languages, lang)
+	}
+	sort.Strings(summary.Languages)
+
+	for _, c := range checks {
+		switch c.Status {
+		case "pass":
+			summary.ChecksPassed++
+		case "warn":
+			summary.ChecksWarned++
+		case "fail":
+			summary.ChecksFailed++
+		case "skip", "info":
+			summary.ChecksSkipped++
+		}
+	}
+
+	// Build top risks from failed/warned checks
+	for _, c := range checks {
+		if (c.Status == "fail" || c.Status == "warn") && len(summary.TopRisks) < 3 {
+			summary.TopRisks = append(summary.TopRisks, c.Summary)
+		}
+	}
+
+	// Calculate score
+	score := calculateReviewScore(checks, findings)
+
+	// Determine verdict
+	verdict := determineVerdict(checks, opts.Policy)
+
+	// Count critical files
+	for _, f := range findings {
+		if f.Category == "critical" {
+			summary.CriticalFiles++
+		}
+	}
+
+	// Get suggested reviewers
+	prFiles := make([]PRFileChange, 0, len(reviewableFiles))
+	for _, df := range diffStats {
+		if !generatedSet[df.FilePath] {
+			prFiles = append(prFiles, PRFileChange{Path: df.FilePath})
+		}
+	}
+	reviewers := e.getSuggestedReviewers(ctx, prFiles)
+
+	// Get repo state
+	repoState, err := e.GetRepoState(ctx, "head")
+	if err != nil {
+		repoState = &RepoState{RepoStateId: "unknown"}
+	}
+
+	return &ReviewPRResponse{
+		CkbVersion:    version.Version,
+		SchemaVersion: "8.2",
+		Tool:          "reviewPR",
+		Verdict:       verdict,
+		Score:         score,
+		Summary:       summary,
+		Checks:        checks,
+		Findings:      findings,
+		Reviewers:     reviewers,
+		Generated:     generatedFiles,
+		Provenance: &Provenance{
+			RepoStateId:     repoState.RepoStateId,
+			RepoStateDirty:  repoState.Dirty,
+			QueryDurationMs: time.Since(startTime).Milliseconds(),
+		},
+	}, nil
+}
+
+// --- Individual check implementations ---
+
+func (e *Engine) checkBreakingChanges(ctx context.Context, opts ReviewPROptions) (ReviewCheck, []ReviewFinding) {
+	start := time.Now()
+
+	resp, err := e.CompareAPI(ctx, CompareAPIOptions{
+		BaseRef:       opts.BaseBranch,
+		TargetRef:     opts.HeadBranch,
+		IgnorePrivate: true,
+	})
+
+	if err != nil {
+		return ReviewCheck{
+			Name:     "breaking",
+			Status:   "skip",
+			Severity: "error",
+			Summary:  fmt.Sprintf("Could not analyze: %v", err),
+			Duration: time.Since(start).Milliseconds(),
+		}, nil
+	}
+
+	var findings []ReviewFinding
+	breakingCount := 0
+	if resp.Summary != nil {
+		breakingCount = resp.Summary.BreakingChanges
+	}
+
+	for _, change := range resp.Changes {
+		if change.Severity == "breaking" || change.Severity == "error" {
+			findings = append(findings, ReviewFinding{
+				Check:    "breaking",
+				Severity: "error",
+				File:     change.FilePath,
+				Message:  change.Description,
+				Category: "breaking",
+				RuleID:   fmt.Sprintf("ckb/breaking/%s", change.Kind),
+			})
+		}
+	}
+
+	status := "pass"
+	severity := "error"
+	summary := "No breaking API changes"
+	if breakingCount > 0 {
+		status = "fail"
+		summary = fmt.Sprintf("%d breaking API change(s) detected", breakingCount)
+	}
+
+	return ReviewCheck{
+		Name:     "breaking",
+		Status:   status,
+		Severity: severity,
+		Summary:  summary,
+		Duration: time.Since(start).Milliseconds(),
+	}, findings
+}
+
+func (e *Engine) checkSecrets(ctx context.Context, files []string) (ReviewCheck, []ReviewFinding) {
+	start := time.Now()
+
+	scanner := secrets.NewScanner(e.repoRoot, e.logger)
+	result, err := scanner.Scan(ctx, secrets.ScanOptions{
+		RepoRoot:       e.repoRoot,
+		Scope:          secrets.ScopeWorkdir,
+		Paths:          files,
+		ApplyAllowlist: true,
+		MinEntropy:     3.5,
+	})
+
+	if err != nil {
+		return ReviewCheck{
+			Name:     "secrets",
+			Status:   "skip",
+			Severity: "error",
+			Summary:  fmt.Sprintf("Could not scan: %v", err),
+			Duration: time.Since(start).Milliseconds(),
+		}, nil
+	}
+
+	var findings []ReviewFinding
+	for _, f := range result.Findings {
+		if f.Suppressed {
+			continue
+		}
+		sev := "warning"
+		if f.Severity == secrets.SeverityCritical || f.Severity == secrets.SeverityHigh {
+			sev = "error"
+		}
+		findings = append(findings, ReviewFinding{
+			Check:    "secrets",
+			Severity: sev,
+			File:     f.File,
+			StartLine: f.Line,
+			Message:  fmt.Sprintf("Potential %s detected", f.Type),
+			Category: "security",
+			RuleID:   fmt.Sprintf("ckb/secrets/%s", f.Type),
+		})
+	}
+
+	status := "pass"
+	summary := "No secrets detected"
+	count := len(findings)
+	if count > 0 {
+		status = "fail"
+		summary = fmt.Sprintf("%d potential secret(s) found", count)
+	}
+
+	return ReviewCheck{
+		Name:     "secrets",
+		Status:   status,
+		Severity: "error",
+		Summary:  summary,
+		Duration: time.Since(start).Milliseconds(),
+	}, findings
+}
+
+func (e *Engine) checkAffectedTests(ctx context.Context, opts ReviewPROptions) (ReviewCheck, []ReviewFinding) {
+	start := time.Now()
+
+	resp, err := e.GetAffectedTests(ctx, GetAffectedTestsOptions{
+		BaseBranch: opts.BaseBranch,
+	})
+
+	if err != nil {
+		return ReviewCheck{
+			Name:     "tests",
+			Status:   "skip",
+			Severity: "warning",
+			Summary:  fmt.Sprintf("Could not analyze: %v", err),
+			Duration: time.Since(start).Milliseconds(),
+		}, nil
+	}
+
+	testCount := len(resp.Tests)
+	status := "pass"
+	summary := fmt.Sprintf("%d test(s) cover the changes", testCount)
+
+	var findings []ReviewFinding
+	if testCount == 0 && opts.Policy.RequireTests {
+		status = "warn"
+		summary = "No tests found for changed code"
+		findings = append(findings, ReviewFinding{
+			Check:      "tests",
+			Severity:   "warning",
+			File:       "",
+			Message:    "No tests were found that cover the changed code",
+			Suggestion: "Consider adding tests for the changed functionality",
+			Category:   "testing",
+			RuleID:     "ckb/tests/no-coverage",
+		})
+	}
+
+	return ReviewCheck{
+		Name:     "tests",
+		Status:   status,
+		Severity: "warning",
+		Summary:  summary,
+		Duration: time.Since(start).Milliseconds(),
+	}, findings
+}
+
+func (e *Engine) checkHotspots(ctx context.Context, files []string) (ReviewCheck, []ReviewFinding) {
+	start := time.Now()
+
+	resp, err := e.GetHotspots(ctx, GetHotspotsOptions{Limit: 100})
+	if err != nil {
+		return ReviewCheck{
+			Name:     "hotspots",
+			Status:   "skip",
+			Severity: "info",
+			Summary:  fmt.Sprintf("Could not analyze: %v", err),
+			Duration: time.Since(start).Milliseconds(),
+		}, nil
+	}
+
+	// Build hotspot set
+	hotspotScores := make(map[string]float64)
+	for _, h := range resp.Hotspots {
+		if h.Ranking != nil && h.Ranking.Score > 0.5 {
+			hotspotScores[h.FilePath] = h.Ranking.Score
+		}
+	}
+
+	// Find overlaps
+	var findings []ReviewFinding
+	hotspotCount := 0
+	for _, f := range files {
+		if score, ok := hotspotScores[f]; ok {
+			hotspotCount++
+			findings = append(findings, ReviewFinding{
+				Check:      "hotspots",
+				Severity:   "info",
+				File:       f,
+				Message:    fmt.Sprintf("Hotspot file (score: %.2f) — extra review attention recommended", score),
+				Category:   "risk",
+				RuleID:     "ckb/hotspots/volatile-file",
+			})
+		}
+	}
+
+	status := "pass"
+	summary := "No volatile files touched"
+	if hotspotCount > 0 {
+		status = "info"
+		summary = fmt.Sprintf("%d hotspot file(s) touched", hotspotCount)
+	}
+
+	return ReviewCheck{
+		Name:     "hotspots",
+		Status:   status,
+		Severity: "info",
+		Summary:  summary,
+		Duration: time.Since(start).Milliseconds(),
+	}, findings
+}
+
+func (e *Engine) checkRiskScore(ctx context.Context, diffStats interface{}, opts ReviewPROptions) (ReviewCheck, []ReviewFinding) {
+	start := time.Now()
+
+	// Use existing PR summary for risk calculation
+	resp, err := e.SummarizePR(ctx, SummarizePROptions{
+		BaseBranch:       opts.BaseBranch,
+		HeadBranch:       opts.HeadBranch,
+		IncludeOwnership: false, // Skip ownership to save time, we do it separately
+	})
+
+	if err != nil {
+		return ReviewCheck{
+			Name:     "risk",
+			Status:   "skip",
+			Severity: "warning",
+			Summary:  fmt.Sprintf("Could not analyze: %v", err),
+			Duration: time.Since(start).Milliseconds(),
+		}, nil
+	}
+
+	score := resp.RiskAssessment.Score
+	level := resp.RiskAssessment.Level
+
+	status := "pass"
+	severity := "warning"
+	summary := fmt.Sprintf("Risk score: %.2f (%s)", score, level)
+
+	var findings []ReviewFinding
+	if opts.Policy.MaxRiskScore > 0 && score > opts.Policy.MaxRiskScore {
+		status = "warn"
+		for _, factor := range resp.RiskAssessment.Factors {
+			findings = append(findings, ReviewFinding{
+				Check:    "risk",
+				Severity: "warning",
+				Message:  factor,
+				Category: "risk",
+				RuleID:   "ckb/risk/high-score",
+			})
+		}
+	}
+
+	return ReviewCheck{
+		Name:     "risk",
+		Status:   status,
+		Severity: severity,
+		Summary:  summary,
+		Duration: time.Since(start).Milliseconds(),
+	}, findings
+}
+
+func (e *Engine) checkCriticalPaths(ctx context.Context, files []string, opts ReviewPROptions) (ReviewCheck, []ReviewFinding) {
+	start := time.Now()
+
+	var findings []ReviewFinding
+	critSeverity := opts.Policy.CriticalSeverity
+	if critSeverity == "" {
+		critSeverity = "error"
+	}
+
+	for _, file := range files {
+		for _, pattern := range opts.Policy.CriticalPaths {
+			matched, _ := matchGlob(pattern, file)
+			if matched {
+				findings = append(findings, ReviewFinding{
+					Check:      "critical",
+					Severity:   critSeverity,
+					File:       file,
+					Message:    fmt.Sprintf("Safety-critical path changed (pattern: %s)", pattern),
+					Suggestion: "Requires sign-off from safety team",
+					Category:   "critical",
+					RuleID:     "ckb/critical/safety-path",
+				})
+				break // Don't double-match same file
+			}
+		}
+	}
+
+	status := "pass"
+	summary := "No safety-critical files touched"
+	if len(findings) > 0 {
+		status = "fail"
+		summary = fmt.Sprintf("%d safety-critical file(s) changed", len(findings))
+	}
+
+	return ReviewCheck{
+		Name:     "critical",
+		Status:   status,
+		Severity: critSeverity,
+		Summary:  summary,
+		Duration: time.Since(start).Milliseconds(),
+	}, findings
+}
+
+// --- Helpers ---
+
+func sortChecks(checks []ReviewCheck) {
+	order := map[string]int{"fail": 0, "warn": 1, "info": 2, "pass": 3, "skip": 4}
+	sort.Slice(checks, func(i, j int) bool {
+		return order[checks[i].Status] < order[checks[j].Status]
+	})
+}
+
+func sortFindings(findings []ReviewFinding) {
+	order := map[string]int{"error": 0, "warning": 1, "info": 2}
+	sort.Slice(findings, func(i, j int) bool {
+		oi, oj := order[findings[i].Severity], order[findings[j].Severity]
+		if oi != oj {
+			return oi < oj
+		}
+		return findings[i].File < findings[j].File
+	})
+}
+
+func calculateReviewScore(checks []ReviewCheck, findings []ReviewFinding) int {
+	score := 100
+
+	for _, f := range findings {
+		switch f.Severity {
+		case "error":
+			score -= 10
+		case "warning":
+			score -= 3
+		case "info":
+			score -= 1
+		}
+	}
+
+	if score < 0 {
+		score = 0
+	}
+	return score
+}
+
+func determineVerdict(checks []ReviewCheck, policy *ReviewPolicy) string {
+	failLevel := policy.FailOnLevel
+	if failLevel == "" {
+		failLevel = "error"
+	}
+
+	hasFail := false
+	hasWarn := false
+	for _, c := range checks {
+		if c.Status == "fail" {
+			hasFail = true
+		}
+		if c.Status == "warn" {
+			hasWarn = true
+		}
+	}
+
+	switch failLevel {
+	case "none":
+		return "pass"
+	case "warning":
+		if hasFail || hasWarn {
+			return "fail"
+		}
+	default: // "error"
+		if hasFail {
+			return "fail"
+		}
+		if hasWarn {
+			return "warn"
+		}
+	}
+
+	return "pass"
+}
+
+// detectGeneratedFile checks if a file is generated based on policy patterns and markers.
+func detectGeneratedFile(filePath string, policy *ReviewPolicy) (GeneratedFileInfo, bool) {
+	// Check glob patterns
+	for _, pattern := range policy.GeneratedPatterns {
+		matched, _ := matchGlob(pattern, filePath)
+		if matched {
+			return GeneratedFileInfo{
+				File:   filePath,
+				Reason: fmt.Sprintf("Matches pattern %s", pattern),
+			}, true
+		}
+	}
+
+	// Check flex/yacc source mappings
+	base := strings.TrimSuffix(filePath, ".tab.c")
+	if base != filePath {
+		return GeneratedFileInfo{
+			File:       filePath,
+			Reason:     "flex/yacc generated output",
+			SourceFile: base + ".y",
+		}, true
+	}
+	base = strings.TrimSuffix(filePath, ".yy.c")
+	if base != filePath {
+		return GeneratedFileInfo{
+			File:       filePath,
+			Reason:     "flex/yacc generated output",
+			SourceFile: base + ".l",
+		}, true
+	}
+
+	return GeneratedFileInfo{}, false
+}
+
+// matchGlob performs simple glob matching (supports ** and *).
+func matchGlob(pattern, path string) (bool, error) {
+	// Simple implementation: split on ** for directory wildcards
+	if strings.Contains(pattern, "**") {
+		prefix := strings.Split(pattern, "**")[0]
+		suffix := strings.Split(pattern, "**")[1]
+		suffix = strings.TrimPrefix(suffix, "/")
+
+		if prefix != "" && !strings.HasPrefix(path, prefix) {
+			return false, nil
+		}
+		if suffix == "" {
+			return true, nil
+		}
+		// Check if suffix pattern matches end of path
+		return matchSimpleGlob(suffix, filepath.Base(path)), nil
+	}
+
+	return matchSimpleGlob(pattern, path), nil
+}
+
+// matchSimpleGlob matches a pattern with * wildcards against a string.
+func matchSimpleGlob(pattern, str string) bool {
+	if pattern == "*" {
+		return true
+	}
+	if !strings.Contains(pattern, "*") {
+		return pattern == str
+	}
+
+	parts := strings.Split(pattern, "*")
+	if len(parts) == 2 {
+		return strings.HasPrefix(str, parts[0]) && strings.HasSuffix(str, parts[1])
+	}
+	// Fallback: check if all parts appear in order
+	remaining := str
+	for _, part := range parts {
+		if part == "" {
+			continue
+		}
+		idx := strings.Index(remaining, part)
+		if idx < 0 {
+			return false
+		}
+		remaining = remaining[idx+len(part):]
+	}
+	return true
+}
+
+// mergeReviewConfig applies config-level defaults to a review policy.
+// Config values fill in gaps — explicit caller overrides take priority.
+func mergeReviewConfig(policy *ReviewPolicy, rc *config.ReviewConfig) {
+	// Only merge generated patterns/markers if policy has none (caller didn't override)
+	if len(policy.GeneratedPatterns) == 0 && len(rc.GeneratedPatterns) > 0 {
+		policy.GeneratedPatterns = rc.GeneratedPatterns
+	} else if len(rc.GeneratedPatterns) > 0 {
+		// Append config patterns to defaults
+		policy.GeneratedPatterns = append(policy.GeneratedPatterns, rc.GeneratedPatterns...)
+	}
+
+	if len(policy.GeneratedMarkers) == 0 && len(rc.GeneratedMarkers) > 0 {
+		policy.GeneratedMarkers = rc.GeneratedMarkers
+	} else if len(rc.GeneratedMarkers) > 0 {
+		policy.GeneratedMarkers = append(policy.GeneratedMarkers, rc.GeneratedMarkers...)
+	}
+
+	// Critical paths: append config to any caller-provided ones
+	if len(rc.CriticalPaths) > 0 {
+		policy.CriticalPaths = append(policy.CriticalPaths, rc.CriticalPaths...)
+	}
+
+	// Numeric thresholds: use config if caller left at zero/default
+	if policy.MaxRiskScore == 0 && rc.MaxRiskScore > 0 {
+		policy.MaxRiskScore = rc.MaxRiskScore
+	}
+	if policy.MaxComplexityDelta == 0 && rc.MaxComplexityDelta > 0 {
+		policy.MaxComplexityDelta = rc.MaxComplexityDelta
+	}
+	if policy.MaxFiles == 0 && rc.MaxFiles > 0 {
+		policy.MaxFiles = rc.MaxFiles
+	}
+}

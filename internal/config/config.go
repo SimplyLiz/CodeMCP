@@ -56,6 +56,9 @@ type Config struct {
 
 	// v8.1 Change Impact Analysis
 	Coverage CoverageConfig `json:"coverage" mapstructure:"coverage"`
+
+	// v8.2 Unified PR Review
+	Review ReviewConfig `json:"review" mapstructure:"review"`
 }
 
 // CoverageConfig contains coverage file configuration (v8.1)
@@ -63,6 +66,25 @@ type CoverageConfig struct {
 	Paths      []string `json:"paths" mapstructure:"paths"`           // Custom paths to check for coverage files
 	AutoDetect bool     `json:"autoDetect" mapstructure:"autoDetect"` // Use language-specific auto-detection (default: true)
 	MaxAge     string   `json:"maxAge" mapstructure:"maxAge"`         // Max age before marking as stale (default: "168h" = 7 days)
+}
+
+// ReviewConfig contains PR review policy defaults (v8.2)
+type ReviewConfig struct {
+	// Policy defaults (can be overridden per-invocation)
+	NoBreakingChanges bool    `json:"noBreakingChanges" mapstructure:"noBreakingChanges"` // Fail on breaking API changes
+	NoSecrets         bool    `json:"noSecrets" mapstructure:"noSecrets"`                 // Fail on detected secrets
+	RequireTests      bool    `json:"requireTests" mapstructure:"requireTests"`           // Warn if no tests cover changes
+	MaxRiskScore      float64 `json:"maxRiskScore" mapstructure:"maxRiskScore"`           // Maximum risk score (0 = disabled)
+	MaxComplexityDelta int    `json:"maxComplexityDelta" mapstructure:"maxComplexityDelta"` // Maximum complexity delta (0 = disabled)
+	MaxFiles          int     `json:"maxFiles" mapstructure:"maxFiles"`                   // Maximum file count (0 = disabled)
+	FailOnLevel       string  `json:"failOnLevel" mapstructure:"failOnLevel"`             // error, warning, none
+
+	// Generated file detection
+	GeneratedPatterns []string `json:"generatedPatterns" mapstructure:"generatedPatterns"` // Glob patterns for generated files
+	GeneratedMarkers  []string `json:"generatedMarkers" mapstructure:"generatedMarkers"`   // Comment markers (e.g., "DO NOT EDIT")
+
+	// Safety-critical paths
+	CriticalPaths []string `json:"criticalPaths" mapstructure:"criticalPaths"` // Glob patterns requiring extra scrutiny
 }
 
 // BackendsConfig contains backend-specific configuration
@@ -391,6 +413,18 @@ func DefaultConfig() *Config {
 			Paths:      []string{}, // Empty = use auto-detection only
 			AutoDetect: true,
 			MaxAge:     "168h", // 7 days
+		},
+		Review: ReviewConfig{
+			NoBreakingChanges:  true,
+			NoSecrets:          true,
+			RequireTests:       false,
+			MaxRiskScore:       0.7,
+			MaxComplexityDelta: 0, // disabled by default
+			MaxFiles:           0, // disabled by default
+			FailOnLevel:        "error",
+			GeneratedPatterns:  []string{},
+			GeneratedMarkers:   []string{},
+			CriticalPaths:      []string{},
 		},
 		Telemetry: TelemetryConfig{
 			Enabled:         false, // Explicit opt-in required

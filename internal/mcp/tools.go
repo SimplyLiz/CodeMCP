@@ -1847,6 +1847,40 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		// v8.2 Unified PR Review
+		{
+			Name:        "reviewPR",
+			Description: "Run a comprehensive PR review with quality gates. Orchestrates breaking changes, secrets, tests, complexity, coupling, hotspots, risk, and critical-path checks in parallel. Returns verdict (pass/warn/fail), score, findings, and suggested reviewers.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"baseBranch": map[string]interface{}{
+						"type":        "string",
+						"default":     "main",
+						"description": "Base branch to compare against",
+					},
+					"headBranch": map[string]interface{}{
+						"type":        "string",
+						"description": "Head branch (default: current branch)",
+					},
+					"checks": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "Limit to specific checks: breaking, secrets, tests, complexity, coupling, hotspots, risk, critical, generated",
+					},
+					"failOnLevel": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"error", "warning", "none"},
+						"description": "Override when to fail: error (default), warning, or none",
+					},
+					"criticalPaths": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "Glob patterns for safety-critical paths (e.g., drivers/**, protocol/**)",
+					},
+				},
+			},
+		},
 		// v7.3 Doc-Symbol Linking tools
 		{
 			Name:        "getDocsForSymbol",
@@ -2334,6 +2368,8 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["auditRisk"] = s.toolAuditRisk
 	// v8.0 Secret Detection
 	s.tools["scanSecrets"] = s.toolScanSecrets
+	// v8.2 Unified Review
+	s.tools["reviewPR"] = s.toolReviewPR
 	// v7.3 Doc-Symbol Linking tools
 	s.tools["getDocsForSymbol"] = s.toolGetDocsForSymbol
 	s.tools["getSymbolsInDoc"] = s.toolGetSymbolsInDoc
