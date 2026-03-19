@@ -23,6 +23,9 @@ jobs:
   detect:
     name: Detect Languages
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
     outputs:
       has_go: ${{ steps.detect.outputs.has_go }}
       has_python: ${{ steps.detect.outputs.has_python }}
@@ -31,7 +34,7 @@ jobs:
       languages: ${{ steps.detect.outputs.languages }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           sparse-checkout: |
             go.mod

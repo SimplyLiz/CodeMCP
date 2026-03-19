@@ -9,10 +9,10 @@ import (
 
 // IndependenceResult holds the outcome of reviewer independence analysis.
 type IndependenceResult struct {
-	Authors          []string `json:"authors"`          // PR authors
-	CriticalFiles    []string `json:"criticalFiles"`    // Critical-path files in the PR
-	RequiresSignoff  bool     `json:"requiresSignoff"`  // Whether independent review is required
-	MinReviewers     int      `json:"minReviewers"`     // Minimum required reviewers
+	Authors         []string `json:"authors"`         // PR authors
+	CriticalFiles   []string `json:"criticalFiles"`   // Critical-path files in the PR
+	RequiresSignoff bool     `json:"requiresSignoff"` // Whether independent review is required
+	MinReviewers    int      `json:"minReviewers"`    // Minimum required reviewers
 }
 
 // checkReviewerIndependence verifies that the PR will receive independent review.
@@ -61,6 +61,7 @@ func (e *Engine) checkReviewerIndependence(ctx context.Context, opts ReviewPROpt
 
 	// Check if critical paths are touched (makes independence more important)
 	hasCriticalFiles := false
+	var criticalFilesList []string
 	if len(opts.Policy.CriticalPaths) > 0 {
 		diffStats, err := e.gitAdapter.GetCommitRangeDiff(opts.BaseBranch, opts.HeadBranch)
 		if err == nil {
@@ -68,12 +69,10 @@ func (e *Engine) checkReviewerIndependence(ctx context.Context, opts ReviewPROpt
 				for _, pattern := range opts.Policy.CriticalPaths {
 					matched, _ := matchGlob(pattern, df.FilePath)
 					if matched {
+						criticalFilesList = append(criticalFilesList, df.FilePath)
 						hasCriticalFiles = true
 						break
 					}
-				}
-				if hasCriticalFiles {
-					break
 				}
 			}
 		}
@@ -119,6 +118,7 @@ func (e *Engine) checkReviewerIndependence(ctx context.Context, opts ReviewPROpt
 		Summary:  summary,
 		Details: IndependenceResult{
 			Authors:         authors,
+			CriticalFiles:   criticalFilesList,
 			RequiresSignoff: true,
 			MinReviewers:    minReviewers,
 		},

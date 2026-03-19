@@ -13,14 +13,14 @@ import (
 // https://docs.gitlab.com/ee/ci/testing/code_quality.html
 
 type codeClimateIssue struct {
-	Type        string               `json:"type"`
-	CheckName   string               `json:"check_name"`
-	Description string               `json:"description"`
-	Content     *codeClimateContent  `json:"content,omitempty"`
-	Categories  []string             `json:"categories"`
-	Location    codeClimateLocation  `json:"location"`
-	Severity    string               `json:"severity"` // blocker, critical, major, minor, info
-	Fingerprint string               `json:"fingerprint"`
+	Type        string              `json:"type"`
+	CheckName   string              `json:"check_name"`
+	Description string              `json:"description"`
+	Content     *codeClimateContent `json:"content,omitempty"`
+	Categories  []string            `json:"categories"`
+	Location    codeClimateLocation `json:"location"`
+	Severity    string              `json:"severity"` // blocker, critical, major, minor, info
+	Fingerprint string              `json:"fingerprint"`
 }
 
 type codeClimateContent struct {
@@ -28,8 +28,8 @@ type codeClimateContent struct {
 }
 
 type codeClimateLocation struct {
-	Path  string             `json:"path"`
-	Lines *codeClimateLines  `json:"lines,omitempty"`
+	Path  string            `json:"path"`
+	Lines *codeClimateLines `json:"lines,omitempty"`
 }
 
 type codeClimateLines struct {

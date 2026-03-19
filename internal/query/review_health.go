@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -32,7 +33,7 @@ type CodeHealthReport struct {
 	WorstFile    string            `json:"worstFile,omitempty"`
 	WorstGrade   string            `json:"worstGrade,omitempty"`
 	Degraded     int               `json:"degraded"` // Files that got worse
-	Improved     int               `json:"improved"`  // Files that got better
+	Improved     int               `json:"improved"` // Files that got better
 }
 
 // Health score weights
@@ -198,13 +199,75 @@ func (e *Engine) calculateFileHealth(ctx context.Context, file string) int {
 }
 
 // calculateBaseFileHealth gets the health of a file at a base branch ref.
-// Uses current health as approximation — full implementation would analyze
-// the file content at the base ref independently.
-func (e *Engine) calculateBaseFileHealth(ctx context.Context, file string, _ string) int {
-	// For files that exist, approximate base health as current health.
-	// This is conservative — it won't detect improvements or degradations
-	// from the base. Full implementation would use git show + analyze.
-	return e.calculateFileHealth(ctx, file)
+// Uses git show to retrieve the file at the base ref, then calculates
+// file-specific metrics (complexity, size) while using current repo-level
+// metrics (churn, coupling, bus factor, age) which are branch-independent.
+func (e *Engine) calculateBaseFileHealth(ctx context.Context, file string, baseBranch string) int {
+	if baseBranch == "" {
+		return e.calculateFileHealth(ctx, file)
+	}
+
+	// Get the file content at the base branch
+	cmd := exec.CommandContext(ctx, "git", "-C", e.repoRoot, "show", baseBranch+":"+file)
+	content, err := cmd.Output()
+	if err != nil {
+		// File may not exist at base (new file) — return 100 (perfect base health
+		// so the delta reflects the current state as a change from "nothing")
+		return 100
+	}
+
+	// Write to temp file for analysis
+	tmpFile, err := os.CreateTemp("", "ckb-base-*"+filepath.Ext(file))
+	if err != nil {
+		return e.calculateFileHealth(ctx, file)
+	}
+	defer func() {
+		tmpFile.Close()
+		os.Remove(tmpFile.Name())
+	}()
+
+	if _, err := tmpFile.Write(content); err != nil {
+		return e.calculateFileHealth(ctx, file)
+	}
+	tmpFile.Close()
+
+	score := 100.0
+
+	// Cyclomatic complexity (20%) — from base file content
+	if complexity.IsAvailable() {
+		analyzer := complexity.NewAnalyzer()
+		result, err := analyzer.AnalyzeFile(ctx, tmpFile.Name())
+		if err == nil && result.Error == "" {
+			cycScore := complexityToScore(result.MaxCyclomatic)
+			score -= (100 - cycScore) * weightCyclomatic
+
+			cogScore := complexityToScore(result.MaxCognitive)
+			score -= (100 - cogScore) * weightCognitive
+		}
+	}
+
+	// File size (10%) — from base file content
+	loc := countLines(tmpFile.Name())
+	locScore := fileSizeToScore(loc)
+	score -= (100 - locScore) * weightFileSize
+
+	// Repo-level metrics are branch-independent, use current values
+	churnScore := e.churnToScore(ctx, file)
+	score -= (100 - churnScore) * weightChurn
+
+	couplingScore := e.couplingToScore(ctx, file)
+	score -= (100 - couplingScore) * weightCoupling
+
+	busScore := e.busFactorToScore(file)
+	score -= (100 - busScore) * weightBusFactor
+
+	ageScore := e.ageToScore(ctx, file)
+	score -= (100 - ageScore) * weightAge
+
+	if score < 0 {
+		score = 0
+	}
+	return int(math.Round(score))
 }
 
 // --- Scoring helper functions ---

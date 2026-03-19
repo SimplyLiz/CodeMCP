@@ -34,13 +34,13 @@ func testResponse() *query.ReviewPRResponse {
 		},
 		Findings: []query.ReviewFinding{
 			{
-				Check:    "breaking",
-				Severity: "error",
-				File:     "api/handler.go",
+				Check:     "breaking",
+				Severity:  "error",
+				File:      "api/handler.go",
 				StartLine: 42,
-				Message:  "Removed public function HandleAuth()",
-				Category: "breaking",
-				RuleID:   "ckb/breaking/removed-symbol",
+				Message:   "Removed public function HandleAuth()",
+				Category:  "breaking",
+				RuleID:    "ckb/breaking/removed-symbol",
 			},
 			{
 				Check:      "complexity",
@@ -70,6 +70,7 @@ func testResponse() *query.ReviewPRResponse {
 // --- SARIF Tests ---
 
 func TestFormatSARIF_ValidJSON(t *testing.T) {
+	t.Parallel()
 	resp := testResponse()
 	output, err := formatReviewSARIF(resp)
 	if err != nil {
@@ -87,11 +88,14 @@ func TestFormatSARIF_ValidJSON(t *testing.T) {
 }
 
 func TestFormatSARIF_HasRuns(t *testing.T) {
+	t.Parallel()
 	resp := testResponse()
 	output, _ := formatReviewSARIF(resp)
 
 	var sarif sarifLog
-	json.Unmarshal([]byte(output), &sarif)
+	if err := json.Unmarshal([]byte(output), &sarif); err != nil {
+		t.Fatalf("unmarshal SARIF: %v", err)
+	}
 
 	if len(sarif.Runs) != 1 {
 		t.Fatalf("runs = %d, want 1", len(sarif.Runs))
@@ -104,11 +108,14 @@ func TestFormatSARIF_HasRuns(t *testing.T) {
 }
 
 func TestFormatSARIF_Results(t *testing.T) {
+	t.Parallel()
 	resp := testResponse()
 	output, _ := formatReviewSARIF(resp)
 
 	var sarif sarifLog
-	json.Unmarshal([]byte(output), &sarif)
+	if err := json.Unmarshal([]byte(output), &sarif); err != nil {
+		t.Fatalf("unmarshal SARIF: %v", err)
+	}
 
 	results := sarif.Runs[0].Results
 	if len(results) != 3 {
@@ -132,11 +139,14 @@ func TestFormatSARIF_Results(t *testing.T) {
 }
 
 func TestFormatSARIF_Fingerprints(t *testing.T) {
+	t.Parallel()
 	resp := testResponse()
 	output, _ := formatReviewSARIF(resp)
 
 	var sarif sarifLog
-	json.Unmarshal([]byte(output), &sarif)
+	if err := json.Unmarshal([]byte(output), &sarif); err != nil {
+		t.Fatalf("unmarshal SARIF: %v", err)
+	}
 
 	for _, r := range sarif.Runs[0].Results {
 		if r.PartialFingerprints == nil {
@@ -149,11 +159,14 @@ func TestFormatSARIF_Fingerprints(t *testing.T) {
 }
 
 func TestFormatSARIF_Rules(t *testing.T) {
+	t.Parallel()
 	resp := testResponse()
 	output, _ := formatReviewSARIF(resp)
 
 	var sarif sarifLog
-	json.Unmarshal([]byte(output), &sarif)
+	if err := json.Unmarshal([]byte(output), &sarif); err != nil {
+		t.Fatalf("unmarshal SARIF: %v", err)
+	}
 
 	rules := sarif.Runs[0].Tool.Driver.Rules
 	if len(rules) != 3 {
@@ -161,29 +174,32 @@ func TestFormatSARIF_Rules(t *testing.T) {
 	}
 }
 
-func TestFormatSARIF_Fixes(t *testing.T) {
+func TestFormatSARIF_Suggestions(t *testing.T) {
+	t.Parallel()
 	resp := testResponse()
 	output, _ := formatReviewSARIF(resp)
 
 	var sarif sarifLog
-	json.Unmarshal([]byte(output), &sarif)
+	if err := json.Unmarshal([]byte(output), &sarif); err != nil {
+		t.Fatalf("unmarshal SARIF: %v", err)
+	}
 
-	// The complexity finding has a suggestion
-	hasFix := false
+	// The complexity finding has a suggestion, now in relatedLocations
+	hasSuggestion := false
 	for _, r := range sarif.Runs[0].Results {
-		if len(r.Fixes) > 0 {
-			hasFix = true
-			if r.Fixes[0].Description.Text != "Consider extracting helper functions" {
-				t.Errorf("fix description = %q", r.Fixes[0].Description.Text)
+		for _, rl := range r.RelatedLocations {
+			if strings.Contains(rl.Message.Text, "Consider extracting helper functions") {
+				hasSuggestion = true
 			}
 		}
 	}
-	if !hasFix {
-		t.Error("expected at least one result with fixes")
+	if !hasSuggestion {
+		t.Error("expected at least one result with suggestion in relatedLocations")
 	}
 }
 
 func TestFormatSARIF_EmptyFindings(t *testing.T) {
+	t.Parallel()
 	resp := &query.ReviewPRResponse{
 		CkbVersion: "8.2.0",
 		Verdict:    "pass",
@@ -201,6 +217,7 @@ func TestFormatSARIF_EmptyFindings(t *testing.T) {
 // --- CodeClimate Tests ---
 
 func TestFormatCodeClimate_ValidJSON(t *testing.T) {
+	t.Parallel()
 	resp := testResponse()
 	output, err := formatReviewCodeClimate(resp)
 	if err != nil {
@@ -218,11 +235,14 @@ func TestFormatCodeClimate_ValidJSON(t *testing.T) {
 }
 
 func TestFormatCodeClimate_Severity(t *testing.T) {
+	t.Parallel()
 	resp := testResponse()
 	output, _ := formatReviewCodeClimate(resp)
 
 	var issues []codeClimateIssue
-	json.Unmarshal([]byte(output), &issues)
+	if err := json.Unmarshal([]byte(output), &issues); err != nil {
+		t.Fatalf("unmarshal CodeClimate: %v", err)
+	}
 
 	severities := make(map[string]int)
 	for _, i := range issues {
@@ -241,11 +261,14 @@ func TestFormatCodeClimate_Severity(t *testing.T) {
 }
 
 func TestFormatCodeClimate_Fingerprints(t *testing.T) {
+	t.Parallel()
 	resp := testResponse()
 	output, _ := formatReviewCodeClimate(resp)
 
 	var issues []codeClimateIssue
-	json.Unmarshal([]byte(output), &issues)
+	if err := json.Unmarshal([]byte(output), &issues); err != nil {
+		t.Fatalf("unmarshal CodeClimate: %v", err)
+	}
 
 	fps := make(map[string]bool)
 	for _, i := range issues {
@@ -260,11 +283,14 @@ func TestFormatCodeClimate_Fingerprints(t *testing.T) {
 }
 
 func TestFormatCodeClimate_Location(t *testing.T) {
+	t.Parallel()
 	resp := testResponse()
 	output, _ := formatReviewCodeClimate(resp)
 
 	var issues []codeClimateIssue
-	json.Unmarshal([]byte(output), &issues)
+	if err := json.Unmarshal([]byte(output), &issues); err != nil {
+		t.Fatalf("unmarshal CodeClimate: %v", err)
+	}
 
 	if issues[0].Location.Path != "api/handler.go" {
 		t.Errorf("path = %q, want %q", issues[0].Location.Path, "api/handler.go")
@@ -275,11 +301,14 @@ func TestFormatCodeClimate_Location(t *testing.T) {
 }
 
 func TestFormatCodeClimate_Categories(t *testing.T) {
+	t.Parallel()
 	resp := testResponse()
 	output, _ := formatReviewCodeClimate(resp)
 
 	var issues []codeClimateIssue
-	json.Unmarshal([]byte(output), &issues)
+	if err := json.Unmarshal([]byte(output), &issues); err != nil {
+		t.Fatalf("unmarshal CodeClimate: %v", err)
+	}
 
 	// Breaking → Compatibility
 	if len(issues[0].Categories) == 0 || issues[0].Categories[0] != "Compatibility" {
@@ -292,6 +321,7 @@ func TestFormatCodeClimate_Categories(t *testing.T) {
 }
 
 func TestFormatCodeClimate_EmptyFindings(t *testing.T) {
+	t.Parallel()
 	resp := &query.ReviewPRResponse{Verdict: "pass", Score: 100}
 	output, err := formatReviewCodeClimate(resp)
 	if err != nil {
@@ -305,6 +335,7 @@ func TestFormatCodeClimate_EmptyFindings(t *testing.T) {
 // --- GitHub Actions Format Tests ---
 
 func TestFormatGitHubActions_Annotations(t *testing.T) {
+	t.Parallel()
 	resp := testResponse()
 	output := formatReviewGitHubActions(resp)
 
@@ -322,6 +353,7 @@ func TestFormatGitHubActions_Annotations(t *testing.T) {
 // --- Human Format Tests ---
 
 func TestFormatHuman_ContainsVerdict(t *testing.T) {
+	t.Parallel()
 	resp := testResponse()
 	output := formatReviewHuman(resp)
 
@@ -334,6 +366,7 @@ func TestFormatHuman_ContainsVerdict(t *testing.T) {
 }
 
 func TestFormatHuman_ContainsChecks(t *testing.T) {
+	t.Parallel()
 	resp := testResponse()
 	output := formatReviewHuman(resp)
 
@@ -348,6 +381,7 @@ func TestFormatHuman_ContainsChecks(t *testing.T) {
 // --- Markdown Format Tests ---
 
 func TestFormatMarkdown_ContainsTable(t *testing.T) {
+	t.Parallel()
 	resp := testResponse()
 	output := formatReviewMarkdown(resp)
 
@@ -360,6 +394,7 @@ func TestFormatMarkdown_ContainsTable(t *testing.T) {
 }
 
 func TestFormatMarkdown_ContainsFindings(t *testing.T) {
+	t.Parallel()
 	resp := testResponse()
 	output := formatReviewMarkdown(resp)
 
@@ -371,6 +406,7 @@ func TestFormatMarkdown_ContainsFindings(t *testing.T) {
 // --- Compliance Format Tests ---
 
 func TestFormatCompliance_HasSections(t *testing.T) {
+	t.Parallel()
 	resp := testResponse()
 	output := formatReviewCompliance(resp)
 

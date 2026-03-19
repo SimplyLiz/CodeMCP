@@ -12,23 +12,23 @@ import (
 
 // ChangeCategory classifies the type of change for a file.
 const (
-	CategoryNew        = "new"
-	CategoryRefactor   = "refactoring"
-	CategoryMoved      = "moved"
-	CategoryChurn      = "churn"
-	CategoryConfig     = "config"
-	CategoryTest       = "test"
-	CategoryGenerated  = "generated"
-	CategoryModified   = "modified"
+	CategoryNew       = "new"
+	CategoryRefactor  = "refactoring"
+	CategoryMoved     = "moved"
+	CategoryChurn     = "churn"
+	CategoryConfig    = "config"
+	CategoryTest      = "test"
+	CategoryGenerated = "generated"
+	CategoryModified  = "modified"
 )
 
 // ChangeClassification categorizes a file change for review prioritization.
 type ChangeClassification struct {
 	File           string  `json:"file"`
 	Category       string  `json:"category"`       // One of the Category* constants
-	Confidence     float64 `json:"confidence"`      // 0-1
-	Detail         string  `json:"detail"`          // Human-readable explanation
-	ReviewPriority string  `json:"reviewPriority"`  // "high", "medium", "low", "skip"
+	Confidence     float64 `json:"confidence"`     // 0-1
+	Detail         string  `json:"detail"`         // Human-readable explanation
+	ReviewPriority string  `json:"reviewPriority"` // "high", "medium", "low", "skip"
 }
 
 // ChangeBreakdown summarizes classifications across the entire PR.

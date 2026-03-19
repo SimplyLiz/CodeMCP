@@ -13,14 +13,14 @@ import (
 
 // ComplexityDelta represents complexity change for a single file.
 type ComplexityDelta struct {
-	File              string `json:"file"`
-	CyclomaticBefore  int    `json:"cyclomaticBefore"`
-	CyclomaticAfter   int    `json:"cyclomaticAfter"`
-	CyclomaticDelta   int    `json:"cyclomaticDelta"`
-	CognitiveBefore   int    `json:"cognitiveBefore"`
-	CognitiveAfter    int    `json:"cognitiveAfter"`
-	CognitiveDelta    int    `json:"cognitiveDelta"`
-	HottestFunction   string `json:"hottestFunction,omitempty"`
+	File             string `json:"file"`
+	CyclomaticBefore int    `json:"cyclomaticBefore"`
+	CyclomaticAfter  int    `json:"cyclomaticAfter"`
+	CyclomaticDelta  int    `json:"cyclomaticDelta"`
+	CognitiveBefore  int    `json:"cognitiveBefore"`
+	CognitiveAfter   int    `json:"cognitiveAfter"`
+	CognitiveDelta   int    `json:"cognitiveDelta"`
+	HottestFunction  string `json:"hottestFunction,omitempty"`
 }
 
 // checkComplexityDelta compares complexity before and after for changed files.

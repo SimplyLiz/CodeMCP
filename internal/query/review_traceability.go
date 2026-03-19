@@ -151,6 +151,12 @@ func (e *Engine) checkTraceability(ctx context.Context, files []string, opts Rev
 		})
 	}
 
+	// Identify orphan files (files with no ticket linkage)
+	var orphanFiles []string
+	if !linked {
+		orphanFiles = files
+	}
+
 	status := "pass"
 	summary := fmt.Sprintf("%d ticket reference(s) found", len(refs))
 	if !linked {
@@ -171,6 +177,7 @@ func (e *Engine) checkTraceability(ctx context.Context, files []string, opts Rev
 		Details: TraceabilityResult{
 			TicketRefs:     refs,
 			Linked:         linked,
+			OrphanFiles:    orphanFiles,
 			CriticalOrphan: hasCriticalOrphan,
 		},
 		Duration: time.Since(start).Milliseconds(),

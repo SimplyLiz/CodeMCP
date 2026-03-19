@@ -29,11 +29,11 @@ type sarifTool struct {
 }
 
 type sarifDriver struct {
-	Name            string          `json:"name"`
-	Version         string          `json:"version"`
-	InformationURI  string          `json:"informationUri"`
-	Rules           []sarifRule     `json:"rules"`
-	SemanticVersion string          `json:"semanticVersion"`
+	Name            string      `json:"name"`
+	Version         string      `json:"version"`
+	InformationURI  string      `json:"informationUri"`
+	Rules           []sarifRule `json:"rules"`
+	SemanticVersion string      `json:"semanticVersion"`
 }
 
 type sarifRule struct {
@@ -51,13 +51,13 @@ type sarifMessage struct {
 }
 
 type sarifResult struct {
-	RuleID              string                `json:"ruleId"`
-	Level               string                `json:"level"` // "error", "warning", "note"
-	Message             sarifMessage          `json:"message"`
-	Locations           []sarifLocation       `json:"locations,omitempty"`
-	PartialFingerprints map[string]string     `json:"partialFingerprints,omitempty"`
-	RelatedLocations    []sarifRelatedLoc     `json:"relatedLocations,omitempty"`
-	Fixes               []sarifFix            `json:"fixes,omitempty"`
+	RuleID              string            `json:"ruleId"`
+	Level               string            `json:"level"` // "error", "warning", "note"
+	Message             sarifMessage      `json:"message"`
+	Locations           []sarifLocation   `json:"locations,omitempty"`
+	PartialFingerprints map[string]string `json:"partialFingerprints,omitempty"`
+	RelatedLocations    []sarifRelatedLoc `json:"relatedLocations,omitempty"`
+	Fixes               []sarifFix        `json:"fixes,omitempty"`
 }
 
 type sarifLocation struct {
@@ -85,7 +85,7 @@ type sarifRelatedLoc struct {
 }
 
 type sarifFix struct {
-	Description sarifMessage         `json:"description"`
+	Description sarifMessage          `json:"description"`
 	Changes     []sarifArtifactChange `json:"artifactChanges"`
 }
 
@@ -153,11 +153,15 @@ func formatReviewSARIF(resp *query.ReviewPRResponse) (string, error) {
 		}
 
 		if f.Suggestion != "" {
-			result.Fixes = []sarifFix{
-				{
-					Description: sarifMessage{Text: f.Suggestion},
+			// Add suggestion as a related location message rather than a Fix,
+			// since SARIF v2.1.0 requires Fixes to include artifactChanges.
+			result.RelatedLocations = append(result.RelatedLocations, sarifRelatedLoc{
+				ID:      1,
+				Message: sarifMessage{Text: "Suggestion: " + f.Suggestion},
+				PhysicalLocation: sarifPhysicalLocation{
+					ArtifactLocation: sarifArtifactLocation{URI: f.File},
 				},
-			}
+			})
 		}
 
 		results = append(results, result)

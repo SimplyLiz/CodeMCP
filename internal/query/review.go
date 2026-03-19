@@ -61,24 +61,24 @@ type ReviewPolicy struct {
 
 // ReviewPRResponse is the unified review result.
 type ReviewPRResponse struct {
-	CkbVersion    string               `json:"ckbVersion"`
-	SchemaVersion string               `json:"schemaVersion"`
-	Tool          string               `json:"tool"`
-	Verdict       string               `json:"verdict"` // "pass", "warn", "fail"
-	Score         int                  `json:"score"`   // 0-100
-	Summary       ReviewSummary        `json:"summary"`
-	Checks        []ReviewCheck        `json:"checks"`
-	Findings      []ReviewFinding      `json:"findings"`
-	Reviewers     []SuggestedReview    `json:"reviewers"`
-	Generated     []GeneratedFileInfo  `json:"generated,omitempty"`
+	CkbVersion    string              `json:"ckbVersion"`
+	SchemaVersion string              `json:"schemaVersion"`
+	Tool          string              `json:"tool"`
+	Verdict       string              `json:"verdict"` // "pass", "warn", "fail"
+	Score         int                 `json:"score"`   // 0-100
+	Summary       ReviewSummary       `json:"summary"`
+	Checks        []ReviewCheck       `json:"checks"`
+	Findings      []ReviewFinding     `json:"findings"`
+	Reviewers     []SuggestedReview   `json:"reviewers"`
+	Generated     []GeneratedFileInfo `json:"generated,omitempty"`
 	// Batch 3: Large PR Intelligence
-	SplitSuggestion    *PRSplitSuggestion          `json:"splitSuggestion,omitempty"`
-	ChangeBreakdown    *ChangeBreakdown             `json:"changeBreakdown,omitempty"`
-	ReviewEffort       *ReviewEffort                `json:"reviewEffort,omitempty"`
-	ClusterReviewers   []ClusterReviewerAssignment  `json:"clusterReviewers,omitempty"`
+	SplitSuggestion  *PRSplitSuggestion          `json:"splitSuggestion,omitempty"`
+	ChangeBreakdown  *ChangeBreakdown            `json:"changeBreakdown,omitempty"`
+	ReviewEffort     *ReviewEffort               `json:"reviewEffort,omitempty"`
+	ClusterReviewers []ClusterReviewerAssignment `json:"clusterReviewers,omitempty"`
 	// Batch 4: Code Health & Baseline
-	HealthReport       *CodeHealthReport            `json:"healthReport,omitempty"`
-	Provenance         *Provenance                  `json:"provenance,omitempty"`
+	HealthReport *CodeHealthReport `json:"healthReport,omitempty"`
+	Provenance   *Provenance       `json:"provenance,omitempty"`
 }
 
 // ReviewSummary provides a high-level overview.
@@ -289,15 +289,48 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 		}()
 	}
 
-	// Check: Complexity Delta
-	if checkEnabled("complexity") {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			c, ff := e.checkComplexityDelta(ctx, reviewableFiles, opts)
-			addCheck(c)
-			addFindings(ff)
-		}()
+	// Tree-sitter serialized checks — go-tree-sitter uses cgo and is NOT
+	// safe for concurrent use. The following checks all reach tree-sitter:
+	//   complexity  → complexity.Analyzer.AnalyzeFile
+	//   health      → complexity.Analyzer.AnalyzeFile (via calculateFileHealth)
+	//   hotspots    → GetHotspots → complexityAnalyzer.GetFileComplexityFull
+	//   risk        → SummarizePR → getFileHotspotScore → GetHotspots → tree-sitter
+	// They MUST run sequentially within a single goroutine.
+	var healthReport *CodeHealthReport
+	{
+		runComplexity := checkEnabled("complexity")
+		runHealth := checkEnabled("health")
+		runHotspots := checkEnabled("hotspots")
+		runRisk := checkEnabled("risk")
+		if runComplexity || runHealth || runHotspots || runRisk {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if runComplexity {
+					c, ff := e.checkComplexityDelta(ctx, reviewableFiles, opts)
+					addCheck(c)
+					addFindings(ff)
+				}
+				if runHealth {
+					c, ff, report := e.checkCodeHealth(ctx, reviewableFiles, opts)
+					addCheck(c)
+					addFindings(ff)
+					mu.Lock()
+					healthReport = report
+					mu.Unlock()
+				}
+				if runHotspots {
+					c, ff := e.checkHotspots(ctx, reviewableFiles)
+					addCheck(c)
+					addFindings(ff)
+				}
+				if runRisk {
+					c, ff := e.checkRiskScore(ctx, diffStats, opts)
+					addCheck(c)
+					addFindings(ff)
+				}
+			}()
+		}
 	}
 
 	// Check: Coupling Gaps
@@ -311,28 +344,6 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 		}()
 	}
 
-	// Check: Hotspots
-	if checkEnabled("hotspots") {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			c, ff := e.checkHotspots(ctx, reviewableFiles)
-			addCheck(c)
-			addFindings(ff)
-		}()
-	}
-
-	// Check: Risk Score (from PR summary)
-	if checkEnabled("risk") {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			c, ff := e.checkRiskScore(ctx, diffStats, opts)
-			addCheck(c)
-			addFindings(ff)
-		}()
-	}
-
 	// Check: Critical Paths
 	if checkEnabled("critical") && len(opts.Policy.CriticalPaths) > 0 {
 		wg.Add(1)
@@ -341,21 +352,6 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 			c, ff := e.checkCriticalPaths(ctx, reviewableFiles, opts)
 			addCheck(c)
 			addFindings(ff)
-		}()
-	}
-
-	// Check: Code Health
-	var healthReport *CodeHealthReport
-	if checkEnabled("health") {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			c, ff, report := e.checkCodeHealth(ctx, reviewableFiles, opts)
-			addCheck(c)
-			addFindings(ff)
-			mu.Lock()
-			healthReport = report
-			mu.Unlock()
 		}()
 	}
 
@@ -607,13 +603,13 @@ func (e *Engine) checkSecrets(ctx context.Context, files []string) (ReviewCheck,
 			sev = "error"
 		}
 		findings = append(findings, ReviewFinding{
-			Check:    "secrets",
-			Severity: sev,
-			File:     f.File,
+			Check:     "secrets",
+			Severity:  sev,
+			File:      f.File,
 			StartLine: f.Line,
-			Message:  fmt.Sprintf("Potential %s detected", f.Type),
-			Category: "security",
-			RuleID:   fmt.Sprintf("ckb/secrets/%s", f.Type),
+			Message:   fmt.Sprintf("Potential %s detected", f.Type),
+			Category:  "security",
+			RuleID:    fmt.Sprintf("ckb/secrets/%s", f.Type),
 		})
 	}
 
@@ -708,12 +704,12 @@ func (e *Engine) checkHotspots(ctx context.Context, files []string) (ReviewCheck
 		if score, ok := hotspotScores[f]; ok {
 			hotspotCount++
 			findings = append(findings, ReviewFinding{
-				Check:      "hotspots",
-				Severity:   "info",
-				File:       f,
-				Message:    fmt.Sprintf("Hotspot file (score: %.2f) — extra review attention recommended", score),
-				Category:   "risk",
-				RuleID:     "ckb/hotspots/volatile-file",
+				Check:    "hotspots",
+				Severity: "info",
+				File:     f,
+				Message:  fmt.Sprintf("Hotspot file (score: %.2f) — extra review attention recommended", score),
+				Category: "risk",
+				RuleID:   "ckb/hotspots/volatile-file",
 			})
 		}
 	}
@@ -939,23 +935,46 @@ func detectGeneratedFile(filePath string, policy *ReviewPolicy) (GeneratedFileIn
 
 // matchGlob performs simple glob matching (supports ** and *).
 func matchGlob(pattern, path string) (bool, error) {
-	// Simple implementation: split on ** for directory wildcards
-	if strings.Contains(pattern, "**") {
-		prefix := strings.Split(pattern, "**")[0]
-		suffix := strings.Split(pattern, "**")[1]
-		suffix = strings.TrimPrefix(suffix, "/")
-
-		if prefix != "" && !strings.HasPrefix(path, prefix) {
-			return false, nil
-		}
-		if suffix == "" {
-			return true, nil
-		}
-		// Check if suffix pattern matches end of path
-		return matchSimpleGlob(suffix, filepath.Base(path)), nil
+	// Use filepath.Match for patterns without **
+	if !strings.Contains(pattern, "**") {
+		return matchSimpleGlob(pattern, path), nil
 	}
 
-	return matchSimpleGlob(pattern, path), nil
+	// Split on first ** occurrence only
+	idx := strings.Index(pattern, "**")
+	prefix := pattern[:idx]
+	suffix := pattern[idx+2:]
+	suffix = strings.TrimPrefix(suffix, "/")
+
+	if prefix != "" && !strings.HasPrefix(path, prefix) {
+		return false, nil
+	}
+	if suffix == "" {
+		return true, nil
+	}
+
+	// For the remaining suffix, strip the prefix from the path and check
+	// if any trailing segment matches the suffix (which may itself contain **)
+	remaining := path
+	if prefix != "" {
+		remaining = strings.TrimPrefix(path, prefix)
+	}
+
+	// If the suffix contains another **, recurse
+	if strings.Contains(suffix, "**") {
+		// Try matching suffix against every possible substring of remaining path
+		parts := strings.Split(remaining, "/")
+		for i := range parts {
+			candidate := strings.Join(parts[i:], "/")
+			if matched, _ := matchGlob(suffix, candidate); matched {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+
+	// Simple suffix: check if it matches the file name or path tail
+	return matchSimpleGlob(suffix, filepath.Base(path)), nil
 }
 
 // matchSimpleGlob matches a pattern with * wildcards against a string.

@@ -33,7 +33,7 @@ var (
 	reviewRequireTrace  bool
 	// Independence
 	reviewRequireIndependent bool
-	reviewMinReviewers      int
+	reviewMinReviewers       int
 )
 
 var reviewCmd = &cobra.Command{
@@ -129,6 +129,19 @@ func runReview(cmd *cobra.Command, args []string) {
 	}
 	if reviewMinReviewers > 0 {
 		policy.MinReviewers = reviewMinReviewers
+	}
+
+	// Validate inputs
+	if reviewMaxRisk < 0 {
+		fmt.Fprintf(os.Stderr, "Error: --max-risk must be >= 0 (got %.2f)\n", reviewMaxRisk)
+		os.Exit(1)
+	}
+	if reviewFailOn != "" {
+		validLevels := map[string]bool{"error": true, "warning": true, "none": true}
+		if !validLevels[reviewFailOn] {
+			fmt.Fprintf(os.Stderr, "Error: --fail-on must be one of: error, warning, none (got %q)\n", reviewFailOn)
+			os.Exit(1)
+		}
 	}
 
 	opts := query.ReviewPROptions{
@@ -386,7 +399,7 @@ func formatReviewMarkdown(resp *query.ReviewPRResponse) string {
 		case "info":
 			statusEmoji = "ℹ️ INFO"
 		}
-		b.WriteString(fmt.Sprintf("| %s | %s | %s |\n", c.Name, statusEmoji, c.Summary))
+		b.WriteString(fmt.Sprintf("| %s | %s | %s |\n", c.Name, statusEmoji, escapeMdTable(c.Summary)))
 	}
 	b.WriteString("\n")
 
@@ -409,7 +422,7 @@ func formatReviewMarkdown(resp *query.ReviewPRResponse) string {
 			} else if f.File != "" {
 				loc = fmt.Sprintf("`%s`", f.File)
 			}
-			b.WriteString(fmt.Sprintf("| %s | %s | %s |\n", sevEmoji, loc, f.Message))
+			b.WriteString(fmt.Sprintf("| %s | %s | %s |\n", sevEmoji, loc, escapeMdTable(f.Message)))
 		}
 		b.WriteString("\n</details>\n\n")
 	}
@@ -491,6 +504,11 @@ func formatReviewMarkdown(resp *query.ReviewPRResponse) string {
 	return b.String()
 }
 
+// escapeMdTable escapes pipe characters that would break markdown table formatting.
+func escapeMdTable(s string) string {
+	return strings.ReplaceAll(s, "|", "\\|")
+}
+
 func sortedMapKeys(m map[string]int) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
@@ -512,18 +530,30 @@ func formatReviewGitHubActions(resp *query.ReviewPRResponse) string {
 			level = "warning"
 		}
 
+		msg := escapeGHA(f.Message)
+		ruleID := escapeGHA(f.RuleID)
+
 		if f.File != "" {
 			if f.StartLine > 0 {
 				b.WriteString(fmt.Sprintf("::%s file=%s,line=%d::%s [%s]\n",
-					level, f.File, f.StartLine, f.Message, f.RuleID))
+					level, f.File, f.StartLine, msg, ruleID))
 			} else {
 				b.WriteString(fmt.Sprintf("::%s file=%s::%s [%s]\n",
-					level, f.File, f.Message, f.RuleID))
+					level, f.File, msg, ruleID))
 			}
 		} else {
-			b.WriteString(fmt.Sprintf("::%s::%s [%s]\n", level, f.Message, f.RuleID))
+			b.WriteString(fmt.Sprintf("::%s::%s [%s]\n", level, msg, ruleID))
 		}
 	}
 
 	return b.String()
+}
+
+// escapeGHA escapes special characters for GitHub Actions workflow commands.
+// See: https://github.com/actions/toolkit/blob/main/packages/core/src/command.ts
+func escapeGHA(s string) string {
+	s = strings.ReplaceAll(s, "%", "%25")
+	s = strings.ReplaceAll(s, "\r", "%0D")
+	s = strings.ReplaceAll(s, "\n", "%0A")
+	return s
 }

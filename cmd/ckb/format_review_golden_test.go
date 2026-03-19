@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -50,41 +51,41 @@ func goldenResponse() *query.ReviewPRResponse {
 		},
 		Findings: []query.ReviewFinding{
 			{
-				Check:    "breaking",
-				Severity: "error",
-				File:     "api/handler.go",
+				Check:     "breaking",
+				Severity:  "error",
+				File:      "api/handler.go",
 				StartLine: 42,
-				Message:  "Removed public function HandleAuth()",
-				Category: "breaking",
-				RuleID:   "ckb/breaking/removed-symbol",
+				Message:   "Removed public function HandleAuth()",
+				Category:  "breaking",
+				RuleID:    "ckb/breaking/removed-symbol",
 			},
 			{
-				Check:    "breaking",
-				Severity: "error",
-				File:     "api/middleware.go",
+				Check:     "breaking",
+				Severity:  "error",
+				File:      "api/middleware.go",
 				StartLine: 15,
-				Message:  "Changed signature of ValidateToken()",
-				Category: "breaking",
-				RuleID:   "ckb/breaking/changed-signature",
+				Message:   "Changed signature of ValidateToken()",
+				Category:  "breaking",
+				RuleID:    "ckb/breaking/changed-signature",
 			},
 			{
-				Check:    "critical",
-				Severity: "error",
-				File:     "drivers/hw/plc_comm.go",
-				StartLine: 78,
-				Message:  "Safety-critical path changed (pattern: drivers/**)",
+				Check:      "critical",
+				Severity:   "error",
+				File:       "drivers/hw/plc_comm.go",
+				StartLine:  78,
+				Message:    "Safety-critical path changed (pattern: drivers/**)",
 				Suggestion: "Requires sign-off from safety team",
-				Category: "critical",
-				RuleID:   "ckb/critical/safety-path",
+				Category:   "critical",
+				RuleID:     "ckb/critical/safety-path",
 			},
 			{
-				Check:    "critical",
-				Severity: "error",
-				File:     "protocol/modbus.go",
-				Message:  "Safety-critical path changed (pattern: protocol/**)",
+				Check:      "critical",
+				Severity:   "error",
+				File:       "protocol/modbus.go",
+				Message:    "Safety-critical path changed (pattern: protocol/**)",
 				Suggestion: "Requires sign-off from safety team",
-				Category: "critical",
-				RuleID:   "ckb/critical/safety-path",
+				Category:   "critical",
+				RuleID:     "ckb/critical/safety-path",
 			},
 			{
 				Check:      "complexity",
@@ -175,24 +176,28 @@ func goldenResponse() *query.ReviewPRResponse {
 }
 
 func TestGolden_Human(t *testing.T) {
+	t.Parallel()
 	resp := goldenResponse()
 	output := formatReviewHuman(resp)
 	checkGolden(t, "human.txt", output)
 }
 
 func TestGolden_Markdown(t *testing.T) {
+	t.Parallel()
 	resp := goldenResponse()
 	output := formatReviewMarkdown(resp)
 	checkGolden(t, "markdown.md", output)
 }
 
 func TestGolden_GitHubActions(t *testing.T) {
+	t.Parallel()
 	resp := goldenResponse()
 	output := formatReviewGitHubActions(resp)
 	checkGolden(t, "github-actions.txt", output)
 }
 
 func TestGolden_SARIF(t *testing.T) {
+	t.Parallel()
 	resp := goldenResponse()
 	output, err := formatReviewSARIF(resp)
 	if err != nil {
@@ -200,12 +205,15 @@ func TestGolden_SARIF(t *testing.T) {
 	}
 	// Normalize: re-marshal with sorted keys for stable output
 	var parsed interface{}
-	json.Unmarshal([]byte(output), &parsed)
+	if err := json.Unmarshal([]byte(output), &parsed); err != nil {
+		t.Fatalf("unmarshal SARIF: %v", err)
+	}
 	normalized, _ := json.MarshalIndent(parsed, "", "  ")
 	checkGolden(t, "sarif.json", string(normalized))
 }
 
 func TestGolden_CodeClimate(t *testing.T) {
+	t.Parallel()
 	resp := goldenResponse()
 	output, err := formatReviewCodeClimate(resp)
 	if err != nil {
@@ -215,12 +223,22 @@ func TestGolden_CodeClimate(t *testing.T) {
 }
 
 func TestGolden_JSON(t *testing.T) {
+	t.Parallel()
 	resp := goldenResponse()
 	output, err := formatJSON(resp)
 	if err != nil {
 		t.Fatalf("formatJSON: %v", err)
 	}
 	checkGolden(t, "json.json", output)
+}
+
+func TestGolden_Compliance(t *testing.T) {
+	t.Parallel()
+	resp := goldenResponse()
+	output := formatReviewCompliance(resp)
+	// Normalize the timestamp line which changes every run.
+	output = regexp.MustCompile(`(?m)^Generated:.*$`).ReplaceAllString(output, "Generated:   <TIMESTAMP>")
+	checkGolden(t, "compliance.txt", output)
 }
 
 func checkGolden(t *testing.T, filename, actual string) {

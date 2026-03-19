@@ -11,8 +11,8 @@ import (
 type ReviewEffort struct {
 	EstimatedMinutes int      `json:"estimatedMinutes"` // Total estimated review time
 	EstimatedHours   float64  `json:"estimatedHours"`   // Same as minutes but as hours
-	Factors          []string `json:"factors"`           // What drives the estimate
-	Complexity       string   `json:"complexity"`        // "trivial", "moderate", "complex", "very-complex"
+	Factors          []string `json:"factors"`          // What drives the estimate
+	Complexity       string   `json:"complexity"`       // "trivial", "moderate", "complex", "very-complex"
 }
 
 // estimateReviewEffort calculates estimated review time based on PR metrics.
@@ -107,7 +107,7 @@ func estimateReviewEffort(diffStats []git.DiffStats, breakdown *ChangeBreakdown,
 		EstimatedMinutes: minutes,
 		EstimatedHours:   math.Round(float64(minutes)/60.0*10) / 10, // 1 decimal
 		Factors:          factors,
-		Complexity:        complexity,
+		Complexity:       complexity,
 	}
 }
 

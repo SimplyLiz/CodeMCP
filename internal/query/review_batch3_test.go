@@ -123,7 +123,7 @@ func TestClassifyChanges_Summary(t *testing.T) {
 	ctx := context.Background()
 	diffStats := []git.DiffStats{
 		{FilePath: "new.go", Additions: 100, IsNew: true},
-		{FilePath: "test_util.go", Additions: 20, IsNew: true},  // new, not test (no _test.go)
+		{FilePath: "test_util.go", Additions: 20, IsNew: true}, // new, not test (no _test.go)
 		{FilePath: "handler_test.go", Additions: 50, Deletions: 10},
 		{FilePath: "go.mod", Additions: 2, Deletions: 1},
 	}

@@ -24,8 +24,8 @@ type PRCluster struct {
 	FileCount   int      `json:"fileCount"`
 	Additions   int      `json:"additions"`
 	Deletions   int      `json:"deletions"`
-	Independent bool     `json:"independent"`           // Can be reviewed/merged independently
-	DependsOn   []int    `json:"dependsOn,omitempty"`   // Indices of clusters this depends on
+	Independent bool     `json:"independent"`         // Can be reviewed/merged independently
+	DependsOn   []int    `json:"dependsOn,omitempty"` // Indices of clusters this depends on
 	Languages   []string `json:"languages,omitempty"`
 }
 

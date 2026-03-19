@@ -50,6 +50,7 @@ jobs:
   deps:
     name: Dependency Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
       security-events: write
@@ -65,12 +66,12 @@ jobs:
       total_findings: ${{ steps.summary.outputs.total }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       # ==================== Go Setup (if needed) ====================
       - name: Set up Go
         if: inputs.has_go && (inputs.scan_govulncheck || inputs.scan_trivy)
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -78,7 +79,7 @@ jobs:
       # ==================== Trivy ====================
       - name: Setup Trivy
         if: inputs.scan_trivy
-        uses: aquasecurity/setup-trivy@v0.2.3
+        uses: aquasecurity/setup-trivy@9ea583eb67910444b1f64abf338bd2e105a0a93d # v0.2.3
         with:
           cache: true
           version: latest
@@ -141,7 +142,7 @@ jobs:
 
       - name: Upload Trivy SARIF
         if: inputs.scan_trivy && hashFiles('trivy-vuln.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@b1bff81932f5cdfc8695c7752dcee935dcd061c8 # v4
         with:
           sarif_file: trivy-vuln.sarif
           category: trivy
@@ -149,7 +150,7 @@ jobs:
 
       - name: Attest SBOM
         if: inputs.scan_trivy && inputs.generate_sbom && github.event_name != 'pull_request' && hashFiles('sbom.json') != ''
-        uses: actions/attest-sbom@v2
+        uses: actions/attest-sbom@bd218ad0dbcb3e146bd073d1d9c6d78e08aa8a0b # v2
         with:
           subject-path: 'sbom.json'
           sbom-path: 'sbom.json'
@@ -197,10 +198,15 @@ jobs:
       # ==================== Summary ====================
       - name: Calculate totals
         id: summary
+        env:
+          TRIVY_OUT: ${{ steps.trivy.outputs.findings }}
+          GOVULN_OUT: ${{ steps.govulncheck.outputs.findings }}
+          OSV_OUT: ${{ steps.osv.outputs.findings }}
+          LICENSE_OUT: ${{ steps.trivy_license.outputs.findings }}
         run: |
-          TRIVY="${{ steps.trivy.outputs.findings || 0 }}"
-          GOVULN="${{ steps.govulncheck.outputs.findings || 0 }}"
-          OSV="${{ steps.osv.outputs.findings || 0 }}"
+          TRIVY="${TRIVY_OUT:-0}"
+          GOVULN="${GOVULN_OUT:-0}"
+          OSV="${OSV_OUT:-0}"
           TOTAL=$((TRIVY + GOVULN + OSV))
           echo "total=$TOTAL" >> $GITHUB_OUTPUT
 
@@ -210,11 +216,11 @@ jobs:
           echo "| Trivy | $TRIVY (${TRIVY_CRITICAL:-0} critical, ${TRIVY_HIGH:-0} high) |" >> $GITHUB_STEP_SUMMARY
           echo "| Govulncheck | $GOVULN |" >> $GITHUB_STEP_SUMMARY
           echo "| OSV-Scanner | $OSV |" >> $GITHUB_STEP_SUMMARY
-          echo "| Licenses | ${{ steps.trivy_license.outputs.findings || 0 }} non-permissive |" >> $GITHUB_STEP_SUMMARY
+          echo "| Licenses | ${LICENSE_OUT:-0} non-permissive |" >> $GITHUB_STEP_SUMMARY
           echo "| **Total** | **$TOTAL** |" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()
         with:
           name: dependency-scan-results

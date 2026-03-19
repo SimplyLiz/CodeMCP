@@ -7,9 +7,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"time"
 )
+
+// validBaselineTag matches safe baseline tag names (alphanumeric, dash, underscore, dot).
+var validBaselineTag = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
 
 // ReviewBaseline stores a snapshot of findings for comparison.
 type ReviewBaseline struct {
@@ -61,6 +65,9 @@ func (e *Engine) SaveBaseline(findings []ReviewFinding, tag string, baseBranch, 
 	if tag == "" {
 		tag = time.Now().Format("20060102-150405")
 	}
+	if !validBaselineTag.MatchString(tag) {
+		return fmt.Errorf("invalid baseline tag %q: must be alphanumeric with dashes, underscores, or dots", tag)
+	}
 
 	baseline := ReviewBaseline{
 		Tag:          tag,
@@ -106,6 +113,9 @@ func (e *Engine) SaveBaseline(findings []ReviewFinding, tag string, baseBranch, 
 
 // LoadBaseline loads a baseline by tag (or "latest").
 func (e *Engine) LoadBaseline(tag string) (*ReviewBaseline, error) {
+	if !validBaselineTag.MatchString(tag) {
+		return nil, fmt.Errorf("invalid baseline tag %q: must be alphanumeric with dashes, underscores, or dots", tag)
+	}
 	dir := baselineDir(e.repoRoot)
 	path := filepath.Join(dir, tag+".json")
 
@@ -198,6 +208,21 @@ func CompareWithBaseline(current []ReviewFinding, baseline *ReviewBaseline) (new
 	for _, f := range currentFPs {
 		newFindings = append(newFindings, f)
 	}
+
+	sortFindingSlice := func(s []ReviewFinding) {
+		sort.Slice(s, func(i, j int) bool {
+			if s[i].File != s[j].File {
+				return s[i].File < s[j].File
+			}
+			if s[i].RuleID != s[j].RuleID {
+				return s[i].RuleID < s[j].RuleID
+			}
+			return s[i].Message < s[j].Message
+		})
+	}
+	sortFindingSlice(newFindings)
+	sortFindingSlice(unchanged)
+	sortFindingSlice(resolved)
 
 	return newFindings, unchanged, resolved
 }

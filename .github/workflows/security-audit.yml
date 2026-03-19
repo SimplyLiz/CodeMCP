@@ -50,16 +50,14 @@ env:
   MIN_SEVERITY: 'high'
 
 concurrency:
-  group: security-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: security-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 # Permissions inherited by reusable workflows
 permissions:
   contents: read
   security-events: write
   pull-requests: write
-  id-token: write
-  attestations: write
 
 jobs:
   # ============================================================================

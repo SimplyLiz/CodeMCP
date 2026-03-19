@@ -19,7 +19,9 @@ func newTestEngineWithGit(t *testing.T, dir string) *Engine {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	ckbDir := filepath.Join(dir, ".ckb")
-	os.MkdirAll(ckbDir, 0755)
+	if err := os.MkdirAll(ckbDir, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
 
 	db, err := storage.Open(dir, logger)
 	if err != nil {
@@ -145,7 +147,7 @@ func TestCheckTraceability_CriticalOrphan(t *testing.T) {
 			RequireTraceForCriticalPaths: true,
 			TraceabilityPatterns:         []string{`JIRA-\d+`},
 			TraceabilitySources:          []string{"commit-message", "branch-name"},
-			CriticalPaths:               []string{"drivers/**"},
+			CriticalPaths:                []string{"drivers/**"},
 		},
 	}
 
@@ -241,8 +243,12 @@ func TestCheckIndependence_WithCriticalPaths(t *testing.T) {
 
 	// Create a file that matches the critical path
 	driversDir := filepath.Join(dir, "drivers", "hw")
-	os.MkdirAll(driversDir, 0755)
-	os.WriteFile(filepath.Join(driversDir, "plc.go"), []byte("package hw\n"), 0644)
+	if err := os.MkdirAll(driversDir, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(driversDir, "plc.go"), []byte("package hw\n"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
 	runGit(t, dir, "add", "drivers/hw/plc.go")
 	runGit(t, dir, "commit", "-m", "add driver")
 
@@ -254,7 +260,7 @@ func TestCheckIndependence_WithCriticalPaths(t *testing.T) {
 		HeadBranch: "feature/critical",
 		Policy: &ReviewPolicy{
 			RequireIndependentReview: true,
-			CriticalPaths:           []string{"drivers/**"},
+			CriticalPaths:            []string{"drivers/**"},
 		},
 	}
 
@@ -293,13 +299,17 @@ func setupGitRepoForTraceability(t *testing.T, branchName, commitMsg string) str
 	runGit(t, dir, "init")
 	runGit(t, dir, "checkout", "-b", "main")
 
-	os.WriteFile(filepath.Join(dir, "README.md"), []byte("# test\n"), 0644)
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("# test\n"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
 	runGit(t, dir, "add", "README.md")
 	runGit(t, dir, "commit", "-m", "initial")
 
 	runGit(t, dir, "checkout", "-b", branchName)
 
-	os.WriteFile(filepath.Join(dir, "change.go"), []byte("package main\n"), 0644)
+	if err := os.WriteFile(filepath.Join(dir, "change.go"), []byte("package main\n"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
 	runGit(t, dir, "add", "change.go")
 	runGit(t, dir, "commit", "-m", commitMsg)
 

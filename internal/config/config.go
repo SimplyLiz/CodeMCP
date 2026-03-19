@@ -71,13 +71,13 @@ type CoverageConfig struct {
 // ReviewConfig contains PR review policy defaults (v8.2)
 type ReviewConfig struct {
 	// Policy defaults (can be overridden per-invocation)
-	NoBreakingChanges bool    `json:"noBreakingChanges" mapstructure:"noBreakingChanges"` // Fail on breaking API changes
-	NoSecrets         bool    `json:"noSecrets" mapstructure:"noSecrets"`                 // Fail on detected secrets
-	RequireTests      bool    `json:"requireTests" mapstructure:"requireTests"`           // Warn if no tests cover changes
-	MaxRiskScore      float64 `json:"maxRiskScore" mapstructure:"maxRiskScore"`           // Maximum risk score (0 = disabled)
-	MaxComplexityDelta int    `json:"maxComplexityDelta" mapstructure:"maxComplexityDelta"` // Maximum complexity delta (0 = disabled)
-	MaxFiles          int     `json:"maxFiles" mapstructure:"maxFiles"`                   // Maximum file count (0 = disabled)
-	FailOnLevel       string  `json:"failOnLevel" mapstructure:"failOnLevel"`             // error, warning, none
+	NoBreakingChanges  bool    `json:"noBreakingChanges" mapstructure:"noBreakingChanges"`   // Fail on breaking API changes
+	NoSecrets          bool    `json:"noSecrets" mapstructure:"noSecrets"`                   // Fail on detected secrets
+	RequireTests       bool    `json:"requireTests" mapstructure:"requireTests"`             // Warn if no tests cover changes
+	MaxRiskScore       float64 `json:"maxRiskScore" mapstructure:"maxRiskScore"`             // Maximum risk score (0 = disabled)
+	MaxComplexityDelta int     `json:"maxComplexityDelta" mapstructure:"maxComplexityDelta"` // Maximum complexity delta (0 = disabled)
+	MaxFiles           int     `json:"maxFiles" mapstructure:"maxFiles"`                     // Maximum file count (0 = disabled)
+	FailOnLevel        string  `json:"failOnLevel" mapstructure:"failOnLevel"`               // error, warning, none
 
 	// Generated file detection
 	GeneratedPatterns []string `json:"generatedPatterns" mapstructure:"generatedPatterns"` // Glob patterns for generated files

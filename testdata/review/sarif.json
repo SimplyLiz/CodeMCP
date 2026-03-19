@@ -48,14 +48,6 @@
           "ruleId": "ckb/breaking/changed-signature"
         },
         {
-          "fixes": [
-            {
-              "artifactChanges": null,
-              "description": {
-                "text": "Requires sign-off from safety team"
-              }
-            }
-          ],
           "level": "error",
           "locations": [
             {
@@ -75,17 +67,22 @@
           "partialFingerprints": {
             "ckb/v1": "3560de9d31495454"
           },
-          "ruleId": "ckb/critical/safety-path"
-        },
-        {
-          "fixes": [
+          "relatedLocations": [
             {
-              "artifactChanges": null,
-              "description": {
-                "text": "Requires sign-off from safety team"
+              "id": 1,
+              "message": {
+                "text": "Suggestion: Requires sign-off from safety team"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "drivers/hw/plc_comm.go"
+                }
               }
             }
           ],
+          "ruleId": "ckb/critical/safety-path"
+        },
+        {
           "level": "error",
           "locations": [
             {
@@ -102,17 +99,22 @@
           "partialFingerprints": {
             "ckb/v1": "4d1d167a0820404c"
           },
-          "ruleId": "ckb/critical/safety-path"
-        },
-        {
-          "fixes": [
+          "relatedLocations": [
             {
-              "artifactChanges": null,
-              "description": {
-                "text": "Consider extracting helper functions"
+              "id": 1,
+              "message": {
+                "text": "Suggestion: Requires sign-off from safety team"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "protocol/modbus.go"
+                }
               }
             }
           ],
+          "ruleId": "ckb/critical/safety-path"
+        },
+        {
           "level": "warning",
           "locations": [
             {
@@ -133,6 +135,19 @@
           "partialFingerprints": {
             "ckb/v1": "237a7a640d0c0d09"
           },
+          "relatedLocations": [
+            {
+              "id": 1,
+              "message": {
+                "text": "Suggestion: Consider extracting helper functions"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/query/engine.go"
+                }
+              }
+            }
+          ],
           "ruleId": "ckb/complexity/increase"
         },
         {
