@@ -272,6 +272,7 @@ jobs:
       - name: Fail on review verdict
         env:
           REVIEW_EXIT_CODE: ${{ steps.review.outputs.exit_code }}
+          SCORE: ${{ steps.review.outputs.score }}
         run: |
           if [ "${REVIEW_EXIT_CODE}" = "1" ]; then
             echo "::error::CKB review failed (score: ${SCORE})"

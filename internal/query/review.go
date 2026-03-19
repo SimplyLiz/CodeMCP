@@ -69,7 +69,7 @@ type ReviewPRResponse struct {
 	Summary       ReviewSummary       `json:"summary"`
 	Checks        []ReviewCheck       `json:"checks"`
 	Findings      []ReviewFinding     `json:"findings"`
-	Reviewers     []SuggestedReview   `json:"reviewers"`
+	Reviewers     []SuggestedReview   `json:"reviewers,omitempty"`
 	Generated     []GeneratedFileInfo `json:"generated,omitempty"`
 	// Batch 3: Large PR Intelligence
 	SplitSuggestion  *PRSplitSuggestion          `json:"splitSuggestion,omitempty"`
