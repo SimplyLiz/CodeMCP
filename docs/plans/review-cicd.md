@@ -12,6 +12,8 @@ Begründung:
 
 ## Architektur
 
+![Review Architecture](ckb_review_architecture.svg)
+
 ```
 ckb review (CLI)  ─┐
 POST /review/pr   ─┤──→ Engine.ReviewPR() ──→ Orchestriert:
