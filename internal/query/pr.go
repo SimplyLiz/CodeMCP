@@ -360,6 +360,11 @@ func calculatePRRisk(fileCount, totalChanges, hotspotCount, moduleCount int) PRR
 		suggestions = append(suggestions, "Consider module-specific reviewers")
 	}
 
+	// Clamp score to [0, 1]
+	if score > 1.0 {
+		score = 1.0
+	}
+
 	// Determine level
 	level := "low"
 	if score > 0.6 {

@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/SimplyLiz/CodeMCP/internal/coupling"
@@ -30,11 +31,18 @@ func (e *Engine) checkCouplingGaps(ctx context.Context, changedFiles []string) (
 
 	var gaps []CouplingGap
 
-	// For each changed file, check if its highly-coupled partners are also in the changeset
-	// Limit to first 20 files to avoid excessive git log calls
-	filesToCheck := changedFiles
-	if len(filesToCheck) > 20 {
-		filesToCheck = filesToCheck[:20]
+	// For each changed file, check if its highly-coupled partners are also in the changeset.
+	// Skip config/CI paths — they always co-change and produce noise, not signal.
+	// Limit to first 20 source files to avoid excessive git log calls.
+	var filesToCheck []string
+	for _, f := range changedFiles {
+		if isCouplingNoiseFile(f) {
+			continue
+		}
+		filesToCheck = append(filesToCheck, f)
+		if len(filesToCheck) >= 20 {
+			break
+		}
 	}
 
 	for _, file := range filesToCheck {
@@ -52,7 +60,7 @@ func (e *Engine) checkCouplingGaps(ctx context.Context, changedFiles []string) (
 		}
 
 		for _, corr := range result.Correlations {
-			if corr.Correlation >= minCorrelation && !changedSet[corr.File] {
+			if corr.Correlation >= minCorrelation && !changedSet[corr.File] && !isCouplingNoiseFile(corr.FilePath) {
 				gaps = append(gaps, CouplingGap{
 					ChangedFile:  file,
 					MissingFile:  corr.File,
@@ -90,4 +98,33 @@ func (e *Engine) checkCouplingGaps(ctx context.Context, changedFiles []string) (
 		Details:  gaps,
 		Duration: time.Since(start).Milliseconds(),
 	}, findings
+}
+
+// isCouplingNoiseFile returns true for paths where co-change analysis produces
+// noise rather than signal (CI workflows, config dirs, generated files).
+func isCouplingNoiseFile(path string) bool {
+	noisePrefixes := []string{
+		".github/",
+		".gitlab-ci",
+		"ci/",
+		".circleci/",
+		".buildkite/",
+	}
+	for _, prefix := range noisePrefixes {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	noiseSuffixes := []string{
+		".yml",
+		".yaml",
+		".lock",
+		".sum",
+	}
+	for _, suffix := range noiseSuffixes {
+		if strings.HasSuffix(path, suffix) {
+			return true
+		}
+	}
+	return false
 }
