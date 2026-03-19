@@ -401,11 +401,11 @@ func TestDefaultReviewPolicy(t *testing.T) {
 
 	policy := DefaultReviewPolicy()
 
-	if !policy.NoBreakingChanges {
-		t.Error("expected NoBreakingChanges to be true by default")
+	if !policy.BlockBreakingChanges {
+		t.Error("expected BlockBreakingChanges to be true by default")
 	}
-	if !policy.NoSecrets {
-		t.Error("expected NoSecrets to be true by default")
+	if !policy.BlockSecrets {
+		t.Error("expected BlockSecrets to be true by default")
 	}
 	if policy.FailOnLevel != "error" {
 		t.Errorf("expected FailOnLevel 'error', got %q", policy.FailOnLevel)

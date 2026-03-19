@@ -3,6 +3,8 @@ CKB Review: ⚠ WARN — 68/100
 25 files · +480 changes · 3 modules
 3 generated (excluded) · 22 reviewable · 2 critical
 
+Changes 25 files across 3 modules (Go, TypeScript). 2 breaking API changes detected; 2 safety-critical files changed. 2 safety-critical files need focused review.
+
 Checks:
   ✗ FAIL  breaking             2 breaking API changes detected
   ✗ FAIL  critical             2 safety-critical files changed
@@ -22,7 +24,7 @@ Top Findings:
   WARNING internal/query/engine.go:155             Complexity 12→20 in parseQuery()
   WARNING internal/query/engine.go                 Missing co-change: engine_test.go (87% co-change rate)
   WARNING protocol/modbus.go                       Missing co-change: modbus_test.go (91% co-change rate)
-  INFO    config/settings.go                       Hotspot file (score: 0.78) — extra review attention recommended
+  ... and 1 informational
 
 Estimated Review: ~95min (complex)
   · 22 reviewable files (44min base)

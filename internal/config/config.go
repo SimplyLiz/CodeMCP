@@ -71,8 +71,8 @@ type CoverageConfig struct {
 // ReviewConfig contains PR review policy defaults (v8.2)
 type ReviewConfig struct {
 	// Policy defaults (can be overridden per-invocation)
-	NoBreakingChanges  bool    `json:"noBreakingChanges" mapstructure:"noBreakingChanges"`   // Fail on breaking API changes
-	NoSecrets          bool    `json:"noSecrets" mapstructure:"noSecrets"`                   // Fail on detected secrets
+	BlockBreakingChanges  bool    `json:"blockBreakingChanges" mapstructure:"blockBreakingChanges"`   // Fail on breaking API changes
+	BlockSecrets          bool    `json:"blockSecrets" mapstructure:"blockSecrets"`                   // Fail on detected secrets
 	RequireTests       bool    `json:"requireTests" mapstructure:"requireTests"`             // Warn if no tests cover changes
 	MaxRiskScore       float64 `json:"maxRiskScore" mapstructure:"maxRiskScore"`             // Maximum risk score (0 = disabled)
 	MaxComplexityDelta int     `json:"maxComplexityDelta" mapstructure:"maxComplexityDelta"` // Maximum complexity delta (0 = disabled)
@@ -425,8 +425,8 @@ func DefaultConfig() *Config {
 			MaxAge:     "168h", // 7 days
 		},
 		Review: ReviewConfig{
-			NoBreakingChanges:  true,
-			NoSecrets:          true,
+			BlockBreakingChanges:  true,
+			BlockSecrets:          true,
 			RequireTests:       false,
 			MaxRiskScore:       0.7,
 			MaxComplexityDelta: 0, // disabled by default

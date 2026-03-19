@@ -117,6 +117,9 @@ func (e *Engine) SummarizePR(ctx context.Context, opts SummarizePROptions) (*Sum
 	totalDeletions := 0
 	hotspotCount := 0
 
+	// Fetch hotspots once and build a lookup map (instead of per-file).
+	hotspotScores := e.getHotspotScoreMap(ctx)
+
 	for _, df := range diffStats {
 		// Determine status from DiffStats flags
 		status := "modified"
@@ -151,10 +154,9 @@ func (e *Engine) SummarizePR(ctx context.Context, opts SummarizePROptions) (*Sum
 		}
 
 		// Check if file is a hotspot
-		hotspotScore := e.getFileHotspotScore(ctx, df.FilePath)
-		if hotspotScore > 0.5 {
+		if score, ok := hotspotScores[df.FilePath]; ok && score > 0.5 {
 			change.IsHotspot = true
-			change.HotspotScore = hotspotScore
+			change.HotspotScore = score
 			hotspotCount++
 		}
 
@@ -251,22 +253,19 @@ func (e *Engine) resolveFileModule(filePath string) string {
 	return ""
 }
 
-// getFileHotspotScore returns the hotspot score for a file (0-1).
-func (e *Engine) getFileHotspotScore(ctx context.Context, filePath string) float64 {
-	// Try to get hotspot data from cache or compute
-	opts := GetHotspotsOptions{Limit: 100}
-	resp, err := e.GetHotspots(ctx, opts)
+// getHotspotScoreMap fetches hotspots once and returns a file→score map.
+func (e *Engine) getHotspotScoreMap(ctx context.Context) map[string]float64 {
+	resp, err := e.GetHotspots(ctx, GetHotspotsOptions{Limit: 100})
 	if err != nil {
-		return 0
+		return nil
 	}
-
+	scores := make(map[string]float64, len(resp.Hotspots))
 	for _, h := range resp.Hotspots {
-		if h.FilePath == filePath && h.Ranking != nil {
-			return h.Ranking.Score
+		if h.Ranking != nil {
+			scores[h.FilePath] = h.Ranking.Score
 		}
 	}
-
-	return 0
+	return scores
 }
 
 // getSuggestedReviewers identifies potential reviewers based on ownership.
@@ -274,8 +273,15 @@ func (e *Engine) getSuggestedReviewers(ctx context.Context, files []PRFileChange
 	ownerCounts := make(map[string]int)
 	totalFiles := len(files)
 
-	for _, f := range files {
-		opts := GetOwnershipOptions{Path: f.Path, IncludeBlame: true}
+	// Cap ownership lookups to avoid N×git-blame calls on large PRs.
+	// Only run blame for the first 10 files (most expensive), CODEOWNERS-only
+	// for the next 20, and skip the rest — the top owners still surface.
+	const maxOwnershipLookups = 30
+	for i, f := range files {
+		if i >= maxOwnershipLookups {
+			break
+		}
+		opts := GetOwnershipOptions{Path: f.Path, IncludeBlame: i < 10} // only blame first 10
 		resp, err := e.GetOwnership(ctx, opts)
 		if err != nil || resp == nil {
 			continue

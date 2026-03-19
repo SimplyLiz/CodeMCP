@@ -20,8 +20,8 @@ var (
 	reviewCI         bool
 	reviewFailOn     string
 	// Policy overrides
-	reviewNoBreaking    bool
-	reviewNoSecrets     bool
+	reviewBlockBreaking    bool
+	reviewBlockSecrets     bool
 	reviewRequireTests  bool
 	reviewMaxRisk       float64
 	reviewMaxComplexity int
@@ -77,8 +77,8 @@ func init() {
 	reviewCmd.Flags().StringVar(&reviewFailOn, "fail-on", "", "Override fail level (error, warning, none)")
 
 	// Policy overrides
-	reviewCmd.Flags().BoolVar(&reviewNoBreaking, "no-breaking", true, "Fail on breaking changes")
-	reviewCmd.Flags().BoolVar(&reviewNoSecrets, "no-secrets", true, "Fail on detected secrets")
+	reviewCmd.Flags().BoolVar(&reviewBlockBreaking, "block-breaking", true, "Fail on breaking changes")
+	reviewCmd.Flags().BoolVar(&reviewBlockSecrets, "block-secrets", true, "Fail on detected secrets")
 	reviewCmd.Flags().BoolVar(&reviewRequireTests, "require-tests", false, "Warn if no tests cover changes")
 	reviewCmd.Flags().Float64Var(&reviewMaxRisk, "max-risk", 0.7, "Maximum risk score (0 = disabled)")
 	reviewCmd.Flags().IntVar(&reviewMaxComplexity, "max-complexity", 0, "Maximum complexity delta (0 = disabled)")
@@ -105,8 +105,8 @@ func runReview(cmd *cobra.Command, args []string) {
 	ctx := newContext()
 
 	policy := query.DefaultReviewPolicy()
-	policy.NoBreakingChanges = reviewNoBreaking
-	policy.NoSecrets = reviewNoSecrets
+	policy.BlockBreakingChanges = reviewBlockBreaking
+	policy.BlockSecrets = reviewBlockSecrets
 	policy.RequireTests = reviewRequireTests
 	policy.MaxRiskScore = reviewMaxRisk
 	policy.MaxComplexityDelta = reviewMaxComplexity
@@ -246,6 +246,11 @@ func formatReviewHuman(resp *query.ReviewPRResponse) string {
 	}
 	b.WriteString("\n")
 
+	// Narrative
+	if resp.Narrative != "" {
+		b.WriteString(resp.Narrative + "\n\n")
+	}
+
 	// Checks table
 	b.WriteString("Checks:\n")
 	for _, c := range resp.Checks {
@@ -265,39 +270,53 @@ func formatReviewHuman(resp *query.ReviewPRResponse) string {
 	}
 	b.WriteString("\n")
 
-	// Top Findings
+	// Top Findings — only Tier 1+2 by default, capped at 10
 	if len(resp.Findings) > 0 {
-		b.WriteString("Top Findings:\n")
-		limit := 10
-		if len(resp.Findings) < limit {
-			limit = len(resp.Findings)
-		}
-		for _, f := range resp.Findings[:limit] {
-			sevLabel := strings.ToUpper(f.Severity)
-			loc := f.File
-			if f.StartLine > 0 {
-				loc = fmt.Sprintf("%s:%d", f.File, f.StartLine)
+		actionable, tier3Count := filterActionableFindings(resp.Findings)
+		if len(actionable) > 0 {
+			b.WriteString("Top Findings:\n")
+			limit := 10
+			if len(actionable) < limit {
+				limit = len(actionable)
 			}
-			b.WriteString(fmt.Sprintf("  %-7s %-40s %s\n", sevLabel, loc, f.Message))
+			for _, f := range actionable[:limit] {
+				sevLabel := strings.ToUpper(f.Severity)
+				loc := f.File
+				if f.StartLine > 0 {
+					loc = fmt.Sprintf("%s:%d", f.File, f.StartLine)
+				}
+				b.WriteString(fmt.Sprintf("  %-7s %-40s %s\n", sevLabel, loc, f.Message))
+			}
+			remaining := len(actionable) - limit
+			if remaining > 0 || tier3Count > 0 {
+				parts := []string{}
+				if remaining > 0 {
+					parts = append(parts, fmt.Sprintf("%d more findings", remaining))
+				}
+				if tier3Count > 0 {
+					parts = append(parts, fmt.Sprintf("%d informational", tier3Count))
+				}
+				b.WriteString(fmt.Sprintf("  ... and %s\n", strings.Join(parts, ", ")))
+			}
+			b.WriteString("\n")
 		}
-		if len(resp.Findings) > limit {
-			b.WriteString(fmt.Sprintf("  ... and %d more findings\n", len(resp.Findings)-limit))
-		}
-		b.WriteString("\n")
 	}
 
 	// Review Effort
 	if resp.ReviewEffort != nil {
 		b.WriteString(fmt.Sprintf("Estimated Review: ~%dmin (%s)\n",
 			resp.ReviewEffort.EstimatedMinutes, resp.ReviewEffort.Complexity))
-		for _, f := range resp.ReviewEffort.Factors {
-			b.WriteString(fmt.Sprintf("  · %s\n", f))
+		// Only show effort factors for small/medium PRs
+		if resp.PRTier != "large" {
+			for _, f := range resp.ReviewEffort.Factors {
+				b.WriteString(fmt.Sprintf("  · %s\n", f))
+			}
 		}
 		b.WriteString("\n")
 	}
 
-	// Change Breakdown
-	if resp.ChangeBreakdown != nil && len(resp.ChangeBreakdown.Summary) > 0 {
+	// Change Breakdown — skip for large PRs (the checks table already covers this)
+	if resp.PRTier != "large" && resp.ChangeBreakdown != nil && len(resp.ChangeBreakdown.Summary) > 0 {
 		b.WriteString("Change Breakdown:\n")
 		cats := sortedMapKeys(resp.ChangeBreakdown.Summary)
 		for _, cat := range cats {
@@ -405,6 +424,11 @@ func formatReviewMarkdown(resp *query.ReviewPRResponse) string {
 	}
 	b.WriteString("\n")
 
+	// Narrative
+	if resp.Narrative != "" {
+		b.WriteString("> " + resp.Narrative + "\n\n")
+	}
+
 	// Checks table
 	b.WriteString("| Check | Status | Detail |\n")
 	b.WriteString("|-------|--------|--------|\n")
@@ -433,32 +457,46 @@ func formatReviewMarkdown(resp *query.ReviewPRResponse) string {
 		b.WriteString("\n")
 	}
 
-	// Findings in collapsible section
+	// Findings — Tier 1+2 only, capped at 10
 	if len(resp.Findings) > 0 {
-		b.WriteString(fmt.Sprintf("<details><summary>Findings (%d)</summary>\n\n", len(resp.Findings)))
-		b.WriteString("| Severity | File | Finding |\n")
-		b.WriteString("|----------|------|---------|\n")
-		for _, f := range resp.Findings {
-			sevEmoji := "ℹ️"
-			switch f.Severity {
-			case "error":
-				sevEmoji = "🔴"
-			case "warning":
-				sevEmoji = "🟡"
-			}
-			loc := f.File
-			if f.StartLine > 0 {
-				loc = fmt.Sprintf("`%s:%d`", f.File, f.StartLine)
-			} else if f.File != "" {
-				loc = fmt.Sprintf("`%s`", f.File)
-			}
-			b.WriteString(fmt.Sprintf("| %s | %s | %s |\n", sevEmoji, loc, escapeMdTable(f.Message)))
+		actionable, tier3Count := filterActionableFindings(resp.Findings)
+		label := fmt.Sprintf("Findings (%d)", len(actionable))
+		if tier3Count > 0 {
+			label = fmt.Sprintf("Findings (%d actionable, %d informational)", len(actionable), tier3Count)
 		}
-		b.WriteString("\n</details>\n\n")
+		if len(actionable) > 0 {
+			b.WriteString(fmt.Sprintf("<details><summary>%s</summary>\n\n", label))
+			b.WriteString("| Severity | File | Finding |\n")
+			b.WriteString("|----------|------|---------|\n")
+			limit := 10
+			if len(actionable) < limit {
+				limit = len(actionable)
+			}
+			for _, f := range actionable[:limit] {
+				sevEmoji := "ℹ️"
+				switch f.Severity {
+				case "error":
+					sevEmoji = "🔴"
+				case "warning":
+					sevEmoji = "🟡"
+				}
+				loc := f.File
+				if f.StartLine > 0 {
+					loc = fmt.Sprintf("`%s:%d`", f.File, f.StartLine)
+				} else if f.File != "" {
+					loc = fmt.Sprintf("`%s`", f.File)
+				}
+				b.WriteString(fmt.Sprintf("| %s | %s | %s |\n", sevEmoji, loc, escapeMdTable(f.Message)))
+			}
+			if len(actionable) > limit {
+				b.WriteString(fmt.Sprintf("\n... and %d more\n", len(actionable)-limit))
+			}
+			b.WriteString("\n</details>\n\n")
+		}
 	}
 
-	// Change Breakdown
-	if resp.ChangeBreakdown != nil && len(resp.ChangeBreakdown.Summary) > 0 {
+	// Change Breakdown — skip for large PRs
+	if resp.PRTier != "large" && resp.ChangeBreakdown != nil && len(resp.ChangeBreakdown.Summary) > 0 {
 		b.WriteString("<details><summary>Change Breakdown</summary>\n\n")
 		b.WriteString("| Category | Files | Review Priority |\n")
 		b.WriteString("|----------|-------|-----------------|\n")
@@ -578,6 +616,18 @@ func formatReviewMarkdown(resp *query.ReviewPRResponse) string {
 	b.WriteString("<!-- ckb-review-marker -->\n")
 
 	return b.String()
+}
+
+// filterActionableFindings separates Tier 1+2 (actionable) from Tier 3 (informational).
+func filterActionableFindings(findings []query.ReviewFinding) (actionable []query.ReviewFinding, tier3Count int) {
+	for _, f := range findings {
+		if f.Tier <= 2 {
+			actionable = append(actionable, f)
+		} else {
+			tier3Count++
+		}
+	}
+	return
 }
 
 func avgHealth(deltas []query.CodeHealthDelta) int {

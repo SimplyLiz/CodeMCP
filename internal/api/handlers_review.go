@@ -59,8 +59,8 @@ func (s *Server) handleReviewPR(w http.ResponseWriter, r *http.Request) {
 			FailOnLevel   string   `json:"failOnLevel"`
 			CriticalPaths []string `json:"criticalPaths"`
 			// Policy overrides
-			NoBreakingChanges  *bool    `json:"noBreakingChanges"`
-			NoSecrets          *bool    `json:"noSecrets"`
+			BlockBreakingChanges  *bool    `json:"blockBreakingChanges"`
+			BlockSecrets          *bool    `json:"blockSecrets"`
 			RequireTests       *bool    `json:"requireTests"`
 			MaxRiskScore       *float64 `json:"maxRiskScore"`
 			MaxComplexityDelta *int     `json:"maxComplexityDelta"`
@@ -88,11 +88,11 @@ func (s *Server) handleReviewPR(w http.ResponseWriter, r *http.Request) {
 		if len(req.CriticalPaths) > 0 {
 			opts.Policy.CriticalPaths = req.CriticalPaths
 		}
-		if req.NoBreakingChanges != nil {
-			opts.Policy.NoBreakingChanges = *req.NoBreakingChanges
+		if req.BlockBreakingChanges != nil {
+			opts.Policy.BlockBreakingChanges = *req.BlockBreakingChanges
 		}
-		if req.NoSecrets != nil {
-			opts.Policy.NoSecrets = *req.NoSecrets
+		if req.BlockSecrets != nil {
+			opts.Policy.BlockSecrets = *req.BlockSecrets
 		}
 		if req.RequireTests != nil {
 			opts.Policy.RequireTests = *req.RequireTests

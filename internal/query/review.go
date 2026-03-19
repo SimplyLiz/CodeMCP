@@ -26,8 +26,8 @@ type ReviewPROptions struct {
 // ReviewPolicy defines quality gates and behavior.
 type ReviewPolicy struct {
 	// Gates
-	NoBreakingChanges  bool    `json:"noBreakingChanges"`  // default: true
-	NoSecrets          bool    `json:"noSecrets"`          // default: true
+	BlockBreakingChanges  bool    `json:"blockBreakingChanges"`  // default: true
+	BlockSecrets          bool    `json:"blockSecrets"`          // default: true
 	RequireTests       bool    `json:"requireTests"`       // default: false
 	MaxRiskScore       float64 `json:"maxRiskScore"`       // default: 0.7 (0 = disabled)
 	MaxComplexityDelta int     `json:"maxComplexityDelta"` // default: 0 (disabled)
@@ -79,6 +79,9 @@ type ReviewPRResponse struct {
 	// Batch 4: Code Health & Baseline
 	HealthReport *CodeHealthReport `json:"healthReport,omitempty"`
 	Provenance   *Provenance       `json:"provenance,omitempty"`
+	// Narrative & adaptive output
+	Narrative string `json:"narrative,omitempty"` // 2-3 sentence review summary
+	PRTier    string `json:"prTier"`             // "small", "medium", "large"
 }
 
 // ReviewSummary provides a high-level overview.
@@ -119,6 +122,22 @@ type ReviewFinding struct {
 	Suggestion string `json:"suggestion,omitempty"`
 	Category   string `json:"category"`
 	RuleID     string `json:"ruleId,omitempty"`
+	Tier       int    `json:"tier"` // 1=blocking, 2=important, 3=informational
+}
+
+// findingTier maps a check name to its tier.
+// Tier 1: breaking changes, secrets, safety-critical — must fix.
+// Tier 2: coupling, complexity, risk, health — should fix.
+// Tier 3: hotspots, tests, generated, traceability, independence — nice to know.
+func findingTier(check string) int {
+	switch check {
+	case "breaking", "secrets", "critical":
+		return 1
+	case "coupling", "complexity", "risk", "health":
+		return 2
+	default:
+		return 3
+	}
 }
 
 // GeneratedFileInfo tracks a detected generated file.
@@ -131,8 +150,8 @@ type GeneratedFileInfo struct {
 // DefaultReviewPolicy returns sensible defaults.
 func DefaultReviewPolicy() *ReviewPolicy {
 	return &ReviewPolicy{
-		NoBreakingChanges: true,
-		NoSecrets:         true,
+		BlockBreakingChanges: true,
+		BlockSecrets:         true,
 		FailOnLevel:       "error",
 		HoldTheLine:       true,
 		SplitThreshold:    50,
@@ -294,7 +313,7 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 	//   complexity  → complexity.Analyzer.AnalyzeFile
 	//   health      → complexity.Analyzer.AnalyzeFile (via calculateFileHealth)
 	//   hotspots    → GetHotspots → complexityAnalyzer.GetFileComplexityFull
-	//   risk        → SummarizePR → getFileHotspotScore → GetHotspots → tree-sitter
+	//   risk        → SummarizePR → getHotspotScoreMap → GetHotspots → tree-sitter
 	// They MUST run sequentially within a single goroutine.
 	var healthReport *CodeHealthReport
 	{
@@ -392,8 +411,11 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 	// Sort checks by severity (fail first, then warn, then pass)
 	sortChecks(checks)
 
-	// Sort findings by severity
+	// Sort findings by severity and assign tiers
 	sortFindings(findings)
+	for i := range findings {
+		findings[i].Tier = findingTier(findings[i].Check)
+	}
 
 	// Calculate summary
 	summary := ReviewSummary{
@@ -506,12 +528,82 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 		ReviewEffort:     effort,
 		ClusterReviewers: clusterReviewers,
 		HealthReport:     healthReport,
+		Narrative:        generateNarrative(summary, checks, findings, splitSuggestion),
+		PRTier:           determinePRTier(summary.TotalChanges),
 		Provenance: &Provenance{
 			RepoStateId:     repoState.RepoStateId,
 			RepoStateDirty:  repoState.Dirty,
 			QueryDurationMs: time.Since(startTime).Milliseconds(),
 		},
 	}, nil
+}
+
+// determinePRTier classifies a PR by total line changes.
+func determinePRTier(totalChanges int) string {
+	switch {
+	case totalChanges < 100:
+		return "small"
+	case totalChanges <= 600:
+		return "medium"
+	default:
+		return "large"
+	}
+}
+
+// generateNarrative produces a deterministic 2-3 sentence review summary.
+func generateNarrative(summary ReviewSummary, checks []ReviewCheck, findings []ReviewFinding, split *PRSplitSuggestion) string {
+	var parts []string
+
+	// Sentence 1: What changed
+	langStr := ""
+	if len(summary.Languages) > 0 {
+		langStr = " (" + strings.Join(summary.Languages, ", ") + ")"
+	}
+	parts = append(parts, fmt.Sprintf("Changes %d files across %d modules%s.",
+		summary.TotalFiles, summary.ModulesChanged, langStr))
+
+	// Sentence 2: What's risky — pick the most important signal
+	tier1Count := 0
+	for _, f := range findings {
+		if f.Tier == 1 {
+			tier1Count++
+		}
+	}
+	if tier1Count > 0 {
+		// Summarize tier 1 issues
+		riskParts := []string{}
+		for _, c := range checks {
+			if c.Status == "fail" {
+				riskParts = append(riskParts, c.Summary)
+			}
+		}
+		if len(riskParts) > 0 {
+			parts = append(parts, strings.Join(riskParts, "; ")+".")
+		}
+	} else if summary.ChecksWarned > 0 {
+		warnParts := []string{}
+		for _, c := range checks {
+			if c.Status == "warn" && len(warnParts) < 2 {
+				warnParts = append(warnParts, c.Summary)
+			}
+		}
+		if len(warnParts) > 0 {
+			parts = append(parts, strings.Join(warnParts, "; ")+".")
+		}
+	} else {
+		parts = append(parts, "No blocking issues found.")
+	}
+
+	// Sentence 3: Where to focus or split recommendation
+	if split != nil && split.ShouldSplit {
+		parts = append(parts, fmt.Sprintf("Consider splitting into %d smaller PRs.",
+			len(split.Clusters)))
+	} else if summary.CriticalFiles > 0 {
+		parts = append(parts, fmt.Sprintf("%d safety-critical files need focused review.",
+			summary.CriticalFiles))
+	}
+
+	return strings.Join(parts, " ")
 }
 
 // --- Individual check implementations ---

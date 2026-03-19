@@ -24,6 +24,8 @@ func goldenResponse() *query.ReviewPRResponse {
 		Tool:          "reviewPR",
 		Verdict:       "warn",
 		Score:         68,
+		Narrative:     "Changes 25 files across 3 modules (Go, TypeScript). 2 breaking API changes detected; 2 safety-critical files changed. 2 safety-critical files need focused review.",
+		PRTier:        "medium",
 		Summary: query.ReviewSummary{
 			TotalFiles:      25,
 			TotalChanges:    480,
@@ -58,6 +60,7 @@ func goldenResponse() *query.ReviewPRResponse {
 				Message:   "Removed public function HandleAuth()",
 				Category:  "breaking",
 				RuleID:    "ckb/breaking/removed-symbol",
+				Tier:      1,
 			},
 			{
 				Check:     "breaking",
@@ -67,6 +70,7 @@ func goldenResponse() *query.ReviewPRResponse {
 				Message:   "Changed signature of ValidateToken()",
 				Category:  "breaking",
 				RuleID:    "ckb/breaking/changed-signature",
+				Tier:      1,
 			},
 			{
 				Check:      "critical",
@@ -77,6 +81,7 @@ func goldenResponse() *query.ReviewPRResponse {
 				Suggestion: "Requires sign-off from safety team",
 				Category:   "critical",
 				RuleID:     "ckb/critical/safety-path",
+				Tier:       1,
 			},
 			{
 				Check:      "critical",
@@ -86,6 +91,7 @@ func goldenResponse() *query.ReviewPRResponse {
 				Suggestion: "Requires sign-off from safety team",
 				Category:   "critical",
 				RuleID:     "ckb/critical/safety-path",
+				Tier:       1,
 			},
 			{
 				Check:      "complexity",
@@ -97,6 +103,7 @@ func goldenResponse() *query.ReviewPRResponse {
 				Suggestion: "Consider extracting helper functions",
 				Category:   "complexity",
 				RuleID:     "ckb/complexity/increase",
+				Tier:       2,
 			},
 			{
 				Check:    "coupling",
@@ -105,6 +112,7 @@ func goldenResponse() *query.ReviewPRResponse {
 				Message:  "Missing co-change: engine_test.go (87% co-change rate)",
 				Category: "coupling",
 				RuleID:   "ckb/coupling/missing-cochange",
+				Tier:     2,
 			},
 			{
 				Check:    "coupling",
@@ -113,6 +121,7 @@ func goldenResponse() *query.ReviewPRResponse {
 				Message:  "Missing co-change: modbus_test.go (91% co-change rate)",
 				Category: "coupling",
 				RuleID:   "ckb/coupling/missing-cochange",
+				Tier:     2,
 			},
 			{
 				Check:    "hotspots",
@@ -121,6 +130,7 @@ func goldenResponse() *query.ReviewPRResponse {
 				Message:  "Hotspot file (score: 0.78) — extra review attention recommended",
 				Category: "risk",
 				RuleID:   "ckb/hotspots/volatile-file",
+				Tier:     3,
 			},
 		},
 		Reviewers: []query.SuggestedReview{

@@ -3,6 +3,8 @@
 **25 files** (+480 changes) · **3 modules** · `Go` `TypeScript`
 **22 reviewable** · 3 generated (excluded) · **2 safety-critical**
 
+> Changes 25 files across 3 modules (Go, TypeScript). 2 breaking API changes detected; 2 safety-critical files changed. 2 safety-critical files need focused review.
+
 | Check | Status | Detail |
 |-------|--------|--------|
 | breaking | 🔴 FAIL | 2 breaking API changes detected |
@@ -20,7 +22,7 @@
 - 2 breaking API changes
 - Critical path touched
 
-<details><summary>Findings (8)</summary>
+<details><summary>Findings (7 actionable, 1 informational)</summary>
 
 | Severity | File | Finding |
 |----------|------|---------|
@@ -31,7 +33,6 @@
 | 🟡 | `internal/query/engine.go:155` | Complexity 12→20 in parseQuery() |
 | 🟡 | `internal/query/engine.go` | Missing co-change: engine_test.go (87% co-change rate) |
 | 🟡 | `protocol/modbus.go` | Missing co-change: modbus_test.go (91% co-change rate) |
-| ℹ️ | `config/settings.go` | Hotspot file (score: 0.78) — extra review attention recommended |
 
 </details>
 

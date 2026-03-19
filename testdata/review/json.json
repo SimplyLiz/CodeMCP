@@ -97,7 +97,8 @@
       "startLine": 42,
       "message": "Removed public function HandleAuth()",
       "category": "breaking",
-      "ruleId": "ckb/breaking/removed-symbol"
+      "ruleId": "ckb/breaking/removed-symbol",
+      "tier": 1
     },
     {
       "check": "breaking",
@@ -106,7 +107,8 @@
       "startLine": 15,
       "message": "Changed signature of ValidateToken()",
       "category": "breaking",
-      "ruleId": "ckb/breaking/changed-signature"
+      "ruleId": "ckb/breaking/changed-signature",
+      "tier": 1
     },
     {
       "check": "critical",
@@ -116,7 +118,8 @@
       "message": "Safety-critical path changed (pattern: drivers/**)",
       "suggestion": "Requires sign-off from safety team",
       "category": "critical",
-      "ruleId": "ckb/critical/safety-path"
+      "ruleId": "ckb/critical/safety-path",
+      "tier": 1
     },
     {
       "check": "critical",
@@ -125,7 +128,8 @@
       "message": "Safety-critical path changed (pattern: protocol/**)",
       "suggestion": "Requires sign-off from safety team",
       "category": "critical",
-      "ruleId": "ckb/critical/safety-path"
+      "ruleId": "ckb/critical/safety-path",
+      "tier": 1
     },
     {
       "check": "complexity",
@@ -136,7 +140,8 @@
       "message": "Complexity 12→20 in parseQuery()",
       "suggestion": "Consider extracting helper functions",
       "category": "complexity",
-      "ruleId": "ckb/complexity/increase"
+      "ruleId": "ckb/complexity/increase",
+      "tier": 2
     },
     {
       "check": "coupling",
@@ -144,7 +149,8 @@
       "file": "internal/query/engine.go",
       "message": "Missing co-change: engine_test.go (87% co-change rate)",
       "category": "coupling",
-      "ruleId": "ckb/coupling/missing-cochange"
+      "ruleId": "ckb/coupling/missing-cochange",
+      "tier": 2
     },
     {
       "check": "coupling",
@@ -152,7 +158,8 @@
       "file": "protocol/modbus.go",
       "message": "Missing co-change: modbus_test.go (91% co-change rate)",
       "category": "coupling",
-      "ruleId": "ckb/coupling/missing-cochange"
+      "ruleId": "ckb/coupling/missing-cochange",
+      "tier": 2
     },
     {
       "check": "hotspots",
@@ -160,7 +167,8 @@
       "file": "config/settings.go",
       "message": "Hotspot file (score: 0.78) — extra review attention recommended",
       "category": "risk",
-      "ruleId": "ckb/hotspots/volatile-file"
+      "ruleId": "ckb/hotspots/volatile-file",
+      "tier": 3
     }
   ],
   "reviewers": [
@@ -285,5 +293,7 @@
     "worstGrade": "C",
     "degraded": 2,
     "improved": 1
-  }
+  },
+  "narrative": "Changes 25 files across 3 modules (Go, TypeScript). 2 breaking API changes detected; 2 safety-critical files changed. 2 safety-critical files need focused review.",
+  "prTier": "medium"
 }
