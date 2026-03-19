@@ -57,13 +57,16 @@
 
 </details>
 
-<details><summary>Code Health</summary>
+<details><summary>Code Health — 2 degraded</summary>
+
+**Degraded:**
 
 | File | Before | After | Delta | Grade |
 |------|--------|-------|-------|-------|
 | `api/handler.go` | 82 | 70 | -12 | B→B |
 | `internal/query/engine.go` | 75 | 68 | -7 | B→C |
-| `protocol/modbus.go` | 60 | 65 | +5 | C→C |
+
+**Improved:** 1 file(s)
 
 2 degraded · 1 improved · avg -4.7
 

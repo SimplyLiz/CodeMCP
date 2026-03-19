@@ -531,7 +531,7 @@ func TestCalculateReviewScore(t *testing.T) {
 		t.Errorf("expected score 80 for 15 capped errors, got %d", score)
 	}
 
-	// Score floors at 0 with many checks
+	// Total deduction cap: score floors at 20 (100 - 80 max deduction)
 	var manyCheckErrors []ReviewFinding
 	for i := 0; i < 6; i++ {
 		for j := 0; j < 5; j++ {
@@ -542,9 +542,9 @@ func TestCalculateReviewScore(t *testing.T) {
 		}
 	}
 	score = calculateReviewScore(nil, manyCheckErrors)
-	// 6 checks × 20 cap = 120 deducted, floors at 0
-	if score != 0 {
-		t.Errorf("expected score 0 for many checks at cap, got %d", score)
+	// 6 checks × 20 per-check cap = 120 potential, but total cap is 80, so score = 20
+	if score != 20 {
+		t.Errorf("expected score 20 for many checks at total cap, got %d", score)
 	}
 }
 

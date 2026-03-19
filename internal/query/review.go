@@ -850,8 +850,15 @@ func calculateReviewScore(checks []ReviewCheck, findings []ReviewFinding) int {
 	// co-change warnings) don't overwhelm the score on their own.
 	checkDeductions := make(map[string]int)
 	const maxPerCheck = 20
+	// Total deduction cap — prevents the score from becoming meaningless
+	// on large PRs where many checks each hit their per-check cap.
+	const maxTotalDeduction = 80
+	totalDeducted := 0
 
 	for _, f := range findings {
+		if totalDeducted >= maxTotalDeduction {
+			break
+		}
 		penalty := 0
 		switch f.Severity {
 		case "error":
@@ -868,8 +875,12 @@ func calculateReviewScore(checks []ReviewCheck, findings []ReviewFinding) int {
 				if current+apply > maxPerCheck {
 					apply = maxPerCheck - current
 				}
+				if totalDeducted+apply > maxTotalDeduction {
+					apply = maxTotalDeduction - totalDeducted
+				}
 				score -= apply
 				checkDeductions[f.Check] = current + apply
+				totalDeducted += apply
 			}
 		}
 	}

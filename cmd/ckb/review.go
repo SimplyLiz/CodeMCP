@@ -309,25 +309,46 @@ func formatReviewHuman(resp *query.ReviewPRResponse) string {
 	// PR Split Suggestion
 	if resp.SplitSuggestion != nil && resp.SplitSuggestion.ShouldSplit {
 		b.WriteString(fmt.Sprintf("PR Split: %s\n", resp.SplitSuggestion.Reason))
-		for i, c := range resp.SplitSuggestion.Clusters {
+		clusterLimit := 10
+		clusters := resp.SplitSuggestion.Clusters
+		if len(clusters) > clusterLimit {
+			clusters = clusters[:clusterLimit]
+		}
+		for i, c := range clusters {
 			b.WriteString(fmt.Sprintf("  Cluster %d: %q — %d files (+%d −%d)\n",
 				i+1, c.Name, c.FileCount, c.Additions, c.Deletions))
+		}
+		if len(resp.SplitSuggestion.Clusters) > clusterLimit {
+			b.WriteString(fmt.Sprintf("  ... and %d more clusters\n",
+				len(resp.SplitSuggestion.Clusters)-clusterLimit))
 		}
 		b.WriteString("\n")
 	}
 
-	// Code Health
+	// Code Health — only show files with actual changes (skip unchanged and new files)
 	if resp.HealthReport != nil && len(resp.HealthReport.Deltas) > 0 {
 		b.WriteString("Code Health:\n")
+		shown := 0
 		for _, d := range resp.HealthReport.Deltas {
+			if d.Delta == 0 && !d.NewFile {
+				continue // skip unchanged
+			}
+			if shown >= 10 {
+				continue // count remaining but don't print
+			}
 			arrow := "→"
-			if d.Delta < 0 {
+			label := ""
+			if d.NewFile {
+				arrow = "★"
+				label = " (new)"
+			} else if d.Delta < 0 {
 				arrow = "↓"
 			} else if d.Delta > 0 {
 				arrow = "↑"
 			}
-			b.WriteString(fmt.Sprintf("  %s %s %s %s (%d%s%d)\n",
-				d.Grade, arrow, d.GradeBefore, d.File, d.HealthBefore, arrow, d.HealthAfter))
+			b.WriteString(fmt.Sprintf("  %s %s %s (%d)%s\n",
+				d.Grade, arrow, d.File, d.HealthAfter, label))
+			shown++
 		}
 		if resp.HealthReport.Degraded > 0 || resp.HealthReport.Improved > 0 {
 			b.WriteString(fmt.Sprintf("  %d degraded · %d improved · avg %+.1f\n",
@@ -461,11 +482,16 @@ func formatReviewMarkdown(resp *query.ReviewPRResponse) string {
 
 	// PR Split Suggestion
 	if resp.SplitSuggestion != nil && resp.SplitSuggestion.ShouldSplit {
+		clusters := resp.SplitSuggestion.Clusters
+		clusterLimit := 10
 		b.WriteString(fmt.Sprintf("<details><summary>✂️ Suggested PR Split (%d clusters)</summary>\n\n",
-			len(resp.SplitSuggestion.Clusters)))
+			len(clusters)))
 		b.WriteString("| Cluster | Files | Changes | Independent |\n")
 		b.WriteString("|---------|-------|---------|-------------|\n")
-		for _, c := range resp.SplitSuggestion.Clusters {
+		if len(clusters) > clusterLimit {
+			clusters = clusters[:clusterLimit]
+		}
+		for _, c := range clusters {
 			indep := "✅"
 			if !c.Independent {
 				indep = "❌"
@@ -473,20 +499,61 @@ func formatReviewMarkdown(resp *query.ReviewPRResponse) string {
 			b.WriteString(fmt.Sprintf("| %s | %d | +%d −%d | %s |\n",
 				c.Name, c.FileCount, c.Additions, c.Deletions, indep))
 		}
+		if len(resp.SplitSuggestion.Clusters) > clusterLimit {
+			b.WriteString(fmt.Sprintf("\n... and %d more clusters\n",
+				len(resp.SplitSuggestion.Clusters)-clusterLimit))
+		}
 		b.WriteString("\n</details>\n\n")
 	}
 
-	// Code Health
+	// Code Health — show degraded files first, then new files; skip unchanged
 	if resp.HealthReport != nil && len(resp.HealthReport.Deltas) > 0 {
-		b.WriteString("<details><summary>Code Health</summary>\n\n")
-		b.WriteString("| File | Before | After | Delta | Grade |\n")
-		b.WriteString("|------|--------|-------|-------|-------|\n")
+		// Separate into degraded, improved, and new
+		var degraded, improved, newFiles []query.CodeHealthDelta
 		for _, d := range resp.HealthReport.Deltas {
-			b.WriteString(fmt.Sprintf("| `%s` | %d | %d | %+d | %s→%s |\n",
-				d.File, d.HealthBefore, d.HealthAfter, d.Delta, d.GradeBefore, d.Grade))
+			switch {
+			case d.NewFile:
+				newFiles = append(newFiles, d)
+			case d.Delta < 0:
+				degraded = append(degraded, d)
+			case d.Delta > 0:
+				improved = append(improved, d)
+			}
 		}
+
+		healthTitle := "Code Health"
+		if len(degraded) > 0 {
+			healthTitle = fmt.Sprintf("Code Health — %d degraded", len(degraded))
+		}
+		b.WriteString(fmt.Sprintf("<details><summary>%s</summary>\n\n", healthTitle))
+
+		if len(degraded) > 0 {
+			b.WriteString("**Degraded:**\n\n")
+			b.WriteString("| File | Before | After | Delta | Grade |\n")
+			b.WriteString("|------|--------|-------|-------|-------|\n")
+			limit := 10
+			if len(degraded) < limit {
+				limit = len(degraded)
+			}
+			for _, d := range degraded[:limit] {
+				b.WriteString(fmt.Sprintf("| `%s` | %d | %d | %+d | %s→%s |\n",
+					d.File, d.HealthBefore, d.HealthAfter, d.Delta, d.GradeBefore, d.Grade))
+			}
+			if len(degraded) > limit {
+				b.WriteString(fmt.Sprintf("\n... and %d more degraded files\n", len(degraded)-limit))
+			}
+			b.WriteString("\n")
+		}
+		if len(improved) > 0 {
+			b.WriteString(fmt.Sprintf("**Improved:** %d file(s)\n\n", len(improved)))
+		}
+		if len(newFiles) > 0 {
+			b.WriteString(fmt.Sprintf("**New files:** %d (avg health: %d)\n\n",
+				len(newFiles), avgHealth(newFiles)))
+		}
+
 		if resp.HealthReport.Degraded > 0 || resp.HealthReport.Improved > 0 {
-			b.WriteString(fmt.Sprintf("\n%d degraded · %d improved · avg %+.1f\n",
+			b.WriteString(fmt.Sprintf("%d degraded · %d improved · avg %+.1f\n",
 				resp.HealthReport.Degraded, resp.HealthReport.Improved, resp.HealthReport.AverageDelta))
 		}
 		b.WriteString("\n</details>\n\n")
@@ -511,6 +578,17 @@ func formatReviewMarkdown(resp *query.ReviewPRResponse) string {
 	b.WriteString("<!-- ckb-review-marker -->\n")
 
 	return b.String()
+}
+
+func avgHealth(deltas []query.CodeHealthDelta) int {
+	if len(deltas) == 0 {
+		return 0
+	}
+	total := 0
+	for _, d := range deltas {
+		total += d.HealthAfter
+	}
+	return total / len(deltas)
 }
 
 // escapeMdTable escapes pipe characters that would break markdown table formatting.

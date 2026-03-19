@@ -24,6 +24,7 @@ type CodeHealthDelta struct {
 	Grade        string `json:"grade"`        // A/B/C/D/F
 	GradeBefore  string `json:"gradeBefore"`
 	TopFactor    string `json:"topFactor"` // What drives the score most
+	NewFile      bool   `json:"newFile,omitempty"`
 }
 
 // CodeHealthReport aggregates health deltas across the PR.
@@ -98,14 +99,16 @@ func (e *Engine) checkCodeHealth(ctx context.Context, files []string, opts Revie
 		rm := e.computeRepoMetrics(ctx, file)
 
 		after := e.calculateFileHealth(ctx, file, rm, analyzer)
-		before := e.calculateBaseFileHealth(ctx, file, opts.BaseBranch, rm, analyzer)
+		before, isNew := e.calculateBaseFileHealth(ctx, file, opts.BaseBranch, rm, analyzer)
 
 		delta := after - before
 		grade := healthGrade(after)
 		gradeBefore := healthGrade(before)
 
 		topFactor := "unchanged"
-		if delta < -10 {
+		if isNew {
+			topFactor = "new file"
+		} else if delta < -10 {
 			topFactor = "significant health degradation"
 		} else if delta < 0 {
 			topFactor = "minor health decrease"
@@ -121,11 +124,13 @@ func (e *Engine) checkCodeHealth(ctx context.Context, files []string, opts Revie
 			Grade:        grade,
 			GradeBefore:  gradeBefore,
 			TopFactor:    topFactor,
+			NewFile:      isNew,
 		}
 		deltas = append(deltas, d)
 
-		// Generate findings for significant degradation
-		if delta < -10 {
+		// Generate findings for significant degradation (skip new files —
+		// they don't have a prior state to degrade from)
+		if !isNew && delta < -10 {
 			sev := "warning"
 			if after < 30 {
 				sev = "error"
@@ -147,14 +152,18 @@ func (e *Engine) checkCodeHealth(ctx context.Context, files []string, opts Revie
 	}
 	if len(deltas) > 0 {
 		totalDelta := 0
+		existingCount := 0
 		worstScore := 101
 		for _, d := range deltas {
-			totalDelta += d.Delta
-			if d.Delta < 0 {
-				report.Degraded++
-			}
-			if d.Delta > 0 {
-				report.Improved++
+			if !d.NewFile {
+				totalDelta += d.Delta
+				existingCount++
+				if d.Delta < 0 {
+					report.Degraded++
+				}
+				if d.Delta > 0 {
+					report.Improved++
+				}
 			}
 			if d.HealthAfter < worstScore {
 				worstScore = d.HealthAfter
@@ -162,7 +171,9 @@ func (e *Engine) checkCodeHealth(ctx context.Context, files []string, opts Revie
 				report.WorstGrade = d.Grade
 			}
 		}
-		report.AverageDelta = float64(totalDelta) / float64(len(deltas))
+		if existingCount > 0 {
+			report.AverageDelta = float64(totalDelta) / float64(existingCount)
+		}
 	}
 
 	status := "pass"
@@ -172,6 +183,17 @@ func (e *Engine) checkCodeHealth(ctx context.Context, files []string, opts Revie
 			report.Degraded, report.Improved, report.AverageDelta)
 		if report.AverageDelta < -5 {
 			status = "warn"
+		}
+	} else if report.Degraded == 0 && len(deltas) > 0 {
+		// All changes are new files or unchanged — not a health concern
+		newCount := 0
+		for _, d := range deltas {
+			if d.NewFile {
+				newCount++
+			}
+		}
+		if newCount > 0 {
+			summary = fmt.Sprintf("%d new file(s), %d unchanged", newCount, len(deltas)-newCount)
 		}
 	}
 
@@ -236,24 +258,25 @@ func (e *Engine) calculateFileHealth(ctx context.Context, file string, rm repoMe
 // Repo-level metrics (churn, coupling, bus factor, age) are branch-independent
 // and already included via the shared repoMetrics.
 // analyzer may be nil if tree-sitter is not available.
-func (e *Engine) calculateBaseFileHealth(ctx context.Context, file string, baseBranch string, rm repoMetrics, analyzer *complexity.Analyzer) int {
+// calculateBaseFileHealth returns (health score, isNewFile).
+func (e *Engine) calculateBaseFileHealth(ctx context.Context, file string, baseBranch string, rm repoMetrics, analyzer *complexity.Analyzer) (int, bool) {
 	if baseBranch == "" {
-		return e.calculateFileHealth(ctx, file, rm, analyzer)
+		return e.calculateFileHealth(ctx, file, rm, analyzer), false
 	}
 
 	// Get the file content at the base branch
 	cmd := exec.CommandContext(ctx, "git", "-C", e.repoRoot, "show", baseBranch+":"+file)
 	content, err := cmd.Output()
 	if err != nil {
-		// File may not exist at base (new file) — return 100 (perfect base health
-		// so the delta reflects the current state as a change from "nothing")
-		return 100
+		// File doesn't exist at base — it's a new file.
+		// Use 0 as baseline so the delta is purely the file's health score.
+		return 0, true
 	}
 
 	// Write to temp file for analysis
 	tmpFile, err := os.CreateTemp("", "ckb-base-*"+filepath.Ext(file))
 	if err != nil {
-		return e.calculateFileHealth(ctx, file, rm, analyzer)
+		return e.calculateFileHealth(ctx, file, rm, analyzer), false
 	}
 	defer func() {
 		tmpFile.Close()
@@ -261,7 +284,7 @@ func (e *Engine) calculateBaseFileHealth(ctx context.Context, file string, baseB
 	}()
 
 	if _, err := tmpFile.Write(content); err != nil {
-		return e.calculateFileHealth(ctx, file, rm, analyzer)
+		return e.calculateFileHealth(ctx, file, rm, analyzer), false
 	}
 	tmpFile.Close()
 
@@ -293,7 +316,7 @@ func (e *Engine) calculateBaseFileHealth(ctx context.Context, file string, baseB
 	if score < 0 {
 		score = 0
 	}
-	return int(math.Round(score))
+	return int(math.Round(score)), false
 }
 
 // --- Scoring helper functions ---
