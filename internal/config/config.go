@@ -95,6 +95,12 @@ type ReviewConfig struct {
 	// Reviewer independence
 	RequireIndependentReview bool `json:"requireIndependentReview" mapstructure:"requireIndependentReview"` // Author != reviewer
 	MinReviewers             int  `json:"minReviewers" mapstructure:"minReviewers"`                         // Minimum reviewer count
+
+	// Analyzer thresholds (v8.3)
+	MaxBlastRadiusDelta   int     `json:"maxBlastRadiusDelta" mapstructure:"maxBlastRadiusDelta"`     // 0 = disabled
+	MaxFanOut             int     `json:"maxFanOut" mapstructure:"maxFanOut"`                         // 0 = disabled
+	DeadCodeMinConfidence float64 `json:"deadCodeMinConfidence" mapstructure:"deadCodeMinConfidence"` // default 0.8
+	TestGapMinLines       int     `json:"testGapMinLines" mapstructure:"testGapMinLines"`             // default 5
 }
 
 // BackendsConfig contains backend-specific configuration

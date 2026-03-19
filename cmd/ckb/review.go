@@ -36,10 +36,17 @@ var (
 	// Independence
 	reviewRequireIndependent bool
 	reviewMinReviewers       int
+	// New analyzer flags
+	reviewStaged             bool
+	reviewScope              string
+	reviewMaxBlastRadius     int
+	reviewMaxFanOut          int
+	reviewDeadCodeConfidence float64
+	reviewTestGapLines       int
 )
 
 var reviewCmd = &cobra.Command{
-	Use:   "review",
+	Use:   "review [scope]",
 	Short: "Comprehensive PR review with quality gates",
 	Long: `Run a unified code review that orchestrates multiple checks in parallel:
 
@@ -52,6 +59,9 @@ var reviewCmd = &cobra.Command{
 - Risk scoring
 - Safety-critical path checks
 - Code health scoring (8-factor weighted score)
+- Dead code detection (SCIP-based)
+- Test gap analysis (tree-sitter)
+- Blast radius / fan-out analysis (SCIP-based)
 - Finding baseline management
 
 Output formats: human (default), json, markdown, github-actions
@@ -59,7 +69,10 @@ Output formats: human (default), json, markdown, github-actions
 Examples:
   ckb review                              # Review current branch vs main
   ckb review --base=develop               # Custom base branch
+  ckb review --staged                     # Review staged changes only
+  ckb review internal/query/              # Scope to path prefix
   ckb review --checks=breaking,secrets    # Only specific checks
+  ckb review --checks=dead-code,test-gaps,blast-radius  # New analyzers
   ckb review --checks=health              # Only code health check
   ckb review --ci                         # CI mode (exit codes: 0=pass, 1=fail, 2=warn)
   ckb review --format=markdown            # PR comment ready output
@@ -67,14 +80,15 @@ Examples:
   ckb review --critical-paths=drivers/**,protocol/**  # Safety-critical paths
   ckb review baseline save --tag=v1.0     # Save finding baseline
   ckb review baseline diff                # Compare against baseline`,
-	Run: runReview,
+	Args: cobra.MaximumNArgs(1),
+	Run:  runReview,
 }
 
 func init() {
 	reviewCmd.Flags().StringVar(&reviewFormat, "format", "human", "Output format (human, json, markdown, github-actions, sarif, codeclimate, compliance)")
 	reviewCmd.Flags().StringVar(&reviewBaseBranch, "base", "main", "Base branch to compare against")
 	reviewCmd.Flags().StringVar(&reviewHeadBranch, "head", "", "Head branch (default: current branch)")
-	reviewCmd.Flags().StringSliceVar(&reviewChecks, "checks", nil, "Comma-separated list of checks (breaking,secrets,tests,complexity,coupling,hotspots,risk,critical,generated,classify,split,health,traceability,independence)")
+	reviewCmd.Flags().StringSliceVar(&reviewChecks, "checks", nil, "Comma-separated list of checks (breaking,secrets,tests,complexity,coupling,hotspots,risk,critical,generated,classify,split,health,traceability,independence,dead-code,test-gaps,blast-radius)")
 	reviewCmd.Flags().BoolVar(&reviewCI, "ci", false, "CI mode: exit 1 on fail, exit 2 on warn")
 	reviewCmd.Flags().StringVar(&reviewFailOn, "fail-on", "", "Override fail level (error, warning, none)")
 
@@ -95,6 +109,14 @@ func init() {
 	// Independence
 	reviewCmd.Flags().BoolVar(&reviewRequireIndependent, "require-independent", false, "Require independent reviewer (author != reviewer)")
 	reviewCmd.Flags().IntVar(&reviewMinReviewers, "min-reviewers", 0, "Minimum number of independent reviewers")
+
+	// New analyzers
+	reviewCmd.Flags().BoolVar(&reviewStaged, "staged", false, "Review staged changes instead of branch diff")
+	reviewCmd.Flags().StringVar(&reviewScope, "scope", "", "Filter to path prefix or symbol name")
+	reviewCmd.Flags().IntVar(&reviewMaxBlastRadius, "max-blast-radius", 0, "Maximum blast radius delta (0 = disabled)")
+	reviewCmd.Flags().IntVar(&reviewMaxFanOut, "max-fanout", 0, "Maximum fan-out / caller count (0 = disabled)")
+	reviewCmd.Flags().Float64Var(&reviewDeadCodeConfidence, "dead-code-confidence", 0.8, "Minimum confidence for dead code findings")
+	reviewCmd.Flags().IntVar(&reviewTestGapLines, "test-gap-lines", 5, "Minimum function lines for test gap reporting")
 
 	rootCmd.AddCommand(reviewCmd)
 }
@@ -133,6 +155,14 @@ func runReview(cmd *cobra.Command, args []string) {
 	if reviewMinReviewers > 0 {
 		policy.MinReviewers = reviewMinReviewers
 	}
+	if reviewMaxBlastRadius > 0 {
+		policy.MaxBlastRadiusDelta = reviewMaxBlastRadius
+	}
+	if reviewMaxFanOut > 0 {
+		policy.MaxFanOut = reviewMaxFanOut
+	}
+	policy.DeadCodeMinConfidence = reviewDeadCodeConfidence
+	policy.TestGapMinLines = reviewTestGapLines
 
 	// Validate inputs
 	if reviewMaxRisk < 0 {
@@ -147,11 +177,19 @@ func runReview(cmd *cobra.Command, args []string) {
 		}
 	}
 
+	// Positional arg overrides --scope
+	scope := reviewScope
+	if len(args) > 0 {
+		scope = args[0]
+	}
+
 	opts := query.ReviewPROptions{
 		BaseBranch: reviewBaseBranch,
 		HeadBranch: reviewHeadBranch,
 		Policy:     policy,
 		Checks:     reviewChecks,
+		Staged:     reviewStaged,
+		Scope:      scope,
 	}
 
 	response, err := engine.ReviewPR(ctx, opts)
@@ -300,6 +338,9 @@ func formatReviewHuman(resp *query.ReviewPRResponse) string {
 					loc = fmt.Sprintf("%s:%d", f.File, f.StartLine)
 				}
 				b.WriteString(fmt.Sprintf("  %-7s %-40s %s\n", sevLabel, loc, f.Message))
+				if f.Hint != "" {
+					b.WriteString(fmt.Sprintf("    %s\n", f.Hint))
+				}
 			}
 			remaining := len(actionable) - limit
 			if remaining > 0 || tier3Count > 0 {
@@ -500,7 +541,11 @@ func formatReviewMarkdown(resp *query.ReviewPRResponse) string {
 				} else if f.File != "" {
 					loc = fmt.Sprintf("`%s`", f.File)
 				}
-				b.WriteString(fmt.Sprintf("| %s | %s | %s |\n", sevEmoji, loc, escapeMdTable(f.Message)))
+				msg := escapeMdTable(f.Message)
+				if f.Hint != "" {
+					msg += " *" + escapeMdTable(f.Hint) + "*"
+				}
+				b.WriteString(fmt.Sprintf("| %s | %s | %s |\n", sevEmoji, loc, msg))
 			}
 			if len(actionable) > limit {
 				b.WriteString(fmt.Sprintf("\n... and %d more\n", len(actionable)-limit))
