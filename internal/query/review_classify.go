@@ -150,11 +150,6 @@ func estimateRenameSimilarity(ds git.DiffStats) float64 {
 	if total == 0 {
 		return 1.0 // Pure rename, no content change
 	}
-	// Rough heuristic: if additions ≈ deletions and both are small relative
-	// to what a full rewrite would be, it's mostly unchanged
-	if ds.Additions == 0 && ds.Deletions == 0 {
-		return 1.0
-	}
 	// Smaller diffs → more similar
 	maxChange := ds.Additions
 	if ds.Deletions > maxChange {
@@ -176,12 +171,12 @@ func isConfigFile(path string) bool {
 	configFiles := map[string]bool{
 		"Makefile": true, "CMakeLists.txt": true, "Dockerfile": true,
 		"docker-compose.yml": true, "docker-compose.yaml": true,
-		".gitignore": true, ".eslintrc": true, ".prettierrc": true,
+		".gitignore": true, ".eslintrc": true, ".prettierrc": true, ".editorconfig": true,
 		"tsconfig.json": true, "package.json": true, "package-lock.json": true,
 		"go.mod": true, "go.sum": true, "Cargo.toml": true, "Cargo.lock": true,
 		"pyproject.toml": true, "setup.py": true, "setup.cfg": true,
 		"pom.xml": true, "build.gradle": true,
-		".github": true, "Jenkinsfile": true,
+		"Jenkinsfile": true,
 	}
 	if configFiles[base] {
 		return true

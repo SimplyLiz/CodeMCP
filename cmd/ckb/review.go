@@ -326,7 +326,7 @@ func formatReviewHuman(resp *query.ReviewPRResponse) string {
 			} else if d.Delta > 0 {
 				arrow = "↑"
 			}
-			b.WriteString(fmt.Sprintf("  %s %s %s%s (%d%s%d)\n",
+			b.WriteString(fmt.Sprintf("  %s %s %s %s (%d%s%d)\n",
 				d.Grade, arrow, d.GradeBefore, d.File, d.HealthBefore, arrow, d.HealthAfter))
 		}
 		if resp.HealthReport.Degraded > 0 || resp.HealthReport.Improved > 0 {

@@ -19,10 +19,11 @@ type ReviewEffort struct {
 //
 // Based on research (Microsoft, Google code review studies):
 // - ~200 LOC/hour for new code
-// - ~400 LOC/hour for moved/test code
+// - ~300 LOC/hour for refactored/modified code
+// - ~500 LOC/hour for moved/test/config code (quick scan)
 // - Cognitive overhead per file switch: ~2 min
 // - Cross-module context switch: ~5 min
-// - Critical path files: 2x review time
+// - Critical path files: +10 min each
 func estimateReviewEffort(diffStats []git.DiffStats, breakdown *ChangeBreakdown, criticalFiles int, modules int) *ReviewEffort {
 	if len(diffStats) == 0 {
 		return &ReviewEffort{

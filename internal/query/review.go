@@ -846,14 +846,31 @@ func sortFindings(findings []ReviewFinding) {
 func calculateReviewScore(checks []ReviewCheck, findings []ReviewFinding) int {
 	score := 100
 
+	// Cap per-check deductions so noisy checks (e.g., coupling with many
+	// co-change warnings) don't overwhelm the score on their own.
+	checkDeductions := make(map[string]int)
+	const maxPerCheck = 20
+
 	for _, f := range findings {
+		penalty := 0
 		switch f.Severity {
 		case "error":
-			score -= 10
+			penalty = 10
 		case "warning":
-			score -= 3
+			penalty = 3
 		case "info":
-			score -= 1
+			penalty = 1
+		}
+		if penalty > 0 {
+			current := checkDeductions[f.Check]
+			if current < maxPerCheck {
+				apply := penalty
+				if current+apply > maxPerCheck {
+					apply = maxPerCheck - current
+				}
+				score -= apply
+				checkDeductions[f.Check] = current + apply
+			}
 		}
 	}
 

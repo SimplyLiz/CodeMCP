@@ -492,7 +492,7 @@ func TestCalculateReviewScore(t *testing.T) {
 
 	// Error findings reduce by 10 each
 	findings := []ReviewFinding{
-		{Severity: "error", File: "a.go"},
+		{Check: "breaking", Severity: "error", File: "a.go"},
 	}
 	score = calculateReviewScore(nil, findings)
 	if score != 90 {
@@ -501,18 +501,18 @@ func TestCalculateReviewScore(t *testing.T) {
 
 	// Warning findings reduce by 3 each
 	findings = []ReviewFinding{
-		{Severity: "warning", File: "b.go"},
+		{Check: "coupling", Severity: "warning", File: "b.go"},
 	}
 	scoreWarn := calculateReviewScore(nil, findings)
 	if scoreWarn != 97 {
 		t.Errorf("expected score 97 for 1 warning finding, got %d", scoreWarn)
 	}
 
-	// Mixed findings
+	// Mixed findings from different checks
 	findings = []ReviewFinding{
-		{Severity: "error", File: "a.go"},
-		{Severity: "warning", File: "b.go"},
-		{Severity: "info", File: "c.go"},
+		{Check: "breaking", Severity: "error", File: "a.go"},
+		{Check: "coupling", Severity: "warning", File: "b.go"},
+		{Check: "hotspots", Severity: "info", File: "c.go"},
 	}
 	score = calculateReviewScore(nil, findings)
 	// 100 - 10 - 3 - 1 = 86
@@ -520,14 +520,31 @@ func TestCalculateReviewScore(t *testing.T) {
 		t.Errorf("expected score 86 for mixed findings, got %d", score)
 	}
 
-	// Score floors at 0
+	// Per-check cap: 15 errors from one check are capped at 20 points
 	manyErrors := make([]ReviewFinding, 15)
 	for i := range manyErrors {
-		manyErrors[i] = ReviewFinding{Severity: "error"}
+		manyErrors[i] = ReviewFinding{Check: "breaking", Severity: "error"}
 	}
 	score = calculateReviewScore(nil, manyErrors)
+	// 100 - 20 (capped) = 80
+	if score != 80 {
+		t.Errorf("expected score 80 for 15 capped errors, got %d", score)
+	}
+
+	// Score floors at 0 with many checks
+	var manyCheckErrors []ReviewFinding
+	for i := 0; i < 6; i++ {
+		for j := 0; j < 5; j++ {
+			manyCheckErrors = append(manyCheckErrors, ReviewFinding{
+				Check:    fmt.Sprintf("check%d", i),
+				Severity: "error",
+			})
+		}
+	}
+	score = calculateReviewScore(nil, manyCheckErrors)
+	// 6 checks × 20 cap = 120 deducted, floors at 0
 	if score != 0 {
-		t.Errorf("expected score 0 for 15 errors, got %d", score)
+		t.Errorf("expected score 0 for many checks at cap, got %d", score)
 	}
 }
 

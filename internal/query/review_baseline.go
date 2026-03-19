@@ -101,7 +101,7 @@ func (e *Engine) SaveBaseline(findings []ReviewFinding, tag string, baseBranch, 
 		return fmt.Errorf("write baseline: %w", err)
 	}
 
-	// Update "latest" symlink
+	// Update "latest" copy for quick access
 	latestPath := filepath.Join(dir, "latest.json")
 	_ = os.Remove(latestPath) // ignore error if doesn't exist
 	if err := os.WriteFile(latestPath, data, 0644); err != nil {

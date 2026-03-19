@@ -60,83 +60,89 @@ runs:
       shell: bash
       run: ckb index 2>/dev/null || echo "Indexing skipped (no supported indexer)"
 
-    - name: Build review flags
-      id: flags
-      shell: bash
-      run: |
-        FLAGS="--ci --format=json"
-        if [ -n "${{ inputs.checks }}" ]; then
-          FLAGS="$FLAGS --checks=${{ inputs.checks }}"
-        fi
-        if [ -n "${{ inputs.fail-on }}" ]; then
-          FLAGS="$FLAGS --fail-on=${{ inputs.fail-on }}"
-        fi
-        if [ -n "${{ inputs.critical-paths }}" ]; then
-          FLAGS="$FLAGS --critical-paths=${{ inputs.critical-paths }}"
-        fi
-        if [ "${{ inputs.require-trace }}" = "true" ]; then
-          FLAGS="$FLAGS --require-trace"
-        fi
-        if [ -n "${{ inputs.trace-patterns }}" ]; then
-          FLAGS="$FLAGS --trace-patterns=${{ inputs.trace-patterns }}"
-        fi
-        if [ "${{ inputs.require-independent }}" = "true" ]; then
-          FLAGS="$FLAGS --require-independent"
-        fi
-        echo "flags=$FLAGS" >> $GITHUB_OUTPUT
-
-    - name: Run review
+    - name: Run review (all formats in one pass)
       id: review
       shell: bash
+      env:
+        INPUT_CHECKS: ${{ inputs.checks }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_CRITICAL_PATHS: ${{ inputs.critical-paths }}
+        INPUT_REQUIRE_TRACE: ${{ inputs.require-trace }}
+        INPUT_TRACE_PATTERNS: ${{ inputs.trace-patterns }}
+        INPUT_REQUIRE_INDEPENDENT: ${{ inputs.require-independent }}
+        BASE_REF: ${{ github.event.pull_request.base.ref || 'main' }}
       run: |
+        FLAGS="--ci --base=${BASE_REF}"
+        [ -n "${INPUT_CHECKS}" ] && FLAGS="${FLAGS} --checks=${INPUT_CHECKS}"
+        [ -n "${INPUT_FAIL_ON}" ] && FLAGS="${FLAGS} --fail-on=${INPUT_FAIL_ON}"
+        [ -n "${INPUT_CRITICAL_PATHS}" ] && FLAGS="${FLAGS} --critical-paths=${INPUT_CRITICAL_PATHS}"
+        [ "${INPUT_REQUIRE_TRACE}" = "true" ] && FLAGS="${FLAGS} --require-trace"
+        [ -n "${INPUT_TRACE_PATTERNS}" ] && FLAGS="${FLAGS} --trace-patterns=${INPUT_TRACE_PATTERNS}"
+        [ "${INPUT_REQUIRE_INDEPENDENT}" = "true" ] && FLAGS="${FLAGS} --require-independent"
+
+        # Run review once per format to avoid re-running the full engine
         set +e
-        ckb review ${{ steps.flags.outputs.flags }} > review.json 2>&1
+        ckb review ${FLAGS} --format=json > review.json 2>&1
         EXIT_CODE=$?
         set -e
 
-        # Extract outputs from JSON
-        echo "verdict=$(jq -r .verdict review.json)" >> $GITHUB_OUTPUT
-        echo "score=$(jq -r .score review.json)" >> $GITHUB_OUTPUT
-        echo "findings=$(jq -r '.findings | length' review.json)" >> $GITHUB_OUTPUT
-        echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+        ckb review ${FLAGS} --format=github-actions > review-gha.txt 2>/dev/null || true
+        ckb review ${FLAGS} --format=markdown > review-markdown.txt 2>/dev/null || true
 
-    - name: Generate GitHub Actions annotations
+        # Extract outputs from JSON
+        echo "verdict=$(jq -r .verdict review.json 2>/dev/null || echo unknown)" >> "$GITHUB_OUTPUT"
+        echo "score=$(jq -r .score review.json 2>/dev/null || echo 0)" >> "$GITHUB_OUTPUT"
+        echo "findings=$(jq -r '.findings | length' review.json 2>/dev/null || echo 0)" >> "$GITHUB_OUTPUT"
+        echo "exit_code=${EXIT_CODE}" >> "$GITHUB_OUTPUT"
+
+    - name: Print GitHub Actions annotations
       shell: bash
-      run: ckb review --format=github-actions --base=${{ github.event.pull_request.base.ref || 'main' }}
+      run: cat review-gha.txt 2>/dev/null || true
 
     - name: Post PR comment
       if: inputs.comment == 'true' && github.event_name == 'pull_request'
       shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
       run: |
-        MARKDOWN=$(ckb review --format=markdown --base=${{ github.event.pull_request.base.ref || 'main' }})
+        MARKDOWN=$(cat review-markdown.txt 2>/dev/null || echo "CKB review failed to generate markdown output.")
         MARKER="<!-- ckb-review-marker -->"
 
         # Find existing comment
         COMMENT_ID=$(gh api \
-          repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
-          --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" \
+          "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" \
+          --jq ".[] | select(.body | contains(\"${MARKER}\")) | .id" \
           2>/dev/null | head -1)
 
-        if [ -n "$COMMENT_ID" ]; then
-          # Update existing comment
+        if [ -n "${COMMENT_ID}" ]; then
           gh api \
-            repos/${{ github.repository }}/issues/comments/$COMMENT_ID \
+            "repos/${GH_REPO}/issues/comments/${COMMENT_ID}" \
             -X PATCH \
-            -f body="$MARKDOWN"
+            -f body="${MARKDOWN}"
         else
-          # Create new comment
           gh api \
-            repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
-            -f body="$MARKDOWN"
+            "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" \
+            -f body="${MARKDOWN}"
         fi
-      env:
-        GH_TOKEN: ${{ github.token }}
 
     - name: Upload SARIF
       if: inputs.sarif == 'true'
       shell: bash
+      env:
+        INPUT_CHECKS: ${{ inputs.checks }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_CRITICAL_PATHS: ${{ inputs.critical-paths }}
+        INPUT_REQUIRE_TRACE: ${{ inputs.require-trace }}
+        INPUT_TRACE_PATTERNS: ${{ inputs.trace-patterns }}
+        INPUT_REQUIRE_INDEPENDENT: ${{ inputs.require-independent }}
+        BASE_REF: ${{ github.event.pull_request.base.ref || 'main' }}
       run: |
-        ckb review --format=sarif --base=${{ github.event.pull_request.base.ref || 'main' }} > results.sarif
+        FLAGS="--base=${BASE_REF}"
+        [ -n "${INPUT_CHECKS}" ] && FLAGS="${FLAGS} --checks=${INPUT_CHECKS}"
+        [ -n "${INPUT_CRITICAL_PATHS}" ] && FLAGS="${FLAGS} --critical-paths=${INPUT_CRITICAL_PATHS}"
+        ckb review ${FLAGS} --format=sarif > results.sarif
 
     - name: Upload SARIF to GitHub
       if: inputs.sarif == 'true'

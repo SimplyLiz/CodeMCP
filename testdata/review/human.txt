@@ -42,9 +42,9 @@ PR Split: 25 files across 3 independent clusters — split recommended
   Cluster 3: "Driver Changes" — 12 files (+80 −30)
 
 Code Health:
-  B ↓ Bapi/handler.go (82↓70)
-  C ↓ Binternal/query/engine.go (75↓68)
-  C ↑ Cprotocol/modbus.go (60↑65)
+  B ↓ B api/handler.go (82↓70)
+  C ↓ B internal/query/engine.go (75↓68)
+  C ↑ C protocol/modbus.go (60↑65)
   2 degraded · 1 improved · avg -4.7
 
 Suggested Reviewers:
