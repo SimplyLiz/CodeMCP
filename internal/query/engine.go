@@ -55,6 +55,10 @@ type Engine struct {
 	// Tier detector for capability gating
 	tierDetector *tier.Detector
 
+	// Tree-sitter mutex — go-tree-sitter uses cgo and is NOT safe for
+	// concurrent use. All tree-sitter calls must hold this lock.
+	tsMu sync.Mutex
+
 	// Cached repo state
 	repoStateMu     sync.RWMutex
 	cachedState     *RepoState

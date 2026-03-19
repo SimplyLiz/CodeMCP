@@ -49,14 +49,16 @@ func (e *Engine) checkComplexityDelta(ctx context.Context, files []string, opts 
 		}
 		absPath := filepath.Join(e.repoRoot, file)
 
-		// Analyze current version
+		// Analyze current version (tree-sitter — requires lock)
+		e.tsMu.Lock()
 		afterResult, err := analyzer.AnalyzeFile(ctx, absPath)
+		e.tsMu.Unlock()
 		if err != nil || afterResult.Error != "" {
 			continue
 		}
 
-		// Analyze base version by checking out the file temporarily
-		beforeResult := getBaseComplexity(ctx, analyzer, e.repoRoot, file, opts.BaseBranch)
+		// Analyze base version — git show runs without lock, tree-sitter with lock
+		beforeResult := e.getBaseComplexityLocked(ctx, analyzer, file, opts.BaseBranch)
 		if beforeResult == nil {
 			continue // New file, no before
 		}
@@ -130,11 +132,12 @@ func (e *Engine) checkComplexityDelta(ctx context.Context, files []string, opts 
 	}, findings
 }
 
-// getBaseComplexity gets complexity of a file at a given git ref.
-func getBaseComplexity(ctx context.Context, analyzer *complexity.Analyzer, repoRoot, file, ref string) *complexity.FileComplexity {
-	// Use git show to get the base version content
+// getBaseComplexityLocked gets complexity of a file at a given git ref,
+// acquiring tsMu only for the tree-sitter AnalyzeSource call.
+func (e *Engine) getBaseComplexityLocked(ctx context.Context, analyzer *complexity.Analyzer, file, ref string) *complexity.FileComplexity {
+	// git show runs without the tree-sitter lock
 	cmd := exec.CommandContext(ctx, "git", "show", ref+":"+file)
-	cmd.Dir = repoRoot
+	cmd.Dir = e.repoRoot
 	output, err := cmd.Output()
 	if err != nil {
 		return nil // File doesn't exist in base (new file)
@@ -146,7 +149,9 @@ func getBaseComplexity(ctx context.Context, analyzer *complexity.Analyzer, repoR
 		return nil
 	}
 
+	e.tsMu.Lock()
 	result, err := analyzer.AnalyzeSource(ctx, file, output, lang)
+	e.tsMu.Unlock()
 	if err != nil || result.Error != "" {
 		return nil
 	}

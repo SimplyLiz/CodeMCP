@@ -333,55 +333,72 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 		}()
 	}
 
-	// Tree-sitter serialized checks — go-tree-sitter uses cgo and is NOT
-	// safe for concurrent use. The following checks all reach tree-sitter:
-	//   complexity  → complexity.Analyzer.AnalyzeFile
-	//   health      → complexity.Analyzer.AnalyzeFile (via calculateFileHealth)
-	//   hotspots    → GetHotspots → complexityAnalyzer.GetFileComplexityFull
-	//   risk        → SummarizePR → getHotspotScoreMap → GetHotspots → tree-sitter
-	//   test-gaps   → testgap.Analyzer → complexity.Analyzer.AnalyzeFile
-	// They MUST run sequentially within a single goroutine.
+	// Pre-compute hotspot score map once (no tree-sitter — uses SkipComplexity).
+	// Shared by checkHotspots and checkRiskScore to avoid duplicate GetHotspots calls.
+	var hotspotScores map[string]float64
+	if checkEnabled("hotspots") || checkEnabled("risk") {
+		hotspotScores = e.getHotspotScoreMapFast(ctx)
+	}
+
+	// Tree-sitter checks — go-tree-sitter cgo is NOT thread-safe. Each check
+	// runs in its own goroutine but acquires e.tsMu around tree-sitter calls.
+	// Non-tree-sitter work (git subprocesses, scoring) runs without the lock,
+	// so checks overlap their I/O with each other.
 	var healthReport *CodeHealthReport
-	{
-		runComplexity := checkEnabled("complexity")
-		runHealth := checkEnabled("health")
-		runHotspots := checkEnabled("hotspots")
-		runRisk := checkEnabled("risk")
-		runTestGaps := checkEnabled("test-gaps")
-		if runComplexity || runHealth || runHotspots || runRisk || runTestGaps {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				if runComplexity {
-					c, ff := e.checkComplexityDelta(ctx, reviewableFiles, opts)
-					addCheck(c)
-					addFindings(ff)
-				}
-				if runHealth {
-					c, ff, report := e.checkCodeHealth(ctx, reviewableFiles, opts)
-					addCheck(c)
-					addFindings(ff)
-					mu.Lock()
-					healthReport = report
-					mu.Unlock()
-				}
-				if runHotspots {
-					c, ff := e.checkHotspots(ctx, reviewableFiles)
-					addCheck(c)
-					addFindings(ff)
-				}
-				if runRisk {
-					c, ff := e.checkRiskScore(ctx, diffStats, opts)
-					addCheck(c)
-					addFindings(ff)
-				}
-				if runTestGaps {
-					c, ff := e.checkTestGaps(ctx, reviewableFiles, opts)
-					addCheck(c)
-					addFindings(ff)
-				}
-			}()
-		}
+
+	if checkEnabled("complexity") {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, ff := e.checkComplexityDelta(ctx, reviewableFiles, opts)
+			addCheck(c)
+			addFindings(ff)
+		}()
+	}
+
+	if checkEnabled("health") {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, ff, report := e.checkCodeHealth(ctx, reviewableFiles, opts)
+			addCheck(c)
+			addFindings(ff)
+			mu.Lock()
+			healthReport = report
+			mu.Unlock()
+		}()
+	}
+
+	// Hotspots — uses pre-computed scores, no tree-sitter needed.
+	if checkEnabled("hotspots") {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, ff := e.checkHotspotsWithScores(ctx, reviewableFiles, hotspotScores)
+			addCheck(c)
+			addFindings(ff)
+		}()
+	}
+
+	// Risk — uses pre-computed data, no tree-sitter or SummarizePR needed.
+	if checkEnabled("risk") {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, ff := e.checkRiskScoreFast(ctx, diffStats, reviewableFiles, modules, hotspotScores, opts)
+			addCheck(c)
+			addFindings(ff)
+		}()
+	}
+
+	if checkEnabled("test-gaps") {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, ff := e.checkTestGaps(ctx, reviewableFiles, opts)
+			addCheck(c)
+			addFindings(ff)
+		}()
 	}
 
 	// Check: Coupling Gaps
@@ -1247,6 +1264,105 @@ func mergeReviewConfig(policy *ReviewPolicy, rc *config.ReviewConfig) {
 	if policy.TestGapMinLines == 0 && rc.TestGapMinLines > 0 {
 		policy.TestGapMinLines = rc.TestGapMinLines
 	}
+}
+
+// getHotspotScoreMapFast returns a file→score map without tree-sitter enrichment.
+func (e *Engine) getHotspotScoreMapFast(ctx context.Context) map[string]float64 {
+	resp, err := e.GetHotspots(ctx, GetHotspotsOptions{Limit: 100, SkipComplexity: true})
+	if err != nil {
+		return nil
+	}
+	scores := make(map[string]float64, len(resp.Hotspots))
+	for _, h := range resp.Hotspots {
+		if h.Ranking != nil {
+			scores[h.FilePath] = h.Ranking.Score
+		}
+	}
+	return scores
+}
+
+// checkHotspotsWithScores checks hotspot overlap using a pre-computed score map.
+func (e *Engine) checkHotspotsWithScores(ctx context.Context, files []string, hotspotScores map[string]float64) (ReviewCheck, []ReviewFinding) {
+	start := time.Now()
+
+	var findings []ReviewFinding
+	hotspotCount := 0
+	for _, f := range files {
+		if score, ok := hotspotScores[f]; ok && score > 0.5 {
+			hotspotCount++
+			findings = append(findings, ReviewFinding{
+				Check:    "hotspots",
+				Severity: "info",
+				File:     f,
+				Message:  fmt.Sprintf("Hotspot file (score: %.2f) — extra review attention recommended", score),
+				Category: "risk",
+				RuleID:   "ckb/hotspots/volatile-file",
+			})
+		}
+	}
+
+	status := "pass"
+	summary := "No volatile files touched"
+	if hotspotCount > 0 {
+		status = "info"
+		summary = fmt.Sprintf("%d hotspot file(s) touched", hotspotCount)
+	}
+
+	return ReviewCheck{
+		Name:     "hotspots",
+		Status:   status,
+		Severity: "info",
+		Summary:  summary,
+		Duration: time.Since(start).Milliseconds(),
+	}, findings
+}
+
+// checkRiskScoreFast computes risk score from already-available data instead
+// of calling SummarizePR (which re-does the diff and hotspot analysis).
+func (e *Engine) checkRiskScoreFast(ctx context.Context, diffStats []git.DiffStats, files []string, modules map[string]bool, hotspotScores map[string]float64, opts ReviewPROptions) (ReviewCheck, []ReviewFinding) {
+	start := time.Now()
+
+	totalChanges := 0
+	for _, ds := range diffStats {
+		totalChanges += ds.Additions + ds.Deletions
+	}
+	hotspotCount := 0
+	for _, f := range files {
+		if score, ok := hotspotScores[f]; ok && score > 0.5 {
+			hotspotCount++
+		}
+	}
+
+	risk := calculatePRRisk(len(diffStats), totalChanges, hotspotCount, len(modules))
+
+	score := risk.Score
+	level := risk.Level
+
+	status := "pass"
+	severity := "warning"
+	summary := fmt.Sprintf("Risk score: %.2f (%s)", score, level)
+
+	var findings []ReviewFinding
+	if opts.Policy.MaxRiskScore > 0 && score > opts.Policy.MaxRiskScore {
+		status = "warn"
+		for _, factor := range risk.Factors {
+			findings = append(findings, ReviewFinding{
+				Check:    "risk",
+				Severity: "warning",
+				Message:  factor,
+				Category: "risk",
+				RuleID:   "ckb/risk/high-score",
+			})
+		}
+	}
+
+	return ReviewCheck{
+		Name:     "risk",
+		Status:   status,
+		Severity: severity,
+		Summary:  summary,
+		Duration: time.Since(start).Milliseconds(),
+	}, findings
 }
 
 // filterDiffByScope filters diff stats by scope. If scope contains / or .

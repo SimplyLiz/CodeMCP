@@ -7,8 +7,7 @@ import (
 )
 
 // checkTestGaps finds untested functions in the changed files.
-// IMPORTANT: This check uses tree-sitter via testgap.Analyzer and MUST run
-// in the serialized tree-sitter goroutine block.
+// Uses tree-sitter internally — acquires e.tsMu around AnalyzeTestGaps calls.
 func (e *Engine) checkTestGaps(ctx context.Context, changedFiles []string, opts ReviewPROptions) (ReviewCheck, []ReviewFinding) {
 	start := time.Now()
 
@@ -34,11 +33,13 @@ func (e *Engine) checkTestGaps(ctx context.Context, changedFiles []string, opts 
 		if ctx.Err() != nil {
 			break
 		}
+		e.tsMu.Lock()
 		result, err := e.AnalyzeTestGaps(ctx, AnalyzeTestGapsOptions{
 			Target:   file,
 			MinLines: minLines,
 			Limit:    10,
 		})
+		e.tsMu.Unlock()
 		if err != nil {
 			continue
 		}

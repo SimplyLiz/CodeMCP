@@ -8,10 +8,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/SimplyLiz/CodeMCP/internal/complexity"
-	"github.com/SimplyLiz/CodeMCP/internal/coupling"
 	"github.com/SimplyLiz/CodeMCP/internal/ownership"
 )
 
@@ -83,23 +84,31 @@ func (e *Engine) checkCodeHealth(ctx context.Context, files []string, opts Revie
 		capped = capped[:maxHealthFiles]
 	}
 
+	// Filter to existing files
+	var existingFiles []string
 	for _, file := range capped {
-		// Check for context cancellation between files
+		absPath := filepath.Join(e.repoRoot, file)
+		if _, err := os.Stat(absPath); !os.IsNotExist(err) {
+			existingFiles = append(existingFiles, file)
+		}
+	}
+
+	// Batch compute repo-level metrics (churn, coupling, bus factor, age)
+	// in 3 git calls + parallel blame instead of 4 × N sequential calls.
+	metricsMap := e.batchRepoMetrics(ctx, existingFiles)
+
+	for _, file := range existingFiles {
 		if ctx.Err() != nil {
 			break
 		}
 
-		absPath := filepath.Join(e.repoRoot, file)
-		if _, err := os.Stat(absPath); os.IsNotExist(err) {
-			continue
-		}
+		rm := metricsMap[file]
 
-		// Compute repo-level metrics once — they are branch-independent
-		// so before/after values are identical and contribute zero to the delta.
-		rm := e.computeRepoMetrics(ctx, file)
-
+		e.tsMu.Lock()
 		after := e.calculateFileHealth(ctx, file, rm, analyzer)
-		before, isNew := e.calculateBaseFileHealth(ctx, file, opts.BaseBranch, rm, analyzer)
+		e.tsMu.Unlock()
+
+		before, isNew := e.calculateBaseFileHealthLocked(ctx, file, opts.BaseBranch, rm, analyzer)
 
 		delta := after - before
 		grade := healthGrade(after)
@@ -207,13 +216,222 @@ func (e *Engine) checkCodeHealth(ctx context.Context, files []string, opts Revie
 	}, findings, report
 }
 
-// computeRepoMetrics computes branch-independent metrics for a file once.
-func (e *Engine) computeRepoMetrics(ctx context.Context, file string) repoMetrics {
-	return repoMetrics{
-		churn:    e.churnToScore(ctx, file),
-		coupling: e.couplingToScore(ctx, file),
-		bus:      e.busFactorToScore(file),
-		age:      e.ageToScore(ctx, file),
+// batchRepoMetrics computes repo-level metrics for all files using batched
+// git operations instead of 4 × N individual subprocess calls.
+//
+// Before: 30 files × (git log + git blame + coupling analyze + git log) = ~120+ calls
+// After:  1 git log --name-only + parallel git blame = ~12 calls
+func (e *Engine) batchRepoMetrics(ctx context.Context, files []string) map[string]repoMetrics {
+	result := make(map[string]repoMetrics, len(files))
+	for _, f := range files {
+		result[f] = repoMetrics{churn: 75, coupling: 75, bus: 75, age: 75}
+	}
+
+	if e.gitAdapter == nil || !e.gitAdapter.IsAvailable() {
+		return result
+	}
+
+	// --- Batch 1: Single git log for churn + age + coupling ---
+	// One command replaces per-file GetFileHistory + coupling.Analyze calls.
+	sinceDate := time.Now().AddDate(0, 0, -365).Format("2006-01-02")
+	cmd := exec.CommandContext(ctx, "git", "log",
+		"--format=COMMIT:%aI", "--name-only",
+		"--since="+sinceDate)
+	cmd.Dir = e.repoRoot
+	logOutput, err := cmd.Output()
+	if err == nil {
+		churnAge, cochangeMatrix := parseGitLogBatch(string(logOutput))
+
+		// Build file set for fast lookup
+		fileSet := make(map[string]bool, len(files))
+		for _, f := range files {
+			fileSet[f] = true
+		}
+
+		for _, f := range files {
+			rm := result[f]
+
+			// Churn score — commit count in last 30 days
+			if ca, ok := churnAge[f]; ok {
+				rm.churn = churnCountToScore(ca.commitCount30d)
+				rm.age = ageDaysToScore(ca.daysSinceLastCommit)
+			}
+
+			// Coupling score — count of highly correlated files
+			if commits, ok := cochangeMatrix[f]; ok && len(commits) > 0 {
+				coupled := countCoupledFiles(f, commits, cochangeMatrix, fileSet)
+				rm.coupling = coupledCountToScore(coupled)
+			}
+
+			result[f] = rm
+		}
+	}
+
+	// --- Batch 2: Parallel git blame for bus factor ---
+	// Run up to 5 concurrent blame calls instead of 30 sequential.
+	const maxBlameWorkers = 5
+	blameCh := make(chan string, len(files))
+	for _, f := range files {
+		blameCh <- f
+	}
+	close(blameCh)
+
+	var blameMu sync.Mutex
+	var blameWg sync.WaitGroup
+	workers := maxBlameWorkers
+	if len(files) < workers {
+		workers = len(files)
+	}
+	for i := 0; i < workers; i++ {
+		blameWg.Add(1)
+		go func() {
+			defer blameWg.Done()
+			for file := range blameCh {
+				if ctx.Err() != nil {
+					return
+				}
+				busScore := e.busFactorToScore(file)
+				blameMu.Lock()
+				rm := result[file]
+				rm.bus = busScore
+				result[file] = rm
+				blameMu.Unlock()
+			}
+		}()
+	}
+	blameWg.Wait()
+
+	return result
+}
+
+// churnAgeInfo holds per-file data extracted from a single git log scan.
+type churnAgeInfo struct {
+	commitCount30d      int
+	daysSinceLastCommit float64
+}
+
+// parseGitLogBatch parses output of `git log --format=COMMIT:%aI --name-only`
+// and returns per-file churn/age info plus a co-change matrix (file → list of commit indices).
+func parseGitLogBatch(output string) (map[string]churnAgeInfo, map[string][]int) {
+	churnAge := make(map[string]churnAgeInfo)
+	cochange := make(map[string][]int) // file → commit indices
+
+	now := time.Now()
+	thirtyDaysAgo := now.AddDate(0, 0, -30)
+
+	lines := strings.Split(output, "\n")
+	commitIdx := -1
+	var commitTime time.Time
+
+	for _, line := range lines {
+		if strings.HasPrefix(line, "COMMIT:") {
+			commitIdx++
+			ts := strings.TrimPrefix(line, "COMMIT:")
+			parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(ts))
+			if err == nil {
+				commitTime = parsed
+			}
+			continue
+		}
+
+		file := strings.TrimSpace(line)
+		if file == "" {
+			continue
+		}
+
+		// Track co-change matrix
+		cochange[file] = append(cochange[file], commitIdx)
+
+		// Track churn + age
+		ca := churnAge[file]
+		if !commitTime.IsZero() {
+			if commitTime.After(thirtyDaysAgo) {
+				ca.commitCount30d++
+			}
+			daysSince := now.Sub(commitTime).Hours() / 24
+			if ca.daysSinceLastCommit == 0 || daysSince < ca.daysSinceLastCommit {
+				ca.daysSinceLastCommit = daysSince
+			}
+		}
+		churnAge[file] = ca
+	}
+
+	return churnAge, cochange
+}
+
+// countCoupledFiles counts how many files are highly correlated (>= 70% co-change rate)
+// with the target file, considering only files in the review set.
+func countCoupledFiles(target string, targetCommits []int, cochange map[string][]int, fileSet map[string]bool) int {
+	if len(targetCommits) == 0 {
+		return 0
+	}
+
+	// Build set of target's commit indices
+	commitSet := make(map[int]bool, len(targetCommits))
+	for _, c := range targetCommits {
+		commitSet[c] = true
+	}
+
+	coupled := 0
+	for file, commits := range cochange {
+		if file == target {
+			continue
+		}
+		// Count overlapping commits
+		overlap := 0
+		for _, c := range commits {
+			if commitSet[c] {
+				overlap++
+			}
+		}
+		rate := float64(overlap) / float64(len(targetCommits))
+		if rate >= 0.3 {
+			coupled++
+		}
+	}
+	return coupled
+}
+
+func churnCountToScore(commits int) float64 {
+	switch {
+	case commits <= 2:
+		return 100
+	case commits <= 5:
+		return 80
+	case commits <= 10:
+		return 60
+	case commits <= 20:
+		return 40
+	default:
+		return 20
+	}
+}
+
+func ageDaysToScore(days float64) float64 {
+	switch {
+	case days <= 30:
+		return 100
+	case days <= 90:
+		return 85
+	case days <= 180:
+		return 70
+	case days <= 365:
+		return 50
+	default:
+		return 30
+	}
+}
+
+func coupledCountToScore(coupled int) float64 {
+	switch {
+	case coupled <= 2:
+		return 100
+	case coupled <= 5:
+		return 80
+	case coupled <= 10:
+		return 60
+	default:
+		return 40
 	}
 }
 
@@ -253,30 +471,29 @@ func (e *Engine) calculateFileHealth(ctx context.Context, file string, rm repoMe
 	return int(math.Round(score))
 }
 
-// calculateBaseFileHealth gets the health of a file at a base branch ref.
-// Only computes file-specific metrics (complexity, size) from the base version.
-// Repo-level metrics (churn, coupling, bus factor, age) are branch-independent
-// and already included via the shared repoMetrics.
-// analyzer may be nil if tree-sitter is not available.
-// calculateBaseFileHealth returns (health score, isNewFile).
-func (e *Engine) calculateBaseFileHealth(ctx context.Context, file string, baseBranch string, rm repoMetrics, analyzer *complexity.Analyzer) (int, bool) {
+// calculateBaseFileHealthLocked gets the health of a file at a base branch ref.
+// Acquires tsMu only for tree-sitter calls; git show runs unlocked.
+func (e *Engine) calculateBaseFileHealthLocked(ctx context.Context, file string, baseBranch string, rm repoMetrics, analyzer *complexity.Analyzer) (int, bool) {
 	if baseBranch == "" {
-		return e.calculateFileHealth(ctx, file, rm, analyzer), false
+		e.tsMu.Lock()
+		score := e.calculateFileHealth(ctx, file, rm, analyzer)
+		e.tsMu.Unlock()
+		return score, false
 	}
 
-	// Get the file content at the base branch
+	// git show runs without the tree-sitter lock
 	cmd := exec.CommandContext(ctx, "git", "-C", e.repoRoot, "show", baseBranch+":"+file)
 	content, err := cmd.Output()
 	if err != nil {
-		// File doesn't exist at base — it's a new file.
-		// Use 0 as baseline so the delta is purely the file's health score.
-		return 0, true
+		return 0, true // New file
 	}
 
-	// Write to temp file for analysis
 	tmpFile, err := os.CreateTemp("", "ckb-base-*"+filepath.Ext(file))
 	if err != nil {
-		return e.calculateFileHealth(ctx, file, rm, analyzer), false
+		e.tsMu.Lock()
+		score := e.calculateFileHealth(ctx, file, rm, analyzer)
+		e.tsMu.Unlock()
+		return score, false
 	}
 	defer func() {
 		tmpFile.Close()
@@ -284,15 +501,20 @@ func (e *Engine) calculateBaseFileHealth(ctx context.Context, file string, baseB
 	}()
 
 	if _, err := tmpFile.Write(content); err != nil {
-		return e.calculateFileHealth(ctx, file, rm, analyzer), false
+		e.tsMu.Lock()
+		score := e.calculateFileHealth(ctx, file, rm, analyzer)
+		e.tsMu.Unlock()
+		return score, false
 	}
 	tmpFile.Close()
 
 	score := 100.0
 
-	// Cyclomatic complexity (20%) — from base file content
+	// Tree-sitter: lock only for AnalyzeFile
 	if analyzer != nil {
+		e.tsMu.Lock()
 		result, err := analyzer.AnalyzeFile(ctx, tmpFile.Name())
+		e.tsMu.Unlock()
 		if err == nil && result.Error == "" {
 			cycScore := complexityToScore(result.MaxCyclomatic)
 			score -= (100 - cycScore) * weightCyclomatic
@@ -302,12 +524,10 @@ func (e *Engine) calculateBaseFileHealth(ctx context.Context, file string, baseB
 		}
 	}
 
-	// File size (10%) — from base file content
 	loc := countLines(tmpFile.Name())
 	locScore := fileSizeToScore(loc)
 	score -= (100 - locScore) * weightFileSize
 
-	// Repo-level metrics — same as current (branch-independent)
 	score -= (100 - rm.churn) * weightChurn
 	score -= (100 - rm.coupling) * weightCoupling
 	score -= (100 - rm.bus) * weightBusFactor
@@ -351,53 +571,6 @@ func fileSizeToScore(loc int) float64 {
 	}
 }
 
-func (e *Engine) churnToScore(ctx context.Context, file string) float64 {
-	if e.gitAdapter == nil {
-		return 75
-	}
-	history, err := e.gitAdapter.GetFileHistory(file, 30)
-	if err != nil || history == nil {
-		return 75
-	}
-	commits := history.CommitCount
-	switch {
-	case commits <= 2:
-		return 100
-	case commits <= 5:
-		return 80
-	case commits <= 10:
-		return 60
-	case commits <= 20:
-		return 40
-	default:
-		return 20
-	}
-}
-
-func (e *Engine) couplingToScore(ctx context.Context, file string) float64 {
-	analyzer := coupling.NewAnalyzer(e.repoRoot, e.logger)
-	result, err := analyzer.Analyze(ctx, coupling.AnalyzeOptions{
-		RepoRoot:       e.repoRoot,
-		Target:         file,
-		MinCorrelation: 0.3,
-		Limit:          20,
-	})
-	if err != nil {
-		return 75
-	}
-	coupled := len(result.Correlations)
-	switch {
-	case coupled <= 2:
-		return 100
-	case coupled <= 5:
-		return 80
-	case coupled <= 10:
-		return 60
-	default:
-		return 40
-	}
-}
-
 func (e *Engine) busFactorToScore(file string) float64 {
 	result, err := ownership.RunGitBlame(e.repoRoot, file)
 	if err != nil {
@@ -420,33 +593,6 @@ func (e *Engine) busFactorToScore(file string) float64 {
 		return 60
 	default:
 		return 30 // Single author = bus factor 1
-	}
-}
-
-func (e *Engine) ageToScore(_ context.Context, file string) float64 {
-	if e.gitAdapter == nil {
-		return 75
-	}
-	history, err := e.gitAdapter.GetFileHistory(file, 1)
-	if err != nil || history == nil || len(history.Commits) == 0 {
-		return 75
-	}
-	ts, err := time.Parse(time.RFC3339, history.Commits[0].Timestamp)
-	if err != nil {
-		return 75
-	}
-	daysSince := time.Since(ts).Hours() / 24
-	switch {
-	case daysSince <= 30:
-		return 100 // Recently maintained
-	case daysSince <= 90:
-		return 85
-	case daysSince <= 180:
-		return 70
-	case daysSince <= 365:
-		return 50
-	default:
-		return 30 // Stale
 	}
 }
 
