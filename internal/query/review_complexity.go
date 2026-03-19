@@ -44,6 +44,9 @@ func (e *Engine) checkComplexityDelta(ctx context.Context, files []string, opts 
 	maxDelta := opts.Policy.MaxComplexityDelta
 
 	for _, file := range files {
+		if ctx.Err() != nil {
+			break
+		}
 		absPath := filepath.Join(e.repoRoot, file)
 
 		// Analyze current version

@@ -31,13 +31,16 @@ func (e *Engine) checkCouplingGaps(ctx context.Context, changedFiles []string) (
 	var gaps []CouplingGap
 
 	// For each changed file, check if its highly-coupled partners are also in the changeset
-	// Limit to first 30 files to avoid excessive git log calls
+	// Limit to first 20 files to avoid excessive git log calls
 	filesToCheck := changedFiles
-	if len(filesToCheck) > 30 {
-		filesToCheck = filesToCheck[:30]
+	if len(filesToCheck) > 20 {
+		filesToCheck = filesToCheck[:20]
 	}
 
 	for _, file := range filesToCheck {
+		if ctx.Err() != nil {
+			break
+		}
 		result, err := analyzer.Analyze(ctx, coupling.AnalyzeOptions{
 			Target:         file,
 			MinCorrelation: minCorrelation,

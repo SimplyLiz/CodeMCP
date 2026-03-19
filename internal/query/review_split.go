@@ -128,12 +128,15 @@ func (e *Engine) addCouplingEdges(ctx context.Context, files []string, adj map[s
 	}
 
 	// Limit coupling lookups for performance
-	limit := 30
+	limit := 20
 	if len(files) < limit {
 		limit = len(files)
 	}
 
 	for _, f := range files[:limit] {
+		if ctx.Err() != nil {
+			break
+		}
 		result, err := analyzer.Analyze(ctx, coupling.AnalyzeOptions{
 			RepoRoot:       e.repoRoot,
 			Target:         f,

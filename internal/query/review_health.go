@@ -46,7 +46,20 @@ const (
 	weightBusFactor  = 0.10
 	weightAge        = 0.10
 	weightCoverage   = 0.10
+
+	// Maximum files to compute health for. Beyond this, the check
+	// reports results for the first N files only.
+	maxHealthFiles = 30
 )
+
+// repoMetrics caches branch-independent per-file metrics (churn, coupling,
+// bus factor, age) so they're computed once, not twice (before + after).
+type repoMetrics struct {
+	churn    float64
+	coupling float64
+	bus      float64
+	age      float64
+}
 
 // checkCodeHealth calculates health score deltas for changed files.
 func (e *Engine) checkCodeHealth(ctx context.Context, files []string, opts ReviewPROptions) (ReviewCheck, []ReviewFinding, *CodeHealthReport) {
@@ -55,14 +68,29 @@ func (e *Engine) checkCodeHealth(ctx context.Context, files []string, opts Revie
 	var deltas []CodeHealthDelta
 	var findings []ReviewFinding
 
-	for _, file := range files {
+	// Cap file count to avoid excessive subprocess calls
+	capped := files
+	if len(capped) > maxHealthFiles {
+		capped = capped[:maxHealthFiles]
+	}
+
+	for _, file := range capped {
+		// Check for context cancellation between files
+		if ctx.Err() != nil {
+			break
+		}
+
 		absPath := filepath.Join(e.repoRoot, file)
 		if _, err := os.Stat(absPath); os.IsNotExist(err) {
 			continue
 		}
 
-		after := e.calculateFileHealth(ctx, file)
-		before := e.calculateBaseFileHealth(ctx, file, opts.BaseBranch)
+		// Compute repo-level metrics once — they are branch-independent
+		// so before/after values are identical and contribute zero to the delta.
+		rm := e.computeRepoMetrics(ctx, file)
+
+		after := e.calculateFileHealth(ctx, file, rm)
+		before := e.calculateBaseFileHealth(ctx, file, opts.BaseBranch, rm)
 
 		delta := after - before
 		grade := healthGrade(after)
@@ -149,8 +177,18 @@ func (e *Engine) checkCodeHealth(ctx context.Context, files []string, opts Revie
 	}, findings, report
 }
 
+// computeRepoMetrics computes branch-independent metrics for a file once.
+func (e *Engine) computeRepoMetrics(ctx context.Context, file string) repoMetrics {
+	return repoMetrics{
+		churn:    e.churnToScore(ctx, file),
+		coupling: e.couplingToScore(ctx, file),
+		bus:      e.busFactorToScore(file),
+		age:      e.ageToScore(ctx, file),
+	}
+}
+
 // calculateFileHealth computes a 0-100 health score for a file in its current state.
-func (e *Engine) calculateFileHealth(ctx context.Context, file string) int {
+func (e *Engine) calculateFileHealth(ctx context.Context, file string, rm repoMetrics) int {
 	absPath := filepath.Join(e.repoRoot, file)
 	score := 100.0
 
@@ -173,24 +211,11 @@ func (e *Engine) calculateFileHealth(ctx context.Context, file string) int {
 	locScore := fileSizeToScore(loc)
 	score -= (100 - locScore) * weightFileSize
 
-	// Churn (15%) — number of recent changes
-	churnScore := e.churnToScore(ctx, file)
-	score -= (100 - churnScore) * weightChurn
-
-	// Coupling degree (10%)
-	couplingScore := e.couplingToScore(ctx, file)
-	score -= (100 - couplingScore) * weightCoupling
-
-	// Bus factor (10%)
-	busScore := e.busFactorToScore(file)
-	score -= (100 - busScore) * weightBusFactor
-
-	// Age since last change (10%) — older unchanged = higher risk of rot
-	ageScore := e.ageToScore(ctx, file)
-	score -= (100 - ageScore) * weightAge
-
-	// Coverage placeholder (10%) — not yet implemented, assume neutral
-	// When coverage data is available, this will be filled in
+	// Repo-level metrics (pre-computed, branch-independent)
+	score -= (100 - rm.churn) * weightChurn
+	score -= (100 - rm.coupling) * weightCoupling
+	score -= (100 - rm.bus) * weightBusFactor
+	score -= (100 - rm.age) * weightAge
 
 	if score < 0 {
 		score = 0
@@ -199,12 +224,12 @@ func (e *Engine) calculateFileHealth(ctx context.Context, file string) int {
 }
 
 // calculateBaseFileHealth gets the health of a file at a base branch ref.
-// Uses git show to retrieve the file at the base ref, then calculates
-// file-specific metrics (complexity, size) while using current repo-level
-// metrics (churn, coupling, bus factor, age) which are branch-independent.
-func (e *Engine) calculateBaseFileHealth(ctx context.Context, file string, baseBranch string) int {
+// Only computes file-specific metrics (complexity, size) from the base version.
+// Repo-level metrics (churn, coupling, bus factor, age) are branch-independent
+// and already included via the shared repoMetrics.
+func (e *Engine) calculateBaseFileHealth(ctx context.Context, file string, baseBranch string, rm repoMetrics) int {
 	if baseBranch == "" {
-		return e.calculateFileHealth(ctx, file)
+		return e.calculateFileHealth(ctx, file, rm)
 	}
 
 	// Get the file content at the base branch
@@ -219,7 +244,7 @@ func (e *Engine) calculateBaseFileHealth(ctx context.Context, file string, baseB
 	// Write to temp file for analysis
 	tmpFile, err := os.CreateTemp("", "ckb-base-*"+filepath.Ext(file))
 	if err != nil {
-		return e.calculateFileHealth(ctx, file)
+		return e.calculateFileHealth(ctx, file, rm)
 	}
 	defer func() {
 		tmpFile.Close()
@@ -227,7 +252,7 @@ func (e *Engine) calculateBaseFileHealth(ctx context.Context, file string, baseB
 	}()
 
 	if _, err := tmpFile.Write(content); err != nil {
-		return e.calculateFileHealth(ctx, file)
+		return e.calculateFileHealth(ctx, file, rm)
 	}
 	tmpFile.Close()
 
@@ -251,18 +276,11 @@ func (e *Engine) calculateBaseFileHealth(ctx context.Context, file string, baseB
 	locScore := fileSizeToScore(loc)
 	score -= (100 - locScore) * weightFileSize
 
-	// Repo-level metrics are branch-independent, use current values
-	churnScore := e.churnToScore(ctx, file)
-	score -= (100 - churnScore) * weightChurn
-
-	couplingScore := e.couplingToScore(ctx, file)
-	score -= (100 - couplingScore) * weightCoupling
-
-	busScore := e.busFactorToScore(file)
-	score -= (100 - busScore) * weightBusFactor
-
-	ageScore := e.ageToScore(ctx, file)
-	score -= (100 - ageScore) * weightAge
+	// Repo-level metrics — same as current (branch-independent)
+	score -= (100 - rm.churn) * weightChurn
+	score -= (100 - rm.coupling) * weightCoupling
+	score -= (100 - rm.bus) * weightBusFactor
+	score -= (100 - rm.age) * weightAge
 
 	if score < 0 {
 		score = 0
