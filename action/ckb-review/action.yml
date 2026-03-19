@@ -80,7 +80,7 @@ runs:
         [ -n "${INPUT_TRACE_PATTERNS}" ] && FLAGS="${FLAGS} --trace-patterns=${INPUT_TRACE_PATTERNS}"
         [ "${INPUT_REQUIRE_INDEPENDENT}" = "true" ] && FLAGS="${FLAGS} --require-independent"
 
-        # Run review once per format to avoid re-running the full engine
+        # Run review for each output format (JSON for outputs, GHA for annotations, markdown for PR comment)
         set +e
         ckb review ${FLAGS} --format=json > review.json 2>&1
         EXIT_CODE=$?
@@ -153,4 +153,6 @@ runs:
     - name: Set exit code
       shell: bash
       if: steps.review.outputs.exit_code != '0'
-      run: exit ${{ steps.review.outputs.exit_code }}
+      env:
+        REVIEW_EXIT_CODE: ${{ steps.review.outputs.exit_code }}
+      run: exit "${REVIEW_EXIT_CODE}"

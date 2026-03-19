@@ -12,6 +12,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   lint:
@@ -182,4 +183,96 @@ jobs:
           name: ckb-linux-amd64
           path: ckb
           retention-days: 7
+
+  pr-review:
+    name: PR Review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [build]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Download CKB binary
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v6
+        with:
+          name: ckb-linux-amd64
+
+      - name: Install CKB
+        run: chmod +x ckb && sudo mv ckb /usr/local/bin/
+
+      - name: Initialize and index
+        run: |
+          ckb init
+          ckb index 2>/dev/null || echo "Indexing skipped (no supported indexer)"
+
+      - name: Run review
+        id: review
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set +e
+          ckb review --ci --base="${BASE_REF}" --format=json > review.json 2>&1
+          EXIT_CODE=$?
+          set -e
+
+          echo "verdict=$(jq -r '.verdict // "unknown"' review.json)" >> "$GITHUB_OUTPUT"
+          echo "score=$(jq -r '.score // 0' review.json)" >> "$GITHUB_OUTPUT"
+          echo "findings=$(jq -r '.findings | length // 0' review.json)" >> "$GITHUB_OUTPUT"
+          echo "exit_code=${EXIT_CODE}" >> "$GITHUB_OUTPUT"
+
+      - name: GitHub Actions annotations
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: ckb review --base="${BASE_REF}" --format=github-actions 2>/dev/null || true
+
+      - name: Post PR comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          MARKDOWN=$(ckb review --base="${BASE_REF}" --format=markdown 2>/dev/null || echo "CKB review failed to generate output.")
+          MARKER="<!-- ckb-review-marker -->"
+
+          COMMENT_ID=$(gh api \
+            "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" \
+            --jq ".[] | select(.body | contains(\"${MARKER}\")) | .id" \
+            2>/dev/null | head -1)
+
+          if [ -n "${COMMENT_ID}" ]; then
+            gh api \
+              "repos/${GH_REPO}/issues/comments/${COMMENT_ID}" \
+              -X PATCH \
+              -f body="${MARKDOWN}"
+          else
+            gh api \
+              "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" \
+              -f body="${MARKDOWN}"
+          fi
+
+      - name: Summary
+        env:
+          VERDICT: ${{ steps.review.outputs.verdict }}
+          SCORE: ${{ steps.review.outputs.score }}
+          FINDINGS: ${{ steps.review.outputs.findings }}
+        run: |
+          echo "### CKB Review" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Verdict | ${VERDICT} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Score | ${SCORE}/100 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Findings | ${FINDINGS} |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail on review verdict
+        env:
+          REVIEW_EXIT_CODE: ${{ steps.review.outputs.exit_code }}
+        run: |
+          if [ "${REVIEW_EXIT_CODE}" = "1" ]; then
+            echo "::error::CKB review failed (score: ${SCORE})"
+            exit 1
+          fi
 
