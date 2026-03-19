@@ -996,12 +996,18 @@ func sortChecks(checks []ReviewCheck) {
 }
 
 func sortFindings(findings []ReviewFinding) {
-	order := map[string]int{"error": 0, "warning": 1, "info": 2}
-	sort.Slice(findings, func(i, j int) bool {
-		oi, oj := order[findings[i].Severity], order[findings[j].Severity]
-		if oi != oj {
-			return oi < oj
+	sevOrder := map[string]int{"error": 0, "warning": 1, "info": 2}
+	sort.SliceStable(findings, func(i, j int) bool {
+		// Primary: tier (1=blocking first)
+		if findings[i].Tier != findings[j].Tier {
+			return findings[i].Tier < findings[j].Tier
 		}
+		// Secondary: severity within tier
+		si, sj := sevOrder[findings[i].Severity], sevOrder[findings[j].Severity]
+		if si != sj {
+			return si < sj
+		}
+		// Tertiary: file path for determinism
 		return findings[i].File < findings[j].File
 	})
 }

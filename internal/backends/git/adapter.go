@@ -119,6 +119,15 @@ func (g *GitAdapter) Capabilities() []string {
 	}
 }
 
+// GetHeadAuthorEmail returns the author email of the HEAD commit.
+func (g *GitAdapter) GetHeadAuthorEmail() (string, error) {
+	output, err := g.executeGitCommand("log", "-1", "--format=%ae", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(output), nil
+}
+
 // executeGitCommand runs a git command with timeout and returns the output
 func (g *GitAdapter) executeGitCommand(args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), g.queryTimeout)

@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -72,10 +73,13 @@ type PRRiskAssessment struct {
 
 // SuggestedReview represents a suggested reviewer.
 type SuggestedReview struct {
-	Owner      string  `json:"owner"`
-	Reason     string  `json:"reason"`
-	Coverage   float64 `json:"coverage"` // % of changed files they own
-	Confidence float64 `json:"confidence"`
+	Owner         string  `json:"owner"`
+	Reason        string  `json:"reason"`
+	Coverage      float64 `json:"coverage"` // % of changed files they own
+	Confidence    float64 `json:"confidence"`
+	ExpertiseArea string  `json:"expertiseArea,omitempty"` // Top module/directory they own
+	LastActiveAt  string  `json:"lastActiveAt,omitempty"`  // RFC3339 of last commit
+	IsAuthor      bool    `json:"isAuthor,omitempty"`      // True if this person is the PR author
 }
 
 // SummarizePR generates a summary of changes between branches.
@@ -270,7 +274,11 @@ func (e *Engine) getHotspotScoreMap(ctx context.Context) map[string]float64 {
 
 // getSuggestedReviewers identifies potential reviewers based on ownership.
 func (e *Engine) getSuggestedReviewers(ctx context.Context, files []PRFileChange) []SuggestedReview {
-	ownerCounts := make(map[string]int)
+	type ownerStats struct {
+		fileCount int
+		dirs      map[string]int // directory → file count (for expertise area)
+	}
+	ownerMap := make(map[string]*ownerStats)
 	totalFiles := len(files)
 
 	// Cap ownership lookups to avoid N×git-blame calls on large PRs.
@@ -281,31 +289,71 @@ func (e *Engine) getSuggestedReviewers(ctx context.Context, files []PRFileChange
 		if i >= maxOwnershipLookups {
 			break
 		}
-		opts := GetOwnershipOptions{Path: f.Path, IncludeBlame: i < 10} // only blame first 10
+		opts := GetOwnershipOptions{Path: f.Path, IncludeBlame: i < 10}
 		resp, err := e.GetOwnership(ctx, opts)
 		if err != nil || resp == nil {
 			continue
 		}
 
+		dir := filepath.Dir(f.Path)
 		for _, owner := range resp.Owners {
-			ownerCounts[owner.ID]++
+			stats, ok := ownerMap[owner.ID]
+			if !ok {
+				stats = &ownerStats{dirs: make(map[string]int)}
+				ownerMap[owner.ID] = stats
+			}
+			stats.fileCount++
+			stats.dirs[dir]++
 		}
 	}
 
-	// Convert to suggestions
+	// Detect PR author from HEAD commit
+	prAuthor := ""
+	if e.gitAdapter != nil {
+		if author, err := e.gitAdapter.GetHeadAuthorEmail(); err == nil {
+			prAuthor = author
+		}
+	}
+
+	// Convert to suggestions with expertise area
 	var suggestions []SuggestedReview
-	for owner, count := range ownerCounts {
-		coverage := float64(count) / float64(totalFiles)
+	for owner, stats := range ownerMap {
+		coverage := float64(stats.fileCount) / float64(totalFiles)
+
+		// Find top directory for expertise area
+		topDir := ""
+		topCount := 0
+		for dir, count := range stats.dirs {
+			if count > topCount {
+				topDir = dir
+				topCount = count
+			}
+		}
+
+		isAuthor := owner == prAuthor
+		reason := fmt.Sprintf("Owns %d of %d changed files", stats.fileCount, totalFiles)
+		if topDir != "" && topDir != "." {
+			reason += fmt.Sprintf(" (expert: %s)", topDir)
+		}
+		if isAuthor {
+			reason += " [author — needs independent reviewer]"
+		}
+
 		suggestions = append(suggestions, SuggestedReview{
-			Owner:      owner,
-			Reason:     fmt.Sprintf("Owns %d of %d changed files", count, totalFiles),
-			Coverage:   coverage,
-			Confidence: coverage,
+			Owner:         owner,
+			Reason:        reason,
+			Coverage:      coverage,
+			Confidence:    coverage,
+			ExpertiseArea: topDir,
+			IsAuthor:      isAuthor,
 		})
 	}
 
-	// Sort by coverage
-	sort.Slice(suggestions, func(i, j int) bool {
+	// Sort: non-authors first, then by coverage
+	sort.SliceStable(suggestions, func(i, j int) bool {
+		if suggestions[i].IsAuthor != suggestions[j].IsAuthor {
+			return !suggestions[i].IsAuthor // non-authors first
+		}
 		return suggestions[i].Coverage > suggestions[j].Coverage
 	})
 
