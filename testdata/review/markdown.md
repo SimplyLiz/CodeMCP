@@ -17,9 +17,8 @@
 
 ### Top Risks
 
-- 2 breaking API changes detected
-- 2 safety-critical files changed
-- +8 cyclomatic (engine.go)
+- 2 breaking API changes
+- Critical path touched
 
 <details><summary>Findings (8)</summary>
 
