@@ -28,6 +28,8 @@ var (
 	reviewMaxFiles      int
 	// Critical paths
 	reviewCriticalPaths []string
+	// Lint dedup
+	reviewLintReport string
 	// Traceability
 	reviewTracePatterns []string
 	reviewRequireTrace  bool
@@ -84,6 +86,7 @@ func init() {
 	reviewCmd.Flags().IntVar(&reviewMaxComplexity, "max-complexity", 0, "Maximum complexity delta (0 = disabled)")
 	reviewCmd.Flags().IntVar(&reviewMaxFiles, "max-files", 0, "Maximum file count (0 = disabled)")
 	reviewCmd.Flags().StringSliceVar(&reviewCriticalPaths, "critical-paths", nil, "Glob patterns for safety-critical paths")
+	reviewCmd.Flags().StringVar(&reviewLintReport, "lint-report", "", "Path to existing SARIF lint report to deduplicate against")
 
 	// Traceability
 	reviewCmd.Flags().StringSliceVar(&reviewTracePatterns, "trace-patterns", nil, "Regex patterns for ticket IDs (e.g., JIRA-\\d+)")
@@ -155,6 +158,17 @@ func runReview(cmd *cobra.Command, args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error running review: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Deduplicate against external lint report
+	if reviewLintReport != "" {
+		suppressed, lintErr := deduplicateLintFindings(response, reviewLintReport)
+		if lintErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not parse lint report: %v\n", lintErr)
+		} else if suppressed > 0 {
+			logger.Debug("Deduplicated findings against lint report",
+				"suppressed", suppressed, "remaining", len(response.Findings))
+		}
 	}
 
 	// Format output
