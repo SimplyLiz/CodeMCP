@@ -275,7 +275,7 @@ func (e *Engine) getSuggestedReviewers(ctx context.Context, files []PRFileChange
 	totalFiles := len(files)
 
 	for _, f := range files {
-		opts := GetOwnershipOptions{Path: f.Path}
+		opts := GetOwnershipOptions{Path: f.Path, IncludeBlame: true}
 		resp, err := e.GetOwnership(ctx, opts)
 		if err != nil || resp == nil {
 			continue

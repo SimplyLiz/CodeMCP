@@ -15,6 +15,12 @@
 | hotspots | ✅ PASS | No volatile files touched |
 | generated | ℹ️ INFO | 3 generated files detected and excluded |
 
+### Top Risks
+
+- 2 breaking API changes detected
+- 2 safety-critical files changed
+- +8 cyclomatic (engine.go)
+
 <details><summary>Findings (8)</summary>
 
 | Severity | File | Finding |

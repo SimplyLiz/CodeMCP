@@ -403,6 +403,15 @@ func formatReviewMarkdown(resp *query.ReviewPRResponse) string {
 	}
 	b.WriteString("\n")
 
+	// Top Risks — the review narrative between checks and findings
+	if len(resp.Summary.TopRisks) > 0 {
+		b.WriteString("### Top Risks\n\n")
+		for _, risk := range resp.Summary.TopRisks {
+			b.WriteString(fmt.Sprintf("- %s\n", risk))
+		}
+		b.WriteString("\n")
+	}
+
 	// Findings in collapsible section
 	if len(resp.Findings) > 0 {
 		b.WriteString(fmt.Sprintf("<details><summary>Findings (%d)</summary>\n\n", len(resp.Findings)))
