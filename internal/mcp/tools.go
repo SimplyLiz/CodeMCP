@@ -1850,7 +1850,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		// v8.2 Unified PR Review
 		{
 			Name:        "reviewPR",
-			Description: "Run a comprehensive PR review with quality gates. Orchestrates breaking changes, secrets, tests, complexity, coupling, hotspots, risk, and critical-path checks in parallel. Returns verdict (pass/warn/fail), score, findings, and suggested reviewers.",
+			Description: "Run a comprehensive PR review with quality gates. Orchestrates 14 checks (breaking, secrets, tests, complexity, health, coupling, hotspots, risk, critical-path, traceability, independence, generated, classify, split) concurrently where safe. Returns verdict (pass/warn/fail), score, findings, and suggested reviewers.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

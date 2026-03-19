@@ -68,6 +68,14 @@ func (e *Engine) checkCodeHealth(ctx context.Context, files []string, opts Revie
 	var deltas []CodeHealthDelta
 	var findings []ReviewFinding
 
+	// Create a single complexity analyzer to reuse across all files.
+	// Each call to NewAnalyzer allocates a cgo tree-sitter Parser;
+	// reusing one avoids 60+ unnecessary alloc/free cycles.
+	var analyzer *complexity.Analyzer
+	if complexity.IsAvailable() {
+		analyzer = complexity.NewAnalyzer()
+	}
+
 	// Cap file count to avoid excessive subprocess calls
 	capped := files
 	if len(capped) > maxHealthFiles {
@@ -89,8 +97,8 @@ func (e *Engine) checkCodeHealth(ctx context.Context, files []string, opts Revie
 		// so before/after values are identical and contribute zero to the delta.
 		rm := e.computeRepoMetrics(ctx, file)
 
-		after := e.calculateFileHealth(ctx, file, rm)
-		before := e.calculateBaseFileHealth(ctx, file, opts.BaseBranch, rm)
+		after := e.calculateFileHealth(ctx, file, rm, analyzer)
+		before := e.calculateBaseFileHealth(ctx, file, opts.BaseBranch, rm, analyzer)
 
 		delta := after - before
 		grade := healthGrade(after)
@@ -188,13 +196,13 @@ func (e *Engine) computeRepoMetrics(ctx context.Context, file string) repoMetric
 }
 
 // calculateFileHealth computes a 0-100 health score for a file in its current state.
-func (e *Engine) calculateFileHealth(ctx context.Context, file string, rm repoMetrics) int {
+// analyzer may be nil if tree-sitter is not available.
+func (e *Engine) calculateFileHealth(ctx context.Context, file string, rm repoMetrics, analyzer *complexity.Analyzer) int {
 	absPath := filepath.Join(e.repoRoot, file)
 	score := 100.0
 
 	// Cyclomatic complexity (20%)
-	if complexity.IsAvailable() {
-		analyzer := complexity.NewAnalyzer()
+	if analyzer != nil {
 		result, err := analyzer.AnalyzeFile(ctx, absPath)
 		if err == nil && result.Error == "" {
 			cycScore := complexityToScore(result.MaxCyclomatic)
@@ -227,9 +235,10 @@ func (e *Engine) calculateFileHealth(ctx context.Context, file string, rm repoMe
 // Only computes file-specific metrics (complexity, size) from the base version.
 // Repo-level metrics (churn, coupling, bus factor, age) are branch-independent
 // and already included via the shared repoMetrics.
-func (e *Engine) calculateBaseFileHealth(ctx context.Context, file string, baseBranch string, rm repoMetrics) int {
+// analyzer may be nil if tree-sitter is not available.
+func (e *Engine) calculateBaseFileHealth(ctx context.Context, file string, baseBranch string, rm repoMetrics, analyzer *complexity.Analyzer) int {
 	if baseBranch == "" {
-		return e.calculateFileHealth(ctx, file, rm)
+		return e.calculateFileHealth(ctx, file, rm, analyzer)
 	}
 
 	// Get the file content at the base branch
@@ -244,7 +253,7 @@ func (e *Engine) calculateBaseFileHealth(ctx context.Context, file string, baseB
 	// Write to temp file for analysis
 	tmpFile, err := os.CreateTemp("", "ckb-base-*"+filepath.Ext(file))
 	if err != nil {
-		return e.calculateFileHealth(ctx, file, rm)
+		return e.calculateFileHealth(ctx, file, rm, analyzer)
 	}
 	defer func() {
 		tmpFile.Close()
@@ -252,15 +261,14 @@ func (e *Engine) calculateBaseFileHealth(ctx context.Context, file string, baseB
 	}()
 
 	if _, err := tmpFile.Write(content); err != nil {
-		return e.calculateFileHealth(ctx, file, rm)
+		return e.calculateFileHealth(ctx, file, rm, analyzer)
 	}
 	tmpFile.Close()
 
 	score := 100.0
 
 	// Cyclomatic complexity (20%) — from base file content
-	if complexity.IsAvailable() {
-		analyzer := complexity.NewAnalyzer()
+	if analyzer != nil {
 		result, err := analyzer.AnalyzeFile(ctx, tmpFile.Name())
 		if err == nil && result.Error == "" {
 			cycScore := complexityToScore(result.MaxCyclomatic)

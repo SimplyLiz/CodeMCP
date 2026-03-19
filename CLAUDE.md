@@ -48,6 +48,11 @@ golangci-lint run
 # Start MCP server (for AI tool integration)
 ./ckb mcp
 
+# Run PR review (14 quality checks)
+./ckb review
+./ckb review --base=develop --format=markdown
+./ckb review --checks=breaking,secrets,health --ci
+
 # Auto-configure AI tool integration (interactive)
 ./ckb setup
 
@@ -114,6 +119,8 @@ claude mcp add ckb -- npx @tastehub/ckb mcp
 **Streaming (v8.0):** `findReferences` and `searchSymbols` support SSE streaming with `stream: true`
 
 **Index Management (v8.0):** `reindex` (trigger index refresh), enhanced `getStatus` with health tiers
+
+**PR Review (v8.2):** `reviewPR` — unified review with 14 quality checks (breaking, secrets, tests, complexity, health, coupling, hotspots, risk, critical-path, traceability, independence, generated, classify, split)
 
 ## Architecture Overview
 
