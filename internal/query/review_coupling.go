@@ -60,10 +60,14 @@ func (e *Engine) checkCouplingGaps(ctx context.Context, changedFiles []string) (
 		}
 
 		for _, corr := range result.Correlations {
-			if corr.Correlation >= minCorrelation && !changedSet[corr.File] && !isCouplingNoiseFile(corr.FilePath) {
+			missing := corr.FilePath
+			if missing == "" {
+				missing = corr.File
+			}
+			if corr.Correlation >= minCorrelation && !changedSet[missing] && !isCouplingNoiseFile(missing) {
 				gaps = append(gaps, CouplingGap{
 					ChangedFile:  file,
-					MissingFile:  corr.File,
+					MissingFile:  missing,
 					CoChangeRate: corr.Correlation,
 				})
 			}

@@ -360,8 +360,8 @@ func TestFormatHuman_ContainsVerdict(t *testing.T) {
 	if !strings.Contains(output, "WARN") {
 		t.Error("expected WARN in output")
 	}
-	if !strings.Contains(output, "72") {
-		t.Error("expected score 72 in output")
+	if !strings.Contains(output, "10 files") {
+		t.Error("expected file count in header")
 	}
 }
 

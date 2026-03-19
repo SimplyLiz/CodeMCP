@@ -2,10 +2,10 @@
 # Runs the unified review engine on pull requests with quality gates.
 # Posts a markdown summary as a PR comment and emits GitHub Actions annotations.
 #
-# Available checks (14 total):
+# Available checks (17 total):
 #   breaking, secrets, tests, complexity, health, coupling,
 #   hotspots, risk, critical, traceability, independence,
-#   generated, classify, split
+#   generated, classify, split, dead-code, test-gaps, blast-radius
 #
 # Usage: Copy to .github/workflows/pr-review.yml
 
@@ -69,6 +69,7 @@ jobs:
       #     # require-trace: 'true'
       #     # trace-patterns: 'JIRA-\d+'
       #     # require-independent: 'true'
+      #     # max-fanout: '20'              # blast-radius threshold
 
       # --- Option B: Direct CLI usage ---
       - name: Run review (JSON)
@@ -153,7 +154,6 @@ jobs:
           echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
           echo "| Verdict | ${VERDICT} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Score | ${SCORE}/100 |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Findings | ${FINDINGS} |" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fail on review verdict

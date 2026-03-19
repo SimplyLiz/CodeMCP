@@ -271,7 +271,7 @@ func runReview(cmd *cobra.Command, args []string) {
 func formatReviewHuman(resp *query.ReviewPRResponse) string {
 	var b strings.Builder
 
-	// Header box
+	// --- Header: verdict + stats, no score (#7) ---
 	verdictIcon := "✓"
 	verdictLabel := "PASS"
 	switch resp.Verdict {
@@ -283,66 +283,72 @@ func formatReviewHuman(resp *query.ReviewPRResponse) string {
 		verdictLabel = "WARN"
 	}
 
-	b.WriteString(fmt.Sprintf("CKB Review: %s %s — %d/100\n", verdictIcon, verdictLabel, resp.Score))
-	b.WriteString(strings.Repeat("=", 60) + "\n")
-	b.WriteString(fmt.Sprintf("%d files · +%d changes · %d modules\n",
-		resp.Summary.TotalFiles, resp.Summary.TotalChanges, resp.Summary.ModulesChanged))
+	b.WriteString(fmt.Sprintf("CKB Review: %s %s  ·  %d files  ·  %d lines\n",
+		verdictIcon, verdictLabel, resp.Summary.TotalFiles, resp.Summary.TotalChanges))
+	b.WriteString(strings.Repeat("═", 56) + "\n")
 
-	if resp.Summary.GeneratedFiles > 0 {
-		b.WriteString(fmt.Sprintf("%d generated (excluded) · %d reviewable",
-			resp.Summary.GeneratedFiles, resp.Summary.ReviewableFiles))
+	if resp.Summary.GeneratedFiles > 0 || resp.Summary.CriticalFiles > 0 {
+		b.WriteString(fmt.Sprintf("%d reviewable", resp.Summary.ReviewableFiles))
+		if resp.Summary.GeneratedFiles > 0 {
+			b.WriteString(fmt.Sprintf(" · %d generated (excluded)", resp.Summary.GeneratedFiles))
+		}
 		if resp.Summary.CriticalFiles > 0 {
 			b.WriteString(fmt.Sprintf(" · %d critical", resp.Summary.CriticalFiles))
 		}
 		b.WriteString("\n")
 	}
-	b.WriteString("\n")
 
 	// Narrative
 	if resp.Narrative != "" {
-		b.WriteString(resp.Narrative + "\n\n")
-	}
-
-	// Checks table
-	b.WriteString("Checks:\n")
-	for _, c := range resp.Checks {
-		icon := "✓"
-		switch c.Status {
-		case "fail":
-			icon = "✗"
-		case "warn":
-			icon = "⚠"
-		case "skip":
-			icon = "○"
-		case "info":
-			icon = "○"
-		}
-		status := strings.ToUpper(c.Status)
-		b.WriteString(fmt.Sprintf("  %s %-5s %-20s %s\n", icon, status, c.Name, c.Summary))
+		b.WriteString("\n" + wrapIndent(resp.Narrative, "  ", 72) + "\n")
 	}
 	b.WriteString("\n")
 
-	// Top Findings — only Tier 1+2 by default, capped at 10
+	// --- Checks: collapse passes into one line (#4) ---
+	b.WriteString("Checks:\n")
+	var passNames []string
+	for _, c := range resp.Checks {
+		switch c.Status {
+		case "fail":
+			b.WriteString(fmt.Sprintf("  ✗ %-20s %s\n", c.Name, c.Summary))
+		case "warn":
+			b.WriteString(fmt.Sprintf("  ⚠ %-20s %s\n", c.Name, c.Summary))
+		case "info":
+			b.WriteString(fmt.Sprintf("  ○ %-20s %s\n", c.Name, c.Summary))
+		case "pass":
+			passNames = append(passNames, c.Name)
+		// skip: omit entirely
+		}
+	}
+	if len(passNames) > 0 {
+		b.WriteString(fmt.Sprintf("  ✓ %s\n", strings.Join(passNames, " · ")))
+	}
+	b.WriteString("\n")
+
+	// --- Top Findings: filter summary restatements (#1), group co-changes (#2) ---
 	if len(resp.Findings) > 0 {
 		actionable, tier3Count := filterActionableFindings(resp.Findings)
-		if len(actionable) > 0 {
+		grouped := groupCoChangeFindings(actionable)
+		if len(grouped) > 0 {
 			b.WriteString("Top Findings:\n")
 			limit := 10
-			if len(actionable) < limit {
-				limit = len(actionable)
+			if len(grouped) < limit {
+				limit = len(grouped)
 			}
-			for _, f := range actionable[:limit] {
-				sevLabel := strings.ToUpper(f.Severity)
-				loc := f.File
-				if f.StartLine > 0 {
-					loc = fmt.Sprintf("%s:%d", f.File, f.StartLine)
+			for _, g := range grouped[:limit] {
+				loc := g.file
+				if loc == "" {
+					loc = "(global)"
 				}
-				b.WriteString(fmt.Sprintf("  %-7s %-40s %s\n", sevLabel, loc, f.Message))
-				if f.Hint != "" {
-					b.WriteString(fmt.Sprintf("    %s\n", f.Hint))
+				b.WriteString(fmt.Sprintf("  ⚠ %s\n", loc))
+				for _, msg := range g.messages {
+					b.WriteString(fmt.Sprintf("      %s\n", msg))
+				}
+				if g.hint != "" {
+					b.WriteString(fmt.Sprintf("      %s\n", g.hint))
 				}
 			}
-			remaining := len(actionable) - limit
+			remaining := len(grouped) - limit
 			if remaining > 0 || tier3Count > 0 {
 				parts := []string{}
 				if remaining > 0 {
@@ -357,12 +363,12 @@ func formatReviewHuman(resp *query.ReviewPRResponse) string {
 		}
 	}
 
-	// Review Effort
+	// --- Review Effort: cap absurd estimates ---
 	if resp.ReviewEffort != nil {
-		b.WriteString(fmt.Sprintf("Estimated Review: ~%dmin (%s)\n",
-			resp.ReviewEffort.EstimatedMinutes, resp.ReviewEffort.Complexity))
-		// Only show effort factors for small/medium PRs
-		if resp.PRTier != "large" {
+		estimate := formatEffortEstimate(resp.ReviewEffort, resp.SplitSuggestion,
+			resp.Summary.TotalFiles, resp.Summary.TotalChanges)
+		b.WriteString(fmt.Sprintf("Estimated Review: %s\n", estimate))
+		if resp.ReviewEffort.EstimatedMinutes <= 480 && resp.PRTier != "large" {
 			for _, f := range resp.ReviewEffort.Factors {
 				b.WriteString(fmt.Sprintf("  · %s\n", f))
 			}
@@ -370,7 +376,7 @@ func formatReviewHuman(resp *query.ReviewPRResponse) string {
 		b.WriteString("\n")
 	}
 
-	// Change Breakdown — skip for large PRs (the checks table already covers this)
+	// Change Breakdown — skip for large PRs
 	if resp.PRTier != "large" && resp.ChangeBreakdown != nil && len(resp.ChangeBreakdown.Summary) > 0 {
 		b.WriteString("Change Breakdown:\n")
 		cats := sortedMapKeys(resp.ChangeBreakdown.Summary)
@@ -382,67 +388,202 @@ func formatReviewHuman(resp *query.ReviewPRResponse) string {
 
 	// PR Split Suggestion
 	if resp.SplitSuggestion != nil && resp.SplitSuggestion.ShouldSplit {
-		b.WriteString(fmt.Sprintf("PR Split: %s\n", resp.SplitSuggestion.Reason))
-		clusterLimit := 10
+		b.WriteString("PR Split:\n")
+		clusterLimit := 5
 		clusters := resp.SplitSuggestion.Clusters
 		if len(clusters) > clusterLimit {
 			clusters = clusters[:clusterLimit]
 		}
-		for i, c := range clusters {
-			b.WriteString(fmt.Sprintf("  Cluster %d: %q — %d files (+%d −%d)\n",
-				i+1, c.Name, c.FileCount, c.Additions, c.Deletions))
+		for _, c := range clusters {
+			b.WriteString(fmt.Sprintf("  %-22s %d files  +%d −%d\n",
+				c.Name, c.FileCount, c.Additions, c.Deletions))
 		}
 		if len(resp.SplitSuggestion.Clusters) > clusterLimit {
-			b.WriteString(fmt.Sprintf("  ... and %d more clusters\n",
+			b.WriteString(fmt.Sprintf("  ... %d more  (ckb review --split for full list)\n",
 				len(resp.SplitSuggestion.Clusters)-clusterLimit))
 		}
 		b.WriteString("\n")
 	}
 
-	// Code Health — only show files with actual changes (skip unchanged and new files)
+	// --- Code Health: collapse for large PRs (#5) ---
 	if resp.HealthReport != nil && len(resp.HealthReport.Deltas) > 0 {
-		b.WriteString("Code Health:\n")
-		shown := 0
-		for _, d := range resp.HealthReport.Deltas {
-			if d.Delta == 0 && !d.NewFile {
-				continue // skip unchanged
+		if resp.PRTier == "large" {
+			// One-liner for large PRs — only show if something degraded
+			if resp.HealthReport.Degraded > 0 {
+				worst := worstDegraded(resp.HealthReport.Deltas)
+				b.WriteString(fmt.Sprintf("Code Health: %d degraded (avg %+.1f) · worst: %s (%s→%s)\n\n",
+					resp.HealthReport.Degraded, resp.HealthReport.AverageDelta,
+					worst.File, worst.GradeBefore, worst.Grade))
+			} else {
+				// Count new files
+				newCount := 0
+				for _, d := range resp.HealthReport.Deltas {
+					if d.NewFile {
+						newCount++
+					}
+				}
+				if newCount > 0 {
+					b.WriteString(fmt.Sprintf("Code Health: 0 degraded · %d new (avg %d)\n\n",
+						newCount, avgHealth(resp.HealthReport.Deltas)))
+				}
 			}
-			if shown >= 10 {
-				continue // count remaining but don't print
+		} else {
+			// Per-file detail for small/medium PRs
+			b.WriteString("Code Health:\n")
+			shown := 0
+			for _, d := range resp.HealthReport.Deltas {
+				if d.Delta == 0 && !d.NewFile {
+					continue
+				}
+				if shown >= 10 {
+					continue
+				}
+				arrow := "→"
+				label := ""
+				if d.NewFile {
+					arrow = "★"
+					label = " (new)"
+				} else if d.Delta < 0 {
+					arrow = "↓"
+				} else if d.Delta > 0 {
+					arrow = "↑"
+				}
+				b.WriteString(fmt.Sprintf("  %s %s %s (%d)%s\n",
+					d.Grade, arrow, d.File, d.HealthAfter, label))
+				shown++
 			}
-			arrow := "→"
-			label := ""
-			if d.NewFile {
-				arrow = "★"
-				label = " (new)"
-			} else if d.Delta < 0 {
-				arrow = "↓"
-			} else if d.Delta > 0 {
-				arrow = "↑"
+			if resp.HealthReport.Degraded > 0 || resp.HealthReport.Improved > 0 {
+				b.WriteString(fmt.Sprintf("  %d degraded · %d improved · avg %+.1f\n",
+					resp.HealthReport.Degraded, resp.HealthReport.Improved, resp.HealthReport.AverageDelta))
 			}
-			b.WriteString(fmt.Sprintf("  %s %s %s (%d)%s\n",
-				d.Grade, arrow, d.File, d.HealthAfter, label))
-			shown++
+			b.WriteString("\n")
 		}
-		if resp.HealthReport.Degraded > 0 || resp.HealthReport.Improved > 0 {
-			b.WriteString(fmt.Sprintf("  %d degraded · %d improved · avg %+.1f\n",
-				resp.HealthReport.Degraded, resp.HealthReport.Improved, resp.HealthReport.AverageDelta))
-		}
-		b.WriteString("\n")
 	}
 
-	// Reviewers
+	// --- Reviewers: clean email display (#6) ---
 	if len(resp.Reviewers) > 0 {
-		b.WriteString("Suggested Reviewers:\n  ")
+		b.WriteString("Reviewers: ")
 		var parts []string
 		for _, r := range resp.Reviewers {
-			parts = append(parts, fmt.Sprintf("@%s (%.0f%%)", r.Owner, r.Coverage*100))
+			name := formatReviewerName(r.Owner)
+			parts = append(parts, fmt.Sprintf("%s (%.0f%%)", name, r.Coverage*100))
 		}
 		b.WriteString(strings.Join(parts, " · "))
 		b.WriteString("\n")
 	}
 
 	return b.String()
+}
+
+// formatReviewerName cleans up reviewer identity for display.
+// Emails become local part only; usernames get @ prefix.
+func formatReviewerName(owner string) string {
+	if strings.Contains(owner, "@") {
+		return strings.Split(owner, "@")[0]
+	}
+	return "@" + owner
+}
+
+// formatEffortEstimate returns a human-readable effort string, capping absurd values.
+func formatEffortEstimate(effort *query.ReviewEffort, split *query.PRSplitSuggestion, files, lines int) string {
+	if effort.EstimatedMinutes > 480 {
+		clusters := 0
+		if split != nil {
+			clusters = len(split.Clusters)
+		}
+		if clusters > 0 {
+			return fmt.Sprintf("not feasible as a single PR (%d files, %d lines, %d clusters)",
+				files, lines, clusters)
+		}
+		return fmt.Sprintf("not feasible as a single PR (%d files, %d lines)", files, lines)
+	}
+	return fmt.Sprintf("~%dmin (%s)", effort.EstimatedMinutes, effort.Complexity)
+}
+
+// wrapIndent wraps text to a given width with consistent indentation.
+func wrapIndent(s, indent string, width int) string {
+	words := strings.Fields(s)
+	var lines []string
+	line := indent
+	for _, w := range words {
+		if len(line)+len(w)+1 > width && line != indent {
+			lines = append(lines, line)
+			line = indent + w
+		} else {
+			if line == indent {
+				line += w
+			} else {
+				line += " " + w
+			}
+		}
+	}
+	if line != indent {
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// worstDegraded finds the file with the largest health degradation.
+func worstDegraded(deltas []query.CodeHealthDelta) query.CodeHealthDelta {
+	var worst query.CodeHealthDelta
+	for _, d := range deltas {
+		if !d.NewFile && d.Delta < worst.Delta {
+			worst = d
+		}
+	}
+	return worst
+}
+
+// groupedFinding represents one or more co-change findings collapsed into one entry.
+type groupedFinding struct {
+	severity string
+	file     string
+	messages []string
+	hint     string
+}
+
+// groupCoChangeFindings collapses per-file co-change findings into single
+// grouped entries, preserving insertion order so co-changes don't get pushed
+// to the back behind non-grouped findings.
+func groupCoChangeFindings(findings []query.ReviewFinding) []groupedFinding {
+	var result []groupedFinding
+	byFile := map[string]*groupedFinding{}
+	groupPositions := map[string]int{} // key → index in result
+
+	for _, f := range findings {
+		if !strings.HasPrefix(f.Message, "Missing co-change:") {
+			result = append(result, groupedFinding{
+				severity: f.Severity,
+				file:     f.File,
+				messages: []string{f.Message},
+				hint:     f.Hint,
+			})
+			continue
+		}
+		key := f.File
+		if _, ok := byFile[key]; ok {
+			byFile[key].messages = append(byFile[key].messages, f.Message)
+		} else {
+			g := &groupedFinding{severity: f.Severity, file: key}
+			byFile[key] = g
+			groupPositions[key] = len(result)
+			result = append(result, groupedFinding{}) // placeholder
+		}
+	}
+	// Fill placeholders with collapsed groups
+	for key, pos := range groupPositions {
+		g := byFile[key]
+		var targets []string
+		for _, msg := range g.messages {
+			targets = append(targets, strings.TrimPrefix(msg, "Missing co-change: "))
+		}
+		result[pos] = groupedFinding{
+			severity: g.severity,
+			file:     g.file,
+			messages: []string{"Usually changed with: " + strings.Join(targets, ", ")},
+		}
+	}
+	return result
 }
 
 func formatReviewMarkdown(resp *query.ReviewPRResponse) string {
@@ -658,15 +799,16 @@ func formatReviewMarkdown(resp *query.ReviewPRResponse) string {
 
 	// Review Effort
 	if resp.ReviewEffort != nil {
-		b.WriteString(fmt.Sprintf("**Estimated review:** ~%dmin (%s)\n\n",
-			resp.ReviewEffort.EstimatedMinutes, resp.ReviewEffort.Complexity))
+		b.WriteString(fmt.Sprintf("**Estimated review:** %s\n\n",
+			formatEffortEstimate(resp.ReviewEffort, resp.SplitSuggestion,
+				resp.Summary.TotalFiles, resp.Summary.TotalChanges)))
 	}
 
 	// Reviewers
 	if len(resp.Reviewers) > 0 {
 		var parts []string
 		for _, r := range resp.Reviewers {
-			parts = append(parts, fmt.Sprintf("@%s (%.0f%%)", r.Owner, r.Coverage*100))
+			parts = append(parts, fmt.Sprintf("%s (%.0f%%)", formatReviewerName(r.Owner), r.Coverage*100))
 		}
 		b.WriteString("**Reviewers:** " + strings.Join(parts, " · ") + "\n\n")
 	}
@@ -677,16 +819,52 @@ func formatReviewMarkdown(resp *query.ReviewPRResponse) string {
 	return b.String()
 }
 
-// filterActionableFindings separates Tier 1+2 (actionable) from Tier 3 (informational).
+// filterActionableFindings separates Tier 1+2 (actionable) from Tier 3 (informational),
+// strips summary-restatement findings, and priority-sorts the result so the
+// budget cap keeps the most important findings.
 func filterActionableFindings(findings []query.ReviewFinding) (actionable []query.ReviewFinding, tier3Count int) {
 	for _, f := range findings {
+		if isSummaryRestatement(f.Message) {
+			tier3Count++
+			continue
+		}
 		if f.Tier <= 2 {
 			actionable = append(actionable, f)
 		} else {
 			tier3Count++
 		}
 	}
+	// Priority sort: tier 1 first, then by severity within tier
+	sort.SliceStable(actionable, func(i, j int) bool {
+		return findingScore(actionable[i]) > findingScore(actionable[j])
+	})
 	return
+}
+
+func findingScore(f query.ReviewFinding) int {
+	base := map[int]int{1: 1000, 2: 100, 3: 10}[f.Tier]
+	sev := map[string]int{"error": 3, "warning": 2, "info": 1}[f.Severity]
+	return base + sev
+}
+
+// isSummaryRestatement returns true for findings that just restate what's
+// already visible in the header/narrative (file count, churn, hotspots, modules).
+func isSummaryRestatement(msg string) bool {
+	summaryPrefixes := []string{
+		"Large PR with ",
+		"Medium-sized PR with ",
+		"High churn: ",
+		"Moderate churn: ",
+		"Touches ",
+		"Spans ",
+		"Small, focused change",
+	}
+	for _, p := range summaryPrefixes {
+		if strings.HasPrefix(msg, p) {
+			return true
+		}
+	}
+	return false
 }
 
 func avgHealth(deltas []query.CodeHealthDelta) int {

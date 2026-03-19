@@ -266,7 +266,6 @@ jobs:
           echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
           echo "| Verdict | ${VERDICT} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Score | ${SCORE}/100 |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Findings | ${FINDINGS} |" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fail on review verdict

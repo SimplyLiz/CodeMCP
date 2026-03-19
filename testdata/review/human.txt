@@ -1,29 +1,34 @@
-CKB Review: ⚠ WARN — 68/100
-============================================================
-25 files · +480 changes · 3 modules
-3 generated (excluded) · 22 reviewable · 2 critical
+CKB Review: ⚠ WARN  ·  25 files  ·  480 lines
+════════════════════════════════════════════════════════
+22 reviewable · 3 generated (excluded) · 2 critical
 
-Changes 25 files across 3 modules (Go, TypeScript). 2 breaking API changes detected; 2 safety-critical files changed. 2 safety-critical files need focused review.
+  Changes 25 files across 3 modules (Go, TypeScript). 2 breaking API
+  changes detected; 2 safety-critical files changed. 2 safety-critical
+  files need focused review.
 
 Checks:
-  ✗ FAIL  breaking             2 breaking API changes detected
-  ✗ FAIL  critical             2 safety-critical files changed
-  ⚠ WARN  complexity           +8 cyclomatic (engine.go)
-  ⚠ WARN  coupling             2 missing co-change files
-  ✓ PASS  secrets              No secrets detected
-  ✓ PASS  tests                12 tests cover the changes
-  ✓ PASS  risk                 Risk score: 0.42 (low)
-  ✓ PASS  hotspots             No volatile files touched
-  ○ INFO  generated            3 generated files detected and excluded
+  ✗ breaking             2 breaking API changes detected
+  ✗ critical             2 safety-critical files changed
+  ⚠ complexity           +8 cyclomatic (engine.go)
+  ⚠ coupling             2 missing co-change files
+  ○ generated            3 generated files detected and excluded
+  ✓ secrets · tests · risk · hotspots
 
 Top Findings:
-  ERROR   api/handler.go:42                        Removed public function HandleAuth()
-  ERROR   api/middleware.go:15                     Changed signature of ValidateToken()
-  ERROR   drivers/hw/plc_comm.go:78                Safety-critical path changed (pattern: drivers/**)
-  ERROR   protocol/modbus.go                       Safety-critical path changed (pattern: protocol/**)
-  WARNING internal/query/engine.go:155             Complexity 12→20 in parseQuery()
-  WARNING internal/query/engine.go                 Missing co-change: engine_test.go (87% co-change rate)
-  WARNING protocol/modbus.go                       Missing co-change: modbus_test.go (91% co-change rate)
+  ⚠ api/handler.go
+      Removed public function HandleAuth()
+  ⚠ api/middleware.go
+      Changed signature of ValidateToken()
+  ⚠ drivers/hw/plc_comm.go
+      Safety-critical path changed (pattern: drivers/**)
+  ⚠ protocol/modbus.go
+      Safety-critical path changed (pattern: protocol/**)
+  ⚠ internal/query/engine.go
+      Complexity 12→20 in parseQuery()
+  ⚠ internal/query/engine.go
+      Usually changed with: 
+  ⚠ protocol/modbus.go
+      Usually changed with: 
   ... and 1 informational
 
 Estimated Review: ~95min (complex)
@@ -38,10 +43,10 @@ Change Breakdown:
   refactoring  3 files
   test         4 files
 
-PR Split: 25 files across 3 independent clusters — split recommended
-  Cluster 1: "API Handler Refactor" — 8 files (+240 −120)
-  Cluster 2: "Protocol Update" — 5 files (+130 −60)
-  Cluster 3: "Driver Changes" — 12 files (+80 −30)
+PR Split:
+  API Handler Refactor   8 files  +240 −120
+  Protocol Update        5 files  +130 −60
+  Driver Changes         12 files  +80 −30
 
 Code Health:
   B ↓ api/handler.go (70)
@@ -49,5 +54,4 @@ Code Health:
   C ↑ protocol/modbus.go (65)
   2 degraded · 1 improved · avg -4.7
 
-Suggested Reviewers:
-  @alice (85%) · @bob (45%)
+Reviewers: @alice (85%) · @bob (45%)

@@ -37,6 +37,18 @@ inputs:
     description: 'Require independent reviewer (author != reviewer)'
     required: false
     default: 'false'
+  max-fanout:
+    description: 'Maximum fan-out / caller count for blast-radius check (0 = disabled)'
+    required: false
+    default: '0'
+  dead-code-confidence:
+    description: 'Minimum confidence for dead code findings (0.0-1.0)'
+    required: false
+    default: '0.8'
+  test-gap-lines:
+    description: 'Minimum function lines for test gap reporting'
+    required: false
+    default: '5'
 
 outputs:
   verdict:
@@ -70,6 +82,9 @@ runs:
         INPUT_REQUIRE_TRACE: ${{ inputs.require-trace }}
         INPUT_TRACE_PATTERNS: ${{ inputs.trace-patterns }}
         INPUT_REQUIRE_INDEPENDENT: ${{ inputs.require-independent }}
+        INPUT_MAX_FANOUT: ${{ inputs.max-fanout }}
+        INPUT_DEAD_CODE_CONFIDENCE: ${{ inputs.dead-code-confidence }}
+        INPUT_TEST_GAP_LINES: ${{ inputs.test-gap-lines }}
         BASE_REF: ${{ github.event.pull_request.base.ref || 'main' }}
       run: |
         FLAGS="--ci --base=${BASE_REF}"
@@ -79,6 +94,9 @@ runs:
         [ "${INPUT_REQUIRE_TRACE}" = "true" ] && FLAGS="${FLAGS} --require-trace"
         [ -n "${INPUT_TRACE_PATTERNS}" ] && FLAGS="${FLAGS} --trace-patterns=${INPUT_TRACE_PATTERNS}"
         [ "${INPUT_REQUIRE_INDEPENDENT}" = "true" ] && FLAGS="${FLAGS} --require-independent"
+        [ "${INPUT_MAX_FANOUT}" != "0" ] && FLAGS="${FLAGS} --max-fanout=${INPUT_MAX_FANOUT}"
+        [ "${INPUT_DEAD_CODE_CONFIDENCE}" != "0.8" ] && FLAGS="${FLAGS} --dead-code-confidence=${INPUT_DEAD_CODE_CONFIDENCE}"
+        [ "${INPUT_TEST_GAP_LINES}" != "5" ] && FLAGS="${FLAGS} --test-gap-lines=${INPUT_TEST_GAP_LINES}"
 
         # Run review for each output format (JSON for outputs, GHA for annotations, markdown for PR comment)
         set +e
