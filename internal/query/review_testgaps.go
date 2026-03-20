@@ -8,6 +8,7 @@ import (
 
 // checkTestGaps finds untested functions in the changed files.
 // Uses tree-sitter internally — acquires e.tsMu around AnalyzeTestGaps calls.
+// When a coverage report is available, files at 0% coverage get upgraded to "warning".
 func (e *Engine) checkTestGaps(ctx context.Context, changedFiles []string, opts ReviewPROptions) (ReviewCheck, []ReviewFinding) {
 	start := time.Now()
 
@@ -15,6 +16,13 @@ func (e *Engine) checkTestGaps(ctx context.Context, changedFiles []string, opts 
 	if minLines <= 0 {
 		minLines = 5
 	}
+
+	// Load coverage data if available
+	var coveragePaths []string
+	if e.config != nil && len(e.config.Coverage.Paths) > 0 {
+		coveragePaths = e.config.Coverage.Paths
+	}
+	coverageMap := loadCoverageReport(e.repoRoot, coveragePaths)
 
 	// Filter to non-test source files, cap at 20
 	var sourceFiles []string
@@ -49,13 +57,27 @@ func (e *Engine) checkTestGaps(ctx context.Context, changedFiles []string, opts 
 			if gap.Function != "" {
 				hint = fmt.Sprintf("→ ckb explain %s", gap.Function)
 			}
+			severity := "info"
+			detail := ""
+
+			// Cross-reference with coverage data
+			if coverageMap != nil {
+				if cov, ok := coverageMap[gap.File]; ok {
+					detail = fmt.Sprintf("Coverage: %.0f%%", cov)
+					if cov == 0 {
+						severity = "warning" // Upgrade: 0% coverage is concerning
+					}
+				}
+			}
+
 			findings = append(findings, ReviewFinding{
 				Check:     "test-gaps",
-				Severity:  "info",
+				Severity:  severity,
 				File:      gap.File,
 				StartLine: gap.StartLine,
 				EndLine:   gap.EndLine,
 				Message:   fmt.Sprintf("Untested function %s (complexity: %d)", gap.Function, gap.Complexity),
+				Detail:    detail,
 				Category:  "testing",
 				RuleID:    fmt.Sprintf("ckb/test-gaps/%s", gap.Reason),
 				Hint:      hint,
@@ -66,7 +88,19 @@ func (e *Engine) checkTestGaps(ctx context.Context, changedFiles []string, opts 
 	status := "pass"
 	summary := "All changed functions have tests"
 	if len(findings) > 0 {
-		status = "info"
+		// If any findings were upgraded to warning, set status accordingly
+		hasWarning := false
+		for _, f := range findings {
+			if f.Severity == "warning" {
+				hasWarning = true
+				break
+			}
+		}
+		if hasWarning {
+			status = "warn"
+		} else {
+			status = "info"
+		}
 		summary = fmt.Sprintf("%d untested function(s) in changed files", len(findings))
 	}
 

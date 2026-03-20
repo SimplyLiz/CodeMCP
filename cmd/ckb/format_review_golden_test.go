@@ -19,8 +19,8 @@ const goldenDir = "../../testdata/review"
 // goldenResponse returns a rich response exercising all formatter code paths.
 func goldenResponse() *query.ReviewPRResponse {
 	return &query.ReviewPRResponse{
-		CkbVersion:    "8.2.0",
-		SchemaVersion: "8.2",
+		CkbVersion:    "8.3.0",
+		SchemaVersion: "8.3",
 		Tool:          "reviewPR",
 		Verdict:       "warn",
 		Score:         68,
@@ -172,9 +172,9 @@ func goldenResponse() *query.ReviewPRResponse {
 		},
 		HealthReport: &query.CodeHealthReport{
 			Deltas: []query.CodeHealthDelta{
-				{File: "api/handler.go", HealthBefore: 82, HealthAfter: 70, Delta: -12, Grade: "B", GradeBefore: "B", TopFactor: "significant health degradation"},
-				{File: "internal/query/engine.go", HealthBefore: 75, HealthAfter: 68, Delta: -7, Grade: "C", GradeBefore: "B", TopFactor: "minor health decrease"},
-				{File: "protocol/modbus.go", HealthBefore: 60, HealthAfter: 65, Delta: 5, Grade: "C", GradeBefore: "C", TopFactor: "unchanged"},
+				{File: "api/handler.go", HealthBefore: 82, HealthAfter: 70, Delta: -12, Grade: "B", GradeBefore: "B", TopFactor: "significant health degradation", Confidence: 1.0, Parseable: true},
+				{File: "internal/query/engine.go", HealthBefore: 75, HealthAfter: 68, Delta: -7, Grade: "C", GradeBefore: "B", TopFactor: "minor health decrease", Confidence: 0.8, Parseable: true},
+				{File: "protocol/modbus.go", HealthBefore: 60, HealthAfter: 65, Delta: 5, Grade: "C", GradeBefore: "C", TopFactor: "unchanged", Confidence: 1.0, Parseable: true},
 			},
 			AverageDelta: -4.67,
 			WorstFile:    "protocol/modbus.go",

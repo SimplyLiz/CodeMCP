@@ -10,8 +10,8 @@ import (
 
 func testResponse() *query.ReviewPRResponse {
 	return &query.ReviewPRResponse{
-		CkbVersion:    "8.2.0",
-		SchemaVersion: "8.2",
+		CkbVersion:    "8.3.0",
+		SchemaVersion: "8.3",
 		Tool:          "reviewPR",
 		Verdict:       "warn",
 		Score:         72,

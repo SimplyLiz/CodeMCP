@@ -65,9 +65,11 @@ var reviewCmd = &cobra.Command{
 - Risk scoring
 - Safety-critical path checks
 - Code health scoring (8-factor weighted score)
-- Dead code detection (SCIP-based)
-- Test gap analysis (tree-sitter)
-- Blast radius / fan-out analysis (SCIP-based)
+- Dead code detection (SCIP + constant reference analysis)
+- Test gap analysis (tree-sitter + coverage cross-reference)
+- Blast radius / fan-out analysis (SCIP-based, informational by default)
+- Comment/code drift detection (numeric mismatch)
+- Format consistency (Human vs Markdown divergence)
 - Finding baseline management
 
 Output formats: human (default), json, markdown, github-actions
@@ -94,7 +96,7 @@ func init() {
 	reviewCmd.Flags().StringVar(&reviewFormat, "format", "human", "Output format (human, json, markdown, github-actions, sarif, codeclimate, compliance)")
 	reviewCmd.Flags().StringVar(&reviewBaseBranch, "base", "main", "Base branch to compare against")
 	reviewCmd.Flags().StringVar(&reviewHeadBranch, "head", "", "Head branch (default: current branch)")
-	reviewCmd.Flags().StringSliceVar(&reviewChecks, "checks", nil, "Comma-separated list of checks (breaking,secrets,tests,complexity,coupling,hotspots,risk,critical,generated,classify,split,health,traceability,independence,dead-code,test-gaps,blast-radius)")
+	reviewCmd.Flags().StringSliceVar(&reviewChecks, "checks", nil, "Comma-separated list of checks (breaking,secrets,tests,complexity,coupling,hotspots,risk,critical,generated,classify,split,health,traceability,independence,dead-code,test-gaps,blast-radius,comment-drift,format-consistency)")
 	reviewCmd.Flags().BoolVar(&reviewCI, "ci", false, "CI mode: exit 1 on fail, exit 2 on warn")
 	reviewCmd.Flags().StringVar(&reviewFailOn, "fail-on", "", "Override fail level (error, warning, none)")
 
@@ -454,8 +456,15 @@ func formatReviewHuman(resp *query.ReviewPRResponse) string {
 				} else if d.Delta > 0 {
 					arrow = "↑"
 				}
-				b.WriteString(fmt.Sprintf("  %s %s %s (%d)%s\n",
-					d.Grade, arrow, d.File, d.HealthAfter, label))
+				confLabel := ""
+			if d.Confidence < 0.6 {
+				confLabel = " (low confidence)"
+			}
+			if !d.Parseable {
+				confLabel += " [unparseable]"
+			}
+			b.WriteString(fmt.Sprintf("  %s %s %s (%d)%s%s\n",
+					d.Grade, arrow, d.File, d.HealthAfter, label, confLabel))
 				shown++
 			}
 			if resp.HealthReport.Degraded > 0 || resp.HealthReport.Improved > 0 {
@@ -772,19 +781,52 @@ func formatReviewMarkdown(resp *query.ReviewPRResponse) string {
 		b.WriteString(fmt.Sprintf("<details><summary>%s</summary>\n\n", healthTitle))
 
 		if len(degraded) > 0 {
+			// Check if any delta has low confidence
+			hasLowConf := false
+			for _, d := range resp.HealthReport.Deltas {
+				if d.Confidence < 1.0 {
+					hasLowConf = true
+					break
+				}
+			}
+
 			b.WriteString("**Degraded:**\n\n")
-			b.WriteString("| File | Before | After | Delta | Grade |\n")
-			b.WriteString("|------|--------|-------|-------|-------|\n")
+			if hasLowConf {
+				b.WriteString("| File | Before | After | Delta | Grade | Confidence |\n")
+				b.WriteString("|------|--------|-------|-------|-------|------------|\n")
+			} else {
+				b.WriteString("| File | Before | After | Delta | Grade |\n")
+				b.WriteString("|------|--------|-------|-------|-------|\n")
+			}
 			limit := 10
 			if len(degraded) < limit {
 				limit = len(degraded)
 			}
 			for _, d := range degraded[:limit] {
-				b.WriteString(fmt.Sprintf("| `%s` | %d | %d | %+d | %s→%s |\n",
-					d.File, d.HealthBefore, d.HealthAfter, d.Delta, d.GradeBefore, d.Grade))
+				if hasLowConf {
+					confStr := fmt.Sprintf("%.0f%%", d.Confidence*100)
+					if !d.Parseable {
+						confStr += " ^1"
+					}
+					b.WriteString(fmt.Sprintf("| `%s` | %d | %d | %+d | %s→%s | %s |\n",
+						d.File, d.HealthBefore, d.HealthAfter, d.Delta, d.GradeBefore, d.Grade, confStr))
+				} else {
+					b.WriteString(fmt.Sprintf("| `%s` | %d | %d | %+d | %s→%s |\n",
+						d.File, d.HealthBefore, d.HealthAfter, d.Delta, d.GradeBefore, d.Grade))
+				}
 			}
 			if len(degraded) > limit {
 				b.WriteString(fmt.Sprintf("\n... and %d more degraded files\n", len(degraded)-limit))
+			}
+			hasUnparseable := false
+			for _, d := range resp.HealthReport.Deltas {
+				if !d.Parseable {
+					hasUnparseable = true
+					break
+				}
+			}
+			if hasUnparseable {
+				b.WriteString("\n^1 File could not be parsed by tree-sitter\n")
 			}
 			b.WriteString("\n")
 		}

@@ -1,6 +1,6 @@
 {
-  "ckbVersion": "8.2.0",
-  "schemaVersion": "8.2",
+  "ckbVersion": "8.3.0",
+  "schemaVersion": "8.3",
   "tool": "reviewPR",
   "verdict": "warn",
   "score": 68,
@@ -267,7 +267,9 @@
         "delta": -12,
         "grade": "B",
         "gradeBefore": "B",
-        "topFactor": "significant health degradation"
+        "topFactor": "significant health degradation",
+        "confidence": 1,
+        "parseable": true
       },
       {
         "file": "internal/query/engine.go",
@@ -276,7 +278,9 @@
         "delta": -7,
         "grade": "C",
         "gradeBefore": "B",
-        "topFactor": "minor health decrease"
+        "topFactor": "minor health decrease",
+        "confidence": 0.8,
+        "parseable": true
       },
       {
         "file": "protocol/modbus.go",
@@ -285,7 +289,9 @@
         "delta": 5,
         "grade": "C",
         "gradeBefore": "C",
-        "topFactor": "unchanged"
+        "topFactor": "unchanged",
+        "confidence": 1,
+        "parseable": true
       }
     ],
     "averageDelta": -4.67,

@@ -62,10 +62,10 @@
 
 **Degraded:**
 
-| File | Before | After | Delta | Grade |
-|------|--------|-------|-------|-------|
-| `api/handler.go` | 82 | 70 | -12 | B→B |
-| `internal/query/engine.go` | 75 | 68 | -7 | B→C |
+| File | Before | After | Delta | Grade | Confidence |
+|------|--------|-------|-------|-------|------------|
+| `api/handler.go` | 82 | 70 | -12 | B→B | 100% |
+| `internal/query/engine.go` | 75 | 68 | -7 | B→C | 80% |
 
 **Improved:** 1 file(s)
 

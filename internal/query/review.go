@@ -145,7 +145,7 @@ func findingTier(check string) int {
 		return 1
 	case "coupling", "complexity", "risk", "health", "dead-code", "blast-radius":
 		return 2
-	case "test-gaps":
+	case "test-gaps", "comment-drift", "format-consistency":
 		return 3
 	default:
 		return 3
@@ -223,7 +223,7 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 	if len(diffStats) == 0 {
 		return &ReviewPRResponse{
 			CkbVersion:    version.Version,
-			SchemaVersion: "8.2",
+			SchemaVersion: "8.3",
 			Tool:          "reviewPR",
 			Verdict:       "pass",
 			Score:         100,
@@ -406,7 +406,7 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			c, ff := e.checkCouplingGaps(ctx, reviewableFiles)
+			c, ff := e.checkCouplingGaps(ctx, reviewableFiles, diffStats)
 			addCheck(c)
 			addFindings(ff)
 		}()
@@ -462,6 +462,28 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 		go func() {
 			defer wg.Done()
 			c, ff := e.checkReviewerIndependence(ctx, opts)
+			addCheck(c)
+			addFindings(ff)
+		}()
+	}
+
+	// Check: Format Consistency
+	if checkEnabled("format-consistency") {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, ff := e.checkFormatConsistency(ctx, reviewableFiles)
+			addCheck(c)
+			addFindings(ff)
+		}()
+	}
+
+	// Check: Comment/Code Drift
+	if checkEnabled("comment-drift") {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, ff := e.checkCommentDrift(ctx, reviewableFiles)
 			addCheck(c)
 			addFindings(ff)
 		}()
@@ -585,7 +607,7 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 
 	return &ReviewPRResponse{
 		CkbVersion:       version.Version,
-		SchemaVersion:    "8.2",
+		SchemaVersion:    "8.3",
 		Tool:             "reviewPR",
 		Verdict:          verdict,
 		Score:            score,

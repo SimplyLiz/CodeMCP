@@ -48,7 +48,7 @@ golangci-lint run
 # Start MCP server (for AI tool integration)
 ./ckb mcp
 
-# Run PR review (17 quality checks)
+# Run PR review (19 quality checks)
 ./ckb review
 ./ckb review --base=develop --format=markdown
 ./ckb review --checks=breaking,secrets,health --ci
@@ -120,7 +120,7 @@ claude mcp add ckb -- npx @tastehub/ckb mcp
 
 **Index Management (v8.0):** `reindex` (trigger index refresh), enhanced `getStatus` with health tiers
 
-**PR Review (v8.2):** `reviewPR` — unified review with 17 quality checks (breaking, secrets, tests, complexity, health, coupling, hotspots, risk, critical-path, traceability, independence, generated, classify, split, dead-code, test-gaps, blast-radius)
+**PR Review (v8.3):** `reviewPR` — unified review with 19 quality checks (breaking, secrets, tests, complexity, health, coupling, hotspots, risk, critical-path, traceability, independence, generated, classify, split, dead-code, test-gaps, blast-radius, comment-drift, format-consistency)
 
 ## Architecture Overview
 

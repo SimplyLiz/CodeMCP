@@ -18,14 +18,23 @@ import (
 
 // CodeHealthDelta represents the health change for a single file.
 type CodeHealthDelta struct {
-	File         string `json:"file"`
-	HealthBefore int    `json:"healthBefore"` // 0-100
-	HealthAfter  int    `json:"healthAfter"`  // 0-100
-	Delta        int    `json:"delta"`        // negative = degradation
-	Grade        string `json:"grade"`        // A/B/C/D/F
-	GradeBefore  string `json:"gradeBefore"`
-	TopFactor    string `json:"topFactor"` // What drives the score most
-	NewFile      bool   `json:"newFile,omitempty"`
+	File         string  `json:"file"`
+	HealthBefore int     `json:"healthBefore"` // 0-100
+	HealthAfter  int     `json:"healthAfter"`  // 0-100
+	Delta        int     `json:"delta"`        // negative = degradation
+	Grade        string  `json:"grade"`        // A/B/C/D/F
+	GradeBefore  string  `json:"gradeBefore"`
+	TopFactor    string  `json:"topFactor"` // What drives the score most
+	NewFile      bool    `json:"newFile,omitempty"`
+	Confidence   float64 `json:"confidence"`          // 0.0-1.0
+	Parseable    bool    `json:"parseable"`           // false = tree-sitter can't analyze
+}
+
+// healthResult holds the output of calculateFileHealth including metadata.
+type healthResult struct {
+	score      int
+	confidence float64
+	parseable  bool
 }
 
 // CodeHealthReport aggregates health deltas across the PR.
@@ -106,11 +115,13 @@ func (e *Engine) checkCodeHealth(ctx context.Context, files []string, opts Revie
 		rm := metricsMap[file]
 
 		e.tsMu.Lock()
-		after := e.calculateFileHealth(ctx, file, rm, analyzer)
+		afterResult := e.calculateFileHealth(ctx, file, rm, analyzer)
 		e.tsMu.Unlock()
 
-		before, isNew := e.calculateBaseFileHealthLocked(ctx, file, opts.BaseBranch, rm, analyzer)
+		beforeScore, isNew := e.calculateBaseFileHealthLocked(ctx, file, opts.BaseBranch, rm, analyzer)
 
+		after := afterResult.score
+		before := beforeScore
 		delta := after - before
 		grade := healthGrade(after)
 		gradeBefore := healthGrade(before)
@@ -135,6 +146,8 @@ func (e *Engine) checkCodeHealth(ctx context.Context, files []string, opts Revie
 			GradeBefore:  gradeBefore,
 			TopFactor:    topFactor,
 			NewFile:      isNew,
+			Confidence:   afterResult.confidence,
+			Parseable:    afterResult.parseable,
 		}
 		deltas = append(deltas, d)
 
@@ -145,11 +158,18 @@ func (e *Engine) checkCodeHealth(ctx context.Context, files []string, opts Revie
 			if after < 30 {
 				sev = "error"
 			}
+			msg := fmt.Sprintf("Health %s→%s (%d→%d, %+d points)", gradeBefore, grade, before, after, delta)
+			if d.Confidence < 0.6 {
+				msg += " (low confidence)"
+			}
+			if !d.Parseable {
+				msg += " [unparseable]"
+			}
 			findings = append(findings, ReviewFinding{
 				Check:    "health",
 				Severity: sev,
 				File:     file,
-				Message:  fmt.Sprintf("Health %s→%s (%d→%d, %+d points)", gradeBefore, grade, before, after, delta),
+				Message:  msg,
 				Category: "health",
 				RuleID:   "ckb/health/degradation",
 			})
@@ -442,9 +462,11 @@ func coupledCountToScore(coupled int) float64 {
 
 // calculateFileHealth computes a 0-100 health score for a file in its current state.
 // analyzer may be nil if tree-sitter is not available.
-func (e *Engine) calculateFileHealth(ctx context.Context, file string, rm repoMetrics, analyzer *complexity.Analyzer) int {
+func (e *Engine) calculateFileHealth(ctx context.Context, file string, rm repoMetrics, analyzer *complexity.Analyzer) healthResult {
 	absPath := filepath.Join(e.repoRoot, file)
 	score := 100.0
+	confidence := 1.0
+	parseable := true
 
 	// Cyclomatic complexity (25%) + Cognitive complexity (15%)
 	complexityApplied := false
@@ -465,6 +487,19 @@ func (e *Engine) calculateFileHealth(ctx context.Context, file string, rm repoMe
 		// artificially high scores. 50 = middle of the scale.
 		score -= (100 - 50) * weightCyclomatic
 		score -= (100 - 50) * weightCognitive
+		confidence -= 0.4
+		parseable = false
+	}
+
+	// Check if all repo metrics are at default (75) — indicates no git data available
+	defaultRM := repoMetrics{churn: 75, coupling: 75, bus: 75, age: 75}
+	if rm == defaultRM {
+		confidence -= 0.3
+	}
+
+	// Check if bus factor is at default
+	if rm.bus == 75 && rm != defaultRM {
+		confidence -= 0.2
 	}
 
 	// File size (10%)
@@ -481,7 +516,14 @@ func (e *Engine) calculateFileHealth(ctx context.Context, file string, rm repoMe
 	if score < 0 {
 		score = 0
 	}
-	return int(math.Round(score))
+	if confidence < 0 {
+		confidence = 0
+	}
+	return healthResult{
+		score:      int(math.Round(score)),
+		confidence: confidence,
+		parseable:  parseable,
+	}
 }
 
 // calculateBaseFileHealthLocked gets the health of a file at a base branch ref.
@@ -489,9 +531,9 @@ func (e *Engine) calculateFileHealth(ctx context.Context, file string, rm repoMe
 func (e *Engine) calculateBaseFileHealthLocked(ctx context.Context, file string, baseBranch string, rm repoMetrics, analyzer *complexity.Analyzer) (int, bool) {
 	if baseBranch == "" {
 		e.tsMu.Lock()
-		score := e.calculateFileHealth(ctx, file, rm, analyzer)
+		result := e.calculateFileHealth(ctx, file, rm, analyzer)
 		e.tsMu.Unlock()
-		return score, false
+		return result.score, false
 	}
 
 	// git show runs without the tree-sitter lock
@@ -504,9 +546,9 @@ func (e *Engine) calculateBaseFileHealthLocked(ctx context.Context, file string,
 	tmpFile, err := os.CreateTemp("", "ckb-base-*"+filepath.Ext(file))
 	if err != nil {
 		e.tsMu.Lock()
-		score := e.calculateFileHealth(ctx, file, rm, analyzer)
+		result := e.calculateFileHealth(ctx, file, rm, analyzer)
 		e.tsMu.Unlock()
-		return score, false
+		return result.score, false
 	}
 	defer func() {
 		tmpFile.Close()
@@ -515,9 +557,9 @@ func (e *Engine) calculateBaseFileHealthLocked(ctx context.Context, file string,
 
 	if _, err := tmpFile.Write(content); err != nil {
 		e.tsMu.Lock()
-		score := e.calculateFileHealth(ctx, file, rm, analyzer)
+		result := e.calculateFileHealth(ctx, file, rm, analyzer)
 		e.tsMu.Unlock()
-		return score, false
+		return result.score, false
 	}
 	tmpFile.Close()
 

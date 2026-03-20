@@ -1,13 +1,21 @@
 package query
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 )
 
-// checkDeadCode finds dead code within the changed files using the SCIP index.
+// constDeclRe matches Go const declarations like "ConstName = value" or "ConstName Type = value".
+var constDeclRe = regexp.MustCompile(`^\s*([A-Z]\w*)\s+(?:\w+\s+)?=`)
+
+// checkDeadCode finds dead code within the changed files using the SCIP index
+// and additionally scans for unused constants via reference counting.
 func (e *Engine) checkDeadCode(ctx context.Context, changedFiles []string, opts ReviewPROptions) (ReviewCheck, []ReviewFinding) {
 	start := time.Now()
 
@@ -49,6 +57,9 @@ func (e *Engine) checkDeadCode(ctx context.Context, changedFiles []string, opts 
 	}
 
 	var findings []ReviewFinding
+	// Track already-reported locations to dedup with constant findings
+	reported := make(map[string]bool) // "file:line"
+
 	for _, item := range resp.DeadCode {
 		if !changedSet[item.FilePath] {
 			continue
@@ -57,6 +68,8 @@ func (e *Engine) checkDeadCode(ctx context.Context, changedFiles []string, opts 
 		if item.SymbolName != "" {
 			hint = fmt.Sprintf("→ ckb explain %s", item.SymbolName)
 		}
+		key := fmt.Sprintf("%s:%d", item.FilePath, item.LineNumber)
+		reported[key] = true
 		findings = append(findings, ReviewFinding{
 			Check:     "dead-code",
 			Severity:  "warning",
@@ -68,6 +81,10 @@ func (e *Engine) checkDeadCode(ctx context.Context, changedFiles []string, opts 
 			Hint:      hint,
 		})
 	}
+
+	// Phase 2: Scan for unused constants using FindReferences
+	constFindings := e.findDeadConstants(ctx, changedFiles, reported)
+	findings = append(findings, constFindings...)
 
 	status := "pass"
 	summary := "No dead code in changed files"
@@ -83,4 +100,162 @@ func (e *Engine) checkDeadCode(ctx context.Context, changedFiles []string, opts 
 		Summary:  summary,
 		Duration: time.Since(start).Milliseconds(),
 	}, findings
+}
+
+// findDeadConstants scans changed Go files for exported constants and checks
+// if they have any references outside their declaration file.
+func (e *Engine) findDeadConstants(ctx context.Context, changedFiles []string, alreadyReported map[string]bool) []ReviewFinding {
+	var findings []ReviewFinding
+
+	for _, file := range changedFiles {
+		if ctx.Err() != nil {
+			break
+		}
+		if !strings.HasSuffix(file, ".go") || isTestFilePathEnhanced(file) {
+			continue
+		}
+
+		consts := extractExportedConstants(filepath.Join(e.repoRoot, file))
+		for _, c := range consts {
+			if ctx.Err() != nil {
+				break
+			}
+			// Skip if already reported by SCIP analysis
+			key := fmt.Sprintf("%s:%d", file, c.line)
+			if alreadyReported[key] {
+				continue
+			}
+
+			// Resolve constant name to a symbol ID, then count references
+			searchResp, err := e.SearchSymbols(ctx, SearchSymbolsOptions{
+				Query: c.name,
+				Scope: file,
+				Limit: 5,
+			})
+			if err != nil || searchResp == nil || len(searchResp.Symbols) == 0 {
+				continue
+			}
+
+			// Find the matching symbol by line
+			symbolId := ""
+			for _, sym := range searchResp.Symbols {
+				if sym.Location != nil && sym.Location.StartLine == c.line {
+					symbolId = sym.StableId
+					break
+				}
+			}
+			if symbolId == "" {
+				// Fall back to first match with same name
+				for _, sym := range searchResp.Symbols {
+					if sym.Name == c.name {
+						symbolId = sym.StableId
+						break
+					}
+				}
+			}
+			if symbolId == "" {
+				continue
+			}
+
+			refsResp, err := e.FindReferences(ctx, FindReferencesOptions{
+				SymbolId: symbolId,
+				Limit:    5,
+			})
+			if err != nil || refsResp == nil {
+				continue
+			}
+
+			// Count references outside the declaration
+			externalRefs := 0
+			for _, ref := range refsResp.References {
+				if ref.Location == nil {
+					continue
+				}
+				// Skip the declaration itself
+				if ref.Location.FileId == file && ref.Location.StartLine == c.line {
+					continue
+				}
+				externalRefs++
+			}
+
+			if externalRefs == 0 {
+				findings = append(findings, ReviewFinding{
+					Check:     "dead-code",
+					Severity:  "warning",
+					File:      file,
+					StartLine: c.line,
+					Message:   fmt.Sprintf("Dead code: %s (constant) — no references found", c.name),
+					Category:  "dead-code",
+					RuleID:    "ckb/dead-code/unused-constant",
+				})
+			}
+		}
+	}
+
+	return findings
+}
+
+type constInfo struct {
+	name string
+	line int
+}
+
+// extractExportedConstants parses a Go file for exported const declarations.
+func extractExportedConstants(absPath string) []constInfo {
+	f, err := os.Open(absPath)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	var consts []constInfo
+	scanner := bufio.NewScanner(f)
+	inConst := false
+	lineNum := 0
+
+	for scanner.Scan() {
+		lineNum++
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+
+		// Track const blocks
+		if strings.HasPrefix(trimmed, "const (") || trimmed == "const (" {
+			inConst = true
+			continue
+		}
+		if inConst && trimmed == ")" {
+			inConst = false
+			continue
+		}
+
+		// Single const: "const Name = ..."
+		if strings.HasPrefix(trimmed, "const ") && !inConst {
+			parts := strings.Fields(trimmed)
+			if len(parts) >= 2 {
+				name := parts[1]
+				if isExported(name) {
+					consts = append(consts, constInfo{name: name, line: lineNum})
+				}
+			}
+			continue
+		}
+
+		// Inside const block
+		if inConst {
+			m := constDeclRe.FindStringSubmatch(trimmed)
+			if m != nil && isExported(m[1]) {
+				consts = append(consts, constInfo{name: m[1], line: lineNum})
+			}
+		}
+	}
+
+	return consts
+}
+
+// isExported returns true if name starts with an uppercase letter.
+func isExported(name string) bool {
+	if len(name) == 0 {
+		return false
+	}
+	return name[0] >= 'A' && name[0] <= 'Z'
 }

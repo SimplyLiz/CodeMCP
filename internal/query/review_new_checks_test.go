@@ -119,7 +119,7 @@ func CoreFunction() string {
 
 	ctx := context.Background()
 
-	// With maxFanOut=0 (default), blast-radius should skip
+	// With maxFanOut=0 (default), blast-radius should run in informational mode
 	resp, err := engine.ReviewPR(ctx, ReviewPROptions{
 		BaseBranch: "main",
 		HeadBranch: "feature/test",
@@ -133,8 +133,11 @@ func CoreFunction() string {
 	for _, c := range resp.Checks {
 		if c.Name == "blast-radius" {
 			found = true
-			if c.Status != "skip" {
-				t.Errorf("expected blast-radius to skip with default policy (maxFanOut=0), got %q", c.Status)
+			if c.Status != "info" && c.Status != "pass" {
+				t.Errorf("expected blast-radius to be info/pass with default policy (maxFanOut=0), got %q", c.Status)
+			}
+			if c.Severity != "info" {
+				t.Errorf("expected blast-radius severity 'info' in informational mode, got %q", c.Severity)
 			}
 		}
 	}
@@ -276,6 +279,8 @@ func TestFindingTier_NewChecks(t *testing.T) {
 		{"dead-code", 2},
 		{"blast-radius", 2},
 		{"test-gaps", 3},
+		{"comment-drift", 3},
+		{"format-consistency", 3},
 		// existing
 		{"breaking", 1},
 		{"secrets", 1},

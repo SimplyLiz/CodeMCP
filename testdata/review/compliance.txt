@@ -3,8 +3,8 @@
 ======================================================================
 
 Generated:   <TIMESTAMP>
-CKB Version: 8.2.0
-Schema:      8.2
+CKB Version: 8.3.0
+Schema:      8.3
 Verdict:     WARN (68/100)
 
 1. CHANGE SUMMARY

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SimplyLiz/CodeMCP/internal/backends/git"
 	"github.com/SimplyLiz/CodeMCP/internal/coupling"
 )
 
@@ -18,12 +19,18 @@ type CouplingGap struct {
 }
 
 // checkCouplingGaps checks if commonly co-changed files are missing from the changeset.
-func (e *Engine) checkCouplingGaps(ctx context.Context, changedFiles []string) (ReviewCheck, []ReviewFinding) {
+func (e *Engine) checkCouplingGaps(ctx context.Context, changedFiles []string, diffStats []git.DiffStats) (ReviewCheck, []ReviewFinding) {
 	start := time.Now()
 
 	changedSet := make(map[string]bool)
 	for _, f := range changedFiles {
 		changedSet[f] = true
+	}
+
+	// Build diff stats lookup for smart filtering
+	diffStatsMap := make(map[string]git.DiffStats, len(diffStats))
+	for _, ds := range diffStats {
+		diffStatsMap[ds.FilePath] = ds
 	}
 
 	analyzer := coupling.NewAnalyzer(e.repoRoot, e.logger)
@@ -37,6 +44,10 @@ func (e *Engine) checkCouplingGaps(ctx context.Context, changedFiles []string) (
 	var filesToCheck []string
 	for _, f := range changedFiles {
 		if isCouplingNoiseFile(f) {
+			continue
+		}
+		// Skip new files — they have no meaningful co-change history
+		if ds, ok := diffStatsMap[f]; ok && ds.IsNew {
 			continue
 		}
 		filesToCheck = append(filesToCheck, f)
@@ -76,9 +87,18 @@ func (e *Engine) checkCouplingGaps(ctx context.Context, changedFiles []string) (
 
 	var findings []ReviewFinding
 	for _, gap := range gaps {
+		severity := "warning"
+		// Downgrade to info for append-only changes (low risk of breaking coupled files)
+		if ds, ok := diffStatsMap[gap.ChangedFile]; ok {
+			if ds.Deletions == 0 && ds.Additions > 0 {
+				severity = "info"
+			} else if ds.Additions > 0 && ds.Deletions < ds.Additions/10 {
+				severity = "info"
+			}
+		}
 		findings = append(findings, ReviewFinding{
 			Check:      "coupling",
-			Severity:   "warning",
+			Severity:   severity,
 			File:       gap.ChangedFile,
 			Message:    fmt.Sprintf("Missing co-change: %s (%.0f%% co-change rate)", gap.MissingFile, gap.CoChangeRate*100),
 			Suggestion: fmt.Sprintf("Consider also changing %s — it historically changes together with %s", gap.MissingFile, gap.ChangedFile),
