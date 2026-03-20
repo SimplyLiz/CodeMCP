@@ -185,7 +185,7 @@ jobs:
 
   pr-review:
     name: PR Review
-    if: github.event_name == 'pull_request'
+    if: always() && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [build]
@@ -198,9 +198,22 @@ jobs:
           fetch-depth: 0
 
       - name: Download CKB binary
+        id: download
+        continue-on-error: true
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           name: ckb-linux-amd64
+
+      - name: Build CKB (fallback)
+        if: steps.download.outcome == 'failure'
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Build CKB binary (fallback)
+        if: steps.download.outcome == 'failure'
+        run: go build -ldflags="-s -w" -o ckb ./cmd/ckb
 
       - name: Install CKB
         run: chmod +x ckb && sudo mv ckb /usr/local/bin/
