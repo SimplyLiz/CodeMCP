@@ -150,8 +150,8 @@ func TestReviewPR_BasicChanges(t *testing.T) {
 	if resp.CkbVersion == "" {
 		t.Error("expected CkbVersion to be set")
 	}
-	if resp.SchemaVersion != "8.3" {
-		t.Errorf("expected SchemaVersion '8.3', got %q", resp.SchemaVersion)
+	if resp.SchemaVersion != "8.4" {
+		t.Errorf("expected SchemaVersion '8.4', got %q", resp.SchemaVersion)
 	}
 	if resp.Tool != "reviewPR" {
 		t.Errorf("expected Tool 'reviewPR', got %q", resp.Tool)

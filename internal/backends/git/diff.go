@@ -490,6 +490,26 @@ func (g *GitAdapter) GetFileDiffContent(base, head, filePath string) (string, er
 	return output, nil
 }
 
+// GetCommitRangeDiffUnified returns the full unified diff between two refs.
+func (g *GitAdapter) GetCommitRangeDiffUnified(base, head string) (string, error) {
+	args := []string{"diff", base, head}
+	output, err := g.executeGitCommand(args...)
+	if err != nil {
+		return "", err
+	}
+	return output, nil
+}
+
+// GetStagedDiffUnified returns the full unified diff for staged changes.
+func (g *GitAdapter) GetStagedDiffUnified() (string, error) {
+	args := []string{"diff", "--cached"}
+	output, err := g.executeGitCommand(args...)
+	if err != nil {
+		return "", err
+	}
+	return output, nil
+}
+
 // GetCommitDiff returns the diff for a specific commit
 func (g *GitAdapter) GetCommitDiff(commitHash string) ([]DiffStats, error) {
 	if commitHash == "" {

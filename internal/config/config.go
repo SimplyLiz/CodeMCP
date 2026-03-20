@@ -59,6 +59,9 @@ type Config struct {
 
 	// v8.2 Unified PR Review
 	Review ReviewConfig `json:"review" mapstructure:"review"`
+
+	// v8.4 LLM integration
+	LLM LLMConfig `json:"llm" mapstructure:"llm"`
 }
 
 // CoverageConfig contains coverage file configuration (v8.1)
@@ -101,6 +104,12 @@ type ReviewConfig struct {
 	MaxFanOut             int     `json:"maxFanOut" mapstructure:"maxFanOut"`                         // 0 = disabled
 	DeadCodeMinConfidence float64 `json:"deadCodeMinConfidence" mapstructure:"deadCodeMinConfidence"` // default 0.8
 	TestGapMinLines       int     `json:"testGapMinLines" mapstructure:"testGapMinLines"`             // default 5
+}
+
+// LLMConfig contains LLM API configuration for narrative generation (v8.4).
+type LLMConfig struct {
+	APIKey string `json:"apiKey" mapstructure:"apiKey"` // Anthropic API key (or use ANTHROPIC_API_KEY env)
+	Model  string `json:"model" mapstructure:"model"`   // Model ID (default: claude-sonnet-4-20250514)
 }
 
 // BackendsConfig contains backend-specific configuration

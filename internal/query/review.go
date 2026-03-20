@@ -11,6 +11,7 @@ import (
 
 	"github.com/SimplyLiz/CodeMCP/internal/backends/git"
 	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/diff"
 	"github.com/SimplyLiz/CodeMCP/internal/secrets"
 	"github.com/SimplyLiz/CodeMCP/internal/version"
 )
@@ -24,6 +25,7 @@ type ReviewPROptions struct {
 	MaxInline  int           `json:"maxInline"`  // Max inline suggestions (default: 10)
 	Staged     bool          `json:"staged"`     // Review staged changes instead of branch diff
 	Scope      string        `json:"scope"`      // Filter to path prefix or symbol name
+	LLM        bool          `json:"llm"`        // Use LLM for narrative generation
 }
 
 // ReviewPolicy defines quality gates and behavior.
@@ -121,18 +123,19 @@ type ReviewCheck struct {
 
 // ReviewFinding is a single actionable finding.
 type ReviewFinding struct {
-	Check      string `json:"check"`
-	Severity   string `json:"severity"` // "error", "warning", "info"
-	File       string `json:"file"`
-	StartLine  int    `json:"startLine,omitempty"`
-	EndLine    int    `json:"endLine,omitempty"`
-	Message    string `json:"message"`
-	Detail     string `json:"detail,omitempty"`
-	Suggestion string `json:"suggestion,omitempty"`
-	Category   string `json:"category"`
-	RuleID     string `json:"ruleId,omitempty"`
-	Hint       string `json:"hint,omitempty"` // e.g., "→ ckb explain <symbol>"
-	Tier       int    `json:"tier"`           // 1=blocking, 2=important, 3=informational
+	Check      string  `json:"check"`
+	Severity   string  `json:"severity"` // "error", "warning", "info"
+	File       string  `json:"file"`
+	StartLine  int     `json:"startLine,omitempty"`
+	EndLine    int     `json:"endLine,omitempty"`
+	Message    string  `json:"message"`
+	Detail     string  `json:"detail,omitempty"`
+	Suggestion string  `json:"suggestion,omitempty"`
+	Category   string  `json:"category"`
+	RuleID     string  `json:"ruleId,omitempty"`
+	Hint       string  `json:"hint,omitempty"`       // e.g., "→ ckb explain <symbol>"
+	Tier       int     `json:"tier"`                 // 1=blocking, 2=important, 3=informational
+	Confidence float64 `json:"confidence,omitempty"` // 0.0-1.0, rule self-reported confidence
 }
 
 // findingTier maps a check name to its tier.
@@ -143,7 +146,7 @@ func findingTier(check string) int {
 	switch check {
 	case "breaking", "secrets", "critical":
 		return 1
-	case "coupling", "complexity", "risk", "health", "dead-code", "blast-radius":
+	case "coupling", "complexity", "risk", "health", "dead-code", "blast-radius", "bug-patterns":
 		return 2
 	case "test-gaps", "comment-drift", "format-consistency":
 		return 3
@@ -220,10 +223,24 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 		diffStats = e.filterDiffByScope(ctx, diffStats, opts.Scope)
 	}
 
+	// Build changed-lines map for HoldTheLine filtering
+	var changedLinesMap map[string]map[int]bool
+	if opts.Policy.HoldTheLine {
+		var rawDiff string
+		if opts.Staged {
+			rawDiff, _ = e.gitAdapter.GetStagedDiffUnified()
+		} else {
+			rawDiff, _ = e.gitAdapter.GetCommitRangeDiffUnified(opts.BaseBranch, opts.HeadBranch)
+		}
+		if rawDiff != "" {
+			changedLinesMap = buildChangedLinesMap(rawDiff)
+		}
+	}
+
 	if len(diffStats) == 0 {
 		return &ReviewPRResponse{
 			CkbVersion:    version.Version,
-			SchemaVersion: "8.3",
+			SchemaVersion: "8.4",
 			Tool:          "reviewPR",
 			Verdict:       "pass",
 			Score:         100,
@@ -478,6 +495,17 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 		}()
 	}
 
+	// Check: Bug Patterns (tree-sitter AST analysis)
+	if checkEnabled("bug-patterns") {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, ff := e.checkBugPatternsWithDiff(ctx, reviewableFiles, opts)
+			addCheck(c)
+			addFindings(ff)
+		}()
+	}
+
 	// Check: Comment/Code Drift
 	if checkEnabled("comment-drift") {
 		wg.Add(1)
@@ -500,6 +528,11 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 	}
 
 	wg.Wait()
+
+	// Post-filter findings to changed lines only when HoldTheLine is enabled
+	if opts.Policy.HoldTheLine && changedLinesMap != nil {
+		findings = filterByChangedLines(findings, changedLinesMap)
+	}
 
 	// Sort checks by severity (fail first, then warn, then pass)
 	sortChecks(checks)
@@ -605,9 +638,9 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 		repoState = &RepoState{RepoStateId: "unknown"}
 	}
 
-	return &ReviewPRResponse{
+	resp := &ReviewPRResponse{
 		CkbVersion:       version.Version,
-		SchemaVersion:    "8.3",
+		SchemaVersion:    "8.4",
 		Tool:             "reviewPR",
 		Verdict:          verdict,
 		Score:            score,
@@ -628,7 +661,16 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 			RepoStateDirty:  repoState.Dirty,
 			QueryDurationMs: time.Since(startTime).Milliseconds(),
 		},
-	}, nil
+	}
+
+	// Optional LLM narrative (replaces deterministic one on success)
+	if opts.LLM {
+		if llmNarrative, err := e.generateLLMNarrative(ctx, resp); err == nil {
+			resp.Narrative = llmNarrative
+		}
+	}
+
+	return resp, nil
 }
 
 // determinePRTier classifies a PR by total line changes.
@@ -674,11 +716,32 @@ func generateNarrative(summary ReviewSummary, checks []ReviewCheck, findings []R
 			parts = append(parts, strings.Join(riskParts, "; ")+".")
 		}
 	} else if summary.ChecksWarned > 0 {
-		warnParts := []string{}
+		// Pick the 2 most distinctive warned checks — prefer checks with
+		// fewer findings (they tend to be more specific/actionable).
+		type warnInfo struct {
+			summary      string
+			findingCount int
+		}
+		var warns []warnInfo
+		checkFindingCount := make(map[string]int)
+		for _, f := range findings {
+			checkFindingCount[f.Check]++
+		}
 		for _, c := range checks {
-			if c.Status == "warn" && len(warnParts) < 2 {
-				warnParts = append(warnParts, c.Summary)
+			if c.Status == "warn" {
+				warns = append(warns, warnInfo{c.Summary, checkFindingCount[c.Name]})
 			}
+		}
+		// Sort: fewer findings first (more specific), then alphabetically for stability
+		sort.SliceStable(warns, func(i, j int) bool {
+			return warns[i].findingCount < warns[j].findingCount
+		})
+		warnParts := []string{}
+		for _, w := range warns {
+			if len(warnParts) >= 2 {
+				break
+			}
+			warnParts = append(warnParts, w.summary)
 		}
 		if len(warnParts) > 0 {
 			parts = append(parts, strings.Join(warnParts, "; ")+".")
@@ -1041,6 +1104,10 @@ func calculateReviewScore(checks []ReviewCheck, findings []ReviewFinding) int {
 	// co-change warnings) don't overwhelm the score on their own.
 	checkDeductions := make(map[string]int)
 	const maxPerCheck = 20
+	// Cap per-rule within a check — prevents one noisy rule from consuming
+	// the entire check budget (e.g., discarded-error flooding bug-patterns).
+	ruleDeductions := make(map[string]int)
+	const maxPerRule = 10
 	// Total deduction cap — prevents the score from becoming meaningless
 	// on large PRs where many checks each hit their per-check cap.
 	const maxTotalDeduction = 80
@@ -1060,17 +1127,22 @@ func calculateReviewScore(checks []ReviewCheck, findings []ReviewFinding) int {
 			penalty = 1
 		}
 		if penalty > 0 {
-			current := checkDeductions[f.Check]
-			if current < maxPerCheck {
+			checkCurrent := checkDeductions[f.Check]
+			ruleCurrent := ruleDeductions[f.RuleID]
+			if checkCurrent < maxPerCheck && ruleCurrent < maxPerRule {
 				apply := penalty
-				if current+apply > maxPerCheck {
-					apply = maxPerCheck - current
+				if checkCurrent+apply > maxPerCheck {
+					apply = maxPerCheck - checkCurrent
+				}
+				if ruleCurrent+apply > maxPerRule {
+					apply = maxPerRule - ruleCurrent
 				}
 				if totalDeducted+apply > maxTotalDeduction {
 					apply = maxTotalDeduction - totalDeducted
 				}
 				score -= apply
-				checkDeductions[f.Check] = current + apply
+				checkDeductions[f.Check] = checkCurrent + apply
+				ruleDeductions[f.RuleID] = ruleCurrent + apply
 				totalDeducted += apply
 			}
 		}
@@ -1432,6 +1504,56 @@ func (e *Engine) filterDiffByScope(ctx context.Context, diffStats []git.DiffStat
 	}
 	if len(filtered) == 0 {
 		return diffStats // symbol found but no file overlap → return unfiltered
+	}
+	return filtered
+}
+
+// buildChangedLinesMap parses a unified diff and builds a map of file -> changed line numbers.
+func buildChangedLinesMap(rawDiff string) map[string]map[int]bool {
+	parsed, err := diff.ParseGitDiff(rawDiff)
+	if err != nil || parsed == nil {
+		return nil
+	}
+
+	result := make(map[string]map[int]bool)
+	for i := range parsed.Files {
+		cf := &parsed.Files[i]
+		path := diff.GetEffectivePath(cf)
+		if path == "" || path == "/dev/null" {
+			continue
+		}
+		lines := diff.GetAllChangedLines(cf)
+		if len(lines) > 0 {
+			lineSet := make(map[int]bool, len(lines))
+			for _, l := range lines {
+				lineSet[l] = true
+			}
+			result[path] = lineSet
+		}
+	}
+	return result
+}
+
+// filterByChangedLines keeps only findings on changed lines.
+// File-level findings (StartLine == 0) and findings for files not in the map are kept.
+func filterByChangedLines(findings []ReviewFinding, changedLines map[string]map[int]bool) []ReviewFinding {
+	filtered := make([]ReviewFinding, 0, len(findings))
+	for _, f := range findings {
+		// Keep file-level findings (no specific line)
+		if f.StartLine == 0 {
+			filtered = append(filtered, f)
+			continue
+		}
+		// Keep findings where file isn't in the diff map (e.g., global findings)
+		lineSet, ok := changedLines[f.File]
+		if !ok {
+			filtered = append(filtered, f)
+			continue
+		}
+		// Keep findings on changed lines
+		if lineSet[f.StartLine] {
+			filtered = append(filtered, f)
+		}
 	}
 	return filtered
 }

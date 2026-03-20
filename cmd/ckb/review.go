@@ -49,6 +49,7 @@ var (
 	reviewMaxFanOut          int
 	reviewDeadCodeConfidence float64
 	reviewTestGapLines       int
+	reviewLLM                bool
 )
 
 var reviewCmd = &cobra.Command{
@@ -70,6 +71,7 @@ var reviewCmd = &cobra.Command{
 - Blast radius / fan-out analysis (SCIP-based, informational by default)
 - Comment/code drift detection (numeric mismatch)
 - Format consistency (Human vs Markdown divergence)
+- Bug pattern detection (tree-sitter AST: defer-in-loop, unreachable code, etc.)
 - Finding baseline management
 
 Output formats: human (default), json, markdown, github-actions
@@ -81,6 +83,8 @@ Examples:
   ckb review internal/query/              # Scope to path prefix
   ckb review --checks=breaking,secrets    # Only specific checks
   ckb review --checks=dead-code,test-gaps,blast-radius  # New analyzers
+  ckb review --checks=bug-patterns                      # AST bug pattern detection
+  ckb review --llm                                      # AI-powered narrative summary
   ckb review --checks=health              # Only code health check
   ckb review --ci                         # CI mode (exit codes: 0=pass, 1=fail, 2=warn)
   ckb review --format=markdown            # PR comment ready output
@@ -96,7 +100,7 @@ func init() {
 	reviewCmd.Flags().StringVar(&reviewFormat, "format", "human", "Output format (human, json, markdown, github-actions, sarif, codeclimate, compliance)")
 	reviewCmd.Flags().StringVar(&reviewBaseBranch, "base", "main", "Base branch to compare against")
 	reviewCmd.Flags().StringVar(&reviewHeadBranch, "head", "", "Head branch (default: current branch)")
-	reviewCmd.Flags().StringSliceVar(&reviewChecks, "checks", nil, "Comma-separated list of checks (breaking,secrets,tests,complexity,coupling,hotspots,risk,critical,generated,classify,split,health,traceability,independence,dead-code,test-gaps,blast-radius,comment-drift,format-consistency)")
+	reviewCmd.Flags().StringSliceVar(&reviewChecks, "checks", nil, "Comma-separated list of checks (breaking,secrets,tests,complexity,coupling,hotspots,risk,critical,generated,classify,split,health,traceability,independence,dead-code,test-gaps,blast-radius,comment-drift,format-consistency,bug-patterns)")
 	reviewCmd.Flags().BoolVar(&reviewCI, "ci", false, "CI mode: exit 1 on fail, exit 2 on warn")
 	reviewCmd.Flags().StringVar(&reviewFailOn, "fail-on", "", "Override fail level (error, warning, none)")
 
@@ -125,6 +129,7 @@ func init() {
 	reviewCmd.Flags().IntVar(&reviewMaxFanOut, "max-fanout", 0, "Maximum fan-out / caller count (0 = disabled)")
 	reviewCmd.Flags().Float64Var(&reviewDeadCodeConfidence, "dead-code-confidence", 0.8, "Minimum confidence for dead code findings")
 	reviewCmd.Flags().IntVar(&reviewTestGapLines, "test-gap-lines", 5, "Minimum function lines for test gap reporting")
+	reviewCmd.Flags().BoolVar(&reviewLLM, "llm", false, "Use Claude AI for narrative summary (requires ANTHROPIC_API_KEY)")
 
 	rootCmd.AddCommand(reviewCmd)
 }
@@ -198,6 +203,7 @@ func runReview(cmd *cobra.Command, args []string) {
 		Checks:     reviewChecks,
 		Staged:     reviewStaged,
 		Scope:      scope,
+		LLM:        reviewLLM,
 	}
 
 	response, err := engine.ReviewPR(ctx, opts)
