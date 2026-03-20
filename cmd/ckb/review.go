@@ -12,6 +12,12 @@ import (
 	"github.com/SimplyLiz/CodeMCP/internal/query"
 )
 
+// Display caps for formatter output. Consistent across human and markdown formats.
+const (
+	maxDisplayFindings = 10
+	maxDisplayClusters = 10
+)
+
 var (
 	reviewFormat     string
 	reviewBaseBranch string
@@ -212,20 +218,20 @@ func runReview(cmd *cobra.Command, args []string) {
 	// Format output
 	var output string
 	switch OutputFormat(reviewFormat) {
-	case "markdown":
+	case FormatMarkdown:
 		output = formatReviewMarkdown(response)
-	case "github-actions":
+	case FormatGitHubActions:
 		output = formatReviewGitHubActions(response)
-	case "compliance":
+	case FormatCompliance:
 		output = formatReviewCompliance(response)
-	case "sarif":
+	case FormatSARIF:
 		var fmtErr error
 		output, fmtErr = formatReviewSARIF(response)
 		if fmtErr != nil {
 			fmt.Fprintf(os.Stderr, "Error formatting SARIF: %v\n", fmtErr)
 			os.Exit(1)
 		}
-	case "codeclimate":
+	case FormatCodeClimate:
 		var fmtErr error
 		output, fmtErr = formatReviewCodeClimate(response)
 		if fmtErr != nil {
@@ -331,7 +337,7 @@ func formatReviewHuman(resp *query.ReviewPRResponse) string {
 		grouped := groupCoChangeFindings(actionable)
 		if len(grouped) > 0 {
 			b.WriteString("Top Findings:\n")
-			limit := 10
+			limit := maxDisplayFindings
 			if len(grouped) < limit {
 				limit = len(grouped)
 			}
@@ -389,7 +395,7 @@ func formatReviewHuman(resp *query.ReviewPRResponse) string {
 	// PR Split Suggestion
 	if resp.SplitSuggestion != nil && resp.SplitSuggestion.ShouldSplit {
 		b.WriteString("PR Split:\n")
-		clusterLimit := 5
+		clusterLimit := maxDisplayClusters
 		clusters := resp.SplitSuggestion.Clusters
 		if len(clusters) > clusterLimit {
 			clusters = clusters[:clusterLimit]
@@ -664,7 +670,7 @@ func formatReviewMarkdown(resp *query.ReviewPRResponse) string {
 			b.WriteString(fmt.Sprintf("<details><summary>%s</summary>\n\n", label))
 			b.WriteString("| Severity | File | Finding |\n")
 			b.WriteString("|----------|------|---------|\n")
-			limit := 10
+			limit := maxDisplayFindings
 			if len(actionable) < limit {
 				limit = len(actionable)
 			}
@@ -721,7 +727,7 @@ func formatReviewMarkdown(resp *query.ReviewPRResponse) string {
 	// PR Split Suggestion
 	if resp.SplitSuggestion != nil && resp.SplitSuggestion.ShouldSplit {
 		clusters := resp.SplitSuggestion.Clusters
-		clusterLimit := 10
+		clusterLimit := maxDisplayClusters
 		b.WriteString(fmt.Sprintf("<details><summary>✂️ Suggested PR Split (%d clusters)</summary>\n\n",
 			len(clusters)))
 		b.WriteString("| Cluster | Files | Changes | Independent |\n")

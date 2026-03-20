@@ -38,16 +38,17 @@ type CodeHealthReport struct {
 	Improved     int               `json:"improved"` // Files that got better
 }
 
-// Health score weights
+// Health score weights — must sum to 1.0.
+// Coverage was removed because no coverage data source is available yet.
+// When coverage is added, reduce churn and cyclomatic by 0.05 each.
 const (
-	weightCyclomatic = 0.20
+	weightCyclomatic = 0.25
 	weightCognitive  = 0.15
 	weightFileSize   = 0.10
 	weightChurn      = 0.15
 	weightCoupling   = 0.10
 	weightBusFactor  = 0.10
-	weightAge        = 0.10
-	weightCoverage   = 0.10
+	weightAge        = 0.15
 
 	// Maximum files to compute health for. Beyond this, the check
 	// reports results for the first N files only.
@@ -223,11 +224,15 @@ func (e *Engine) checkCodeHealth(ctx context.Context, files []string, opts Revie
 // After:  1 git log --name-only + parallel git blame = ~12 calls
 func (e *Engine) batchRepoMetrics(ctx context.Context, files []string) map[string]repoMetrics {
 	result := make(map[string]repoMetrics, len(files))
+	defaultMetrics := repoMetrics{churn: 75, coupling: 75, bus: 75, age: 75}
 	for _, f := range files {
-		result[f] = repoMetrics{churn: 75, coupling: 75, bus: 75, age: 75}
+		result[f] = defaultMetrics
 	}
 
 	if e.gitAdapter == nil || !e.gitAdapter.IsAvailable() {
+		if e.logger != nil {
+			e.logger.Warn("git unavailable, health scores use default metrics (75) and may not reflect actual quality")
+		}
 		return result
 	}
 
@@ -359,7 +364,7 @@ func parseGitLogBatch(output string) (map[string]churnAgeInfo, map[string][]int)
 	return churnAge, cochange
 }
 
-// countCoupledFiles counts how many files are highly correlated (>= 70% co-change rate)
+// countCoupledFiles counts how many files are correlated (>= 30% co-change rate)
 // with the target file, considering only files in the review set.
 func countCoupledFiles(target string, targetCommits []int, cochange map[string][]int, fileSet map[string]bool) int {
 	if len(targetCommits) == 0 {
@@ -441,17 +446,25 @@ func (e *Engine) calculateFileHealth(ctx context.Context, file string, rm repoMe
 	absPath := filepath.Join(e.repoRoot, file)
 	score := 100.0
 
-	// Cyclomatic complexity (20%)
+	// Cyclomatic complexity (25%) + Cognitive complexity (15%)
+	complexityApplied := false
 	if analyzer != nil {
 		result, err := analyzer.AnalyzeFile(ctx, absPath)
 		if err == nil && result.Error == "" {
+			complexityApplied = true
 			cycScore := complexityToScore(result.MaxCyclomatic)
 			score -= (100 - cycScore) * weightCyclomatic
 
-			// Cognitive complexity (15%)
 			cogScore := complexityToScore(result.MaxCognitive)
 			score -= (100 - cogScore) * weightCognitive
 		}
+	}
+	if !complexityApplied {
+		// Tree-sitter couldn't parse this file (binary, unsupported language, etc.).
+		// Apply a neutral-pessimistic penalty so unparseable files don't get
+		// artificially high scores. 50 = middle of the scale.
+		score -= (100 - 50) * weightCyclomatic
+		score -= (100 - 50) * weightCognitive
 	}
 
 	// File size (10%)
@@ -511,17 +524,23 @@ func (e *Engine) calculateBaseFileHealthLocked(ctx context.Context, file string,
 	score := 100.0
 
 	// Tree-sitter: lock only for AnalyzeFile
+	complexityApplied := false
 	if analyzer != nil {
 		e.tsMu.Lock()
 		result, err := analyzer.AnalyzeFile(ctx, tmpFile.Name())
 		e.tsMu.Unlock()
 		if err == nil && result.Error == "" {
+			complexityApplied = true
 			cycScore := complexityToScore(result.MaxCyclomatic)
 			score -= (100 - cycScore) * weightCyclomatic
 
 			cogScore := complexityToScore(result.MaxCognitive)
 			score -= (100 - cogScore) * weightCognitive
 		}
+	}
+	if !complexityApplied {
+		score -= (100 - 50) * weightCyclomatic
+		score -= (100 - 50) * weightCognitive
 	}
 
 	loc := countLines(tmpFile.Name())
