@@ -2,6 +2,121 @@
 
 All notable changes to CKB will be documented in this file.
 
+## [8.2.0] - 2026-03-21
+
+### Added
+
+#### Unified PR Review Engine (`ckb review`)
+A comprehensive code review command that orchestrates 20 quality checks in parallel:
+
+```bash
+ckb review --base=main              # Human-readable review
+ckb review --base=main --ci         # CI mode (exit 0=pass, 1=fail, 2=warn)
+ckb review --base=main --post=123   # Post as PR comment
+ckb review --staged                 # Review staged changes
+ckb review --checks=secrets,breaking,bug-patterns  # Specific checks only
+```
+
+**20 checks:** breaking changes (SCIP), secrets, tests, complexity (tree-sitter), health scoring (8-factor weighted), coupling (git co-change), hotspots (churn ranking), risk scoring, dead code (SCIP + grep verification), test gaps, blast radius (SCIP, framework-filtered), bug patterns (10 AST rules), PR split suggestion, comment/code drift, format consistency, critical paths, traceability, reviewer independence, generated file detection, change classification.
+
+**7 output formats:** human, json, markdown, sarif, codeclimate, github-actions, compliance.
+
+#### Bug Pattern Detection (10 AST Rules)
+Tree-sitter-based bug detection with differential analysis (only new issues reported):
+
+- `defer-in-loop` — resource leak from deferred calls in loops
+- `unreachable-code` — statements after return/panic
+- `empty-error-branch` — `if err != nil { }` with no handling
+- `unchecked-type-assert` — `x.(string)` without comma-ok
+- `self-assignment` — `x = x` (likely typo)
+- `nil-after-deref` — variable used before nil check
+- `identical-branches` — if/else with same body
+- `shadowed-err` — `err` redeclared with `:=` in inner scope
+- `discarded-error` — error return value ignored (with receiver-type allowlist for strings.Builder, bytes.Buffer, hash.Hash)
+- `missing-defer-close` — resource opened without defer Close()
+
+All 10 rules validated against known-buggy and clean-code corpus tests.
+
+#### HoldTheLine Enforcement
+Findings are post-filtered to only changed lines when `HoldTheLine: true` (default). Pre-existing issues on unchanged lines are suppressed. Test-gap and hotspot findings are exempt (file-level concerns).
+
+#### Multi-Provider LLM Narrative (`--llm`)
+Optional AI-powered review narrative that replaces the deterministic summary:
+
+```bash
+ckb review --base=main --llm   # Requires ANTHROPIC_API_KEY or GEMINI_API_KEY
+```
+
+- Auto-detects provider from environment (Gemini or Anthropic)
+- Self-enrichment: CKB verifies own findings via `findReferences` and `analyzeImpact` before sending to LLM
+- Triage field on enriched findings (`confirmed`/`likely-fp`/`verify`) guides LLM reasoning
+- LLM identifies CKB false positives and deprioritizes framework noise
+
+#### Finding Dismissal Store
+Users can dismiss findings by editing `.ckb/review-dismissals.json`:
+
+```json
+{"dismissals": [{"ruleId": "ckb/hotspots/volatile-file", "file": "cmd/ckb/daemon.go", "reason": "Expected churn"}]}
+```
+
+Dismissed findings are filtered from all future reviews.
+
+#### MCP Tool: `reviewPR`
+New MCP tool with compact mode for AI consumers:
+
+```
+reviewPR(baseBranch: "main", compact: true)
+```
+
+Compact mode returns ~1k tokens instead of ~30k — verdict, non-pass checks, top 10 findings, health summary. Reduces AI assistant context usage by 97%.
+
+Supports `staged`, `scope`, `compact`, `failOnLevel`, `criticalPaths` parameters.
+
+#### Claude Code Skill (`/ckb-review`)
+`ckb setup --tool=claude-code` now installs a `/ckb-review` slash command that orchestrates CKB's structural analysis with LLM semantic review. Interactive setup prompts for skill installation.
+
+#### PR Comment Posting (`--post`)
+```bash
+ckb review --base=main --post=123   # Posts markdown review as PR comment via gh CLI
+```
+
+#### CI Integration
+- GitHub Actions workflow with SARIF upload, PR comments, and inline annotations
+- GitLab CI with CodeClimate report
+- GitHub Action (`action/ckb-review/action.yml`)
+
+#### Noise Reduction
+- Framework symbol filter for blast-radius (skips variables/constants — works across Go, C++, Java, Python via SCIP symbol kinds)
+- Hotspot findings capped to top 10 by churn score
+- Complexity findings require +5 cyclomatic delta minimum
+- Per-rule score cap (10 points max per ruleId)
+- Receiver-type allowlist for discarded-error (strings.Builder, bytes.Buffer, hash.Hash)
+- Dead-code grep verification catches cross-package references SCIP misses
+
+### Fixed
+- `daemon.go`: `followLogs()` deadlocked on EOF (`select{}` → sleep+poll)
+- `daemon.go`: `file.Seek()` error silently ignored
+- `handlers_review.go`: `context.Background()` → `context.WithTimeout(r.Context(), 5min)`
+- `cmd/ckb/review.go`: err shadow at postReviewComment
+- `cmd/ckb/setup.go`: err shadow at promptInstallSkills
+- Config merge: `DeadCodeMinConfidence` and `TestGapMinLines` overrides from config file now work (default values no longer block merge)
+- Go bumped to 1.26.1 (4 stdlib CVEs)
+- gosec findings annotated/resolved across codebase
+
+### Changed
+- Version: 8.1.0 → 8.2.0
+- Schema version: 8.2
+- `complexity.findNodes` exported as `FindNodes` for use by bug-pattern rules
+- `LLMConfig` added to config with `Provider`, `APIKey`, `Model` fields
+- MCP `reviewPR` tool description updated (20 checks, staged/scope/compact params)
+- CLAUDE.md updated with review documentation
+
+### Performance
+- Tree-sitter checks serialized with proper mutex discipline (cgo safety)
+- Hotspot scores pre-computed once and shared between checks
+- Health check subprocess calls reduced ~60%
+- Batch git-blame operations for repo metrics
+
 ## [8.1.0] - 2026-01-31
 
 ### Added
