@@ -28,7 +28,7 @@ func (a *Analyzer) AnalyzeFile(ctx context.Context, path string) (*FileComplexit
 
 // AnalyzeSource analyzes source code bytes.
 // Stub implementation returns an error.
-func (a *Analyzer) AnalyzeSource(ctx context.Context, source []byte, lang Language) (*FileComplexity, error) {
+func (a *Analyzer) AnalyzeSource(ctx context.Context, path string, source []byte, lang Language) (*FileComplexity, error) {
 	return nil, ErrNoCGO
 }
 

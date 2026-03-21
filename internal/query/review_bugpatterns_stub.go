@@ -4,7 +4,6 @@ package query
 
 import (
 	"context"
-	"time"
 )
 
 // checkBugPatterns is a stub for non-CGO builds.
