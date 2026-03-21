@@ -134,14 +134,14 @@ jobs:
           echo "| **Total** | **$FINDINGS** |" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@b1bff81932f5cdfc8695c7752dcee935dcd061c8 # v4
+        uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4
         with:
           sarif_file: gosec.sarif
           category: gosec
         continue-on-error: true
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
           name: gosec-results
