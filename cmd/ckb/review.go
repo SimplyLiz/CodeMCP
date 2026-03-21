@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"sort"
 	"strings"
 	"time"
@@ -50,6 +51,7 @@ var (
 	reviewDeadCodeConfidence float64
 	reviewTestGapLines       int
 	reviewLLM                bool
+	reviewPost               string
 )
 
 var reviewCmd = &cobra.Command{
@@ -130,6 +132,7 @@ func init() {
 	reviewCmd.Flags().Float64Var(&reviewDeadCodeConfidence, "dead-code-confidence", 0.8, "Minimum confidence for dead code findings")
 	reviewCmd.Flags().IntVar(&reviewTestGapLines, "test-gap-lines", 5, "Minimum function lines for test gap reporting")
 	reviewCmd.Flags().BoolVar(&reviewLLM, "llm", false, "Use Claude AI for narrative summary (requires ANTHROPIC_API_KEY)")
+	reviewCmd.Flags().StringVar(&reviewPost, "post", "", "Post review as PR comment (PR number or branch name, requires gh CLI)")
 
 	rootCmd.AddCommand(reviewCmd)
 }
@@ -258,6 +261,13 @@ func runReview(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Println(output)
+
+	// Post review as PR comment if --post is set
+	if reviewPost != "" {
+		if err := postReviewComment(response, reviewPost); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to post review comment: %v\n", err)
+		}
+	}
 
 	logger.Debug("Review completed",
 		"baseBranch", reviewBaseBranch,
@@ -984,4 +994,25 @@ func escapeGHA(s string) string {
 	s = strings.ReplaceAll(s, "\r", "%0D")
 	s = strings.ReplaceAll(s, "\n", "%0A")
 	return s
+}
+
+// postReviewComment posts the review as a PR comment using the gh CLI.
+func postReviewComment(resp *query.ReviewPRResponse, prRef string) error {
+	// Check if gh is available
+	if _, err := exec.LookPath("gh"); err != nil {
+		return fmt.Errorf("gh CLI not found — install from https://cli.github.com")
+	}
+
+	// Generate markdown output for the comment
+	body := formatReviewMarkdown(resp)
+
+	// Post using gh pr comment
+	cmd := exec.Command("gh", "pr", "comment", prRef, "--body", body)
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("gh pr comment failed: %w", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "Review posted to PR %s\n", prRef)
+	return nil
 }

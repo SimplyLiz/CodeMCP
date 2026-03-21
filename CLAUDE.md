@@ -92,6 +92,8 @@ ckb setup --tool=cursor --global
 claude mcp add ckb -- npx @tastehub/ckb mcp
 ```
 
+`ckb setup --tool=claude-code` also installs the `/ckb-review` slash command for Claude Code, which orchestrates CKB's structural analysis with LLM semantic review.
+
 ### Key MCP Tools
 
 **Navigation:** `searchSymbols`, `getSymbol`, `findReferences`, `getCallGraph`, `traceUsage`, `listEntrypoints`

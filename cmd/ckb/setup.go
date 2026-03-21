@@ -206,7 +206,18 @@ func runSetup(cmd *cobra.Command, args []string) error {
 	}
 
 	// Configure
-	return configureTool(selectedTool, global, ckbCommand, ckbArgs)
+	if err := configureTool(selectedTool, global, ckbCommand, ckbArgs); err != nil {
+		return err
+	}
+
+	// Offer to install skills in interactive mode
+	if setupTool == "" && selectedTool.ID == "claude-code" {
+		if err := promptInstallSkills(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not install skills: %v\n", err)
+		}
+	}
+
+	return nil
 }
 
 func selectTool() (*aiTool, error) {
@@ -234,6 +245,28 @@ func selectTool() (*aiTool, error) {
 
 		return &aiTools[choice-1], nil
 	}
+}
+
+func promptInstallSkills() error {
+	fmt.Println("\nCKB provides a /ckb-review slash command for Claude Code that orchestrates")
+	fmt.Println("CKB's structural analysis with your LLM review — 15 checks in 5 seconds,")
+	fmt.Println("then focused semantic review on what CKB flags.")
+	fmt.Println()
+
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("Install /ckb-review skill? [Y/n]: ")
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("failed to read input: %w", err)
+	}
+
+	input = strings.TrimSpace(strings.ToLower(input))
+	if input == "" || input == "y" || input == "yes" {
+		return installClaudeCodeSkills()
+	}
+
+	fmt.Println("Skipped. You can install later with: ckb setup --tool=claude-code")
+	return nil
 }
 
 func selectScope(tool *aiTool) (bool, error) {
@@ -736,23 +769,139 @@ func configureClaudeCodeGlobal(ckbCommand string, ckbArgs []string) error {
 			fmt.Println("\n✓ CKB configured for Claude Code globally.")
 			fmt.Println("Restart Claude Code to load the new configuration.")
 		}
-		return nil
+	} else {
+		// Fallback to writing ~/.claude.json
+		fmt.Println("Claude CLI not found, using fallback configuration...")
+		configPath := getConfigPath("claude-code", true)
+		if err := writeMcpServersConfig(configPath, ckbCommand, ckbArgs); err != nil {
+			return err
+		}
+
+		fmt.Printf("\n✓ Added CKB to %s\n", configPath)
+		fmt.Printf("  Command: %s %s\n", ckbCommand, strings.Join(ckbArgs, " "))
+		fmt.Println("\nRestart Claude Code to load the new configuration.")
+		fmt.Println("\nTip: Install Claude CLI for better integration: https://claude.ai/code")
 	}
 
-	// Fallback to writing ~/.claude.json
-	fmt.Println("Claude CLI not found, using fallback configuration...")
-	configPath := getConfigPath("claude-code", true)
-	if err := writeMcpServersConfig(configPath, ckbCommand, ckbArgs); err != nil {
-		return err
+	// Install /review skill as user-level command
+	if err := installClaudeCodeSkills(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not install skills: %v\n", err)
 	}
-
-	fmt.Printf("\n✓ Added CKB to %s\n", configPath)
-	fmt.Printf("  Command: %s %s\n", ckbCommand, strings.Join(ckbArgs, " "))
-	fmt.Println("\nRestart Claude Code to load the new configuration.")
-	fmt.Println("\nTip: Install Claude CLI for better integration: https://claude.ai/code")
 
 	return nil
 }
+
+// installClaudeCodeSkills writes CKB's Claude Code slash commands to ~/.claude/commands/.
+func installClaudeCodeSkills() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+
+	commandsDir := filepath.Join(home, ".claude", "commands")
+	if err := os.MkdirAll(commandsDir, 0755); err != nil {
+		return err
+	}
+
+	skillPath := filepath.Join(commandsDir, "ckb-review.md")
+
+	// Check if skill already exists and is current
+	if existing, err := os.ReadFile(skillPath); err == nil {
+		if string(existing) == ckbReviewSkill {
+			return nil // Already up to date
+		}
+	}
+
+	if err := os.WriteFile(skillPath, []byte(ckbReviewSkill), 0644); err != nil {
+		return err
+	}
+
+	fmt.Printf("✓ Installed /ckb-review skill at %s\n", skillPath)
+	return nil
+}
+
+// ckbReviewSkill is the embedded /ckb-review slash command for Claude Code.
+const ckbReviewSkill = `Run a comprehensive code review using CKB's deterministic analysis + your semantic review.
+
+## Input
+$ARGUMENTS - Optional: base branch (default: main), or "staged" for staged changes, or a PR number
+
+## MCP vs CLI
+
+CKB runs as an MCP server. MCP mode is preferred because the SCIP index stays loaded between calls — drill-down tools execute instantly against the in-memory index.
+
+## The Three Phases
+
+### Phase 1: CKB structural scan (5 seconds, 0 tokens)
+
+Call the reviewPR MCP tool with compact mode:
+` + "`" + `reviewPR(baseBranch: "main", compact: true)` + "`" + `
+
+This returns ~1k tokens — verdict, non-pass checks, top 10 findings, action items.
+
+If a PR number was given, get the base branch first:
+` + "```" + `bash
+BASE=$(gh pr view $ARGUMENTS --json baseRefName -q .baseRefName)
+` + "```" + `
+Then: ` + "`" + `reviewPR(baseBranch: BASE, compact: true)` + "`" + `
+
+> **If CKB is not running as an MCP server**, use CLI: ` + "`" + `ckb review --base=main --format=json` + "`" + `
+
+From CKB's output:
+- **Passed checks** → skip entirely (secrets clean, no breaking changes, etc.)
+- **Warned checks** → your review targets
+- **Hotspot files** → read these first
+- **Test gaps** → functions to evaluate
+
+### Phase 2: Drill down on CKB findings (0 tokens via MCP)
+
+Use CKB MCP tools to investigate before reading source:
+
+| Finding | Tool | Check |
+|---|---|---|
+| Dead code | findReferences or searchSymbols → findReferences | Has references SCIP missed? |
+| Blast radius | analyzeImpact | Real callers or framework wiring? |
+| Coupling gap | explainSymbol on the missing file | Does co-change partner need updates? |
+| Complexity | explainFile | Which functions drive the increase? |
+| Test gaps | getAffectedTests | Which tests exist? |
+
+### Phase 3: Semantic review of high-risk files
+
+Read source only for:
+1. Top hotspot files (CKB ranked by churn)
+2. Files with findings that survived drill-down
+3. New files (CKB can't assess design quality)
+
+Look for: logic bugs, security issues, design problems, edge cases, error handling quality.
+
+### Phase 4: Write the review
+
+` + "```" + `markdown
+## Summary
+One paragraph: what the PR does, overall assessment.
+
+## Must Fix
+Findings that block merge. File:line references.
+
+## Should Fix
+Issues worth addressing but not blocking.
+
+## CKB Analysis
+- Verdict: [pass/warn/fail], Score: [0-100]
+- Key check results, false positives identified
+- Test gaps: [N] untested functions
+
+## Recommendation
+Approve / Request changes / Needs discussion
+` + "```" + `
+
+## Tips
+
+- CKB "pass" checks: trust them (SCIP-verified, pattern-scanned)
+- CKB "dead-code": verify with findReferences before reporting
+- Hotspot scores: higher = more volatile = review more carefully
+- Complexity delta: read the specific functions CKB flagged
+`
 
 func configureVSCodeGlobal(ckbCommand string, ckbArgs []string) error {
 	// Check if code command is available

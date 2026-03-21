@@ -534,6 +534,12 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 		findings = filterByChangedLines(findings, changedLinesMap)
 	}
 
+	// Filter dismissed findings (user feedback from .ckb/review-dismissals.json)
+	dismissals := LoadDismissals(e.repoRoot)
+	if len(dismissals.Dismissals) > 0 {
+		findings, _ = dismissals.FilterDismissed(findings)
+	}
+
 	// Sort checks by severity (fail first, then warn, then pass)
 	sortChecks(checks)
 

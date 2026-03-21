@@ -99,7 +99,15 @@ Rules:
 - If blast-radius callers are all CLI flag registrations, downgrade importance
 - Focus on findings that indicate real bugs or design issues
 - Be direct and specific. No markdown formatting.
-- End with a one-line recommendation for the reviewer.`
+- End with a one-line recommendation for the reviewer.
+
+The "triage" field on findings indicates CKB's confidence:
+- "confirmed": CKB verified this is a real issue
+- "likely-fp": CKB found evidence this may be a false positive — explain why
+- "verify": CKB can't determine — use your judgment
+- empty: no enrichment data available
+
+When triage is "likely-fp", explain what the enrichment found and why the finding may not be real.`
 
 	userPrompt := "Review this PR analysis and write a prioritized narrative:\n\n" + string(promptJSON)
 
@@ -142,6 +150,7 @@ type enrichedFinding struct {
 	Confidence float64 `json:"confidence,omitempty"`
 	// Enrichment from CKB tools (filled by enrichFindings)
 	Context string `json:"context,omitempty"` // Additional context from CKB tools
+	Triage  string `json:"triage,omitempty"`  // "verify", "likely-fp", "confirmed" — set by enrichment
 }
 
 type enrichedHealth struct {
@@ -200,12 +209,35 @@ func (e *Engine) enrichFindings(ctx context.Context, resp *ReviewPRResponse) *en
 		switch f.Check {
 		case "dead-code":
 			ef.Context = e.enrichDeadCode(ctx, f)
+			if strings.Contains(ef.Context, "FALSE POSITIVE") {
+				ef.Triage = "likely-fp"
+			} else if strings.Contains(ef.Context, "Confirmed") {
+				ef.Triage = "confirmed"
+			}
 		case "blast-radius":
 			ef.Context = e.enrichBlastRadius(ctx, f)
+			if strings.HasPrefix(f.File, "cmd/") {
+				ef.Triage = "likely-fp"
+			} else {
+				ef.Triage = "verify"
+			}
 		case "coupling":
 			ef.Context = e.enrichCoupling(ctx, f)
+			ef.Triage = "verify"
 		case "complexity":
 			ef.Context = e.enrichComplexity(ctx, f)
+			// Parse delta from message like "Complexity 54→67 (+13 cyclomatic)"
+			if idx := strings.Index(f.Message, "(+"); idx >= 0 {
+				deltaStr := f.Message[idx+2:]
+				if end := strings.IndexByte(deltaStr, ' '); end >= 0 {
+					deltaStr = deltaStr[:end]
+				}
+				delta := 0
+				fmt.Sscanf(deltaStr, "%d", &delta)
+				if delta >= 10 {
+					ef.Triage = "verify"
+				}
+			}
 		}
 
 		result.Findings = append(result.Findings, ef)
