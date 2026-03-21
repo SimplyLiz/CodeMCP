@@ -3,27 +3,32 @@ Run a comprehensive code review using CKB's deterministic analysis + your semant
 ## Input
 $ARGUMENTS - Optional: base branch (default: main), or "staged" for staged changes, or a PR number
 
+## MCP vs CLI
+
+CKB runs as an MCP server in this environment. MCP mode is strongly preferred for interactive review because the SCIP index stays loaded between calls — drill-down tools like `findReferences`, `analyzeImpact`, and `explainSymbol` execute instantly against the in-memory index. CLI mode reloads the index on every invocation.
+
 ## The Three Phases
 
 ### Phase 1: CKB structural scan (5 seconds, 0 tokens)
 
-If CKB is available as an MCP server, call the `reviewPR` tool with compact mode:
+Call the `reviewPR` MCP tool with compact mode:
 ```
 reviewPR(baseBranch: "main", compact: true)
 ```
 
 This returns ~1k tokens instead of ~30k — just the verdict, non-pass checks, top 10 findings, and action items. Use `compact: false` only if you need the full raw data.
 
-If CKB is not an MCP server, use the CLI:
-```bash
-./ckb review --base=main --format=json
-```
-
 If a PR number was given, get the base branch first:
 ```bash
 BASE=$(gh pr view $ARGUMENTS --json baseRefName -q .baseRefName)
-./ckb review --base=$BASE --format=json
 ```
+Then pass it: `reviewPR(baseBranch: BASE, compact: true)`
+
+> **If CKB is not running as an MCP server** (last resort), use the CLI instead:
+> ```bash
+> ./ckb review --base=main --format=json
+> ```
+> Note: CLI mode reloads the SCIP index on every call, so drill-down steps will be slower.
 
 From CKB's output, immediately note:
 - **Passed checks** → skip these categories. Don't waste tokens re-checking secrets, breaking changes, test coverage, etc.
@@ -31,9 +36,9 @@ From CKB's output, immediately note:
 - **Top hotspot files** → read these first
 - **Test gaps** → functions to evaluate
 
-### Phase 2: Drill down on CKB findings (0 tokens via MCP, or cheap CLI calls)
+### Phase 2: Drill down on CKB findings (0 tokens via MCP)
 
-Before reading source code, use CKB's tools to investigate specific findings:
+Before reading source code, use CKB's MCP tools to investigate specific findings. These calls are instant because the SCIP index is already loaded from Phase 1.
 
 | CKB finding | Drill-down tool | What to check |
 |---|---|---|
@@ -44,8 +49,6 @@ Before reading source code, use CKB's tools to investigate specific findings:
 | Complexity | `explainFile(path: "...")` | What functions are driving the increase? |
 | Test gaps | `getAffectedTests(baseBranch: "main")` | Which tests exist? Which functions are actually untested? |
 | Hotspots | `getHotspots(limit: 10)` | Full churn history for the flagged files |
-
-These drill-down calls cost 0 tokens when using MCP tools — CKB answers from its index. Only read source files for findings that survive drill-down.
 
 ### Phase 3: Semantic review of high-risk files
 

@@ -101,7 +101,14 @@ func (e *Engine) checkTestGaps(ctx context.Context, changedFiles []string, opts 
 		} else {
 			status = "info"
 		}
-		summary = fmt.Sprintf("%d untested function(s) in changed files", len(findings))
+		totalCount := len(findings)
+		summary = fmt.Sprintf("%d untested function(s) in changed files", totalCount)
+
+		// Cap findings at 10 to avoid noise (same pattern as hotspots)
+		if len(findings) > 10 {
+			findings = findings[:10]
+			summary = fmt.Sprintf("%d untested function(s) in changed files (showing top 10)", totalCount)
+		}
 	}
 
 	return ReviewCheck{

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -62,6 +63,12 @@ func (e *Engine) checkDeadCode(ctx context.Context, changedFiles []string, opts 
 
 	for _, item := range resp.DeadCode {
 		if !changedSet[item.FilePath] {
+			continue
+		}
+		// Grep-based verification: if the symbol name appears in other files
+		// in the same package directory, it's likely referenced and not dead.
+		// SCIP doesn't always capture cross-file references within cmd/ packages.
+		if item.SymbolName != "" && symbolReferencedInPackage(e.repoRoot, item.FilePath, item.SymbolName) {
 			continue
 		}
 		hint := ""
@@ -179,6 +186,11 @@ func (e *Engine) findDeadConstants(ctx context.Context, changedFiles []string, a
 			}
 
 			if externalRefs == 0 {
+				// Grep-based verification: SCIP may miss cross-file references
+				// within the same package (e.g., cmd/ckb).
+				if symbolReferencedInPackage(e.repoRoot, file, c.name) {
+					continue
+				}
 				findings = append(findings, ReviewFinding{
 					Check:     "dead-code",
 					Severity:  "warning",
@@ -258,4 +270,40 @@ func isExported(name string) bool {
 		return false
 	}
 	return name[0] >= 'A' && name[0] <= 'Z'
+}
+
+// symbolReferencedInPackage checks whether symbolName appears in other Go files
+// within the same package directory as filePath. This catches cross-file references
+// that SCIP may miss (e.g., within cmd/ packages).
+func symbolReferencedInPackage(repoRoot, filePath, symbolName string) bool {
+	dir := filepath.Dir(filePath)
+	absDir := filepath.Join(repoRoot, dir)
+	absFile := filepath.Join(repoRoot, filePath)
+
+	// Use grep to search for the symbol name in sibling .go files, excluding
+	// the declaring file itself and test files.
+	cmd := exec.Command("grep", "-rl", "--include=*.go", symbolName, absDir)
+	out, err := cmd.Output()
+	if err != nil {
+		return false // grep found nothing or errored
+	}
+
+	base := filepath.Base(absFile)
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		matchBase := filepath.Base(line)
+		// Skip the declaring file and test files
+		if matchBase == base {
+			continue
+		}
+		if strings.HasSuffix(matchBase, "_test.go") {
+			continue
+		}
+		// Found a reference in another non-test file in the same package
+		return true
+	}
+	return false
 }

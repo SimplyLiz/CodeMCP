@@ -1850,7 +1850,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		// v8.2 Unified PR Review
 		{
 			Name:        "reviewPR",
-			Description: "Run a comprehensive PR review with 20 quality gates. Orchestrates checks (breaking, secrets, tests, complexity, health, coupling, hotspots, risk, critical-path, traceability, independence, generated, classify, split, dead-code, test-gaps, blast-radius, comment-drift, format-consistency, bug-patterns) concurrently. Returns verdict (pass/warn/fail), score, findings with file:line locations, health report, split suggestion, and suggested reviewers. Use this FIRST when reviewing a PR — it gives you structural context (what changed, what's risky, what's untested) so you can focus your review on what matters.",
+			Description: "Run a comprehensive PR review with 20 quality gates. Orchestrates checks (breaking, secrets, tests, complexity, health, coupling, hotspots, risk, critical-path, traceability, independence, generated, classify, split, dead-code, test-gaps, blast-radius, comment-drift, format-consistency, bug-patterns) concurrently. Returns verdict (pass/warn/fail), score, findings with file:line locations, health report, split suggestion, and suggested reviewers. Use this FIRST when reviewing a PR — it gives you structural context (what changed, what's risky, what's untested) so you can focus your review on what matters. MCP mode is preferred for interactive review: the SCIP index stays loaded between calls, so follow-up tools (findReferences, analyzeImpact, explainSymbol, explainFile) execute instantly against the in-memory index without reloading.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

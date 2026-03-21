@@ -1376,10 +1376,10 @@ func mergeReviewConfig(policy *ReviewPolicy, rc *config.ReviewConfig) {
 	if policy.MaxFanOut == 0 && rc.MaxFanOut > 0 {
 		policy.MaxFanOut = rc.MaxFanOut
 	}
-	if policy.DeadCodeMinConfidence == 0 && rc.DeadCodeMinConfidence > 0 {
+	if rc.DeadCodeMinConfidence > 0 {
 		policy.DeadCodeMinConfidence = rc.DeadCodeMinConfidence
 	}
-	if policy.TestGapMinLines == 0 && rc.TestGapMinLines > 0 {
+	if rc.TestGapMinLines > 0 {
 		policy.TestGapMinLines = rc.TestGapMinLines
 	}
 }
@@ -1575,11 +1575,24 @@ func buildChangedLinesMap(rawDiff string) map[string]map[int]bool {
 
 // filterByChangedLines keeps only findings on changed lines.
 // File-level findings (StartLine == 0) and findings for files not in the map are kept.
+// Checks that are file-level concerns (test-gaps, hotspots) are exempt — the file
+// is in the diff, so the finding is relevant even if the specific line wasn't changed.
 func filterByChangedLines(findings []ReviewFinding, changedLines map[string]map[int]bool) []ReviewFinding {
+	// Checks exempt from line-level filtering because they report file-level concerns
+	exemptChecks := map[string]bool{
+		"test-gaps": true, // "function X lacks tests" is relevant if the file changed
+		"hotspots":  true, // churn score is per-file
+	}
+
 	filtered := make([]ReviewFinding, 0, len(findings))
 	for _, f := range findings {
 		// Keep file-level findings (no specific line)
 		if f.StartLine == 0 {
+			filtered = append(filtered, f)
+			continue
+		}
+		// Keep findings from exempt checks (file-level concerns)
+		if exemptChecks[f.Check] {
 			filtered = append(filtered, f)
 			continue
 		}
