@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -356,9 +357,12 @@ func followLogs(path string) error {
 	defer func() { _ = file.Close() }()
 
 	// Seek to end
-	file.Seek(0, 2)
+	if _, err := file.Seek(0, 2); err != nil {
+		return fmt.Errorf("failed to seek to end of log file: %w", err)
+	}
 
-	// Read and print new lines
+	// Poll for new lines. A production implementation would use fsnotify,
+	// but polling at 500ms is simple and sufficient for log tailing.
 	scanner := bufio.NewScanner(file)
 	for {
 		for scanner.Scan() {
@@ -368,9 +372,9 @@ func followLogs(path string) error {
 			return err
 		}
 
-		// Sleep briefly and create new scanner from current position
-		// This is a simple implementation; production would use fsnotify
-		select {}
+		time.Sleep(500 * time.Millisecond)
+		// Re-create scanner from current file position to pick up new data
+		scanner = bufio.NewScanner(file)
 	}
 }
 

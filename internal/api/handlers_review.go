@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/SimplyLiz/CodeMCP/internal/query"
 )
@@ -17,7 +18,8 @@ func (s *Server) handleReviewPR(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	defer cancel()
 
 	policy := query.DefaultReviewPolicy()
 	opts := query.ReviewPROptions{

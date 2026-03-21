@@ -264,8 +264,8 @@ func runReview(cmd *cobra.Command, args []string) {
 
 	// Post review as PR comment if --post is set
 	if reviewPost != "" {
-		if err := postReviewComment(response, reviewPost); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to post review comment: %v\n", err)
+		if postErr := postReviewComment(response, reviewPost); postErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to post review comment: %v\n", postErr)
 		}
 	}
 

@@ -212,8 +212,8 @@ func runSetup(cmd *cobra.Command, args []string) error {
 
 	// Offer to install skills in interactive mode
 	if setupTool == "" && selectedTool.ID == "claude-code" {
-		if err := promptInstallSkills(); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: could not install skills: %v\n", err)
+		if skillErr := promptInstallSkills(); skillErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not install skills: %v\n", skillErr)
 		}
 	}
 
