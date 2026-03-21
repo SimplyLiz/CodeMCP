@@ -83,29 +83,34 @@ func (e *Engine) checkComplexityDelta(ctx context.Context, files []string, opts 
 			}
 		}
 
-		// Only report if complexity increased
+		// Track all increases for the summary, but only emit per-file
+		// findings for significant deltas (>=5 cyclomatic). Small increases
+		// (+1, +2) are normal growth and create noise without actionability.
 		if delta.CyclomaticDelta > 0 || delta.CognitiveDelta > 0 {
 			deltas = append(deltas, delta)
 
-			sev := "info"
-			if maxDelta > 0 && delta.CyclomaticDelta > maxDelta {
-				sev = "warning"
-			}
+			const minFindingDelta = 5
+			if delta.CyclomaticDelta >= minFindingDelta {
+				sev := "info"
+				if maxDelta > 0 && delta.CyclomaticDelta > maxDelta {
+					sev = "warning"
+				}
 
-			msg := fmt.Sprintf("Complexity %d→%d (+%d cyclomatic)",
-				delta.CyclomaticBefore, delta.CyclomaticAfter, delta.CyclomaticDelta)
-			if delta.HottestFunction != "" {
-				msg += fmt.Sprintf(" in %s()", delta.HottestFunction)
-			}
+				msg := fmt.Sprintf("Complexity %d→%d (+%d cyclomatic)",
+					delta.CyclomaticBefore, delta.CyclomaticAfter, delta.CyclomaticDelta)
+				if delta.HottestFunction != "" {
+					msg += fmt.Sprintf(" in %s()", delta.HottestFunction)
+				}
 
-			findings = append(findings, ReviewFinding{
-				Check:    "complexity",
-				Severity: sev,
-				File:     file,
-				Message:  msg,
-				Category: "complexity",
-				RuleID:   "ckb/complexity/increase",
-			})
+				findings = append(findings, ReviewFinding{
+					Check:    "complexity",
+					Severity: sev,
+					File:     file,
+					Message:  msg,
+					Category: "complexity",
+					RuleID:   "ckb/complexity/increase",
+				})
+			}
 		}
 	}
 

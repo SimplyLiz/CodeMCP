@@ -120,7 +120,7 @@ claude mcp add ckb -- npx @tastehub/ckb mcp
 
 **Index Management (v8.0):** `reindex` (trigger index refresh), enhanced `getStatus` with health tiers
 
-**PR Review (v8.4):** `reviewPR` — unified review with 20 quality checks (breaking, secrets, tests, complexity, health, coupling, hotspots, risk, critical-path, traceability, independence, generated, classify, split, dead-code, test-gaps, blast-radius, comment-drift, format-consistency, bug-patterns); optional `--llm` flag for Claude-powered narrative
+**PR Review (v8.2):** `reviewPR` — unified review with 20 quality checks (breaking, secrets, tests, complexity, health, coupling, hotspots, risk, critical-path, traceability, independence, generated, classify, split, dead-code, test-gaps, blast-radius, comment-drift, format-consistency, bug-patterns); optional `--llm` flag for Claude-powered narrative
 
 ## Architecture Overview
 

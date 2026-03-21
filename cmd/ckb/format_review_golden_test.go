@@ -19,8 +19,8 @@ const goldenDir = "../../testdata/review"
 // goldenResponse returns a rich response exercising all formatter code paths.
 func goldenResponse() *query.ReviewPRResponse {
 	return &query.ReviewPRResponse{
-		CkbVersion:    "8.4.0",
-		SchemaVersion: "8.4",
+		CkbVersion:    "8.2.0",
+		SchemaVersion: "8.2",
 		Tool:          "reviewPR",
 		Verdict:       "warn",
 		Score:         68,

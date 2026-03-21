@@ -484,6 +484,38 @@ func foo() {
 	}
 }
 
+func TestBugPattern_DiscardedError_HashWriteNotFlagged(t *testing.T) {
+	t.Parallel()
+	source := []byte(`package main
+
+import (
+	"crypto/md5"
+	"crypto/sha256"
+)
+
+func fingerprint(data []byte) []byte {
+	h := md5.New()
+	h.Write(data)
+	h.Write([]byte{0})
+	return h.Sum(nil)
+}
+
+func checksum(data []byte) []byte {
+	h := sha256.New()
+	h.Write(data)
+	return h.Sum(nil)
+}
+`)
+	root := mustParse(t, source)
+	findings := checkDiscardedError(root, source, "test.go")
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for hash.Write, got %d:", len(findings))
+		for _, f := range findings {
+			t.Logf("  line %d: %s", f.StartLine, f.Message)
+		}
+	}
+}
+
 func TestBugPattern_DiscardedError_NewBufferNotFlagged(t *testing.T) {
 	t.Parallel()
 	source := []byte(`package main

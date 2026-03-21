@@ -1,6 +1,6 @@
 {
-  "ckbVersion": "8.4.0",
-  "schemaVersion": "8.4",
+  "ckbVersion": "8.2.0",
+  "schemaVersion": "8.2",
   "tool": "reviewPR",
   "verdict": "warn",
   "score": 68,

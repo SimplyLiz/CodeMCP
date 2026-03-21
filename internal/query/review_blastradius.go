@@ -3,20 +3,26 @@ package query
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 )
 
 // checkBlastRadius checks if changed symbols have high fan-out (many callers).
+// Only reports functions and methods — variable/constant references are typically
+// framework registrations (cobra commands, Qt signals, etc.), not real fan-out.
 func (e *Engine) checkBlastRadius(ctx context.Context, changedFiles []string, opts ReviewPROptions) (ReviewCheck, []ReviewFinding) {
 	start := time.Now()
 
 	maxFanOut := opts.Policy.MaxFanOut
 	informationalMode := maxFanOut <= 0
 
-	// Collect symbols from changed files, cap at 30 total
+	// Collect symbols from changed files, cap at 30 total.
+	// Only include functions and methods — variable references are typically
+	// framework wiring (cobra commands, Spring beans, Qt signals) not real callers.
 	type symbolRef struct {
 		stableId string
 		name     string
+		kind     string
 		file     string
 	}
 	var symbols []symbolRef
@@ -36,9 +42,15 @@ func (e *Engine) checkBlastRadius(ctx context.Context, changedFiles []string, op
 			continue
 		}
 		for _, sym := range resp.Symbols {
+			// Skip variables and constants — their "callers" are references
+			// (reads, assignments, framework registrations), not real fan-out.
+			if isFrameworkSymbol(sym.Kind, sym.Name, file) {
+				continue
+			}
 			symbols = append(symbols, symbolRef{
 				stableId: sym.StableId,
 				name:     sym.Name,
+				kind:     sym.Kind,
 				file:     file,
 			})
 			if len(symbols) >= 30 {
@@ -63,8 +75,10 @@ func (e *Engine) checkBlastRadius(ctx context.Context, changedFiles []string, op
 		callerCount := impactResp.BlastRadius.UniqueCallerCount
 
 		if informationalMode {
-			// No threshold — emit info-level findings for all symbols with callers
-			if callerCount > 0 {
+			// In informational mode, only surface symbols with meaningful fan-out.
+			// Symbols with 1-2 callers are normal coupling; 3+ suggests a change
+			// that could ripple further than expected.
+			if callerCount >= 3 {
 				hint := ""
 				if sym.name != "" {
 					hint = fmt.Sprintf("→ ckb explain %s", sym.name)
@@ -125,4 +139,46 @@ func (e *Engine) checkBlastRadius(ctx context.Context, changedFiles []string, op
 		Summary:  summary,
 		Duration: time.Since(start).Milliseconds(),
 	}, findings
+}
+
+// isFrameworkSymbol returns true if this symbol is likely framework wiring
+// rather than real application logic. These symbols have "callers" that are
+// framework registrations, not actual fan-out.
+//
+// This works across languages because SCIP provides symbol kinds uniformly:
+// - Go: cobra.Command vars, init() registrations
+// - C++: Qt signal/slot vars, gtest TEST() macro expansions
+// - Java: Spring @Bean fields, JUnit @Test annotations
+// - Python: Flask route decorators, pytest fixtures
+//
+// The heuristic: variables and constants in CLI/test/config files are almost
+// always framework wiring. Functions and methods are the real blast-radius targets.
+func isFrameworkSymbol(kind, name, file string) bool {
+	// Variables and constants are references, not call targets
+	switch kind {
+	case "variable", "constant", "property", "field":
+		return true
+	}
+
+	// Known framework patterns by name (language-agnostic)
+	lowerName := strings.ToLower(name)
+	frameworkPatterns := []string{
+		"init",      // Go init(), C++ static initializers
+		"setup",     // Test setup functions
+		"teardown",  // Test teardown functions
+		"register",  // Framework registration
+		"configure", // Framework configuration
+	}
+	for _, p := range frameworkPatterns {
+		if lowerName == p {
+			return true
+		}
+	}
+
+	// CLI command patterns (Go cobra, Python click, etc.)
+	if strings.HasPrefix(file, "cmd/") && strings.HasSuffix(lowerName, "cmd") {
+		return true
+	}
+
+	return false
 }

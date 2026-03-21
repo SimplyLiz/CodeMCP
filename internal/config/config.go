@@ -60,7 +60,7 @@ type Config struct {
 	// v8.2 Unified PR Review
 	Review ReviewConfig `json:"review" mapstructure:"review"`
 
-	// v8.4 LLM integration
+	// v8.2 LLM integration
 	LLM LLMConfig `json:"llm" mapstructure:"llm"`
 }
 
@@ -99,17 +99,18 @@ type ReviewConfig struct {
 	RequireIndependentReview bool `json:"requireIndependentReview" mapstructure:"requireIndependentReview"` // Author != reviewer
 	MinReviewers             int  `json:"minReviewers" mapstructure:"minReviewers"`                         // Minimum reviewer count
 
-	// Analyzer thresholds (v8.3)
+	// Analyzer thresholds (v8.2)
 	MaxBlastRadiusDelta   int     `json:"maxBlastRadiusDelta" mapstructure:"maxBlastRadiusDelta"`     // 0 = disabled
 	MaxFanOut             int     `json:"maxFanOut" mapstructure:"maxFanOut"`                         // 0 = disabled
 	DeadCodeMinConfidence float64 `json:"deadCodeMinConfidence" mapstructure:"deadCodeMinConfidence"` // default 0.8
 	TestGapMinLines       int     `json:"testGapMinLines" mapstructure:"testGapMinLines"`             // default 5
 }
 
-// LLMConfig contains LLM API configuration for narrative generation (v8.4).
+// LLMConfig contains LLM API configuration for narrative generation (v8.2).
 type LLMConfig struct {
-	APIKey string `json:"apiKey" mapstructure:"apiKey"` // Anthropic API key (or use ANTHROPIC_API_KEY env)
-	Model  string `json:"model" mapstructure:"model"`   // Model ID (default: claude-sonnet-4-20250514)
+	Provider string `json:"provider" mapstructure:"provider"` // "anthropic" (default), "gemini"
+	APIKey   string `json:"apiKey" mapstructure:"apiKey"`     // API key (or use ANTHROPIC_API_KEY / GEMINI_API_KEY env)
+	Model    string `json:"model" mapstructure:"model"`       // Model ID (provider-specific default if empty)
 }
 
 // BackendsConfig contains backend-specific configuration

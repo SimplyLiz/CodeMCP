@@ -116,7 +116,9 @@ func TestGenerateLLMNarrative_PromptFormat(t *testing.T) {
 }
 
 func TestGenerateLLMNarrative_FallbackOnError(t *testing.T) {
-	t.Parallel()
+	// Not parallel — uses t.Setenv which modifies process environment
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("GEMINI_API_KEY", "")
 
 	// Without API key, generateLLMNarrative should return an error
 	// and the caller should fall back to deterministic narrative

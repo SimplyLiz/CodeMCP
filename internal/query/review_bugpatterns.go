@@ -544,10 +544,12 @@ func checkDiscardedError(root *sitter.Node, source []byte, file string) []Review
 	return findings
 }
 
-// infallibleWriteTypes are types whose Write/WriteString methods never return non-nil errors.
+// infallibleWriteTypes are types whose Write methods never return non-nil errors.
+// hash.Hash.Write is documented as "It never returns an error" in the Go stdlib.
 var infallibleWriteTypes = map[string]bool{
 	"strings.Builder": true,
 	"bytes.Buffer":    true,
+	"hash.Hash":       true,
 }
 
 // infallibleMethods are methods that never error on infallible-write types.
@@ -607,6 +609,14 @@ func buildVarTypeMap(body *sitter.Node, source []byte) map[string]string {
 			result[varName] = "bytes.Buffer"
 		} else if strings.Contains(rightText, "new(strings.Builder)") {
 			result[varName] = "strings.Builder"
+		} else if strings.Contains(rightText, "md5.New()") ||
+			strings.Contains(rightText, "sha1.New()") ||
+			strings.Contains(rightText, "sha256.New()") ||
+			strings.Contains(rightText, "sha512.New()") ||
+			strings.Contains(rightText, "fnv.New") ||
+			strings.Contains(rightText, "crc32.New") ||
+			strings.Contains(rightText, "hmac.New(") {
+			result[varName] = "hash.Hash"
 		}
 	}
 

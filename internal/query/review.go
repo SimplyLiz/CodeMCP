@@ -63,7 +63,7 @@ type ReviewPolicy struct {
 	RequireIndependentReview bool `json:"requireIndependentReview"` // Author != reviewer
 	MinReviewers             int  `json:"minReviewers"`             // Minimum independent reviewers (default: 1)
 
-	// Analyzer thresholds (v8.3)
+	// Analyzer thresholds (v8.2)
 	MaxBlastRadiusDelta   int     `json:"maxBlastRadiusDelta"`   // 0 = disabled
 	MaxFanOut             int     `json:"maxFanOut"`             // 0 = disabled
 	DeadCodeMinConfidence float64 `json:"deadCodeMinConfidence"` // default 0.8
@@ -240,7 +240,7 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 	if len(diffStats) == 0 {
 		return &ReviewPRResponse{
 			CkbVersion:    version.Version,
-			SchemaVersion: "8.4",
+			SchemaVersion: "8.2",
 			Tool:          "reviewPR",
 			Verdict:       "pass",
 			Score:         100,
@@ -640,7 +640,7 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 
 	resp := &ReviewPRResponse{
 		CkbVersion:       version.Version,
-		SchemaVersion:    "8.4",
+		SchemaVersion:    "8.2",
 		Tool:             "reviewPR",
 		Verdict:          verdict,
 		Score:            score,
@@ -1128,8 +1128,15 @@ func calculateReviewScore(checks []ReviewCheck, findings []ReviewFinding) int {
 		}
 		if penalty > 0 {
 			checkCurrent := checkDeductions[f.Check]
-			ruleCurrent := ruleDeductions[f.RuleID]
-			if checkCurrent < maxPerCheck && ruleCurrent < maxPerRule {
+			if checkCurrent >= maxPerCheck {
+				continue
+			}
+			// Per-rule cap only applies when the finding has a rule ID
+			if f.RuleID != "" {
+				ruleCurrent := ruleDeductions[f.RuleID]
+				if ruleCurrent >= maxPerRule {
+					continue
+				}
 				apply := penalty
 				if checkCurrent+apply > maxPerCheck {
 					apply = maxPerCheck - checkCurrent
@@ -1143,6 +1150,17 @@ func calculateReviewScore(checks []ReviewCheck, findings []ReviewFinding) int {
 				score -= apply
 				checkDeductions[f.Check] = checkCurrent + apply
 				ruleDeductions[f.RuleID] = ruleCurrent + apply
+				totalDeducted += apply
+			} else {
+				apply := penalty
+				if checkCurrent+apply > maxPerCheck {
+					apply = maxPerCheck - checkCurrent
+				}
+				if totalDeducted+apply > maxTotalDeduction {
+					apply = maxTotalDeduction - totalDeducted
+				}
+				score -= apply
+				checkDeductions[f.Check] = checkCurrent + apply
 				totalDeducted += apply
 			}
 		}
@@ -1385,27 +1403,48 @@ func (e *Engine) getHotspotScoreMapFast(ctx context.Context) map[string]float64 
 func (e *Engine) checkHotspotsWithScores(ctx context.Context, files []string, hotspotScores map[string]float64) (ReviewCheck, []ReviewFinding) {
 	start := time.Now()
 
-	var findings []ReviewFinding
-	hotspotCount := 0
+	// Collect all hotspot files, then emit only the top 10 by score.
+	// The check summary reports the total count; individual findings are
+	// limited to the most volatile files to keep the output actionable.
+	type hotspotHit struct {
+		file  string
+		score float64
+	}
+	var hits []hotspotHit
 	for _, f := range files {
 		if score, ok := hotspotScores[f]; ok && score > 0.5 {
-			hotspotCount++
-			findings = append(findings, ReviewFinding{
-				Check:    "hotspots",
-				Severity: "info",
-				File:     f,
-				Message:  fmt.Sprintf("Hotspot file (score: %.2f) — extra review attention recommended", score),
-				Category: "risk",
-				RuleID:   "ckb/hotspots/volatile-file",
-			})
+			hits = append(hits, hotspotHit{f, score})
 		}
+	}
+	// Sort descending by score
+	sort.Slice(hits, func(i, j int) bool {
+		return hits[i].score > hits[j].score
+	})
+
+	const maxHotspotFindings = 10
+	var findings []ReviewFinding
+	for i, h := range hits {
+		if i >= maxHotspotFindings {
+			break
+		}
+		findings = append(findings, ReviewFinding{
+			Check:    "hotspots",
+			Severity: "info",
+			File:     h.file,
+			Message:  fmt.Sprintf("Hotspot file (score: %.2f) — extra review attention recommended", h.score),
+			Category: "risk",
+			RuleID:   "ckb/hotspots/volatile-file",
+		})
 	}
 
 	status := "pass"
 	summary := "No volatile files touched"
-	if hotspotCount > 0 {
+	if len(hits) > 0 {
 		status = "info"
-		summary = fmt.Sprintf("%d hotspot file(s) touched", hotspotCount)
+		summary = fmt.Sprintf("%d hotspot file(s) touched", len(hits))
+		if len(hits) > maxHotspotFindings {
+			summary += fmt.Sprintf(" (top %d shown)", maxHotspotFindings)
+		}
 	}
 
 	return ReviewCheck{
