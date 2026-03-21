@@ -148,7 +148,7 @@ func (s *Server) HandleIndexDeltaUpload(w http.ResponseWriter, r *http.Request) 
 	// Check if we should suggest full upload based on changed percentage
 	if result.TotalFiles > 0 {
 		changedPercent := float64(len(deltaMeta.ChangedFiles)) / float64(result.TotalFiles) * 100
-		if int(changedPercent) > threshold {
+		if int(changedPercent) > threshold { // #nosec G115 -- percentage 0-100
 			suggestFull = true
 			suggestReason = fmt.Sprintf("%.1f%% of files changed (threshold: %d%%)", changedPercent, threshold)
 		}

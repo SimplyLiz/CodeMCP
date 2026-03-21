@@ -659,13 +659,13 @@ func isCallableSymbol(symbolID string, info map[string]*scip.SymbolInformation) 
 
 func parseRange(r []int32) (line, col, endCol int) {
 	if len(r) >= 1 {
-		line = int(r[0]) + 1 // Convert to 1-indexed
+		line = int(r[0]) + 1 // #nosec G115 -- SCIP int32 fits in int
 	}
 	if len(r) >= 2 {
-		col = int(r[1]) + 1
+		col = int(r[1]) + 1 // #nosec G115 -- SCIP int32 fits in int
 	}
 	if len(r) >= 4 {
-		endCol = int(r[3]) + 1
+		endCol = int(r[3]) + 1 // #nosec G115 -- SCIP int32 fits in int
 	}
 	return
 }
@@ -693,10 +693,10 @@ func buildLocation(path string, occ *scip.Occurrence) string {
 	}
 
 	if len(occ.Range) >= 1 {
-		loc["line"] = int(occ.Range[0]) + 1
+		loc["line"] = int(occ.Range[0]) + 1 // #nosec G115 -- SCIP int32 fits in int
 	}
 	if len(occ.Range) >= 2 {
-		loc["col"] = int(occ.Range[1]) + 1
+		loc["col"] = int(occ.Range[1]) + 1 // #nosec G115 -- SCIP int32 fits in int
 	}
 
 	data, _ := json.Marshal(loc)
@@ -728,7 +728,7 @@ func resolveCallerFromDoc(doc *scip.Document, callLine int, info map[string]*sci
 			continue
 		}
 
-		line := int(occ.Range[0]) + 1
+		line := int(occ.Range[0]) + 1 // #nosec G115 -- SCIP int32 fits in int
 		// Find the closest function definition before the call
 		if line <= callLine && line > bestLine {
 			bestMatch = occ.Symbol

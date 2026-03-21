@@ -353,7 +353,7 @@ func (s *KeyStore) scanKey(row *sql.Row) (*APIKey, error) {
 
 	// Parse optional fields
 	if rateLimit.Valid {
-		rl := int(rateLimit.Int64)
+		rl := int(rateLimit.Int64) // #nosec G115 -- rate limit is a small positive integer
 		key.RateLimit = &rl
 	}
 
@@ -438,7 +438,7 @@ func (s *KeyStore) scanKeys(rows *sql.Rows) ([]*APIKey, error) {
 
 		// Parse optional fields
 		if rateLimit.Valid {
-			rl := int(rateLimit.Int64)
+			rl := int(rateLimit.Int64) // #nosec G115 -- rate limit is a small positive integer
 			key.RateLimit = &rl
 		}
 

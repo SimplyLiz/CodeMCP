@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -226,7 +227,7 @@ func runDaemonBackground() error {
 		return fmt.Errorf("failed to create daemon directory: %w", dirErr)
 	}
 
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644) // #nosec G703 -- path is internally constructed
 	if err != nil {
 		return fmt.Errorf("failed to open log file: %w", err)
 	}
@@ -324,7 +325,7 @@ func runDaemonLogs(cmd *cobra.Command, args []string) error {
 }
 
 func showLastLines(path string, n int) error {
-	file, err := os.Open(path)
+	file, err := os.Open(path) // #nosec G703 -- path is internally constructed
 	if err != nil {
 		return err
 	}
@@ -349,16 +350,19 @@ func showLastLines(path string, n int) error {
 
 func followLogs(path string) error {
 	// Open file
-	file, err := os.Open(path)
+	file, err := os.Open(path) // #nosec G703 -- path is internally constructed
 	if err != nil {
 		return err
 	}
 	defer func() { _ = file.Close() }()
 
 	// Seek to end
-	file.Seek(0, 2)
+	if _, err := file.Seek(0, 2); err != nil {
+		return fmt.Errorf("failed to seek to end of log file: %w", err)
+	}
 
-	// Read and print new lines
+	// Poll for new lines. A production implementation would use fsnotify,
+	// but polling at 500ms is simple and sufficient for log tailing.
 	scanner := bufio.NewScanner(file)
 	for {
 		for scanner.Scan() {
@@ -368,9 +372,9 @@ func followLogs(path string) error {
 			return err
 		}
 
-		// Sleep briefly and create new scanner from current position
-		// This is a simple implementation; production would use fsnotify
-		select {}
+		time.Sleep(500 * time.Millisecond)
+		// Re-create scanner from current file position to pick up new data
+		scanner = bufio.NewScanner(file)
 	}
 }
 

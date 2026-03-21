@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"strconv"
 	"strings"
 )
 
@@ -217,7 +218,7 @@ func (idx *SCIPSymbolIndex) AddSymbol(symbol *IndexedSymbol) {
 }
 
 func locationKey(file string, line int) string {
-	return file + ":" + string(rune(line))
+	return file + ":" + strconv.Itoa(line)
 }
 
 // FindByLocation implements SymbolIndex

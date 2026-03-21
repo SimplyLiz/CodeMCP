@@ -65,7 +65,7 @@ func (s *Server) handleLanguageQuality(w http.ResponseWriter, r *http.Request) {
 	for lang, lq := range report.Languages {
 		languages[string(lang)] = &LanguageQualityInfo{
 			DisplayName:      lq.DisplayName,
-			Tier:             int(lq.Tier),
+			Tier:             int(lq.Tier), // #nosec G115 -- tier is a small enum value
 			TierName:         lq.TierName,
 			Quality:          string(lq.Quality),
 			SymbolCount:      lq.SymbolCount,

@@ -233,18 +233,18 @@ func parseOccurrenceRange(occ *Occurrence, filePath string) *Location {
 
 	// SCIP range format: [startLine, startChar, endChar] for single-line
 	// or [startLine, startChar, endLine, endChar] for multi-line
-	startLine := int(occ.Range[0])
-	startColumn := int(occ.Range[1])
+	startLine := int(occ.Range[0])   // #nosec G115 -- SCIP int32 fits in int
+	startColumn := int(occ.Range[1]) // #nosec G115 -- SCIP int32 fits in int
 
 	var endLine, endColumn int
 	if len(occ.Range) == 3 {
 		// Single-line range
 		endLine = startLine
-		endColumn = int(occ.Range[2])
+		endColumn = int(occ.Range[2]) // #nosec G115 -- SCIP int32 fits in int
 	} else if len(occ.Range) >= 4 {
 		// Multi-line range
-		endLine = int(occ.Range[2])
-		endColumn = int(occ.Range[3])
+		endLine = int(occ.Range[2])   // #nosec G115 -- SCIP int32 fits in int
+		endColumn = int(occ.Range[3]) // #nosec G115 -- SCIP int32 fits in int
 	}
 
 	return &Location{
@@ -434,6 +434,35 @@ func isTestFile(path string) bool {
 		strings.Contains(pathLower, "/tests/") ||
 		strings.HasSuffix(pathLower, "_test") ||
 		strings.HasSuffix(pathLower, ".spec.")
+}
+
+// LikelyReturnsError uses heuristics to determine if a function likely returns an error.
+// Since SignatureFull is not always populated, this uses name patterns and documentation.
+func LikelyReturnsError(symbolName string) bool {
+	// Common Go stdlib/convention patterns for error-returning functions
+	errorPatterns := []string{
+		"Open", "Read", "Write", "Close", "Create",
+		"Dial", "Listen", "Accept", "Connect",
+		"Parse", "Unmarshal", "Marshal", "Decode", "Encode",
+		"Execute", "Exec", "Query", "Scan",
+		"Send", "Recv", "Flush",
+		"Lock", "Acquire",
+		"Start", "Stop", "Init", "Setup",
+	}
+
+	// Check if name starts with or equals any pattern
+	for _, p := range errorPatterns {
+		if symbolName == p || strings.HasPrefix(symbolName, p) {
+			return true
+		}
+	}
+
+	// Functions starting with New commonly return (T, error)
+	if strings.HasPrefix(symbolName, "New") {
+		return true
+	}
+
+	return false
 }
 
 // CountSymbolsByPath counts the number of symbols in documents matching a path prefix

@@ -66,7 +66,7 @@ func (a *Analyzer) AnalyzeSource(ctx context.Context, path string, source []byte
 
 	// Find all function nodes
 	functionTypes := GetFunctionNodeTypes(lang)
-	functions := findNodes(root, functionTypes)
+	functions := FindNodes(root, functionTypes)
 
 	for _, fn := range functions {
 		result := a.analyzeFunction(fn, source, lang)
@@ -163,7 +163,7 @@ func computeCyclomaticComplexity(node *sitter.Node, source []byte, lang Language
 	complexity := 1 // Base complexity
 
 	decisionTypes := GetDecisionNodeTypes(lang)
-	decisionNodes := findNodes(node, decisionTypes)
+	decisionNodes := FindNodes(node, decisionTypes)
 
 	for _, dn := range decisionNodes {
 		// For binary expressions, only count if it's && or ||
@@ -226,8 +226,8 @@ func computeCognitiveRecursive(node *sitter.Node, source []byte, lang Language, 
 	return complexity
 }
 
-// findNodes finds all nodes of the given types in the AST.
-func findNodes(root *sitter.Node, types []string) []*sitter.Node {
+// FindNodes finds all nodes of the given types in the AST.
+func FindNodes(root *sitter.Node, types []string) []*sitter.Node {
 	var result []*sitter.Node
 
 	var walk func(*sitter.Node)

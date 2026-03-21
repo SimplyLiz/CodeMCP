@@ -10,9 +10,13 @@ import (
 type OutputFormat string
 
 const (
-	FormatJSON  OutputFormat = "json"
-	FormatHuman OutputFormat = "human"
-	FormatSARIF OutputFormat = "sarif"
+	FormatJSON          OutputFormat = "json"
+	FormatHuman         OutputFormat = "human"
+	FormatSARIF         OutputFormat = "sarif"
+	FormatMarkdown      OutputFormat = "markdown"
+	FormatGitHubActions OutputFormat = "github-actions"
+	FormatCodeClimate   OutputFormat = "codeclimate"
+	FormatCompliance    OutputFormat = "compliance"
 )
 
 // FormatResponse formats a response according to the specified format

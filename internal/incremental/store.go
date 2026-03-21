@@ -251,7 +251,7 @@ func (s *Store) SetLastIndexedCommit(commit string) error {
 
 // GetSchemaVersion returns the stored schema version
 func (s *Store) GetSchemaVersion() int {
-	return int(s.GetMetaInt(MetaKeySchemaVersion))
+	return int(s.GetMetaInt(MetaKeySchemaVersion)) // #nosec G115 -- schema version is a small integer
 }
 
 // GetIndexState retrieves the full index state for display
@@ -265,7 +265,7 @@ func (s *Store) GetIndexState() IndexState {
 
 	state.LastFull = s.GetMetaInt(MetaKeyLastFull)
 	state.LastIncremental = s.GetMetaInt(MetaKeyLastIncremental)
-	state.FilesSinceFull = int(s.GetMetaInt(MetaKeyFilesSinceFull))
+	state.FilesSinceFull = int(s.GetMetaInt(MetaKeyFilesSinceFull)) // #nosec G115 -- file count fits in int
 	state.Commit = s.GetLastIndexedCommit()
 	state.State = baseState
 

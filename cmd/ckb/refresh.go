@@ -12,6 +12,7 @@ import (
 
 	"github.com/SimplyLiz/CodeMCP/internal/backends/scip"
 	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/index"
 	"github.com/SimplyLiz/CodeMCP/internal/repostate"
 
 	"github.com/spf13/cobra"
@@ -208,6 +209,22 @@ func runRefresh(cmd *cobra.Command, args []string) error {
 		RefreshedAt:   time.Now(),
 	}
 
+	// Update index metadata so freshness check stays in sync
+	ckbDir := filepath.Join(repoRoot, ".ckb")
+	meta := &index.IndexMeta{
+		CreatedAt: time.Now(),
+		FileCount: result.FilesIndexed,
+		Duration:  fmt.Sprintf("%dms", result.Duration),
+		Indexer:   "scip-go",
+	}
+	if rs != nil {
+		meta.CommitHash = rs.HeadCommit
+		meta.RepoStateID = rs.RepoStateID
+	}
+	if saveErr := meta.Save(ckbDir); saveErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Could not save index metadata: %v\n", saveErr)
+	}
+
 	return outputRefreshResult(result, refreshFormat, logger)
 }
 
@@ -249,7 +266,7 @@ func outputRefreshResult(result *RefreshResult, format string, logger *slog.Logg
 		return fmt.Errorf("refresh failed: %s", result.Error)
 	}
 
-	return nil
+	return nil // #nosec G703 -- paths are internally constructed from repo root
 }
 
 func findScipGo() (string, error) {

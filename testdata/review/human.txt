@@ -1,0 +1,57 @@
+CKB Review: ⚠ WARN  ·  25 files  ·  480 lines
+════════════════════════════════════════════════════════
+22 reviewable · 3 generated (excluded) · 2 critical
+
+  Changes 25 files across 3 modules (Go, TypeScript). 2 breaking API
+  changes detected; 2 safety-critical files changed. 2 safety-critical
+  files need focused review.
+
+Checks:
+  ✗ breaking             2 breaking API changes detected
+  ✗ critical             2 safety-critical files changed
+  ⚠ complexity           +8 cyclomatic (engine.go)
+  ⚠ coupling             2 missing co-change files
+  ○ generated            3 generated files detected and excluded
+  ✓ secrets · tests · risk · hotspots
+
+Top Findings:
+  ⚠ api/handler.go
+      Removed public function HandleAuth()
+  ⚠ api/middleware.go
+      Changed signature of ValidateToken()
+  ⚠ drivers/hw/plc_comm.go
+      Safety-critical path changed (pattern: drivers/**)
+  ⚠ protocol/modbus.go
+      Safety-critical path changed (pattern: protocol/**)
+  ⚠ internal/query/engine.go
+      Complexity 12→20 in parseQuery()
+  ⚠ internal/query/engine.go
+      Usually changed with: 
+  ⚠ protocol/modbus.go
+      Usually changed with: 
+  ... and 1 informational
+
+Estimated Review: ~95min (complex)
+  · 22 reviewable files (44min base)
+  · 3 module context switches (15min)
+  · 2 safety-critical files (20min)
+
+Change Breakdown:
+  generated    3 files
+  modified     10 files
+  new          5 files
+  refactoring  3 files
+  test         4 files
+
+PR Split:
+  API Handler Refactor   8 files  +240 −120
+  Protocol Update        5 files  +130 −60
+  Driver Changes         12 files  +80 −30
+
+Code Health:
+  B ↓ api/handler.go (70)
+  C ↓ internal/query/engine.go (68)
+  C ↑ protocol/modbus.go (65)
+  2 degraded · 1 improved · avg -4.7
+
+Reviewers: @alice (85%) · @bob (45%)

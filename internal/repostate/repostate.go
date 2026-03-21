@@ -86,13 +86,15 @@ func ComputeRepoState(repoRoot string) (*RepoState, error) {
 	}
 	untrackedListHash := hashString(untrackedFiles)
 
-	// Determine if repo is dirty
+	// Determine if repo is dirty (untracked files don't affect the index,
+	// so they should not mark the repo as dirty for freshness purposes)
 	dirty := stagedDiffHash != EmptyHash ||
-		workingTreeDiffHash != EmptyHash ||
-		untrackedListHash != EmptyHash
+		workingTreeDiffHash != EmptyHash
 
-	// Compute composite repoStateId
-	repoStateId := computeRepoStateID(headCommit, stagedDiffHash, workingTreeDiffHash, untrackedListHash)
+	// Compute composite repoStateId (excludes untracked files — they don't
+	// affect the SCIP index and would cause false "stale" signals whenever
+	// temp files, editor swap files, or other non-source files appear)
+	repoStateId := computeRepoStateID(headCommit, stagedDiffHash, workingTreeDiffHash, EmptyHash)
 
 	return &RepoState{
 		RepoStateID:         repoStateId,

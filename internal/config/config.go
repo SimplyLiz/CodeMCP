@@ -56,6 +56,12 @@ type Config struct {
 
 	// v8.1 Change Impact Analysis
 	Coverage CoverageConfig `json:"coverage" mapstructure:"coverage"`
+
+	// v8.2 Unified PR Review
+	Review ReviewConfig `json:"review" mapstructure:"review"`
+
+	// v8.2 LLM integration
+	LLM LLMConfig `json:"llm" mapstructure:"llm"`
 }
 
 // CoverageConfig contains coverage file configuration (v8.1)
@@ -63,6 +69,48 @@ type CoverageConfig struct {
 	Paths      []string `json:"paths" mapstructure:"paths"`           // Custom paths to check for coverage files
 	AutoDetect bool     `json:"autoDetect" mapstructure:"autoDetect"` // Use language-specific auto-detection (default: true)
 	MaxAge     string   `json:"maxAge" mapstructure:"maxAge"`         // Max age before marking as stale (default: "168h" = 7 days)
+}
+
+// ReviewConfig contains PR review policy defaults (v8.2)
+type ReviewConfig struct {
+	// Policy defaults (can be overridden per-invocation)
+	BlockBreakingChanges bool    `json:"blockBreakingChanges" mapstructure:"blockBreakingChanges"` // Fail on breaking API changes
+	BlockSecrets         bool    `json:"blockSecrets" mapstructure:"blockSecrets"`                 // Fail on detected secrets
+	RequireTests         bool    `json:"requireTests" mapstructure:"requireTests"`                 // Warn if no tests cover changes
+	MaxRiskScore         float64 `json:"maxRiskScore" mapstructure:"maxRiskScore"`                 // Maximum risk score (0 = disabled)
+	MaxComplexityDelta   int     `json:"maxComplexityDelta" mapstructure:"maxComplexityDelta"`     // Maximum complexity delta (0 = disabled)
+	MaxFiles             int     `json:"maxFiles" mapstructure:"maxFiles"`                         // Maximum file count (0 = disabled)
+	FailOnLevel          string  `json:"failOnLevel" mapstructure:"failOnLevel"`                   // error, warning, none
+
+	// Generated file detection
+	GeneratedPatterns []string `json:"generatedPatterns" mapstructure:"generatedPatterns"` // Glob patterns for generated files
+	GeneratedMarkers  []string `json:"generatedMarkers" mapstructure:"generatedMarkers"`   // Comment markers (e.g., "DO NOT EDIT")
+
+	// Safety-critical paths
+	CriticalPaths []string `json:"criticalPaths" mapstructure:"criticalPaths"` // Glob patterns requiring extra scrutiny
+
+	// Traceability (commit-to-ticket linkage)
+	TraceabilityPatterns         []string `json:"traceabilityPatterns" mapstructure:"traceabilityPatterns"`                 // Regex: ["JIRA-\\d+", "#\\d+"]
+	TraceabilitySources          []string `json:"traceabilitySources" mapstructure:"traceabilitySources"`                   // Where to look: commit-message, branch-name
+	RequireTraceability          bool     `json:"requireTraceability" mapstructure:"requireTraceability"`                   // Enforce ticket references
+	RequireTraceForCriticalPaths bool     `json:"requireTraceForCriticalPaths" mapstructure:"requireTraceForCriticalPaths"` // Enforce for critical paths only
+
+	// Reviewer independence
+	RequireIndependentReview bool `json:"requireIndependentReview" mapstructure:"requireIndependentReview"` // Author != reviewer
+	MinReviewers             int  `json:"minReviewers" mapstructure:"minReviewers"`                         // Minimum reviewer count
+
+	// Analyzer thresholds (v8.2)
+	MaxBlastRadiusDelta   int     `json:"maxBlastRadiusDelta" mapstructure:"maxBlastRadiusDelta"`     // 0 = disabled
+	MaxFanOut             int     `json:"maxFanOut" mapstructure:"maxFanOut"`                         // 0 = disabled
+	DeadCodeMinConfidence float64 `json:"deadCodeMinConfidence" mapstructure:"deadCodeMinConfidence"` // default 0.8
+	TestGapMinLines       int     `json:"testGapMinLines" mapstructure:"testGapMinLines"`             // default 5
+}
+
+// LLMConfig contains LLM API configuration for narrative generation (v8.2).
+type LLMConfig struct {
+	Provider string `json:"provider" mapstructure:"provider"` // "anthropic" (default), "gemini"
+	APIKey   string `json:"apiKey" mapstructure:"apiKey"`     // API key (or use ANTHROPIC_API_KEY / GEMINI_API_KEY env)
+	Model    string `json:"model" mapstructure:"model"`       // Model ID (provider-specific default if empty)
 }
 
 // BackendsConfig contains backend-specific configuration
@@ -392,6 +440,18 @@ func DefaultConfig() *Config {
 			AutoDetect: true,
 			MaxAge:     "168h", // 7 days
 		},
+		Review: ReviewConfig{
+			BlockBreakingChanges: true,
+			BlockSecrets:         true,
+			RequireTests:         false,
+			MaxRiskScore:         0.7,
+			MaxComplexityDelta:   0, // disabled by default
+			MaxFiles:             0, // disabled by default
+			FailOnLevel:          "error",
+			GeneratedPatterns:    []string{},
+			GeneratedMarkers:     []string{},
+			CriticalPaths:        []string{},
+		},
 		Telemetry: TelemetryConfig{
 			Enabled:         false, // Explicit opt-in required
 			ServiceMap:      map[string]string{},
@@ -525,7 +585,7 @@ func LoadConfigWithDetails(repoRoot string) (*LoadResult, error) {
 
 // loadConfigFromPath loads a config file from a specific path
 func loadConfigFromPath(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G703 -- path is internally constructed
 	if err != nil {
 		return nil, err
 	}

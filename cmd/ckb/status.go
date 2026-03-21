@@ -278,7 +278,16 @@ func convertStatusResponse(resp *query.StatusResponse) *StatusResponseCLI {
 
 // getIndexStatus retrieves index freshness information
 func getIndexStatus(ckbDir, repoRoot string) *IndexStatusCLI {
+	// Respect configured index path instead of hardcoding index.scip
 	indexPath := filepath.Join(repoRoot, "index.scip")
+	if cfg, loadErr := config.LoadConfig(repoRoot); loadErr == nil && cfg.Backends.Scip.IndexPath != "" {
+		cfgPath := cfg.Backends.Scip.IndexPath
+		if filepath.IsAbs(cfgPath) {
+			indexPath = cfgPath
+		} else {
+			indexPath = filepath.Join(repoRoot, cfgPath)
+		}
+	}
 
 	// Check if index file exists
 	if _, err := os.Stat(indexPath); os.IsNotExist(err) {
@@ -463,7 +472,7 @@ func detectCodeowners(repoRoot string) *CodeownersStatusCLI {
 
 	for _, relPath := range codeownersLocations {
 		fullPath := filepath.Join(repoRoot, relPath)
-		content, err := os.ReadFile(fullPath)
+		content, err := os.ReadFile(fullPath) // #nosec G703 -- path is internally constructed
 		if err == nil {
 			status.Found = true
 			status.Path = relPath
@@ -501,20 +510,20 @@ func formatDuration(d time.Duration) string {
 		return "just now"
 	}
 	if d < time.Hour {
-		mins := int(d.Minutes())
+		mins := int(d.Minutes()) // #nosec G115 -- duration fits in int
 		if mins == 1 {
 			return "1 minute ago"
 		}
 		return fmt.Sprintf("%d minutes ago", mins)
 	}
 	if d < 24*time.Hour {
-		hours := int(d.Hours())
+		hours := int(d.Hours()) // #nosec G115 -- duration fits in int
 		if hours == 1 {
 			return "1 hour ago"
 		}
 		return fmt.Sprintf("%d hours ago", hours)
 	}
-	days := int(d.Hours() / 24)
+	days := int(d.Hours() / 24) // #nosec G115 -- duration fits in int
 	if days == 1 {
 		return "1 day ago"
 	}

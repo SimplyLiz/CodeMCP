@@ -2,33 +2,17 @@ package mcp
 
 import (
 	"fmt"
+	"path/filepath"
 	"time"
 
-	"github.com/SimplyLiz/CodeMCP/internal/config"
 	"github.com/SimplyLiz/CodeMCP/internal/envelope"
 	"github.com/SimplyLiz/CodeMCP/internal/errors"
-	"github.com/SimplyLiz/CodeMCP/internal/query"
 	"github.com/SimplyLiz/CodeMCP/internal/repos"
-	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
-// toolListRepos lists all registered repositories
+// toolListRepos lists all registered repositories and loaded engines
 func (s *MCPServer) toolListRepos(params map[string]interface{}) (*envelope.Response, error) {
 	s.logger.Debug("Executing listRepos")
-
-	if !s.IsMultiRepoMode() {
-		return nil, &MCPError{
-			Code:    InvalidRequest,
-			Message: "Multi-repo mode not enabled. Start MCP server with a registry.",
-		}
-	}
-
-	registry, err := repos.LoadRegistry()
-	if err != nil {
-		return nil, errors.NewOperationError("load registry", err)
-	}
-
-	activeRepo, _ := s.GetActiveRepo()
 
 	type repoInfo struct {
 		Name      string `json:"name"`
@@ -39,28 +23,58 @@ func (s *MCPServer) toolListRepos(params map[string]interface{}) (*envelope.Resp
 		IsLoaded  bool   `json:"is_loaded"`
 	}
 
+	activeRepo, _ := s.GetActiveRepo()
 	var repoList []repoInfo
-	for _, entry := range registry.List() {
-		state := registry.ValidateState(entry.Name)
+	var defaultName string
 
-		s.mu.RLock()
-		_, isLoaded := s.engines[entry.Path]
-		s.mu.RUnlock()
+	// Include repos from registry if available
+	registry, err := repos.LoadRegistry()
+	if err == nil && len(registry.List()) > 0 {
+		defaultName = registry.Default
+		for _, entry := range registry.List() {
+			state := registry.ValidateState(entry.Name)
 
-		repoList = append(repoList, repoInfo{
-			Name:      entry.Name,
-			Path:      entry.Path,
-			State:     string(state),
-			IsDefault: entry.Name == registry.Default,
-			IsActive:  entry.Name == activeRepo,
-			IsLoaded:  isLoaded,
-		})
+			s.mu.RLock()
+			_, isLoaded := s.engines[entry.Path]
+			s.mu.RUnlock()
+
+			repoList = append(repoList, repoInfo{
+				Name:      entry.Name,
+				Path:      entry.Path,
+				State:     string(state),
+				IsDefault: entry.Name == registry.Default,
+				IsActive:  entry.Name == activeRepo,
+				IsLoaded:  isLoaded,
+			})
+		}
 	}
+
+	// Also include any loaded engines not in the registry
+	s.mu.RLock()
+	for path, entry := range s.engines {
+		found := false
+		for _, r := range repoList {
+			if r.Path == path {
+				found = true
+				break
+			}
+		}
+		if !found {
+			repoList = append(repoList, repoInfo{
+				Name:     entry.repoName,
+				Path:     entry.repoPath,
+				State:    "valid",
+				IsActive: entry.repoPath == s.activeRepoPath,
+				IsLoaded: true,
+			})
+		}
+	}
+	s.mu.RUnlock()
 
 	return OperationalResponse(map[string]interface{}{
 		"repos":      repoList,
 		"activeRepo": activeRepo,
-		"default":    registry.Default,
+		"default":    defaultName,
 	}), nil
 }
 
@@ -70,13 +84,6 @@ func (s *MCPServer) toolSwitchRepo(params map[string]interface{}) (*envelope.Res
 		"params", params,
 	)
 
-	if !s.IsMultiRepoMode() {
-		return nil, &MCPError{
-			Code:    InvalidRequest,
-			Message: "Multi-repo mode not enabled. Start MCP server with a registry.",
-		}
-	}
-
 	name, ok := params["name"].(string)
 	if !ok || name == "" {
 		return nil, &MCPError{
@@ -85,103 +92,66 @@ func (s *MCPServer) toolSwitchRepo(params map[string]interface{}) (*envelope.Res
 		}
 	}
 
+	// Try registry first
 	registry, err := repos.LoadRegistry()
-	if err != nil {
-		return nil, errors.NewOperationError("load registry", err)
-	}
+	if err == nil {
+		entry, state, getErr := registry.Get(name)
+		if getErr == nil {
+			switch state {
+			case repos.RepoStateMissing:
+				return nil, &MCPError{
+					Code:    InvalidParams,
+					Message: fmt.Sprintf("Path does not exist: %s", entry.Path),
+					Data:    map[string]string{"hint": fmt.Sprintf("Run: ckb repo remove %s", name)},
+				}
+			case repos.RepoStateUninitialized:
+				return nil, &MCPError{
+					Code:    InvalidParams,
+					Message: fmt.Sprintf("Repository not initialized: %s", entry.Path),
+					Data:    map[string]string{"hint": fmt.Sprintf("Run: cd %s && ckb init", entry.Path)},
+				}
+			}
 
-	entry, state, err := registry.Get(name)
-	if err != nil {
-		return nil, &MCPError{
-			Code:    InvalidParams,
-			Message: fmt.Sprintf("Repository not found: %s", name),
+			// Use ensureActiveEngine for the switch
+			if switchErr := s.ensureActiveEngine(entry.Path); switchErr != nil {
+				return nil, errors.NewOperationError("switch to "+name, switchErr)
+			}
+
+			// Update the repo name (ensureActiveEngine uses filepath.Base)
+			s.mu.Lock()
+			s.activeRepo = name
+			s.mu.Unlock()
+
+			_ = registry.TouchLastUsed(name)
+
+			return OperationalResponse(map[string]interface{}{
+				"success":    true,
+				"activeRepo": name,
+				"path":       entry.Path,
+			}), nil
 		}
 	}
 
-	switch state {
-	case repos.RepoStateMissing:
-		return nil, &MCPError{
-			Code:    InvalidParams,
-			Message: fmt.Sprintf("Path does not exist: %s", entry.Path),
-			Data:    map[string]string{"hint": fmt.Sprintf("Run: ckb repo remove %s", name)},
-		}
-	case repos.RepoStateUninitialized:
-		return nil, &MCPError{
-			Code:    InvalidParams,
-			Message: fmt.Sprintf("Repository not initialized: %s", entry.Path),
-			Data:    map[string]string{"hint": fmt.Sprintf("Run: cd %s && ckb init", entry.Path)},
-		}
+	// Not in registry — treat name as a path
+	return nil, &MCPError{
+		Code:    InvalidParams,
+		Message: fmt.Sprintf("Repository not found: %s", name),
 	}
-
-	// Load or switch engine
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// Check if already loaded
-	if existingEntry, ok := s.engines[entry.Path]; ok {
-		existingEntry.lastUsed = time.Now()
-		s.activeRepo = name
-		s.activeRepoPath = entry.Path
-		s.logger.Info("Switched to existing engine",
-			"repo", name,
-			"path", entry.Path,
-		)
-		return OperationalResponse(map[string]interface{}{
-			"success":    true,
-			"activeRepo": name,
-			"path":       entry.Path,
-		}), nil
-	}
-
-	// Need to create new engine - check if we're at max
-	if len(s.engines) >= maxEngines {
-		s.evictLRULocked()
-	}
-
-	// Create new engine
-	engine, err := s.createEngineForRepo(entry.Path)
-	if err != nil {
-		return nil, errors.NewOperationError("create engine for "+name, err)
-	}
-
-	s.engines[entry.Path] = &engineEntry{
-		engine:   engine,
-		repoPath: entry.Path,
-		repoName: name,
-		loadedAt: time.Now(),
-		lastUsed: time.Now(),
-	}
-	s.activeRepo = name
-	s.activeRepoPath = entry.Path
-
-	// Update last used in registry
-	_ = registry.TouchLastUsed(name)
-
-	s.logger.Info("Created new engine and switched",
-		"repo", name,
-		"path", entry.Path,
-		"totalLoaded", len(s.engines),
-	)
-
-	return OperationalResponse(map[string]interface{}{
-		"success":    true,
-		"activeRepo": name,
-		"path":       entry.Path,
-	}), nil
 }
 
 // toolGetActiveRepo returns information about the currently active repository
 func (s *MCPServer) toolGetActiveRepo(params map[string]interface{}) (*envelope.Response, error) {
 	s.logger.Debug("Executing getActiveRepo")
 
-	if !s.IsMultiRepoMode() {
-		return nil, &MCPError{
-			Code:    InvalidRequest,
-			Message: "Multi-repo mode not enabled. Start MCP server with a registry.",
+	name, path := s.GetActiveRepo()
+
+	// Fall back to current engine info if no explicit active repo
+	if name == "" && path == "" {
+		if eng := s.engine(); eng != nil {
+			path = eng.GetRepoRoot()
+			name = filepath.Base(path)
 		}
 	}
-
-	name, path := s.GetActiveRepo()
 
 	if name == "" {
 		return OperationalResponse(map[string]interface{}{
@@ -191,17 +161,18 @@ func (s *MCPServer) toolGetActiveRepo(params map[string]interface{}) (*envelope.
 		}), nil
 	}
 
-	registry, err := repos.LoadRegistry()
-	if err != nil {
-		return nil, errors.NewOperationError("load registry", err)
+	// Try to get state from registry
+	state := "valid"
+	if registry, err := repos.LoadRegistry(); err == nil {
+		if rs := registry.ValidateState(name); rs != "" {
+			state = string(rs)
+		}
 	}
-
-	state := registry.ValidateState(name)
 
 	return OperationalResponse(map[string]interface{}{
 		"name":  name,
 		"path":  path,
-		"state": string(state),
+		"state": state,
 	}), nil
 }
 
@@ -236,31 +207,6 @@ func (s *MCPServer) evictLRULocked() {
 		}
 		delete(s.engines, victim)
 	}
-}
-
-// createEngineForRepo creates a new query engine for a repository
-func (s *MCPServer) createEngineForRepo(repoPath string) (*query.Engine, error) {
-	// Load config from repo
-	cfg, err := config.LoadConfig(repoPath)
-	if err != nil {
-		// Use default config
-		cfg = config.DefaultConfig()
-	}
-
-	// Open storage for this repo
-	db, err := storage.Open(repoPath, s.logger)
-	if err != nil {
-		return nil, errors.NewOperationError("open database", err)
-	}
-
-	// Create engine
-	engine, err := query.NewEngine(repoPath, db, s.logger, cfg)
-	if err != nil {
-		_ = db.Close()
-		return nil, errors.NewOperationError("create engine", err)
-	}
-
-	return engine, nil
 }
 
 // CloseAllEngines closes all loaded engines (for graceful shutdown)

@@ -26,6 +26,7 @@ jobs:
   semgrep:
     name: Semgrep SAST
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       security-events: write
@@ -35,22 +36,25 @@ jobs:
       medium: ${{ steps.scan.outputs.medium }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Semgrep
         id: scan
-        uses: docker://semgrep/semgrep:latest
-        with:
-          args: >
-            semgrep scan
-            --config=${{ inputs.config }}
-            ${{ inputs.extra_config != '' && format('--config={0}', inputs.extra_config) || '' }}
-            --json
-            --output=semgrep.json
-            --sarif
-            --sarif-output=semgrep.sarif
-            .
-        continue-on-error: true
+        env:
+          SEMGREP_CONFIG: ${{ inputs.config }}
+          SEMGREP_EXTRA_CONFIG: ${{ inputs.extra_config }}
+        run: |
+          EXTRA_ARG=""
+          if [ -n "$SEMGREP_EXTRA_CONFIG" ]; then
+            EXTRA_ARG="--config=$SEMGREP_EXTRA_CONFIG"
+          fi
+          docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep:1.156.0 \
+            semgrep scan \
+            --config="$SEMGREP_CONFIG" \
+            $EXTRA_ARG \
+            --json --output=semgrep.json \
+            --sarif --sarif-output=semgrep.sarif \
+            . || true
 
       - name: Parse results
         id: parse
@@ -87,14 +91,14 @@ jobs:
 
       - name: Upload SARIF
         if: hashFiles('semgrep.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4
         with:
           sarif_file: semgrep.sarif
           category: semgrep
         continue-on-error: true
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
           name: semgrep-results

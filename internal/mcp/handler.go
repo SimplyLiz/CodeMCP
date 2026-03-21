@@ -338,6 +338,13 @@ func (s *MCPServer) handleCallTool(params map[string]interface{}) (interface{}, 
 		"params", toolParams,
 	)
 
+	// v8.1: Auto-resolve active repository from file paths in params
+	if pathHint := extractPathHint(toolParams); pathHint != "" {
+		if repoRoot := s.resolveRepoForPath(pathHint); repoRoot != "" {
+			_ = s.ensureActiveEngine(repoRoot)
+		}
+	}
+
 	// v8.0: Check for streaming request
 	if streamResp, err := s.wrapForStreaming(toolName, toolParams); streamResp != nil || err != nil {
 		if err != nil {

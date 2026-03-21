@@ -321,7 +321,7 @@ func (f *Federation) GetHotspots(opts GetHotspotsOptions) (*GetHotspotsResult, e
 		}
 
 		if churn.Valid {
-			h.ChurnCommits30d = int(churn.Int64)
+			h.ChurnCommits30d = int(churn.Int64) // #nosec G115 -- commit count fits in int
 		}
 		if complexity.Valid {
 			h.ComplexityCyclomatic = complexity.Float64

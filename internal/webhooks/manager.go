@@ -1174,7 +1174,7 @@ func (s *Store) scanDeliveryFromRows(rows *sql.Rows) (*Delivery, error) {
 
 	delivery.LastError = lastError.String
 	if responseCode.Valid {
-		delivery.ResponseCode = int(responseCode.Int64)
+		delivery.ResponseCode = int(responseCode.Int64) // #nosec G115 -- HTTP status code fits in int
 	}
 
 	if t, err := time.Parse(time.RFC3339, createdAt); err == nil {

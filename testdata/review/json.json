@@ -1,0 +1,305 @@
+{
+  "ckbVersion": "8.2.0",
+  "schemaVersion": "8.2",
+  "tool": "reviewPR",
+  "verdict": "warn",
+  "score": 68,
+  "summary": {
+    "totalFiles": 25,
+    "totalChanges": 480,
+    "generatedFiles": 3,
+    "reviewableFiles": 22,
+    "criticalFiles": 2,
+    "checksPassed": 4,
+    "checksWarned": 2,
+    "checksFailed": 1,
+    "checksSkipped": 1,
+    "topRisks": [
+      "2 breaking API changes",
+      "Critical path touched"
+    ],
+    "languages": [
+      "Go",
+      "TypeScript"
+    ],
+    "modulesChanged": 3
+  },
+  "checks": [
+    {
+      "name": "breaking",
+      "status": "fail",
+      "severity": "error",
+      "summary": "2 breaking API changes detected",
+      "durationMs": 120
+    },
+    {
+      "name": "critical",
+      "status": "fail",
+      "severity": "error",
+      "summary": "2 safety-critical files changed",
+      "durationMs": 15
+    },
+    {
+      "name": "complexity",
+      "status": "warn",
+      "severity": "warning",
+      "summary": "+8 cyclomatic (engine.go)",
+      "durationMs": 340
+    },
+    {
+      "name": "coupling",
+      "status": "warn",
+      "severity": "warning",
+      "summary": "2 missing co-change files",
+      "durationMs": 210
+    },
+    {
+      "name": "secrets",
+      "status": "pass",
+      "severity": "error",
+      "summary": "No secrets detected",
+      "durationMs": 95
+    },
+    {
+      "name": "tests",
+      "status": "pass",
+      "severity": "warning",
+      "summary": "12 tests cover the changes",
+      "durationMs": 180
+    },
+    {
+      "name": "risk",
+      "status": "pass",
+      "severity": "warning",
+      "summary": "Risk score: 0.42 (low)",
+      "durationMs": 150
+    },
+    {
+      "name": "hotspots",
+      "status": "pass",
+      "severity": "info",
+      "summary": "No volatile files touched",
+      "durationMs": 45
+    },
+    {
+      "name": "generated",
+      "status": "info",
+      "severity": "info",
+      "summary": "3 generated files detected and excluded",
+      "durationMs": 0
+    }
+  ],
+  "findings": [
+    {
+      "check": "breaking",
+      "severity": "error",
+      "file": "api/handler.go",
+      "startLine": 42,
+      "message": "Removed public function HandleAuth()",
+      "category": "breaking",
+      "ruleId": "ckb/breaking/removed-symbol",
+      "tier": 1
+    },
+    {
+      "check": "breaking",
+      "severity": "error",
+      "file": "api/middleware.go",
+      "startLine": 15,
+      "message": "Changed signature of ValidateToken()",
+      "category": "breaking",
+      "ruleId": "ckb/breaking/changed-signature",
+      "tier": 1
+    },
+    {
+      "check": "critical",
+      "severity": "error",
+      "file": "drivers/hw/plc_comm.go",
+      "startLine": 78,
+      "message": "Safety-critical path changed (pattern: drivers/**)",
+      "suggestion": "Requires sign-off from safety team",
+      "category": "critical",
+      "ruleId": "ckb/critical/safety-path",
+      "tier": 1
+    },
+    {
+      "check": "critical",
+      "severity": "error",
+      "file": "protocol/modbus.go",
+      "message": "Safety-critical path changed (pattern: protocol/**)",
+      "suggestion": "Requires sign-off from safety team",
+      "category": "critical",
+      "ruleId": "ckb/critical/safety-path",
+      "tier": 1
+    },
+    {
+      "check": "complexity",
+      "severity": "warning",
+      "file": "internal/query/engine.go",
+      "startLine": 155,
+      "endLine": 210,
+      "message": "Complexity 12→20 in parseQuery()",
+      "suggestion": "Consider extracting helper functions",
+      "category": "complexity",
+      "ruleId": "ckb/complexity/increase",
+      "tier": 2
+    },
+    {
+      "check": "coupling",
+      "severity": "warning",
+      "file": "internal/query/engine.go",
+      "message": "Missing co-change: engine_test.go (87% co-change rate)",
+      "category": "coupling",
+      "ruleId": "ckb/coupling/missing-cochange",
+      "tier": 2
+    },
+    {
+      "check": "coupling",
+      "severity": "warning",
+      "file": "protocol/modbus.go",
+      "message": "Missing co-change: modbus_test.go (91% co-change rate)",
+      "category": "coupling",
+      "ruleId": "ckb/coupling/missing-cochange",
+      "tier": 2
+    },
+    {
+      "check": "hotspots",
+      "severity": "info",
+      "file": "config/settings.go",
+      "message": "Hotspot file (score: 0.78) — extra review attention recommended",
+      "category": "risk",
+      "ruleId": "ckb/hotspots/volatile-file",
+      "tier": 3
+    }
+  ],
+  "reviewers": [
+    {
+      "owner": "alice",
+      "reason": "",
+      "coverage": 0.85,
+      "confidence": 0.9
+    },
+    {
+      "owner": "bob",
+      "reason": "",
+      "coverage": 0.45,
+      "confidence": 0.7
+    }
+  ],
+  "generated": [
+    {
+      "file": "api/types.pb.go",
+      "reason": "Matches pattern *.pb.go",
+      "sourceFile": "api/types.proto"
+    },
+    {
+      "file": "parser/parser.tab.c",
+      "reason": "flex/yacc generated output",
+      "sourceFile": "parser/parser.y"
+    },
+    {
+      "file": "ui/generated.ts",
+      "reason": "Matches pattern *.generated.*"
+    }
+  ],
+  "splitSuggestion": {
+    "shouldSplit": true,
+    "reason": "25 files across 3 independent clusters — split recommended",
+    "clusters": [
+      {
+        "name": "API Handler Refactor",
+        "files": [
+          "api/handler.go",
+          "api/middleware.go"
+        ],
+        "fileCount": 8,
+        "additions": 240,
+        "deletions": 120,
+        "independent": true
+      },
+      {
+        "name": "Protocol Update",
+        "files": [
+          "protocol/modbus.go"
+        ],
+        "fileCount": 5,
+        "additions": 130,
+        "deletions": 60,
+        "independent": true
+      },
+      {
+        "name": "Driver Changes",
+        "files": [
+          "drivers/hw/plc_comm.go"
+        ],
+        "fileCount": 12,
+        "additions": 80,
+        "deletions": 30,
+        "independent": false
+      }
+    ]
+  },
+  "changeBreakdown": {
+    "classifications": null,
+    "summary": {
+      "generated": 3,
+      "modified": 10,
+      "new": 5,
+      "refactoring": 3,
+      "test": 4
+    }
+  },
+  "reviewEffort": {
+    "estimatedMinutes": 95,
+    "estimatedHours": 1.58,
+    "factors": [
+      "22 reviewable files (44min base)",
+      "3 module context switches (15min)",
+      "2 safety-critical files (20min)"
+    ],
+    "complexity": "complex"
+  },
+  "healthReport": {
+    "deltas": [
+      {
+        "file": "api/handler.go",
+        "healthBefore": 82,
+        "healthAfter": 70,
+        "delta": -12,
+        "grade": "B",
+        "gradeBefore": "B",
+        "topFactor": "significant health degradation",
+        "confidence": 1,
+        "parseable": true
+      },
+      {
+        "file": "internal/query/engine.go",
+        "healthBefore": 75,
+        "healthAfter": 68,
+        "delta": -7,
+        "grade": "C",
+        "gradeBefore": "B",
+        "topFactor": "minor health decrease",
+        "confidence": 0.8,
+        "parseable": true
+      },
+      {
+        "file": "protocol/modbus.go",
+        "healthBefore": 60,
+        "healthAfter": 65,
+        "delta": 5,
+        "grade": "C",
+        "gradeBefore": "C",
+        "topFactor": "unchanged",
+        "confidence": 1,
+        "parseable": true
+      }
+    ],
+    "averageDelta": -4.67,
+    "worstFile": "protocol/modbus.go",
+    "worstGrade": "C",
+    "degraded": 2,
+    "improved": 1
+  },
+  "narrative": "Changes 25 files across 3 modules (Go, TypeScript). 2 breaking API changes detected; 2 safety-critical files changed. 2 safety-critical files need focused review.",
+  "prTier": "medium"
+}

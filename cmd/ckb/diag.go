@@ -181,7 +181,7 @@ func sanitizeConfig(cfg *config.Config) *config.Config {
 // createDiagnosticZip creates a zip file with diagnostic information
 func createDiagnosticZip(bundle *DiagnosticBundle, outPath string) error {
 	// Create output file
-	outFile, err := os.Create(outPath)
+	outFile, err := os.Create(outPath) // #nosec G703 -- path from CLI flag
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}

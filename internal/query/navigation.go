@@ -2433,9 +2433,10 @@ func computeDiffConfidence(basis []ConfidenceBasisItem, limitations []string) fl
 
 // GetHotspotsOptions controls getHotspots behavior.
 type GetHotspotsOptions struct {
-	TimeWindow *TimeWindowSelector `json:"timeWindow,omitempty"`
-	Scope      string              `json:"scope,omitempty"` // Module to focus on
-	Limit      int                 `json:"limit,omitempty"` // Max results (default 20)
+	TimeWindow     *TimeWindowSelector `json:"timeWindow,omitempty"`
+	Scope          string              `json:"scope,omitempty"`          // Module to focus on
+	Limit          int                 `json:"limit,omitempty"`          // Max results (default 20)
+	SkipComplexity bool                `json:"skipComplexity,omitempty"` // Skip tree-sitter enrichment (faster)
 }
 
 // GetHotspotsResponse provides ranked hotspot files.
@@ -2611,7 +2612,7 @@ func (e *Engine) GetHotspots(ctx context.Context, opts GetHotspotsOptions) (*Get
 	}
 
 	// Add complexity data via tree-sitter (v6.2.2)
-	if e.complexityAnalyzer != nil {
+	if e.complexityAnalyzer != nil && !opts.SkipComplexity {
 		for i := range hotspots {
 			fc, err := e.complexityAnalyzer.GetFileComplexityFull(ctx, filepath.Join(e.repoRoot, hotspots[i].FilePath))
 			if err == nil && fc.Error == "" && fc.FunctionCount > 0 {

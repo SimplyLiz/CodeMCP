@@ -1,0 +1,166 @@
+# CKB PR Review Workflow
+# Runs the unified review engine on pull requests with quality gates.
+# Posts a markdown summary as a PR comment and emits GitHub Actions annotations.
+#
+# Available checks (17 total):
+#   breaking, secrets, tests, complexity, health, coupling,
+#   hotspots, risk, critical, traceability, independence,
+#   generated, classify, split, dead-code, test-gaps, blast-radius
+#
+# Usage: Copy to .github/workflows/pr-review.yml
+
+name: CKB PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write  # Required for SARIF upload
+
+jobs:
+  review:
+    name: Code Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed for coupling, churn, blame
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install CKB
+        run: npm install -g @tastehub/ckb
+
+      - name: Restore CKB cache
+        uses: actions/cache@v4
+        with:
+          path: .ckb/
+          key: ckb-${{ runner.os }}-${{ hashFiles('**/*.go', '**/*.ts', '**/*.py') }}
+          restore-keys: |
+            ckb-${{ runner.os }}-
+
+      - name: Initialize and index
+        run: |
+          ckb init
+          ckb index 2>/dev/null || echo "Indexing skipped (no supported indexer)"
+
+      # --- Option A: Using the composite action (recommended) ---
+      # Uncomment this and remove Option B if you have the action available.
+      #
+      # - name: Run CKB Review
+      #   uses: ./.github/actions/ckb-review  # or your-org/ckb-review-action@v1
+      #   with:
+      #     fail-on: 'error'           # or 'warning' / 'none'
+      #     comment: 'true'
+      #     sarif: 'true'
+      #     critical-paths: 'drivers/**,protocol/**'
+      #     # checks: 'breaking,secrets,health'  # subset only
+      #     # require-trace: 'true'
+      #     # trace-patterns: 'JIRA-\d+'
+      #     # require-independent: 'true'
+      #     # max-fanout: '20'              # blast-radius threshold
+
+      # --- Option B: Direct CLI usage ---
+      - name: Run review (JSON)
+        id: review
+        shell: bash
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set +e
+          ckb review --ci --base="${BASE_REF}" --format=json > review.json 2>&1
+          EXIT_CODE=$?
+          set -e
+
+          echo "verdict=$(jq -r '.verdict // "unknown"' review.json)" >> "$GITHUB_OUTPUT"
+          echo "score=$(jq -r '.score // 0' review.json)" >> "$GITHUB_OUTPUT"
+          echo "findings=$(jq -r '.findings | length // 0' review.json)" >> "$GITHUB_OUTPUT"
+          echo "exit_code=${EXIT_CODE}" >> "$GITHUB_OUTPUT"
+
+      - name: Emit GitHub Actions annotations
+        shell: bash
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: ckb review --base="${BASE_REF}" --format=github-actions 2>/dev/null || true
+
+      - name: Generate markdown report
+        shell: bash
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: ckb review --base="${BASE_REF}" --format=markdown > review-markdown.txt 2>/dev/null || true
+
+      - name: Post PR comment
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          MARKDOWN=$(cat review-markdown.txt 2>/dev/null || echo "CKB review failed to generate output.")
+          MARKER="<!-- ckb-review-marker -->"
+
+          # Upsert: update existing comment or create new one
+          COMMENT_ID=$(gh api \
+            "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" \
+            --jq ".[] | select(.body | contains(\"${MARKER}\")) | .id" \
+            2>/dev/null | head -1)
+
+          if [ -n "${COMMENT_ID}" ]; then
+            gh api \
+              "repos/${GH_REPO}/issues/comments/${COMMENT_ID}" \
+              -X PATCH \
+              -f body="${MARKDOWN}"
+          else
+            gh api \
+              "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" \
+              -f body="${MARKDOWN}"
+          fi
+
+      - name: Upload SARIF (optional)
+        if: always()
+        continue-on-error: true
+        shell: bash
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: ckb review --base="${BASE_REF}" --format=sarif > results.sarif 2>/dev/null
+
+      - name: Upload SARIF to GitHub Code Scanning
+        if: always() && hashFiles('results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+
+      - name: Summary
+        shell: bash
+        env:
+          VERDICT: ${{ steps.review.outputs.verdict }}
+          SCORE: ${{ steps.review.outputs.score }}
+          FINDINGS: ${{ steps.review.outputs.findings }}
+        run: |
+          echo "### CKB Review Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Verdict | ${VERDICT} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Findings | ${FINDINGS} |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail on review verdict
+        shell: bash
+        env:
+          REVIEW_EXIT_CODE: ${{ steps.review.outputs.exit_code }}
+        run: |
+          if [ "${REVIEW_EXIT_CODE}" != "0" ]; then
+            exit "${REVIEW_EXIT_CODE}"
+          fi

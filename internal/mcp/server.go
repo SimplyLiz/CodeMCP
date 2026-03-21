@@ -76,6 +76,7 @@ func NewMCPServer(version string, engine *query.Engine, logger *slog.Logger) *MC
 		logger:       logger,
 		version:      version,
 		legacyEngine: engine,
+		engines:      make(map[string]*engineEntry),
 		tools:        make(map[string]ToolHandler),
 		resources:    make(map[string]ResourceHandler),
 		activePreset: DefaultPreset,
@@ -94,6 +95,23 @@ func NewMCPServer(version string, engine *query.Engine, logger *slog.Logger) *MC
 	// Wire up metrics persistence if database is available
 	if engine != nil && engine.DB() != nil {
 		SetMetricsDB(engine.DB())
+	}
+
+	// Store initial engine in cache for auto-resolution
+	if engine != nil {
+		repoRoot := engine.GetRepoRoot()
+		normalized := normalizePath(repoRoot)
+		if normalized != "" {
+			server.engines[normalized] = &engineEntry{
+				engine:   engine,
+				repoPath: normalized,
+				repoName: filepath.Base(normalized),
+				loadedAt: time.Now(),
+				lastUsed: time.Now(),
+			}
+			server.activeRepoPath = normalized
+			server.activeRepo = filepath.Base(normalized)
+		}
 	}
 
 	return server
@@ -120,6 +138,7 @@ func NewMCPServerLazy(version string, loader EngineLoader, logger *slog.Logger) 
 		logger:       logger,
 		version:      version,
 		engineLoader: loader,
+		engines:      make(map[string]*engineEntry),
 		tools:        make(map[string]ToolHandler),
 		resources:    make(map[string]ResourceHandler),
 		activePreset: DefaultPreset,
@@ -186,6 +205,26 @@ func (s *MCPServer) engine() *query.Engine {
 			// Wire up metrics persistence
 			if engine != nil && engine.DB() != nil {
 				SetMetricsDB(engine.DB())
+			}
+			// Store in engine cache for auto-resolution
+			if engine != nil {
+				repoRoot := engine.GetRepoRoot()
+				normalized := normalizePath(repoRoot)
+				if normalized != "" {
+					s.mu.Lock()
+					s.engines[normalized] = &engineEntry{
+						engine:   engine,
+						repoPath: normalized,
+						repoName: filepath.Base(normalized),
+						loadedAt: time.Now(),
+						lastUsed: time.Now(),
+					}
+					if s.activeRepoPath == "" {
+						s.activeRepoPath = normalized
+						s.activeRepo = filepath.Base(normalized)
+					}
+					s.mu.Unlock()
+				}
 			}
 			s.logger.Info("Engine loaded successfully")
 		})
@@ -456,75 +495,36 @@ func (s *MCPServer) createEngineForRoot(repoRoot string) (*query.Engine, error) 
 
 // switchToClientRoot switches the engine to the client's root directory if different.
 // This fixes repo confusion when using a binary from a different location.
-//
-// IMPORTANT: Only switches in legacy single-engine mode. In multi-repo mode,
-// users have explicit control via switchRepo tool, so we don't override that.
+// Uses the engine cache so old engines are retained for auto-resolution.
 func (s *MCPServer) switchToClientRoot(clientRoot string) {
 	if clientRoot == "" {
 		return
 	}
 
-	// Only switch in legacy single-engine mode
-	// Multi-repo mode users have explicit control via switchRepo
-	if s.legacyEngine == nil {
-		s.logger.Debug("Multi-repo mode active, not auto-switching to client root",
-			"clientRoot", clientRoot,
-		)
-		return
-	}
-
-	currentRoot := s.legacyEngine.GetRepoRoot()
-
-	// Normalize paths for comparison
 	clientRootClean := filepath.Clean(clientRoot)
-	currentRootClean := filepath.Clean(currentRoot)
 
-	// Check if they're the same
-	if clientRootClean == currentRootClean {
-		s.logger.Debug("Client root matches current repo, no switch needed",
-			"root", clientRootClean,
-		)
-		return
+	// Check if current engine already points here
+	if eng := s.engine(); eng != nil {
+		currentRootClean := filepath.Clean(eng.GetRepoRoot())
+		if clientRootClean == currentRootClean {
+			s.logger.Debug("Client root matches current repo, no switch needed",
+				"root", clientRootClean,
+			)
+			return
+		}
 	}
 
 	s.logger.Info("Client root differs from server repo, switching to client's project",
 		"clientRoot", clientRootClean,
-		"serverRoot", currentRootClean,
 	)
 
-	// Create a new engine for the client's root
-	newEngine, err := s.createEngineForRoot(clientRootClean)
-	if err != nil {
-		s.logger.Warn("Failed to create engine for client root, keeping current repo",
+	// Use ensureActiveEngine which handles caching and swapping
+	if err := s.ensureActiveEngine(clientRootClean); err != nil {
+		s.logger.Warn("Failed to switch to client root, keeping current repo",
 			"clientRoot", clientRootClean,
 			"error", err.Error(),
 		)
-		return
 	}
-
-	// Close the old engine's database to avoid resource leaks
-	oldEngine := s.legacyEngine
-	if oldEngine != nil && oldEngine.DB() != nil {
-		if err := oldEngine.DB().Close(); err != nil {
-			s.logger.Warn("Failed to close old engine database",
-				"error", err.Error(),
-			)
-		}
-	}
-
-	// Switch to the new engine
-	s.mu.Lock()
-	s.legacyEngine = newEngine
-	s.mu.Unlock()
-
-	// Wire up metrics persistence for the new engine
-	if newEngine.DB() != nil {
-		SetMetricsDB(newEngine.DB())
-	}
-
-	s.logger.Info("Switched to client root",
-		"root", clientRootClean,
-	)
 }
 
 // enrichNotFoundError adds repo context to "not found" errors when the client

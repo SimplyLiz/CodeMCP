@@ -32,6 +32,7 @@ jobs:
   gosec:
     name: Gosec Security Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       security-events: write
@@ -43,10 +44,10 @@ jobs:
       suppressed: ${{ steps.scan.outputs.suppressed }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -56,12 +57,15 @@ jobs:
 
       - name: Run Gosec
         id: scan
+        env:
+          EXCLUDE_DIRS_INPUT: ${{ inputs.exclude_dirs }}
+          EXCLUDE_RULES_INPUT: ${{ inputs.exclude_rules }}
         run: |
           echo "::group::Gosec Security Scan"
 
           # Build exclude-dir arguments
           EXCLUDE_ARGS=""
-          IFS=',' read -ra DIRS <<< "${{ inputs.exclude_dirs }}"
+          IFS=',' read -ra DIRS <<< "$EXCLUDE_DIRS_INPUT"
           for dir in "${DIRS[@]}"; do
             dir=$(echo "$dir" | xargs)  # trim whitespace
             if [ -n "$dir" ]; then
@@ -71,8 +75,8 @@ jobs:
 
           # Build exclude rules argument
           EXCLUDE_RULES=""
-          if [ -n "${{ inputs.exclude_rules }}" ]; then
-            EXCLUDE_RULES="-exclude=${{ inputs.exclude_rules }}"
+          if [ -n "$EXCLUDE_RULES_INPUT" ]; then
+            EXCLUDE_RULES="-exclude=$EXCLUDE_RULES_INPUT"
           fi
 
           # Run gosec with JSON output
@@ -130,14 +134,14 @@ jobs:
           echo "| **Total** | **$FINDINGS** |" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4
         with:
           sarif_file: gosec.sarif
           category: gosec
         continue-on-error: true
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
           name: gosec-results

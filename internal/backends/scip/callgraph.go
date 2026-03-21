@@ -63,7 +63,7 @@ func (idx *SCIPIndex) FindCallees(symbolId string) ([]*CallGraphNode, error) {
 		for _, occ := range doc.Occurrences {
 			if occ.Symbol == symbolId && occ.SymbolRoles&SymbolRoleDefinition != 0 {
 				funcDoc = doc
-				funcDefLine = int(occ.Range[0])
+				funcDefLine = int(occ.Range[0]) // #nosec G115 -- SCIP int32 fits in int
 				break
 			}
 		}
@@ -97,7 +97,7 @@ func (idx *SCIPIndex) FindCallees(symbolId string) ([]*CallGraphNode, error) {
 			continue
 		}
 
-		occLine := int(occ.Range[0])
+		occLine := int(occ.Range[0]) // #nosec G115 -- SCIP int32 fits in int
 
 		// Check if this occurrence is within the function's body
 		if occLine < funcRange.start || occLine > funcRange.end {
@@ -155,7 +155,7 @@ func (idx *SCIPIndex) FindCallers(symbolId string) ([]*CallGraphNode, error) {
 				continue
 			}
 
-			occLine := int(occ.Range[0])
+			occLine := int(occ.Range[0]) // #nosec G115 -- SCIP int32 fits in int
 
 			// Find which function contains this occurrence
 			for funcSymbol, lineRange := range funcRanges {
@@ -216,7 +216,7 @@ func buildFunctionRanges(doc *Document) map[string]lineRange {
 			if occ.Symbol == sym.Symbol && occ.SymbolRoles&SymbolRoleDefinition != 0 {
 				funcs = append(funcs, funcDef{
 					symbol:    sym.Symbol,
-					startLine: int(occ.Range[0]),
+					startLine: int(occ.Range[0]), // #nosec G115 -- SCIP int32 fits in int
 				})
 				break
 			}

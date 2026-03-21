@@ -790,6 +790,18 @@ func tryIncrementalIndex(repoRoot, ckbDir string, lang project.Language) bool {
 	// Format and display results
 	fmt.Println(incremental.FormatStats(stats, state))
 
+	// Update metadata so freshness check stays in sync with incremental state
+	if rs, rsErr := repostate.ComputeRepoState(repoRoot); rsErr == nil {
+		meta, metaErr := index.LoadMeta(ckbDir)
+		if metaErr == nil && meta != nil {
+			meta.CommitHash = rs.HeadCommit
+			meta.RepoStateID = rs.RepoStateID
+			if saveErr := meta.Save(ckbDir); saveErr != nil {
+				fmt.Fprintf(os.Stderr, "Warning: Could not update index metadata: %v\n", saveErr)
+			}
+		}
+	}
+
 	return true
 }
 
@@ -894,6 +906,8 @@ func runIndexWatchLoop(repoRoot, ckbDir string, lang project.Language) {
 				if !freshness.Fresh {
 					fmt.Printf("Index stale: %s\n", freshness.Reason)
 					fmt.Println("Run 'ckb index --force' to rebuild.")
+					// Don't update lastCommit — keep retrying on next tick
+					continue
 				}
 			}
 
