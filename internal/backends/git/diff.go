@@ -443,9 +443,66 @@ func (g *GitAdapter) GetCommitsSinceDate(since string, limit int) ([]CommitInfo,
 	return commits, nil
 }
 
+// GetCommitRange returns commits between base and head refs.
+func (g *GitAdapter) GetCommitRange(base, head string) ([]CommitInfo, error) {
+	if base == "" {
+		base = "main"
+	}
+	if head == "" {
+		head = "HEAD"
+	}
+
+	args := []string{
+		"log",
+		"--format=%H|%an|%aI|%s",
+		base + ".." + head,
+	}
+
+	lines, err := g.executeGitCommandLines(args...)
+	if err != nil {
+		return nil, err
+	}
+
+	commits := make([]CommitInfo, 0, len(lines))
+	for _, line := range lines {
+		parts := strings.SplitN(line, "|", 4)
+		if len(parts) != 4 {
+			continue
+		}
+		commits = append(commits, CommitInfo{
+			Hash:      parts[0],
+			Author:    parts[1],
+			Timestamp: parts[2],
+			Message:   parts[3],
+		})
+	}
+
+	return commits, nil
+}
+
 // GetFileDiffContent returns the actual diff content for a commit range
 func (g *GitAdapter) GetFileDiffContent(base, head, filePath string) (string, error) {
 	args := []string{"diff", base, head, "--", filePath}
+	output, err := g.executeGitCommand(args...)
+	if err != nil {
+		return "", err
+	}
+	return output, nil
+}
+
+// GetCommitRangeDiffUnified returns the full unified diff between two refs.
+func (g *GitAdapter) GetCommitRangeDiffUnified(base, head string) (string, error) {
+	args := []string{"diff", base, head}
+	output, err := g.executeGitCommand(args...)
+	if err != nil {
+		return "", err
+	}
+	return output, nil
+}
+
+// GetStagedDiffUnified returns the full unified diff for staged changes.
+func (g *GitAdapter) GetStagedDiffUnified() (string, error) {
+	args := []string{"diff", "--cached"}
 	output, err := g.executeGitCommand(args...)
 	if err != nil {
 		return "", err

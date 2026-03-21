@@ -48,6 +48,11 @@ golangci-lint run
 # Start MCP server (for AI tool integration)
 ./ckb mcp
 
+# Run PR review (20 quality checks)
+./ckb review
+./ckb review --base=develop --format=markdown
+./ckb review --checks=breaking,secrets,health --ci
+
 # Auto-configure AI tool integration (interactive)
 ./ckb setup
 
@@ -87,6 +92,8 @@ ckb setup --tool=cursor --global
 claude mcp add ckb -- npx @tastehub/ckb mcp
 ```
 
+`ckb setup --tool=claude-code` also installs the `/ckb-review` slash command for Claude Code, which orchestrates CKB's structural analysis with LLM semantic review.
+
 ### Key MCP Tools
 
 **Navigation:** `searchSymbols`, `getSymbol`, `findReferences`, `getCallGraph`, `traceUsage`, `listEntrypoints`
@@ -114,6 +121,8 @@ claude mcp add ckb -- npx @tastehub/ckb mcp
 **Streaming (v8.0):** `findReferences` and `searchSymbols` support SSE streaming with `stream: true`
 
 **Index Management (v8.0):** `reindex` (trigger index refresh), enhanced `getStatus` with health tiers
+
+**PR Review (v8.2):** `reviewPR` — unified review with 20 quality checks (breaking, secrets, tests, complexity, health, coupling, hotspots, risk, critical-path, traceability, independence, generated, classify, split, dead-code, test-gaps, blast-radius, comment-drift, format-consistency, bug-patterns); optional `--llm` flag for Claude-powered narrative
 
 ## Architecture Overview
 

@@ -114,10 +114,15 @@ func newContext() context.Context {
 // newLogger creates a logger with the specified format.
 // Logs always go to stderr to keep stdout clean for command output.
 // Respects global -v/-q flags and CKB_DEBUG env var.
-func newLogger(_ string) *slog.Logger {
+func newLogger(format string) *slog.Logger {
 	level := slogutil.LevelFromVerbosity(verbosity, quiet)
 	if os.Getenv("CKB_DEBUG") == "1" {
 		level = slog.LevelDebug
+	}
+	// In human format, suppress warnings (stale SCIP, etc.) — they clutter
+	// the review output. Errors still surface.
+	if format == "human" && level < slog.LevelError {
+		level = slog.LevelError
 	}
 	return slogutil.NewLogger(os.Stderr, level)
 }

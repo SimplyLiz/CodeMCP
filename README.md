@@ -261,6 +261,32 @@ See the **[Index Management Guide](https://github.com/SimplyLiz/CodeMCP/wiki/Ind
 
 📋 **[Changelog](https://github.com/SimplyLiz/CodeMCP/blob/main/CHANGELOG.md)** — Version history
 
+## PR Review
+
+CKB review runs 20 quality checks in 5 seconds — secrets, breaking changes, dead code, complexity, test gaps, bug patterns, and more. Zero tokens, zero API calls.
+
+When your AI assistant (Claude Code, Cursor, Windsurf) reviews a PR, it calls CKB first and gets structured analysis in ~1k tokens. Then it only reads the files that matter — saving **50-80% of tokens** on large PRs.
+
+```bash
+ckb review --base=main              # Human-readable review
+ckb review --base=main --ci         # CI mode (exit codes)
+ckb review --base=main --post=123   # Post as PR comment
+```
+
+Works in CI without any LLM:
+
+```yaml
+- run: npx @tastehub/ckb review --base=main --ci --format=sarif > review.sarif
+```
+
+| | Without CKB | With CKB |
+|---|---|---|
+| LLM tokens on 100-file PR | ~200k | ~50k |
+| Files LLM reads | all | ~10 (CKB-flagged) |
+| Secrets/breaking/dead-code checked | no | yes (all files) |
+
+📖 [**How it helps AI review**](docs/marketing/ckb-review/how-it-helps-llm.md) · [**Benchmarks**](docs/marketing/ckb-review/benchmarks.md) · [**CI Integration**](docs/marketing/ckb-review/ci-integration.md) · [**Quickstart**](docs/marketing/ckb-review/quickstart.md)
+
 ## CLI
 
 ```bash

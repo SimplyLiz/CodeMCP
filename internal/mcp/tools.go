@@ -1847,6 +1847,52 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		// v8.2 Unified PR Review
+		{
+			Name:        "reviewPR",
+			Description: "Run a comprehensive PR review with 20 quality gates. Orchestrates checks (breaking, secrets, tests, complexity, health, coupling, hotspots, risk, critical-path, traceability, independence, generated, classify, split, dead-code, test-gaps, blast-radius, comment-drift, format-consistency, bug-patterns) concurrently. Returns verdict (pass/warn/fail), score, findings with file:line locations, health report, split suggestion, and suggested reviewers. Use this FIRST when reviewing a PR — it gives you structural context (what changed, what's risky, what's untested) so you can focus your review on what matters. MCP mode is preferred for interactive review: the SCIP index stays loaded between calls, so follow-up tools (findReferences, analyzeImpact, explainSymbol, explainFile) execute instantly against the in-memory index without reloading.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"baseBranch": map[string]interface{}{
+						"type":        "string",
+						"default":     "main",
+						"description": "Base branch to compare against",
+					},
+					"headBranch": map[string]interface{}{
+						"type":        "string",
+						"description": "Head branch (default: current branch)",
+					},
+					"checks": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "Limit to specific checks: breaking, secrets, tests, complexity, coupling, hotspots, risk, critical, generated, classify, split, health, traceability, independence, dead-code, test-gaps, blast-radius, comment-drift, format-consistency, bug-patterns",
+					},
+					"staged": map[string]interface{}{
+						"type":        "boolean",
+						"description": "Review staged changes instead of branch diff",
+					},
+					"scope": map[string]interface{}{
+						"type":        "string",
+						"description": "Filter to path prefix (e.g., internal/query/) or symbol name",
+					},
+					"compact": map[string]interface{}{
+						"type":        "boolean",
+						"description": "Return compact response (~1k tokens) instead of full response (~30k tokens). Recommended for LLM consumers. Use full response only when you need raw finding details.",
+					},
+					"failOnLevel": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"error", "warning", "none"},
+						"description": "Override when to fail: error (default), warning, or none",
+					},
+					"criticalPaths": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "Glob patterns for safety-critical paths (e.g., drivers/**, protocol/**)",
+					},
+				},
+			},
+		},
 		// v7.3 Doc-Symbol Linking tools
 		{
 			Name:        "getDocsForSymbol",
@@ -2334,6 +2380,8 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["auditRisk"] = s.toolAuditRisk
 	// v8.0 Secret Detection
 	s.tools["scanSecrets"] = s.toolScanSecrets
+	// v8.2 Unified Review
+	s.tools["reviewPR"] = s.toolReviewPR
 	// v7.3 Doc-Symbol Linking tools
 	s.tools["getDocsForSymbol"] = s.toolGetDocsForSymbol
 	s.tools["getSymbolsInDoc"] = s.toolGetSymbolsInDoc

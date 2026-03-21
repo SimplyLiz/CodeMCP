@@ -50,6 +50,9 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("/audit", s.handleAudit)               // GET /audit?minScore=...&limit=...
 	s.router.HandleFunc("/diff/summary", s.handleDiffSummary)  // POST /diff/summary
 
+	// v8.2 Unified PR Review
+	s.router.HandleFunc("/review/pr", s.handleReviewPR) // GET/POST
+
 	// v6.2 Federation endpoints
 	s.router.HandleFunc("/federations", s.handleListFederations)   // GET
 	s.router.HandleFunc("/federations/", s.handleFederationRoutes) // /federations/:name/*
@@ -135,6 +138,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 			"POST /coupling - Check for missing tightly-coupled files in a change set",
 			"GET /audit?minScore=...&limit=...&factor=... - Multi-factor risk audit",
 			"POST /diff/summary - Summarize changes between git refs",
+			"GET/POST /review/pr - Unified PR review with quality gates",
 			"GET /federations - List all federations",
 			"GET /federations/:name/status - Federation status",
 			"GET /federations/:name/repos - List repos in federation",

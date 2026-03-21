@@ -1,0 +1,84 @@
+======================================================================
+  CKB COMPLIANCE EVIDENCE REPORT
+======================================================================
+
+Generated:   <TIMESTAMP>
+CKB Version: 8.2.0
+Schema:      8.2
+Verdict:     WARN (68/100)
+
+1. CHANGE SUMMARY
+----------------------------------------
+  Total Files:      25
+  Reviewable Files: 22
+  Generated Files:  3 (excluded)
+  Critical Files:   2
+  Total Changes:    480
+  Modules Changed:  3
+  Languages:        Go, TypeScript
+
+2. QUALITY GATE RESULTS
+----------------------------------------
+  CHECK                STATUS   DETAIL
+  -------------------- -------- ------------------------------
+  breaking             FAIL     2 breaking API changes detected
+  critical             FAIL     2 safety-critical files changed
+  complexity           WARN     +8 cyclomatic (engine.go)
+  coupling             WARN     2 missing co-change files
+  secrets              PASS     No secrets detected
+  tests                PASS     12 tests cover the changes
+  risk                 PASS     Risk score: 0.42 (low)
+  hotspots             PASS     No volatile files touched
+  generated            INFO     3 generated files detected and excluded
+
+  Passed: 4  Warned: 2  Failed: 1  Skipped: 1
+
+3. TRACEABILITY
+----------------------------------------
+  Not configured (traceability patterns not set)
+
+4. REVIEWER INDEPENDENCE
+----------------------------------------
+  Not configured (requireIndependentReview not set)
+
+5. SAFETY-CRITICAL PATH FINDINGS
+----------------------------------------
+  [ERROR] Safety-critical path changed (pattern: drivers/**)
+         File: drivers/hw/plc_comm.go
+         Action: Requires sign-off from safety team
+  [ERROR] Safety-critical path changed (pattern: protocol/**)
+         File: protocol/modbus.go
+         Action: Requires sign-off from safety team
+
+6. CODE HEALTH
+----------------------------------------
+  FILE                                     BEFORE   AFTER    DELTA
+  ---------------------------------------- -------- -------- --------
+  api/handler.go                           B(82)    B(70)    -12
+  internal/query/engine.go                 B(75)    C(68)    -7
+  protocol/modbus.go                       C(60)    C(65)    +5
+
+  Degraded: 2  Improved: 1  Average Delta: -4.7
+
+7. COMPLETE FINDINGS
+----------------------------------------
+  1. [ERROR] [ckb/breaking/removed-symbol] Removed public function HandleAuth()
+     File: api/handler.go:42
+  2. [ERROR] [ckb/breaking/changed-signature] Changed signature of ValidateToken()
+     File: api/middleware.go:15
+  3. [ERROR] [ckb/critical/safety-path] Safety-critical path changed (pattern: drivers/**)
+     File: drivers/hw/plc_comm.go:78
+  4. [ERROR] [ckb/critical/safety-path] Safety-critical path changed (pattern: protocol/**)
+     File: protocol/modbus.go
+  5. [WARNING] [ckb/complexity/increase] Complexity 12→20 in parseQuery()
+     File: internal/query/engine.go:155
+  6. [WARNING] [ckb/coupling/missing-cochange] Missing co-change: engine_test.go (87% co-change rate)
+     File: internal/query/engine.go
+  7. [WARNING] [ckb/coupling/missing-cochange] Missing co-change: modbus_test.go (91% co-change rate)
+     File: protocol/modbus.go
+  8. [INFO] [ckb/hotspots/volatile-file] Hotspot file (score: 0.78) — extra review attention recommended
+     File: config/settings.go
+
+======================================================================
+  END OF COMPLIANCE EVIDENCE REPORT
+======================================================================

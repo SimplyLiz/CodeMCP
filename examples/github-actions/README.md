@@ -4,9 +4,25 @@ This directory contains example GitHub Actions workflows for integrating CKB int
 
 ## Workflows
 
-### pr-analysis.yml
+### pr-review.yml (Recommended)
 
-Analyzes pull requests and posts a comment with:
+Runs the unified `ckb review` engine on pull requests — 14 quality checks in one command:
+- Breaking API changes, secret detection, test coverage
+- Complexity delta, code health scoring, coupling gaps
+- Hotspot overlap, risk scoring, critical-path checks
+- Traceability, reviewer independence, PR split suggestion
+- Posts markdown PR comment, emits GHA annotations, uploads SARIF
+- CI mode with configurable fail level (error/warning/none)
+
+**Usage:**
+1. Copy to `.github/workflows/pr-review.yml`
+2. The workflow runs automatically on PR open/update
+3. Customize checks, fail level, and critical paths in the workflow env
+
+### pr-analysis.yml (Legacy)
+
+Uses the HTTP API to analyze PRs. Superseded by `pr-review.yml` which uses the CLI directly.
+
 - Summary of changed files and lines
 - Risk assessment (low/medium/high)
 - Hotspots touched

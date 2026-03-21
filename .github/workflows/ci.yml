@@ -8,7 +8,7 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -17,17 +17,18 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
           go-version-file: 'go.mod'
           cache: true
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v9
+        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9
         with:
           version: latest
           args: --timeout=5m
@@ -35,11 +36,12 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -53,11 +55,12 @@ jobs:
   golden:
     name: Golden Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -74,14 +77,46 @@ jobs:
             exit 1
           fi
 
+  review-tests:
+    name: Review Engine Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Run review engine tests
+        run: go test -v -race ./internal/query/... -run "TestReview|TestHealth|TestBaseline|TestFingerprint|TestSave|TestList|TestLoad|TestCompare|TestCheckTraceability|TestCheckIndependence|TestClassify|TestEstimate|TestSuggest|TestBFS|TestIsConfig|TestDefault|TestDetect|TestMatch|TestCalculate|TestDetermine|TestSort|TestContainsSource|TestCodeHealth|TestCountLines|TestComplexity|TestFileSize"
+
+      - name: Run format tests
+        run: go test -v ./cmd/ckb/... -run "TestFormatSARIF|TestFormatCodeClimate|TestFormatGitHubActions|TestFormatHuman_|TestFormatMarkdown|TestFormatCompliance"
+
+      - name: Run review golden tests
+        run: go test -v ./cmd/ckb/... -run "TestGolden"
+
+      - name: Verify review goldens are committed
+        run: |
+          go test ./cmd/ckb/... -run TestGolden -update-golden
+          if ! git diff --exit-code testdata/review/; then
+            echo "::error::Review golden files are out of date! Run: go test ./cmd/ckb/... -run TestGolden -update-golden"
+            git diff testdata/review/
+            exit 1
+          fi
+
   tidycheck:
     name: Go Mod Tidy
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -98,11 +133,12 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -113,7 +149,7 @@ jobs:
           govulncheck ./...
 
       - name: Run Trivy filesystem scan
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -123,12 +159,13 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [lint, test, tidycheck, security]
+    timeout-minutes: 10
+    needs: [lint, test, review-tests, tidycheck, security]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -140,9 +177,117 @@ jobs:
         run: ./ckb version
 
       - name: Upload binary
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ckb-linux-amd64
           path: ckb
           retention-days: 7
+
+  pr-review:
+    name: PR Review
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [build]
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Download CKB binary
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: ckb-linux-amd64
+
+      - name: Build CKB (fallback)
+        if: steps.download.outcome == 'failure'
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Build CKB binary (fallback)
+        if: steps.download.outcome == 'failure'
+        run: go build -ldflags="-s -w" -o ckb ./cmd/ckb
+
+      - name: Install CKB
+        run: chmod +x ckb && sudo mv ckb /usr/local/bin/
+
+      - name: Initialize and index
+        run: |
+          ckb init
+          ckb index 2>/dev/null || echo "Indexing skipped (no supported indexer)"
+
+      - name: Run review
+        id: review
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set +e
+          ckb review --ci --base="${BASE_REF}" --format=json > review.json 2>&1
+          EXIT_CODE=$?
+          set -e
+
+          echo "verdict=$(jq -r '.verdict // "unknown"' review.json)" >> "$GITHUB_OUTPUT"
+          echo "score=$(jq -r '.score // 0' review.json)" >> "$GITHUB_OUTPUT"
+          echo "findings=$(jq -r '.findings | length // 0' review.json)" >> "$GITHUB_OUTPUT"
+          echo "exit_code=${EXIT_CODE}" >> "$GITHUB_OUTPUT"
+
+      - name: GitHub Actions annotations
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: ckb review --base="${BASE_REF}" --format=github-actions 2>/dev/null || true
+
+      - name: Post PR comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          MARKDOWN=$(ckb review --base="${BASE_REF}" --format=markdown 2>/dev/null || echo "CKB review failed to generate output.")
+          MARKER="<!-- ckb-review-marker -->"
+
+          COMMENT_ID=$(gh api \
+            "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" \
+            --jq ".[] | select(.body | contains(\"${MARKER}\")) | .id" \
+            2>/dev/null | head -1)
+
+          if [ -n "${COMMENT_ID}" ]; then
+            gh api \
+              "repos/${GH_REPO}/issues/comments/${COMMENT_ID}" \
+              -X PATCH \
+              -f body="${MARKDOWN}"
+          else
+            gh api \
+              "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" \
+              -f body="${MARKDOWN}"
+          fi
+
+      - name: Summary
+        env:
+          VERDICT: ${{ steps.review.outputs.verdict }}
+          SCORE: ${{ steps.review.outputs.score }}
+          FINDINGS: ${{ steps.review.outputs.findings }}
+        run: |
+          echo "### CKB Review" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Verdict | ${VERDICT} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Findings | ${FINDINGS} |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail on review verdict
+        env:
+          REVIEW_EXIT_CODE: ${{ steps.review.outputs.exit_code }}
+          SCORE: ${{ steps.review.outputs.score }}
+        run: |
+          if [ "${REVIEW_EXIT_CODE}" = "1" ]; then
+            echo "::error::CKB review failed (score: ${SCORE})"
+            exit 1
+          fi
 

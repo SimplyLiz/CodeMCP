@@ -85,6 +85,7 @@ var Presets = map[string][]string{
 		"getOwnershipDrift",
 		"recentlyRelevant",
 		"scanSecrets", // v8.0: Secret detection for PR reviews
+		"reviewPR",    // v8.2: Unified PR review with quality gates
 	},
 
 	// Refactor: core + refactoring analysis tools

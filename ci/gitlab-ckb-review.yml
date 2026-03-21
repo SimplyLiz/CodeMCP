@@ -1,0 +1,79 @@
+# CKB Code Review — GitLab CI/CD Template
+#
+# Include in your .gitlab-ci.yml:
+#
+#   include:
+#     - remote: 'https://raw.githubusercontent.com/SimplyLiz/CodeMCP/main/ci/gitlab-ckb-review.yml'
+#
+# Or copy this file into your project and include locally:
+#
+#   include:
+#     - local: 'ci/gitlab-ckb-review.yml'
+#
+# Override variables as needed:
+#
+#   variables:
+#     CKB_FAIL_ON: "warning"
+#     CKB_CHECKS: "breaking,secrets,tests"
+#     CKB_CRITICAL_PATHS: "drivers/**,protocol/**"
+
+variables:
+  CKB_VERSION: "latest"
+  CKB_FAIL_ON: ""
+  CKB_CHECKS: ""
+  CKB_CRITICAL_PATHS: ""
+  CKB_REQUIRE_TRACE: "false"
+  CKB_TRACE_PATTERNS: ""
+  CKB_REQUIRE_INDEPENDENT: "false"
+
+.ckb-review-base:
+  image: node:20-slim
+  before_script:
+    - npm install -g @tastehub/ckb@${CKB_VERSION}
+    - ckb index 2>/dev/null || echo "Indexing skipped"
+
+ckb-review:
+  extends: .ckb-review-base
+  stage: test
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - |
+      FLAGS="--ci --base=${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}"
+      [ -n "$CKB_CHECKS" ] && FLAGS="$FLAGS --checks=$CKB_CHECKS"
+      [ -n "$CKB_FAIL_ON" ] && FLAGS="$FLAGS --fail-on=$CKB_FAIL_ON"
+      [ -n "$CKB_CRITICAL_PATHS" ] && FLAGS="$FLAGS --critical-paths=$CKB_CRITICAL_PATHS"
+      [ "$CKB_REQUIRE_TRACE" = "true" ] && FLAGS="$FLAGS --require-trace"
+      [ -n "$CKB_TRACE_PATTERNS" ] && FLAGS="$FLAGS --trace-patterns=$CKB_TRACE_PATTERNS"
+      [ "$CKB_REQUIRE_INDEPENDENT" = "true" ] && FLAGS="$FLAGS --require-independent"
+
+      echo "Running: ckb review $FLAGS"
+      ckb review $FLAGS --format=json > review.json || true
+      ckb review $FLAGS --format=human
+
+      VERDICT=$(cat review.json | python3 -c "import sys,json; print(json.load(sys.stdin)['verdict'])" 2>/dev/null || echo "unknown")
+      echo "CKB_VERDICT=$VERDICT" >> build.env
+  artifacts:
+    reports:
+      dotenv: build.env
+    paths:
+      - review.json
+    when: always
+
+ckb-code-quality:
+  extends: .ckb-review-base
+  stage: test
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - |
+      FLAGS="--base=${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}"
+      [ -n "$CKB_CHECKS" ] && FLAGS="$FLAGS --checks=$CKB_CHECKS"
+      [ -n "$CKB_CRITICAL_PATHS" ] && FLAGS="$FLAGS --critical-paths=$CKB_CRITICAL_PATHS"
+
+      ckb review $FLAGS --format=codeclimate > gl-code-quality-report.json
+  artifacts:
+    reports:
+      codequality: gl-code-quality-report.json
+    when: always
+  allow_failure: true

@@ -436,6 +436,35 @@ func isTestFile(path string) bool {
 		strings.HasSuffix(pathLower, ".spec.")
 }
 
+// LikelyReturnsError uses heuristics to determine if a function likely returns an error.
+// Since SignatureFull is not always populated, this uses name patterns and documentation.
+func LikelyReturnsError(symbolName string) bool {
+	// Common Go stdlib/convention patterns for error-returning functions
+	errorPatterns := []string{
+		"Open", "Read", "Write", "Close", "Create",
+		"Dial", "Listen", "Accept", "Connect",
+		"Parse", "Unmarshal", "Marshal", "Decode", "Encode",
+		"Execute", "Exec", "Query", "Scan",
+		"Send", "Recv", "Flush",
+		"Lock", "Acquire",
+		"Start", "Stop", "Init", "Setup",
+	}
+
+	// Check if name starts with or equals any pattern
+	for _, p := range errorPatterns {
+		if symbolName == p || strings.HasPrefix(symbolName, p) {
+			return true
+		}
+	}
+
+	// Functions starting with New commonly return (T, error)
+	if strings.HasPrefix(symbolName, "New") {
+		return true
+	}
+
+	return false
+}
+
 // CountSymbolsByPath counts the number of symbols in documents matching a path prefix
 func (idx *SCIPIndex) CountSymbolsByPath(pathPrefix string) int {
 	count := 0

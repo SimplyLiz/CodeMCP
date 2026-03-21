@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -382,9 +383,31 @@ func calculateConfidence(secret string, pattern Pattern) float64 {
 	return confidence
 }
 
+// goStructDeclRe matches Go struct field declarations like:
+//
+//	Token     string `json:"token"`
+//	Secret    string `json:"secret"`
+//	Password  []byte
+var goStructDeclRe = regexp.MustCompile(`(?i)\b(secret|token|password|passwd|pwd)\s+(string|bool|int|\[\]byte|\[\]string|\*?\w+Config)\b`)
+
+// configKeyVarRe matches config/map key assignments where the value is a
+// variable name (not a string literal), e.g.:
+//
+//	"token":      rawToken,
+//	"new_token":  rawToken,
+var configKeyVarRe = regexp.MustCompile(`(?i)["'](?:secret|token|password|passwd|pwd|new_token)["']\s*:\s*[a-zA-Z]\w*[,\s})]`)
+
 // isLikelyFalsePositive checks for common false positive patterns.
 func isLikelyFalsePositive(line, secret string) bool {
 	lineLower := strings.ToLower(line)
+
+	// Go struct field declarations and config key→variable assignments are not secrets
+	if goStructDeclRe.MatchString(line) {
+		return true
+	}
+	if configKeyVarRe.MatchString(line) {
+		return true
+	}
 
 	// Check for test/example indicators
 	falsePositiveIndicators := []string{
