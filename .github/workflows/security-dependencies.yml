@@ -79,7 +79,7 @@ jobs:
       # ==================== Trivy ====================
       - name: Setup Trivy
         if: inputs.scan_trivy
-        uses: aquasecurity/setup-trivy@9ea583eb67910444b1f64abf338bd2e105a0a93d # v0.2.3
+        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.3
         with:
           cache: true
           version: latest
@@ -142,7 +142,7 @@ jobs:
 
       - name: Upload Trivy SARIF
         if: inputs.scan_trivy && hashFiles('trivy-vuln.sarif') != ''
-        uses: github/codeql-action/upload-sarif@b1bff81932f5cdfc8695c7752dcee935dcd061c8 # v4
+        uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4
         with:
           sarif_file: trivy-vuln.sarif
           category: trivy
@@ -150,7 +150,7 @@ jobs:
 
       - name: Attest SBOM
         if: inputs.scan_trivy && inputs.generate_sbom && github.event_name != 'pull_request' && hashFiles('sbom.json') != ''
-        uses: actions/attest-sbom@bd218ad0dbcb3e146bd073d1d9c6d78e08aa8a0b # v2
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
         with:
           subject-path: 'sbom.json'
           sbom-path: 'sbom.json'
@@ -220,7 +220,7 @@ jobs:
           echo "| **Total** | **$TOTAL** |" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         if: always()
         with:
           name: dependency-scan-results
