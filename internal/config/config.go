@@ -74,13 +74,13 @@ type CoverageConfig struct {
 // ReviewConfig contains PR review policy defaults (v8.2)
 type ReviewConfig struct {
 	// Policy defaults (can be overridden per-invocation)
-	BlockBreakingChanges  bool    `json:"blockBreakingChanges" mapstructure:"blockBreakingChanges"`   // Fail on breaking API changes
-	BlockSecrets          bool    `json:"blockSecrets" mapstructure:"blockSecrets"`                   // Fail on detected secrets
-	RequireTests       bool    `json:"requireTests" mapstructure:"requireTests"`             // Warn if no tests cover changes
-	MaxRiskScore       float64 `json:"maxRiskScore" mapstructure:"maxRiskScore"`             // Maximum risk score (0 = disabled)
-	MaxComplexityDelta int     `json:"maxComplexityDelta" mapstructure:"maxComplexityDelta"` // Maximum complexity delta (0 = disabled)
-	MaxFiles           int     `json:"maxFiles" mapstructure:"maxFiles"`                     // Maximum file count (0 = disabled)
-	FailOnLevel        string  `json:"failOnLevel" mapstructure:"failOnLevel"`               // error, warning, none
+	BlockBreakingChanges bool    `json:"blockBreakingChanges" mapstructure:"blockBreakingChanges"` // Fail on breaking API changes
+	BlockSecrets         bool    `json:"blockSecrets" mapstructure:"blockSecrets"`                 // Fail on detected secrets
+	RequireTests         bool    `json:"requireTests" mapstructure:"requireTests"`                 // Warn if no tests cover changes
+	MaxRiskScore         float64 `json:"maxRiskScore" mapstructure:"maxRiskScore"`                 // Maximum risk score (0 = disabled)
+	MaxComplexityDelta   int     `json:"maxComplexityDelta" mapstructure:"maxComplexityDelta"`     // Maximum complexity delta (0 = disabled)
+	MaxFiles             int     `json:"maxFiles" mapstructure:"maxFiles"`                         // Maximum file count (0 = disabled)
+	FailOnLevel          string  `json:"failOnLevel" mapstructure:"failOnLevel"`                   // error, warning, none
 
 	// Generated file detection
 	GeneratedPatterns []string `json:"generatedPatterns" mapstructure:"generatedPatterns"` // Glob patterns for generated files
@@ -441,16 +441,16 @@ func DefaultConfig() *Config {
 			MaxAge:     "168h", // 7 days
 		},
 		Review: ReviewConfig{
-			BlockBreakingChanges:  true,
-			BlockSecrets:          true,
-			RequireTests:       false,
-			MaxRiskScore:       0.7,
-			MaxComplexityDelta: 0, // disabled by default
-			MaxFiles:           0, // disabled by default
-			FailOnLevel:        "error",
-			GeneratedPatterns:  []string{},
-			GeneratedMarkers:   []string{},
-			CriticalPaths:      []string{},
+			BlockBreakingChanges: true,
+			BlockSecrets:         true,
+			RequireTests:         false,
+			MaxRiskScore:         0.7,
+			MaxComplexityDelta:   0, // disabled by default
+			MaxFiles:             0, // disabled by default
+			FailOnLevel:          "error",
+			GeneratedPatterns:    []string{},
+			GeneratedMarkers:     []string{},
+			CriticalPaths:        []string{},
 		},
 		Telemetry: TelemetryConfig{
 			Enabled:         false, // Explicit opt-in required

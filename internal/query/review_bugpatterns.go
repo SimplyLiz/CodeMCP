@@ -320,7 +320,7 @@ func checkNilAfterDeref(root *sitter.Node, source []byte, file string) []ReviewF
 			continue
 		}
 		// Track first dereference and first nil check per variable in this function
-		derefLines := make(map[string]int)   // var -> first deref line
+		derefLines := make(map[string]int)    // var -> first deref line
 		nilCheckLines := make(map[string]int) // var -> first nil check line
 
 		var walk func(node *sitter.Node)

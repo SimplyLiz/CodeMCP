@@ -61,12 +61,12 @@ func (s *Server) handleReviewPR(w http.ResponseWriter, r *http.Request) {
 			FailOnLevel   string   `json:"failOnLevel"`
 			CriticalPaths []string `json:"criticalPaths"`
 			// Policy overrides
-			BlockBreakingChanges  *bool    `json:"blockBreakingChanges"`
-			BlockSecrets          *bool    `json:"blockSecrets"`
-			RequireTests       *bool    `json:"requireTests"`
-			MaxRiskScore       *float64 `json:"maxRiskScore"`
-			MaxComplexityDelta *int     `json:"maxComplexityDelta"`
-			MaxFiles           *int     `json:"maxFiles"`
+			BlockBreakingChanges *bool    `json:"blockBreakingChanges"`
+			BlockSecrets         *bool    `json:"blockSecrets"`
+			RequireTests         *bool    `json:"requireTests"`
+			MaxRiskScore         *float64 `json:"maxRiskScore"`
+			MaxComplexityDelta   *int     `json:"maxComplexityDelta"`
+			MaxFiles             *int     `json:"maxFiles"`
 		}
 		if r.Body != nil {
 			defer r.Body.Close()

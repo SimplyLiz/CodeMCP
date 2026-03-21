@@ -668,16 +668,16 @@ func ignoreConversion() {
 
 	// We expect at least one finding per rule category
 	expectedRules := map[string]bool{
-		"ckb/bug/defer-in-loop":        false,
-		"ckb/bug/unreachable-code":     false,
-		"ckb/bug/empty-error-branch":   false,
+		"ckb/bug/defer-in-loop":         false,
+		"ckb/bug/unreachable-code":      false,
+		"ckb/bug/empty-error-branch":    false,
 		"ckb/bug/unchecked-type-assert": false,
-		"ckb/bug/self-assignment":      false,
-		"ckb/bug/nil-after-deref":      false,
-		"ckb/bug/identical-branches":   false,
-		"ckb/bug/shadowed-err":         false,
-		"ckb/bug/discarded-error":      false,
-		"ckb/bug/missing-defer-close":  false,
+		"ckb/bug/self-assignment":       false,
+		"ckb/bug/nil-after-deref":       false,
+		"ckb/bug/identical-branches":    false,
+		"ckb/bug/shadowed-err":          false,
+		"ckb/bug/discarded-error":       false,
+		"ckb/bug/missing-defer-close":   false,
 	}
 
 	for _, f := range allFindings {

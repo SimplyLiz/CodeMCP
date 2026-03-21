@@ -167,13 +167,13 @@ func (e *Engine) checkConstDrift(file, constLine string, constLineNum int, comme
 		}
 		if commentVal != constVal {
 			return &ReviewFinding{
-				Check:    "comment-drift",
-				Severity: "info",
-				File:     file,
+				Check:     "comment-drift",
+				Severity:  "info",
+				File:      file,
 				StartLine: constLineNum,
-				Message:  fmt.Sprintf("Comment says %q but const %s = %s", m, constName, valuePart),
-				Category: "drift",
-				RuleID:   "ckb/comment-drift/numeric-mismatch",
+				Message:   fmt.Sprintf("Comment says %q but const %s = %s", m, constName, valuePart),
+				Category:  "drift",
+				RuleID:    "ckb/comment-drift/numeric-mismatch",
 			}
 		}
 	}

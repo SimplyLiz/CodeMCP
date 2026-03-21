@@ -60,10 +60,10 @@ func TestGenerateLLMNarrative_PromptFormat(t *testing.T) {
 			t.Errorf("unexpected anthropic-version header")
 		}
 
-		json.NewDecoder(r.Body).Decode(&receivedBody)
+		_ = json.NewDecoder(r.Body).Decode(&receivedBody)
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"content": []map[string]interface{}{
 				{"type": "text", "text": "Test narrative summary."},
 			},

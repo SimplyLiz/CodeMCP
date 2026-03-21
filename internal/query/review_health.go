@@ -26,8 +26,8 @@ type CodeHealthDelta struct {
 	GradeBefore  string  `json:"gradeBefore"`
 	TopFactor    string  `json:"topFactor"` // What drives the score most
 	NewFile      bool    `json:"newFile,omitempty"`
-	Confidence   float64 `json:"confidence"`          // 0.0-1.0
-	Parseable    bool    `json:"parseable"`           // false = tree-sitter can't analyze
+	Confidence   float64 `json:"confidence"` // 0.0-1.0
+	Parseable    bool    `json:"parseable"`  // false = tree-sitter can't analyze
 }
 
 // healthResult holds the output of calculateFileHealth including metadata.

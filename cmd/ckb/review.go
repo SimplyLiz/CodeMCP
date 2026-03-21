@@ -27,8 +27,8 @@ var (
 	reviewCI         bool
 	reviewFailOn     string
 	// Policy overrides
-	reviewBlockBreaking    bool
-	reviewBlockSecrets     bool
+	reviewBlockBreaking bool
+	reviewBlockSecrets  bool
 	reviewRequireTests  bool
 	reviewMaxRisk       float64
 	reviewMaxComplexity int
@@ -341,7 +341,7 @@ func formatReviewHuman(resp *query.ReviewPRResponse) string {
 			b.WriteString(fmt.Sprintf("  ○ %-20s %s\n", c.Name, c.Summary))
 		case "pass":
 			passNames = append(passNames, c.Name)
-		// skip: omit entirely
+			// skip: omit entirely
 		}
 	}
 	if len(passNames) > 0 {
@@ -473,13 +473,13 @@ func formatReviewHuman(resp *query.ReviewPRResponse) string {
 					arrow = "↑"
 				}
 				confLabel := ""
-			if d.Confidence < 0.6 {
-				confLabel = " (low confidence)"
-			}
-			if !d.Parseable {
-				confLabel += " [unparseable]"
-			}
-			b.WriteString(fmt.Sprintf("  %s %s %s (%d)%s%s\n",
+				if d.Confidence < 0.6 {
+					confLabel = " (low confidence)"
+				}
+				if !d.Parseable {
+					confLabel += " [unparseable]"
+				}
+				b.WriteString(fmt.Sprintf("  %s %s %s (%d)%s%s\n",
 					d.Grade, arrow, d.File, d.HealthAfter, label, confLabel))
 				shown++
 			}

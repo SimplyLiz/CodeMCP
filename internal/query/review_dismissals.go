@@ -37,14 +37,14 @@ func LoadDismissals(repoRoot string) *DismissalStore {
 // Save writes the dismissal store to disk.
 func (s *DismissalStore) Save() error {
 	dir := filepath.Dir(s.path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil { // #nosec G301 -- .ckb directory, user-scoped
 		return err
 	}
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.path, data, 0644)
+	return os.WriteFile(s.path, data, 0600) // #nosec G306 -- user config file
 }
 
 // Dismiss adds a finding to the dismissed list.
