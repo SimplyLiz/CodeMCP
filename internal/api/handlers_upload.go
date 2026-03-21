@@ -448,7 +448,10 @@ func isValidRepoID(id string) bool {
 			return false
 		}
 	}
-	// Don't allow consecutive slashes or starting/ending with special chars
+	// Don't allow path traversal components or leading/trailing slashes
+	if strings.Contains(id, "..") {
+		return false
+	}
 	if strings.Contains(id, "//") || strings.HasPrefix(id, "/") || strings.HasSuffix(id, "/") {
 		return false
 	}
@@ -462,7 +465,8 @@ func isValidRepoIDChar(c rune) bool {
 		c == '/' || c == '-' || c == '_' || c == '.'
 }
 
-// extractRepoIDFromPath extracts repo ID from URL path
+// extractRepoIDFromPath extracts repo ID from URL path.
+// Returns empty string if the extracted ID contains path traversal components.
 func extractRepoIDFromPath(path, prefix, suffix string) string {
 	if !strings.HasPrefix(path, prefix) {
 		return ""
@@ -470,6 +474,10 @@ func extractRepoIDFromPath(path, prefix, suffix string) string {
 	id := strings.TrimPrefix(path, prefix)
 	if suffix != "" && strings.HasSuffix(id, suffix) {
 		id = strings.TrimSuffix(id, suffix)
+	}
+	// Reject path traversal
+	if strings.Contains(id, "..") {
+		return ""
 	}
 	return id
 }

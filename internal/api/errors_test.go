@@ -62,8 +62,9 @@ func TestWriteError(t *testing.T) {
 			t.Fatalf("failed to parse response: %v", err)
 		}
 
-		if resp.Error != "something went wrong" {
-			t.Errorf("resp.Error = %q, want 'something went wrong'", resp.Error)
+		// Internal errors (5xx) should NOT expose raw error messages
+		if resp.Error != "Internal server error" {
+			t.Errorf("resp.Error = %q, want 'Internal server error' (raw message should be sanitized)", resp.Error)
 		}
 		if resp.Code != "INTERNAL_ERROR" {
 			t.Errorf("resp.Code = %q, want INTERNAL_ERROR", resp.Code)

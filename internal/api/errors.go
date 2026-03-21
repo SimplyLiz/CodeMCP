@@ -16,22 +16,29 @@ type ErrorResponse struct {
 	Drilldowns     []errors.Drilldown `json:"drilldowns,omitempty"`
 }
 
-// WriteError writes an error response to the HTTP response writer
+// WriteError writes an error response to the HTTP response writer.
+// For internal server errors (5xx), the raw error message is sanitized
+// to avoid leaking file paths, SQL errors, or internal details.
 func WriteError(w http.ResponseWriter, err error, status int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 
-	resp := ErrorResponse{
-		Error: err.Error(),
-	}
+	resp := ErrorResponse{}
 
-	// If it's a CkbError, include additional information
+	// If it's a CkbError, include structured information (safe to expose)
 	if ckbErr, ok := err.(*errors.CkbError); ok {
+		resp.Error = ckbErr.Message
 		resp.Code = string(ckbErr.Code)
 		resp.Details = ckbErr.Details
 		resp.SuggestedFixes = ckbErr.SuggestedFixes
 		resp.Drilldowns = ckbErr.Drilldowns
+	} else if status >= 500 {
+		// For internal errors, don't expose raw error details
+		resp.Error = "Internal server error"
+		resp.Code = "INTERNAL_ERROR"
 	} else {
+		// Client errors (4xx) — safe to include the message
+		resp.Error = err.Error()
 		resp.Code = "INTERNAL_ERROR"
 	}
 
@@ -101,8 +108,9 @@ func NotFound(w http.ResponseWriter, message string) {
 	}, http.StatusNotFound)
 }
 
-// InternalError writes a 500 Internal Server Error
-func InternalError(w http.ResponseWriter, message string, err error) {
+// InternalError writes a 500 Internal Server Error.
+// The message is returned to the client; the original err is not exposed.
+func InternalError(w http.ResponseWriter, message string, _ error) {
 	WriteError(w, &errors.CkbError{
 		Code:    errors.InternalError,
 		Message: message,
