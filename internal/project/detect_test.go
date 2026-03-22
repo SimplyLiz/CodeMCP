@@ -628,6 +628,251 @@ func TestSaveAndLoadConfig(t *testing.T) {
 	}
 }
 
+// --- Subdirectory and monorepo detection tests ---
+
+func TestDetectLanguage_SubdirectoryManifest(t *testing.T) {
+	tests := []struct {
+		name         string
+		files        []string
+		wantLang     Language
+		wantManifest string
+	}{
+		{
+			name:         "go.mod in src/cli/ (ShellAI layout)",
+			files:        []string{"README.md", "src/cli/go.mod", "src/cli/main.go"},
+			wantLang:     LangGo,
+			wantManifest: "src/cli/go.mod",
+		},
+		{
+			name:         "go.mod in root takes priority over subdir",
+			files:        []string{"go.mod", "src/cli/go.mod"},
+			wantLang:     LangGo,
+			wantManifest: "go.mod",
+		},
+		{
+			name:         "Cargo.toml in packages/core/",
+			files:        []string{"README.md", "packages/core/Cargo.toml"},
+			wantLang:     LangRust,
+			wantManifest: "packages/core/Cargo.toml",
+		},
+		{
+			name:         "package.json in src/web/ with tsconfig at root",
+			files:        []string{"README.md", "src/web/package.json", "tsconfig.json"},
+			wantLang:     LangTypeScript,
+			wantManifest: "src/web/package.json",
+		},
+		{
+			name:         "pyproject.toml in backend/",
+			files:        []string{"README.md", "backend/pyproject.toml"},
+			wantLang:     LangPython,
+			wantManifest: "backend/pyproject.toml",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := setupTestDir(t, tt.files)
+			lang, manifest, ok := DetectLanguage(dir)
+			if !ok {
+				t.Fatalf("DetectLanguage() failed to detect language")
+			}
+			if lang != tt.wantLang {
+				t.Errorf("lang = %v, want %v", lang, tt.wantLang)
+			}
+			if manifest != tt.wantManifest {
+				t.Errorf("manifest = %q, want %q", manifest, tt.wantManifest)
+			}
+		})
+	}
+}
+
+func TestDetectAllLanguages_MultiLanguageMonorepo(t *testing.T) {
+	tests := []struct {
+		name         string
+		files        []string
+		wantPrimary  Language
+		wantAllCount int
+		wantAll      []Language
+	}{
+		{
+			name: "Go + TypeScript (ShellAI layout)",
+			files: []string{
+				"src/cli/go.mod",
+				"src/cli/main.go",
+				"src/web/package.json",
+				"src/web/tsconfig.json",
+			},
+			wantPrimary:  LangGo,
+			wantAllCount: 2,
+			wantAll:      []Language{LangGo, LangTypeScript},
+		},
+		{
+			name: "Go + Python in separate subdirs",
+			files: []string{
+				"services/api/go.mod",
+				"scripts/pyproject.toml",
+			},
+			wantPrimary:  LangGo,
+			wantAllCount: 2,
+			wantAll:      []Language{LangGo, LangPython},
+		},
+		{
+			name: "Single language in subdir",
+			files: []string{
+				"src/cli/go.mod",
+				"README.md",
+			},
+			wantPrimary:  LangGo,
+			wantAllCount: 1,
+			wantAll:      []Language{LangGo},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := setupTestDir(t, tt.files)
+			primary, _, allLangs := DetectAllLanguages(dir)
+			if primary != tt.wantPrimary {
+				t.Errorf("primary = %v, want %v", primary, tt.wantPrimary)
+			}
+			if len(allLangs) != tt.wantAllCount {
+				t.Errorf("allLangs count = %d, want %d (got %v)", len(allLangs), tt.wantAllCount, allLangs)
+			}
+			for _, want := range tt.wantAll {
+				found := false
+				for _, got := range allLangs {
+					if got == want {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("expected %v in allLangs %v", want, allLangs)
+				}
+			}
+		})
+	}
+}
+
+func TestDetectLanguage_SkipsExampleAndTestDirs(t *testing.T) {
+	// Manifests in example/test/doc directories should NOT be detected
+	files := []string{
+		"README.md",
+		"examples/dart-app/pubspec.yaml",
+		"example/python-demo/pyproject.toml",
+		"testdata/fixtures/go.mod",
+		"docs/tutorial/package.json",
+	}
+	dir := setupTestDir(t, files)
+
+	_, _, ok := DetectLanguage(dir)
+	if ok {
+		t.Error("should not detect language from examples/testdata/docs directories")
+	}
+}
+
+func TestFindManifestForLanguage(t *testing.T) {
+	tests := []struct {
+		name         string
+		files        []string
+		lang         Language
+		wantManifest string
+	}{
+		{
+			name:         "Go in subdir",
+			files:        []string{"src/cli/go.mod", "src/web/package.json"},
+			lang:         LangGo,
+			wantManifest: "src/cli/go.mod",
+		},
+		{
+			name:         "TypeScript in subdir",
+			files:        []string{"src/cli/go.mod", "src/web/package.json"},
+			lang:         LangTypeScript,
+			wantManifest: "src/web/package.json",
+		},
+		{
+			name:         "Go at root",
+			files:        []string{"go.mod", "main.go"},
+			lang:         LangGo,
+			wantManifest: "go.mod",
+		},
+		{
+			name:         "Language not present",
+			files:        []string{"go.mod"},
+			lang:         LangRust,
+			wantManifest: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := setupTestDir(t, tt.files)
+			got := FindManifestForLanguage(dir, tt.lang)
+			if got != tt.wantManifest {
+				t.Errorf("FindManifestForLanguage() = %q, want %q", got, tt.wantManifest)
+			}
+		})
+	}
+}
+
+func TestFindManifest_DepthAndSkipDirs(t *testing.T) {
+	t.Run("finds at depth 2", func(t *testing.T) {
+		dir := setupTestDir(t, []string{"src/cli/go.mod"})
+		got := findManifest(dir, "go.mod")
+		if got != filepath.Join("src", "cli", "go.mod") {
+			t.Errorf("findManifest() = %q, want src/cli/go.mod", got)
+		}
+	})
+
+	t.Run("finds at depth 3", func(t *testing.T) {
+		dir := setupTestDir(t, []string{"a/b/c/go.mod"})
+		got := findManifest(dir, "go.mod")
+		if got != filepath.Join("a", "b", "c", "go.mod") {
+			t.Errorf("findManifest() = %q, want a/b/c/go.mod", got)
+		}
+	})
+
+	t.Run("not found at depth 4", func(t *testing.T) {
+		dir := setupTestDir(t, []string{"a/b/c/d/go.mod"})
+		got := findManifest(dir, "go.mod")
+		if got != "" {
+			t.Errorf("findManifest() should not find at depth 4, got %q", got)
+		}
+	})
+
+	t.Run("root takes priority", func(t *testing.T) {
+		dir := setupTestDir(t, []string{"go.mod", "src/cli/go.mod"})
+		got := findManifest(dir, "go.mod")
+		if got != "go.mod" {
+			t.Errorf("findManifest() = %q, want root go.mod", got)
+		}
+	})
+
+	t.Run("skips vendor", func(t *testing.T) {
+		dir := setupTestDir(t, []string{"vendor/lib/go.mod"})
+		got := findManifest(dir, "go.mod")
+		if got != "" {
+			t.Errorf("findManifest() should skip vendor, got %q", got)
+		}
+	})
+
+	t.Run("skips examples", func(t *testing.T) {
+		dir := setupTestDir(t, []string{"examples/demo/go.mod"})
+		got := findManifest(dir, "go.mod")
+		if got != "" {
+			t.Errorf("findManifest() should skip examples, got %q", got)
+		}
+	})
+
+	t.Run("skips node_modules", func(t *testing.T) {
+		dir := setupTestDir(t, []string{"node_modules/pkg/package.json"})
+		got := findManifest(dir, "package.json")
+		if got != "" {
+			t.Errorf("findManifest() should skip node_modules, got %q", got)
+		}
+	})
+}
+
 func TestLoadConfig_NotFound(t *testing.T) {
 	dir := t.TempDir()
 
