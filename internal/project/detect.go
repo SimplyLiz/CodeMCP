@@ -116,11 +116,10 @@ func DetectAllLanguages(root string) (Language, string, []Language) {
 				detected[m.lang] = m.pattern
 			}
 		} else {
-			// Exact filename - check root and src/
-			if _, err := os.Stat(filepath.Join(root, m.pattern)); err == nil {
-				detected[m.lang] = m.pattern
-			} else if _, err := os.Stat(filepath.Join(root, "src", m.pattern)); err == nil {
-				detected[m.lang] = "src/" + m.pattern
+			// Exact filename - search root and subdirectories up to maxScanDepth.
+			// This catches monorepo layouts like src/cli/go.mod or packages/api/package.json.
+			if found := findManifest(root, m.pattern); found != "" {
+				detected[m.lang] = found
 			}
 		}
 	}
@@ -159,6 +158,76 @@ func DetectAllLanguages(root string) (Language, string, []Language) {
 	}
 
 	return primaryLang, primaryManifest, allLangs
+}
+
+// findManifest searches for an exact filename in root and subdirectories up to maxScanDepth.
+// Returns the relative path to the first match, or empty string.
+// Skips example, test, doc, and vendor directories to avoid false detections.
+func findManifest(root, filename string) string {
+	// Check root first (fast path)
+	if _, err := os.Stat(filepath.Join(root, filename)); err == nil {
+		return filename
+	}
+
+	// Search subdirectories with bounded depth
+	var result string
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil //nolint:nilerr
+		}
+		if result != "" {
+			return fs.SkipAll // Already found
+		}
+
+		rel, _ := filepath.Rel(root, path)
+		depth := strings.Count(rel, string(os.PathSeparator))
+		if depth > maxScanDepth {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		if d.IsDir() {
+			switch d.Name() {
+			case "node_modules", ".git", "vendor", ".ckb", "__pycache__",
+				".venv", "venv", "dist", "build",
+				"examples", "example", "testdata", "fixtures",
+				"docs", "doc", "documentation":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		if d.Name() == filename {
+			result = rel
+			return fs.SkipAll
+		}
+		return nil
+	})
+	return result
+}
+
+// FindManifestForLanguage searches for the manifest file of a specific language.
+// Used when --lang is specified to locate the module directory for indexing.
+func FindManifestForLanguage(root string, lang Language) string {
+	for _, m := range manifests {
+		if m.lang != lang {
+			continue
+		}
+		if strings.Contains(m.pattern, "*") {
+			found := findWithDepth(root, m.pattern)
+			if len(found) > 0 {
+				relPath, _ := filepath.Rel(root, found[0])
+				return relPath
+			}
+		} else {
+			if found := findManifest(root, m.pattern); found != "" {
+				return found
+			}
+		}
+	}
+	return ""
 }
 
 // findWithDepth searches for files matching a glob pattern with bounded depth.

@@ -155,7 +155,11 @@ func runIndex(cmd *cobra.Command, args []string) {
 			fmt.Fprintln(os.Stderr, "Supported: go, ts, py, rs, java, cpp, dart, rb, cs, php")
 			os.Exit(1)
 		}
-		manifest = "(specified via --lang)"
+		// Detect manifest path for the specified language (monorepo subdir support)
+		manifest = project.FindManifestForLanguage(repoRoot, lang)
+		if manifest == "" {
+			manifest = "(specified via --lang)"
+		}
 	} else {
 		var allLangs []project.Language
 		lang, manifest, allLangs = project.DetectAllLanguages(repoRoot)
@@ -310,13 +314,23 @@ func runIndex(cmd *cobra.Command, args []string) {
 	}
 	defer lock.Release()
 
-	// Run the indexer
+	// Run the indexer from the manifest's directory.
+	// For monorepos, the manifest may be in a subdirectory (e.g., src/cli/go.mod).
+	indexerDir := repoRoot
+	if manifest != "" && manifest != "(specified via --lang)" {
+		manifestDir := filepath.Dir(filepath.Join(repoRoot, manifest))
+		if manifestDir != repoRoot {
+			indexerDir = manifestDir
+			fmt.Printf("Module root: %s\n", manifest)
+		}
+	}
+
 	fmt.Println()
 	fmt.Println("Generating SCIP index...")
 	fmt.Println()
 
 	start := time.Now()
-	err = runIndexerCommand(repoRoot, command)
+	err = runIndexerCommand(indexerDir, command)
 	duration := time.Since(start)
 
 	if err != nil {
