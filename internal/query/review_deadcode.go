@@ -111,7 +111,14 @@ func (e *Engine) checkDeadCode(ctx context.Context, changedFiles []string, opts 
 
 // findDeadConstants scans changed Go files for exported constants and checks
 // if they have any references outside their declaration file.
+// Requires SCIP index for reference counting — skips if unavailable to avoid
+// tree-sitter fallback which isn't thread-safe for concurrent use.
 func (e *Engine) findDeadConstants(ctx context.Context, changedFiles []string, alreadyReported map[string]bool) []ReviewFinding {
+	// Skip constant scanning when SCIP is unavailable — the tree-sitter
+	// fallback search path is not thread-safe for concurrent goroutine use.
+	if e.scipAdapter == nil {
+		return nil
+	}
 	var findings []ReviewFinding
 
 	for _, file := range changedFiles {

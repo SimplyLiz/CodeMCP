@@ -499,7 +499,11 @@ func checkDiscardedError(root *sitter.Node, source []byte, file string) []Review
 		}
 
 		// Build a map of variable names to their declared types within this function.
+		// For closures (func_literal), also include vars from enclosing scopes.
 		varTypes := buildVarTypeMap(body, source)
+		if fn.Type() == "func_literal" {
+			mergeEnclosingVarTypes(fn, source, varTypes)
+		}
 
 		// Find discarded calls in this function body.
 		exprStmts := complexity.FindNodes(body, []string{"expression_statement"})
@@ -621,6 +625,30 @@ func buildVarTypeMap(body *sitter.Node, source []byte) map[string]string {
 	}
 
 	return result
+}
+
+// mergeEnclosingVarTypes walks up from a func_literal to find the enclosing
+// function's variable declarations. This catches cases like:
+//
+//	var rawContent strings.Builder
+//	provider.GenerateStream(ctx, prompt, func(chunk string) {
+//	    rawContent.WriteString(chunk)  // closure captures outer var
+//	})
+func mergeEnclosingVarTypes(closureNode *sitter.Node, source []byte, varTypes map[string]string) {
+	for n := closureNode.Parent(); n != nil; n = n.Parent() {
+		if n.Type() == "function_declaration" || n.Type() == "method_declaration" {
+			body := n.ChildByFieldName("body")
+			if body != nil {
+				enclosing := buildVarTypeMap(body, source)
+				for k, v := range enclosing {
+					if _, exists := varTypes[k]; !exists {
+						varTypes[k] = v
+					}
+				}
+			}
+			return
+		}
+	}
 }
 
 // splitSelector splits "b.WriteString" into ("b", "WriteString").

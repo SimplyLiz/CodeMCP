@@ -212,7 +212,7 @@ var BuiltinPatterns = []Pattern{
 		Name:        "generic_secret",
 		Type:        SecretTypeGenericSecret,
 		Severity:    SeverityMedium,
-		Regex:       regexp.MustCompile(`(?i)(?:secret|password|passwd|pwd|token)['":\s=]+['"]?([A-Za-z0-9!@#$%^&*()_+\-=]{8,64})['"]?`),
+		Regex:       regexp.MustCompile(`(?i)(?:secret|password|passwd|pwd|token)\s*[=:]\s*['"]([A-Za-z0-9!@#$%^&*()_+\-=]{8,64})['"]`),
 		MinEntropy:  3.0,
 		Description: "Generic Secret or Password",
 	},

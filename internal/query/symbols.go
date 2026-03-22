@@ -818,6 +818,7 @@ func sortReferences(refs []ReferenceInfo) {
 }
 
 // searchWithTreesitter performs symbol search using tree-sitter as fallback.
+// Acquires tsMu because tree-sitter cgo is not thread-safe.
 func (e *Engine) searchWithTreesitter(ctx context.Context, opts SearchSymbolsOptions) ([]SearchResultItem, error) {
 	if e.treesitterExtractor == nil {
 		return nil, nil
@@ -829,8 +830,10 @@ func (e *Engine) searchWithTreesitter(ctx context.Context, opts SearchSymbolsOpt
 		searchRoot = filepath.Join(e.repoRoot, opts.Scope)
 	}
 
-	// Extract all symbols from the directory
+	// Extract all symbols from the directory — tree-sitter cgo requires mutex
+	e.tsMu.Lock()
 	allSymbols, err := e.treesitterExtractor.ExtractDirectory(ctx, searchRoot, nil)
+	e.tsMu.Unlock()
 	if err != nil {
 		e.logger.Warn("Tree-sitter extraction failed",
 			"error", err.Error(),

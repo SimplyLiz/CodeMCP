@@ -409,7 +409,7 @@ func isLikelyFalsePositive(line, secret string) bool {
 		return true
 	}
 
-	// Check for test/example indicators
+	// Check for test/example/dev indicators
 	falsePositiveIndicators := []string{
 		"example",
 		"sample",
@@ -426,6 +426,12 @@ func isLikelyFalsePositive(line, secret string) bool {
 		"insert",
 		"fixme",
 		"todo",
+		"local-dev",
+		"dev-token",
+		"dev-secret",
+		"default",
+		"template",
+		"demo",
 	}
 
 	for _, indicator := range falsePositiveIndicators {
