@@ -284,6 +284,10 @@ func (s *Scanner) scanFile(path string, minEntropy float64) ([]SecretFinding, er
 		relPath = path
 	}
 
+	// Documentation files need higher entropy — prose words match secret patterns
+	// but have low entropy compared to real secrets
+	isDocFile := isDocumentationFile(relPath)
+
 	var findings []SecretFinding
 	scanner := bufio.NewScanner(file)
 	lineNum := 0
@@ -316,8 +320,15 @@ func (s *Scanner) scanFile(path string, minEntropy float64) ([]SecretFinding, er
 
 				// Check entropy for patterns that require it
 				if pattern.MinEntropy > 0 {
+					requiredEntropy := pattern.MinEntropy
+					// Documentation files need higher entropy to avoid flagging prose
+					if isDocFile && (pattern.Type == SecretTypeGenericSecret || pattern.Type == SecretTypeGenericAPIKey) {
+						if requiredEntropy < 4.0 {
+							requiredEntropy = 4.0
+						}
+					}
 					entropy := ShannonEntropy(secret)
-					if entropy < pattern.MinEntropy {
+					if entropy < requiredEntropy {
 						continue
 					}
 				}
@@ -481,6 +492,19 @@ func redactLine(line string, start, end int) string {
 	}
 
 	return result
+}
+
+// isDocumentationFile checks if a file is documentation (markdown, text, rst).
+func isDocumentationFile(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".md", ".markdown", ".txt", ".rst", ".adoc", ".textile":
+		return true
+	}
+	// Also check for common doc file names
+	base := strings.ToLower(filepath.Base(path))
+	return base == "readme" || base == "changelog" || base == "contributing" ||
+		base == "license" || base == "authors"
 }
 
 // isBinaryFile checks if a file is likely binary.

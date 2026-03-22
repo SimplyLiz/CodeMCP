@@ -1250,3 +1250,65 @@ func TestGenerateHash(t *testing.T) {
 		t.Error("Different findings should produce different hashes")
 	}
 }
+
+func TestScanFile_MarkdownProseNotFlagged(t *testing.T) {
+	// Create a temp markdown file with prose that contains trigger words
+	tmpDir := t.TempDir()
+	mdFile := filepath.Join(tmpDir, "README.md")
+	content := `# Project
+
+## Features
+
+- User authentication (Magic Links, GitHub OAuth)
+- Token tracking with Row-Level Security
+- Usage metering for Cloud tier billing
+
+## Configuration
+
+Set your secret configuration in the dashboard.
+The password policy requires 12+ characters.
+`
+	if err := os.WriteFile(mdFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	scanner := NewScanner(tmpDir, slog.Default())
+	findings, err := scanner.scanFile(mdFile, 3.0)
+	if err != nil {
+		t.Fatalf("scanFile failed: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for markdown prose, got %d:", len(findings))
+		for _, f := range findings {
+			t.Logf("  line %d: %s (%s)", f.Line, f.Rule, f.RawMatch)
+		}
+	}
+}
+
+func TestIsDocumentationFile(t *testing.T) {
+	testCases := []struct {
+		path string
+		want bool
+	}{
+		{"README.md", true},
+		{"docs/guide.markdown", true},
+		{"CHANGELOG", true},
+		{"notes.txt", true},
+		{"docs/api.rst", true},
+		{"docs/guide.adoc", true},
+		{"main.go", false},
+		{"config.json", false},
+		{"LICENSE", true},
+		{"CONTRIBUTING", true},
+		{"AUTHORS", true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.path, func(t *testing.T) {
+			got := isDocumentationFile(tc.path)
+			if got != tc.want {
+				t.Errorf("isDocumentationFile(%q) = %v, want %v", tc.path, got, tc.want)
+			}
+		})
+	}
+}

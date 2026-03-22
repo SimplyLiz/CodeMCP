@@ -637,6 +637,54 @@ func TestSortFindings(t *testing.T) {
 	}
 }
 
+func TestReviewPR_NoSCIPIndex(t *testing.T) {
+	t.Parallel()
+
+	// Create 25 Go files to trigger concurrent tree-sitter access.
+	// The race condition in searchWithTreesitter only manifests with enough
+	// files that parsing overlaps across goroutines.
+	files := make(map[string]string)
+	for i := 0; i < 25; i++ {
+		files[fmt.Sprintf("pkg/file%d.go", i)] = fmt.Sprintf(
+			"package pkg\n\nfunc Func%d() string {\n\treturn \"value%d\"\n}\n", i, i)
+	}
+
+	engine, cleanup := setupGitRepoWithBranch(t, files)
+	defer cleanup()
+
+	// Verify SCIP is NOT available (no index built).
+	// The adapter struct may exist but IsAvailable() returns false without an index.
+	if engine.scipAdapter != nil && engine.scipAdapter.IsAvailable() {
+		t.Skip("SCIP index unexpectedly available")
+	}
+
+	ctx := context.Background()
+	resp, err := engine.ReviewPR(ctx, ReviewPROptions{
+		BaseBranch: "main",
+		HeadBranch: "feature/test",
+		Checks:     []string{"secrets", "complexity", "health", "bug-patterns", "dead-code", "blast-radius"},
+	})
+	if err != nil {
+		t.Fatalf("ReviewPR failed (should not crash without SCIP): %v", err)
+	}
+
+	if resp == nil {
+		t.Fatal("expected non-nil response")
+	}
+	if resp.Verdict == "" {
+		t.Error("expected non-empty verdict")
+	}
+	if resp.Score < 0 || resp.Score > 100 {
+		t.Errorf("score %d out of range [0,100]", resp.Score)
+	}
+	// At least some checks should have run (secrets, complexity if tree-sitter available)
+	if len(resp.Checks) == 0 {
+		t.Error("expected at least one check to run")
+	}
+	t.Logf("NoSCIP review: verdict=%s score=%d checks=%d findings=%d",
+		resp.Verdict, resp.Score, len(resp.Checks), len(resp.Findings))
+}
+
 // checkNames is a test helper that extracts check names for error messages.
 func checkNames(checks []ReviewCheck) []string {
 	names := make([]string, len(checks))
