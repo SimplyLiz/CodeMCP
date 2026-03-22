@@ -41,15 +41,25 @@ jobs:
         run: |
           FAILED=false
 
-          # Check npm token
+          # Check npm token (granular tokens return 403 on /v1/user, use /v1/tokens instead)
           echo "Checking npm token..."
-          NPM_RESULT=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $NPM_AUTH_TOKEN" https://registry.npmjs.org/-/npm/v1/user)
-          if [ "$NPM_RESULT" = "200" ]; then
-            echo "✓ npm token is valid"
-          else
-            echo "::error::npm token is invalid or expired (HTTP $NPM_RESULT). Update NPM_AUTH_TOKEN in repo secrets."
-            FAILED=true
-          fi
+          NPM_RESPONSE=$(curl -s -H "Authorization: Bearer $NPM_AUTH_TOKEN" https://registry.npmjs.org/-/npm/v1/tokens)
+          NPM_RESULT=$(echo "$NPM_RESPONSE" | node -e "try{const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));const t=d.objects?.find(o=>o.token&&o.token.startsWith(process.env.NPM_AUTH_TOKEN.slice(0,8)));if(!t){console.log('NOT_FOUND')}else if(new Date(t.expiry)<new Date()){console.log('EXPIRED:'+t.expiry)}else{console.log('OK:'+t.expiry+':'+t.scopes?.map(s=>s.name).join(','))}}catch{console.log('ERROR')}" 2>/dev/null)
+          case "$NPM_RESULT" in
+            OK:*)
+              EXPIRY=$(echo "$NPM_RESULT" | cut -d: -f2-3)
+              SCOPES=$(echo "$NPM_RESULT" | cut -d: -f4)
+              echo "✓ npm token is valid (expires: $EXPIRY, scopes: $SCOPES)"
+              ;;
+            EXPIRED:*)
+              echo "::error::npm token expired on ${NPM_RESULT#EXPIRED:}. Update NPM_AUTH_TOKEN in repo secrets."
+              FAILED=true
+              ;;
+            *)
+              echo "::error::npm token is invalid or could not be verified. Update NPM_AUTH_TOKEN in repo secrets."
+              FAILED=true
+              ;;
+          esac
 
           # Check Homebrew tap token
           echo "Checking Homebrew tap token..."
