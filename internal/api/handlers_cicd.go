@@ -193,6 +193,11 @@ func (s *Server) handleCouplingCheck(w http.ResponseWriter, r *http.Request) {
 
 	var missing []MissingCoupledFile
 
+	// Cap files to avoid O(n) git-log calls — each Analyze call scans git history
+	if len(changedFiles) > 20 {
+		changedFiles = changedFiles[:20]
+	}
+
 	// For each changed file, check if highly-coupled files are also changed
 	for _, file := range changedFiles {
 		result, err := analyzer.Analyze(ctx, coupling.AnalyzeOptions{

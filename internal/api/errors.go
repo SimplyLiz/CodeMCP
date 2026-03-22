@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/SimplyLiz/CodeMCP/internal/errors"
@@ -42,7 +43,9 @@ func WriteError(w http.ResponseWriter, err error, status int) {
 		resp.Code = "INTERNAL_ERROR"
 	}
 
-	_ = json.NewEncoder(w).Encode(resp)
+	if encErr := json.NewEncoder(w).Encode(resp); encErr != nil {
+		slog.Warn("Failed to encode error response", "error", encErr)
+	}
 }
 
 // WriteCkbError writes a CkbError with automatic status code mapping
@@ -89,7 +92,9 @@ func MapCkbErrorToStatus(code errors.ErrorCode) int {
 func WriteJSON(w http.ResponseWriter, data interface{}, status int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(data)
+	if encErr := json.NewEncoder(w).Encode(data); encErr != nil {
+		slog.Warn("Failed to encode JSON response", "error", encErr)
+	}
 }
 
 // BadRequest writes a 400 Bad Request error
