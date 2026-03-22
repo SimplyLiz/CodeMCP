@@ -34,6 +34,37 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
+      - name: Validate tokens
+        env:
+          NPM_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          FAILED=false
+
+          # Check npm token
+          echo "Checking npm token..."
+          NPM_RESULT=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $NPM_AUTH_TOKEN" https://registry.npmjs.org/-/npm/v1/user)
+          if [ "$NPM_RESULT" = "200" ]; then
+            echo "✓ npm token is valid"
+          else
+            echo "::error::npm token is invalid or expired (HTTP $NPM_RESULT). Update NPM_AUTH_TOKEN in repo secrets."
+            FAILED=true
+          fi
+
+          # Check Homebrew tap token
+          echo "Checking Homebrew tap token..."
+          BREW_RESULT=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $HOMEBREW_TAP_TOKEN" https://api.github.com/repos/SimplyLiz/homebrew-ckb)
+          if [ "$BREW_RESULT" = "200" ]; then
+            echo "✓ Homebrew tap token is valid"
+          else
+            echo "::warning::Homebrew tap token is invalid or expired (HTTP $BREW_RESULT). Brew formula upload will be skipped."
+          fi
+
+          if [ "$FAILED" = "true" ]; then
+            echo "::error::One or more required tokens are invalid. Fix them before releasing."
+            exit 1
+          fi
+
       - name: Run tests
         run: go test -race ./...
 

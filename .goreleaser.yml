@@ -77,7 +77,7 @@ brews:
     directory: Formula
     homepage: "https://github.com/SimplyLiz/CodeMCP"
     description: "Code intelligence orchestration layer for AI-assisted development"
-    skip_upload: true  # TODO: re-enable once HOMEBREW_TAP_TOKEN is refreshed
+    skip_upload: false
     install: |
       bin.install "ckb"
     test: |
