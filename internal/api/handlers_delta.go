@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/SimplyLiz/CodeMCP/internal/diff"
@@ -45,6 +46,13 @@ type ValidationMessage struct {
 func (s *Server) handleDeltaIngest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Validate content type
+	ct := r.Header.Get("Content-Type")
+	if ct != "" && !strings.HasPrefix(ct, "application/json") {
+		WriteJSONError(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
 		return
 	}
 
@@ -127,6 +135,13 @@ func (s *Server) handleDeltaIngest(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeltaValidate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Validate content type
+	ct := r.Header.Get("Content-Type")
+	if ct != "" && !strings.HasPrefix(ct, "application/json") {
+		WriteJSONError(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
 		return
 	}
 
