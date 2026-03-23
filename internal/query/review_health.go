@@ -51,8 +51,8 @@ type CodeHealthReport struct {
 // Coverage was removed because no coverage data source is available yet.
 // When coverage is added, reduce churn and cyclomatic by 0.05 each.
 const (
-	weightCyclomatic = 0.25
-	weightCognitive  = 0.15
+	weightCyclomatic = 0.15
+	weightCognitive  = 0.25
 	weightFileSize   = 0.10
 	weightChurn      = 0.15
 	weightCoupling   = 0.10
