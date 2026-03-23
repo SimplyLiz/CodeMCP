@@ -192,6 +192,15 @@ func TestIsLikelyFalsePositive(t *testing.T) {
 		{"// TODO: replace this placeholder", "placeholder", true},
 		{"password = 'changeme'", "changeme", true},
 		{"api_key = 'sk_live_realkey123'", "sk_live_realkey123", false},
+		// Variable/attribute references are not secrets
+		{"api_key=self._settings.openai_api_key", "self._settings.openai_api_key", true},
+		{"apiKey: config.apiKey,", "config.apiKey", true},
+		{"token = os.environ['TOKEN']", "os.environ", true},
+		{"secret = process.env.SECRET", "process.env.SECRET", true},
+		{"key := viper.GetString(\"api_key\")", "viper.GetString", true},
+		{"api_key=settings.api_key", "settings.api_key", true},
+		// Real secrets should still be caught
+		{"api_key = 'sk_live_abc123def456ghi789'", "sk_live_abc123def456ghi789", false},
 	}
 
 	for _, tc := range testCases {

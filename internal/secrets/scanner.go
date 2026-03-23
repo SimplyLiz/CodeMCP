@@ -408,6 +408,21 @@ var goStructDeclRe = regexp.MustCompile(`(?i)\b(secret|token|password|passwd|pwd
 //	"new_token":  rawToken,
 var configKeyVarRe = regexp.MustCompile(`(?i)["'](?:secret|token|password|passwd|pwd|new_token)["']\s*:\s*[a-zA-Z]\w*[,\s})]`)
 
+// varRefRe matches when the captured "secret" is actually a variable or
+// attribute reference rather than a literal value.  Examples:
+//
+//	api_key=self._settings.openai_api_key   (Python attribute chain)
+//	apiKey: config.apiKey                    (JS/TS property access)
+//	api_key=os.environ["KEY"]               (env lookup)
+//	token = process.env.TOKEN               (Node env)
+//	key := viper.GetString("api_key")       (Go config)
+var varRefRe = regexp.MustCompile(
+	`^[a-zA-Z_][\w]*(?:\.[\w]+)+$` + // dotted attr chain: self._settings.openai_api_key
+		`|^os\.(?:environ|getenv)` + // Python os.environ / os.getenv
+		`|^process\.env` + // Node process.env
+		`|^(?:viper|config|cfg|settings|conf)\.`, // common config accessors
+)
+
 // isLikelyFalsePositive checks for common false positive patterns.
 func isLikelyFalsePositive(line, secret string) bool {
 	lineLower := strings.ToLower(line)
@@ -417,6 +432,11 @@ func isLikelyFalsePositive(line, secret string) bool {
 		return true
 	}
 	if configKeyVarRe.MatchString(line) {
+		return true
+	}
+
+	// The captured "secret" is a variable/attribute reference, not a literal
+	if varRefRe.MatchString(strings.TrimSpace(secret)) {
 		return true
 	}
 
