@@ -3,12 +3,26 @@ package query
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/SimplyLiz/CodeMCP/internal/backends/git"
 	"github.com/SimplyLiz/CodeMCP/internal/coupling"
 )
+
+const maxCouplingAge = 180 * 24 * time.Hour
+
+// fileLastModified returns the last modification date of a file according to git.
+func (e *Engine) fileLastModified(ctx context.Context, file string) time.Time {
+	cmd := exec.CommandContext(ctx, "git", "-C", e.repoRoot, "log", "-1", "--format=%aI", "--", file)
+	out, err := cmd.Output()
+	if err != nil {
+		return time.Time{}
+	}
+	t, _ := time.Parse(time.RFC3339, strings.TrimSpace(string(out)))
+	return t
+}
 
 // CouplingGap represents a missing co-changed file.
 type CouplingGap struct {
@@ -76,10 +90,18 @@ func (e *Engine) checkCouplingGaps(ctx context.Context, changedFiles []string, d
 				missing = corr.File
 			}
 			if corr.Correlation >= minCorrelation && !changedSet[missing] && !isCouplingNoiseFile(missing) {
+				// Skip stale couplings — if the coupled file hasn't been
+				// modified in the last 180 days, the co-change relationship
+				// is historical noise (e.g., test written once alongside source).
+				lastMod := e.fileLastModified(ctx, missing)
+				if !lastMod.IsZero() && time.Since(lastMod) > maxCouplingAge {
+					continue
+				}
 				gaps = append(gaps, CouplingGap{
 					ChangedFile:  file,
 					MissingFile:  missing,
 					CoChangeRate: corr.Correlation,
+					LastCoChange: lastMod.Format(time.RFC3339),
 				})
 			}
 		}

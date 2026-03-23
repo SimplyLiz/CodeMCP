@@ -43,6 +43,10 @@ func (e *Engine) suggestPRSplit(ctx context.Context, diffStats []git.DiffStats, 
 		statsMap[ds.FilePath] = ds
 	}
 
+	// For very large PRs, skip coupling analysis (O(n) git calls)
+	// and rely on module-based clustering only
+	skipCoupling := len(diffStats) > 200
+
 	// Build adjacency graph: files are connected if they share a module
 	// or have high coupling correlation
 	adj := make(map[string]map[string]bool)
@@ -70,7 +74,9 @@ func (e *Engine) suggestPRSplit(ctx context.Context, diffStats []git.DiffStats, 
 	}
 
 	// Connect files with high coupling
-	e.addCouplingEdges(ctx, files, adj)
+	if !skipCoupling {
+		e.addCouplingEdges(ctx, files, adj)
+	}
 
 	// Find connected components using BFS
 	visited := make(map[string]bool)
@@ -82,6 +88,19 @@ func (e *Engine) suggestPRSplit(ctx context.Context, diffStats []git.DiffStats, 
 		}
 		component := bfs(f, adj, visited)
 		components = append(components, component)
+	}
+
+	const maxClusters = 20
+	if len(components) > maxClusters {
+		// Merge smallest clusters into an "other" bucket
+		sort.Slice(components, func(i, j int) bool {
+			return len(components[i]) > len(components[j])
+		})
+		var other []string
+		for i := maxClusters - 1; i < len(components); i++ {
+			other = append(other, components[i]...)
+		}
+		components = append(components[:maxClusters-1], other)
 	}
 
 	if len(components) <= 1 {
