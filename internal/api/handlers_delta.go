@@ -49,7 +49,7 @@ func (s *Server) handleDeltaIngest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate content type
+	// Validate content type — reject non-JSON, allow missing for backwards compat
 	ct := r.Header.Get("Content-Type")
 	if ct != "" && !strings.HasPrefix(ct, "application/json") {
 		WriteJSONError(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
@@ -138,7 +138,7 @@ func (s *Server) handleDeltaValidate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate content type
+	// Validate content type — reject non-JSON, allow missing for backwards compat
 	ct := r.Header.Get("Content-Type")
 	if ct != "" && !strings.HasPrefix(ct, "application/json") {
 		WriteJSONError(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)

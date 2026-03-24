@@ -13,15 +13,46 @@ import (
 
 const maxCouplingAge = 180 * 24 * time.Hour
 
-// fileLastModified returns the last modification date of a file according to git.
-func (e *Engine) fileLastModified(ctx context.Context, file string) time.Time {
-	cmd := exec.CommandContext(ctx, "git", "-C", e.repoRoot, "log", "-1", "--format=%aI", "--", file)
+// batchFileLastModified returns the last git modification time for each file
+// in a single git-log invocation, avoiding O(n) subprocess spawns.
+func (e *Engine) batchFileLastModified(ctx context.Context, files []string) map[string]time.Time {
+	result := make(map[string]time.Time, len(files))
+	if len(files) == 0 {
+		return result
+	}
+
+	// git log --format="<file>\t<date>" with --name-only and --diff-filter
+	// won't work cleanly for this. Instead, one call per unique file but
+	// batched: ask git for dates of all files at once via
+	// "git log --format=%aI --name-only -1 -- file1 file2 ..."
+	// Unfortunately git log -1 with multiple paths returns only one result.
+	// Use a single git log with --stdin-paths is not supported either.
+	// Pragmatic: batch via a single shell invocation using a for-loop.
+	// This runs one process instead of N.
+	var script strings.Builder
+	for _, f := range files {
+		// Shell-safe: files are repo-relative paths, no user input
+		fmt.Fprintf(&script, "echo \"$(git log -1 --format=%%aI -- %q)\t%s\"\n", f, f)
+	}
+
+	cmd := exec.CommandContext(ctx, "sh", "-c", script.String())
+	cmd.Dir = e.repoRoot
 	out, err := cmd.Output()
 	if err != nil {
-		return time.Time{}
+		return result
 	}
-	t, _ := time.Parse(time.RFC3339, strings.TrimSpace(string(out)))
-	return t
+
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) != 2 || parts[0] == "" {
+			continue
+		}
+		t, err := time.Parse(time.RFC3339, strings.TrimSpace(parts[0]))
+		if err == nil {
+			result[parts[1]] = t
+		}
+	}
+	return result
 }
 
 // CouplingGap represents a missing co-changed file.
@@ -70,6 +101,15 @@ func (e *Engine) checkCouplingGaps(ctx context.Context, changedFiles []string, d
 		}
 	}
 
+	// First pass: collect candidate gaps (before date filtering).
+	type candidateGap struct {
+		changedFile  string
+		missingFile  string
+		coChangeRate float64
+	}
+	var candidates []candidateGap
+	missingFiles := make(map[string]bool)
+
 	for _, file := range filesToCheck {
 		if ctx.Err() != nil {
 			break
@@ -90,21 +130,39 @@ func (e *Engine) checkCouplingGaps(ctx context.Context, changedFiles []string, d
 				missing = corr.File
 			}
 			if corr.Correlation >= minCorrelation && !changedSet[missing] && !isCouplingNoiseFile(missing) {
-				// Skip stale couplings — if the coupled file hasn't been
-				// modified in the last 180 days, the co-change relationship
-				// is historical noise (e.g., test written once alongside source).
-				lastMod := e.fileLastModified(ctx, missing)
-				if !lastMod.IsZero() && time.Since(lastMod) > maxCouplingAge {
-					continue
-				}
-				gaps = append(gaps, CouplingGap{
-					ChangedFile:  file,
-					MissingFile:  missing,
-					CoChangeRate: corr.Correlation,
-					LastCoChange: lastMod.Format(time.RFC3339),
+				candidates = append(candidates, candidateGap{
+					changedFile:  file,
+					missingFile:  missing,
+					coChangeRate: corr.Correlation,
 				})
+				missingFiles[missing] = true
 			}
 		}
+	}
+
+	// Batch-lookup last modification dates in a single shell invocation.
+	filesToLookup := make([]string, 0, len(missingFiles))
+	for f := range missingFiles {
+		filesToLookup = append(filesToLookup, f)
+	}
+	lastModDates := e.batchFileLastModified(ctx, filesToLookup)
+
+	// Second pass: filter stale couplings.
+	for _, c := range candidates {
+		lastMod := lastModDates[c.missingFile]
+		if !lastMod.IsZero() && time.Since(lastMod) > maxCouplingAge {
+			continue
+		}
+		var lastCoChange string
+		if !lastMod.IsZero() {
+			lastCoChange = lastMod.Format(time.RFC3339)
+		}
+		gaps = append(gaps, CouplingGap{
+			ChangedFile:  c.changedFile,
+			MissingFile:  c.missingFile,
+			CoChangeRate: c.coChangeRate,
+			LastCoChange: lastCoChange,
+		})
 	}
 
 	var findings []ReviewFinding

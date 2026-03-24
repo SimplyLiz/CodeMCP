@@ -162,6 +162,8 @@ func DetectAllLanguages(root string) (Language, string, []Language) {
 
 // findManifest searches for an exact filename in root and subdirectories up to maxScanDepth.
 // Returns the relative path to the first match, or empty string.
+// Root is checked first (fast path). Among subdirectories, WalkDir visits in
+// lexical order, so at equal depth the alphabetically-first path wins.
 // Skips example, test, doc, and vendor directories to avoid false detections.
 func findManifest(root, filename string) string {
 	// Check root first (fast path)

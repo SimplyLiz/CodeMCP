@@ -276,18 +276,42 @@ func (a *Analyzer) checkTestedViaHeuristic(file string, fn complexity.Complexity
 }
 
 // findTestFiles locates test files for a given source file.
+//
+// Checks suffix patterns ({base}_test.ext, {base}.test.ext, {base}.spec.ext)
+// and the Python/pytest prefix pattern (test_{base}.ext) in the same directory
+// and in a sibling tests/ directory.
 func (a *Analyzer) findTestFiles(file string) []string {
 	ext := filepath.Ext(file)
 	base := strings.TrimSuffix(file, ext)
+	dir := filepath.Dir(file)
+	name := filepath.Base(base) // filename without dir or extension
 
+	// Suffix patterns (Go, JS/TS convention)
 	candidates := []string{
 		base + "_test" + ext,
 		base + ".test" + ext,
 		base + ".spec" + ext,
 	}
 
+	// Prefix pattern (Python/pytest convention): test_{name}.ext
+	// Check same directory
+	candidates = append(candidates, filepath.Join(dir, "test_"+name+ext))
+
+	// Also check a sibling tests/ directory (common in Python projects)
+	// e.g., src/pkg/foo.py → tests/test_foo.py
+	testsDir := filepath.Join(filepath.Dir(dir), "tests")
+	candidates = append(candidates, filepath.Join(testsDir, "test_"+name+ext))
+
+	// Also check a top-level tests/ directory
+	candidates = append(candidates, filepath.Join("tests", "test_"+name+ext))
+
 	var found []string
+	seen := map[string]bool{}
 	for _, c := range candidates {
+		if seen[c] {
+			continue
+		}
+		seen[c] = true
 		absPath := filepath.Join(a.repoRoot, c)
 		if _, err := os.Stat(absPath); err == nil {
 			found = append(found, c)

@@ -192,6 +192,15 @@ func TestIsLikelyFalsePositive(t *testing.T) {
 		{"// TODO: replace this placeholder", "placeholder", true},
 		{"password = 'changeme'", "changeme", true},
 		{"api_key = 'sk_live_realkey123'", "sk_live_realkey123", false},
+		// Variable/attribute references are not secrets
+		{"api_key=self._settings.openai_api_key", "self._settings.openai_api_key", true},
+		{"apiKey: config.apiKey,", "config.apiKey", true},
+		{"token = os.environ['TOKEN']", "os.environ", true},
+		{"secret = process.env.SECRET", "process.env.SECRET", true},
+		{"key := viper.GetString(\"api_key\")", "viper.GetString", true},
+		{"api_key=settings.api_key", "settings.api_key", true},
+		// Real secrets should still be caught
+		{"api_key = 'sk_live_abc123def456ghi789'", "sk_live_abc123def456ghi789", false},
 	}
 
 	for _, tc := range testCases {
@@ -202,6 +211,70 @@ func TestIsLikelyFalsePositive(t *testing.T) {
 					tc.line, tc.secret, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestVarRefRegex(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		// Dotted attribute chains
+		{"self._settings.openai_api_key", true},
+		{"config.apiKey", true},
+		{"app.config.secret", true},
+		// Python os.environ / os.getenv
+		{"os.environ", true},
+		{"os.getenv", true},
+		// Node process.env
+		{"process.env.SECRET", true},
+		{"process.env.API_KEY", true},
+		// Common config accessors
+		{"viper.GetString", true},
+		{"config.Get", true},
+		{"cfg.Secret", true},
+		{"settings.api_key", true},
+		{"conf.token", true},
+		// Not variable references (actual secrets)
+		{"sk_live_abc123def456", false},
+		{"ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", false},
+		{"AKIAIOSFODNN7EXAMPLE", false},
+		{"just_a_plain_string", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := varRefRe.MatchString(tt.input)
+			if got != tt.want {
+				t.Errorf("varRefRe.MatchString(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestScanFile_DocFileHigherEntropy(t *testing.T) {
+	// Create a temp repo with a markdown file containing a low-entropy "secret"
+	dir := t.TempDir()
+	docFile := filepath.Join(dir, "README.md")
+	// This has a generic_api_key-style pattern but low entropy (repeated chars)
+	// Should NOT be flagged in a doc file due to higher entropy threshold
+	content := "api_key = aabbccddaabbccddaabb\n"
+	if err := os.WriteFile(docFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	s := NewScanner(dir, slog.Default())
+	result, err := s.Scan(context.Background(), ScanOptions{
+		Scope: ScopeWorkdir,
+		Paths: []string{"README.md"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Low-entropy value in a doc file should produce no findings
+	if len(result.Findings) > 0 {
+		t.Errorf("expected no findings for low-entropy value in doc file, got %d: %+v",
+			len(result.Findings), result.Findings)
 	}
 }
 
