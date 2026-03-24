@@ -821,86 +821,83 @@ func installClaudeCodeSkills() error {
 }
 
 // ckbReviewSkill is the embedded /ckb-review slash command for Claude Code.
-const ckbReviewSkill = `Run a comprehensive code review using CKB's deterministic analysis + your semantic review.
+const ckbReviewSkill = `Run a CKB-augmented code review optimized for minimal token usage.
 
 ## Input
 $ARGUMENTS - Optional: base branch (default: main), or "staged" for staged changes, or a PR number
 
-## MCP vs CLI
+## Philosophy
 
-CKB runs as an MCP server. MCP mode is preferred because the SCIP index stays loaded between calls — drill-down tools execute instantly against the in-memory index.
+CKB already answered the structural questions (secrets? breaking? dead code? test gaps?).
+The LLM's job is ONLY what CKB can't do: semantic reasoning about correctness, design,
+and intent. Every source line you read costs tokens — read only what CKB says is risky.
 
-## The Three Phases
+## Phase 1: Structural scan (~1k tokens into context)
 
-### Phase 1: CKB structural scan (5 seconds, 0 tokens)
+` + "```" + `bash
+ckb review --base=main --format=json --compact 2>/dev/null
+` + "```" + `
 
-Call the reviewPR MCP tool with compact mode:
-` + "`" + `reviewPR(baseBranch: "main", compact: true)` + "`" + `
-
-This returns ~1k tokens — verdict, non-pass checks, top 10 findings, action items.
-
-If a PR number was given, get the base branch first:
+If a PR number was given:
 ` + "```" + `bash
 BASE=$(gh pr view $ARGUMENTS --json baseRefName -q .baseRefName)
+ckb review --base=$BASE --format=json --compact 2>/dev/null
 ` + "```" + `
-Then: ` + "`" + `reviewPR(baseBranch: BASE, compact: true)` + "`" + `
 
-> **If CKB is not running as an MCP server**, use CLI: ` + "`" + `ckb review --base=main --format=json` + "`" + `
+From the output, build three lists:
+- **SKIP**: passed checks — don't touch these files or topics
+- **INVESTIGATE**: warned/failed checks — these are your review scope
+- **READ**: hotspot files + files with warn/fail findings — the only files you'll read
 
-From CKB's output:
-- **Passed checks** → skip entirely (secrets clean, no breaking changes, etc.)
-- **Warned checks** → your review targets
-- **Hotspot files** → read these first
-- **Test gaps** → functions to evaluate
+**Early exit**: If verdict=pass and score>=80, write a one-line approval and stop. No source reading needed.
 
-### Phase 2: Drill down on CKB findings (0 tokens via MCP)
+## Phase 2: Targeted source reading (the only token-expensive step)
 
-Use CKB MCP tools to investigate before reading source:
+Do NOT read the full diff. Do NOT read every changed file.
 
-| Finding | Tool | Check |
-|---|---|---|
-| Dead code | findReferences or searchSymbols → findReferences | Has references SCIP missed? |
-| Blast radius | analyzeImpact | Real callers or framework wiring? |
-| Coupling gap | explainSymbol on the missing file | Does co-change partner need updates? |
-| Complexity | explainFile | Which functions drive the increase? |
-| Test gaps | getAffectedTests | Which tests exist? |
+Read ONLY:
+1. Files that appear in INVESTIGATE findings (just the changed hunks via ` + "`" + `git diff main...HEAD -- <file>` + "`" + `)
+2. New files (CKB has no history for these) — but only if <500 lines each
+3. Skip generated files, test files for existing tests, and config/CI files
 
-### Phase 3: Semantic review of high-risk files
+For each file you read, look for exactly:
+- Logic errors (wrong condition, off-by-one, nil deref)
+- Security issues (injection, auth bypass, secrets)
+- Design problems (wrong abstraction, leaky interface)
+- Missing edge cases the tests don't cover
 
-Read source only for:
-1. Top hotspot files (CKB ranked by churn)
-2. Files with findings that survived drill-down
-3. New files (CKB can't assess design quality)
+Do NOT look for: style, naming, formatting, documentation, test coverage —
+CKB already checked these structurally.
 
-Look for: logic bugs, security issues, design problems, edge cases, error handling quality.
-
-### Phase 4: Write the review
+## Phase 3: Write the review (be terse)
 
 ` + "```" + `markdown
-## Summary
-One paragraph: what the PR does, overall assessment.
+## [APPROVE|REQUEST CHANGES|DISCUSS] — CKB score: [N]/100
 
-## Must Fix
-Findings that block merge. File:line references.
+[One sentence: what the PR does]
 
-## Should Fix
-Issues worth addressing but not blocking.
+### Issues
+1. **[must-fix|should-fix]** ` + "`" + `file:line` + "`" + ` — [issue in one sentence]
+2. ...
 
-## CKB Analysis
-- Verdict: [pass/warn/fail], Score: [0-100]
-- Key check results, false positives identified
-- Test gaps: [N] untested functions
+### CKB passed (no review needed)
+[comma-separated list of passed checks]
 
-## Recommendation
-Approve / Request changes / Needs discussion
+### CKB flagged (verified above)
+[for each warn/fail finding: confirmed/false-positive + one-line reason]
 ` + "```" + `
 
-## Tips
+If no issues found: just the header line + CKB passed list. Nothing else.
 
-- CKB "pass" checks: trust them (SCIP-verified, pattern-scanned)
-- CKB "dead-code": verify with findReferences before reporting
-- Hotspot scores: higher = more volatile = review more carefully
-- Complexity delta: read the specific functions CKB flagged
+## Anti-patterns (token waste)
+
+- Reading files CKB marked as pass — waste
+- Reading generated files — waste
+- Summarizing what the PR does in detail — waste (git log exists)
+- Explaining why passed checks passed — waste
+- Running MCP drill-down tools when CLI already gave enough signal — waste
+- Reading test files to "verify test quality" — waste unless CKB flagged test-gaps
+- Reading hotspot-only files with no findings — high churn does not mean needs review right now
 `
 
 func configureVSCodeGlobal(ckbCommand string, ckbArgs []string) error {
