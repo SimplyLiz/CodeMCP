@@ -510,6 +510,13 @@ func checkDiscardedError(root *sitter.Node, source []byte, file string) []Review
 		for _, stmt := range exprStmts {
 			calls := complexity.FindNodes(stmt, []string{"call_expression"})
 			for _, call := range calls {
+				// Skip nested calls whose return value IS consumed (e.g., Register(NewFramework()))
+				// A call is "discarded" only if its parent is the expression_statement itself,
+				// not if it's inside an argument_list of another call.
+				if call.Parent() != nil && call.Parent().Type() == "argument_list" {
+					continue
+				}
+
 				fnNode := call.ChildByFieldName("function")
 				if fnNode == nil {
 					continue
@@ -521,6 +528,13 @@ func checkDiscardedError(root *sitter.Node, source []byte, file string) []Review
 				if fnNode.Type() == "selector_expression" {
 					receiver, method := splitSelector(fullName)
 					if isInfallibleCall(receiver, method, varTypes) {
+						continue
+					}
+					// Suppress standalone .Close() calls — discarding Close() errors on
+					// read-only file handles is standard Go convention (e.g., f.Close()
+					// after os.Open for reading). Write-path Close errors are caught by
+					// the missing-defer-close rule instead.
+					if method == "Close" {
 						continue
 					}
 				}
@@ -680,7 +694,8 @@ func checkMissingDeferClose(root *sitter.Node, source []byte, file string) []Rev
 	openFuncs := map[string]bool{
 		"Open": true, "OpenFile": true, "Create": true,
 		"Dial": true, "DialContext": true, "NewReader": true,
-		"NewWriter": true, "NewScanner": true, "NewFile": true,
+		"NewWriter": true, "NewFile": true,
+		// Note: NewScanner (bufio.Scanner) is NOT included — Scanner doesn't implement io.Closer
 	}
 
 	funcBodies := complexity.FindNodes(root, []string{"function_declaration", "method_declaration", "func_literal"})
@@ -727,7 +742,8 @@ func checkMissingDeferClose(root *sitter.Node, source []byte, file string) []Rev
 				// Check if there's a defer <varName>.Close() in the same function body
 				bodyText := string(source[body.StartByte():body.EndByte()])
 				hasClose := strings.Contains(bodyText, "defer "+varName+".Close()") ||
-					strings.Contains(bodyText, "defer func() {") // common pattern with anon func
+					strings.Contains(bodyText, "defer func() {") || // common pattern with anon func
+					strings.Contains(bodyText, varName+".Close()") // inline close at end of loop/block
 				if !hasClose {
 					findings = append(findings, ReviewFinding{
 						Check:      "bug-patterns",
