@@ -468,7 +468,7 @@ func (e *Engine) calculateFileHealth(ctx context.Context, file string, rm repoMe
 	confidence := 1.0
 	parseable := true
 
-	// Cyclomatic complexity (25%) + Cognitive complexity (15%)
+	// Cyclomatic complexity (15%) + Cognitive complexity (25%)
 	complexityApplied := false
 	if analyzer != nil {
 		result, err := analyzer.AnalyzeFile(ctx, absPath)

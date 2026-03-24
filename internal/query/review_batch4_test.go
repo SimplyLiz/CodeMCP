@@ -126,6 +126,20 @@ func TestCodeHealthReport_Fields(t *testing.T) {
 	}
 }
 
+func TestHealthWeights(t *testing.T) {
+	const epsilon = 0.001
+	sum := weightCyclomatic + weightCognitive + weightFileSize + weightChurn + weightCoupling + weightBusFactor + weightAge
+	if diff := sum - 1.0; diff > epsilon || diff < -epsilon {
+		t.Errorf("health weights sum to %.3f, want 1.0", sum)
+	}
+
+	// Cognitive complexity should weigh more than cyclomatic (design intent:
+	// cognitive is a better proxy for readability than raw branch count).
+	if weightCognitive <= weightCyclomatic {
+		t.Errorf("weightCognitive (%.2f) should be > weightCyclomatic (%.2f)", weightCognitive, weightCyclomatic)
+	}
+}
+
 func TestCheckCodeHealth_NoFiles(t *testing.T) {
 	e := &Engine{repoRoot: t.TempDir()}
 	ctx := context.Background()

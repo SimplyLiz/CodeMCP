@@ -21,7 +21,7 @@ func TestFilterRenamePairs(t *testing.T) {
 				{File: "api.go", Message: "Function Foo removed", RuleID: "ckb/breaking/function"},
 				{File: "api.go", Message: "Function Bar added", RuleID: "ckb/breaking/function"},
 			},
-			wantLen: 1, // only the "added" survives
+			wantLen: 0, // both sides of the rename are filtered
 		},
 		{
 			name: "removal without matching add kept",
@@ -54,7 +54,7 @@ func TestFilterRenamePairs(t *testing.T) {
 				{File: "api.go", Message: "Function C added", RuleID: "ckb/breaking/function"},
 				{File: "api.go", Message: "Function D added", RuleID: "ckb/breaking/function"},
 			},
-			wantLen: 2, // both "added" survive, both "removed" paired away
+			wantLen: 0, // 2 removes paired with 2 adds — all filtered
 		},
 		{
 			name: "case variation Removed/Added",
@@ -62,7 +62,7 @@ func TestFilterRenamePairs(t *testing.T) {
 				{File: "api.go", Message: "Removed function Foo", RuleID: "ckb/breaking/function"},
 				{File: "api.go", Message: "Added function Bar", RuleID: "ckb/breaking/function"},
 			},
-			wantLen: 1,
+			wantLen: 0,
 		},
 		{
 			name: "new keyword also matches as add",
@@ -70,7 +70,7 @@ func TestFilterRenamePairs(t *testing.T) {
 				{File: "api.go", Message: "Function Foo removed", RuleID: "ckb/breaking/function"},
 				{File: "api.go", Message: "new function Bar", RuleID: "ckb/breaking/function"},
 			},
-			wantLen: 1,
+			wantLen: 0,
 		},
 		{
 			name: "non-breaking findings pass through",

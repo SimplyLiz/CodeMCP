@@ -416,11 +416,16 @@ var configKeyVarRe = regexp.MustCompile(`(?i)["'](?:secret|token|password|passwd
 //	api_key=os.environ["KEY"]               (env lookup)
 //	token = process.env.TOKEN               (Node env)
 //	key := viper.GetString("api_key")       (Go config)
+// varRefRe matches variable/attribute references. The first branch (dotted
+// chain anchored with $) covers fully-qualified references like config.apiKey.
+// Branches 2-4 handle partial captures where the scanner only grabs a prefix
+// (e.g., "os.environ" from os.environ["KEY"]) — the $ anchor on branch 1
+// would reject those because of trailing brackets/parens.
 var varRefRe = regexp.MustCompile(
 	`^[a-zA-Z_][\w]*(?:\.[\w]+)+$` + // dotted attr chain: self._settings.openai_api_key
-		`|^os\.(?:environ|getenv)` + // Python os.environ / os.getenv
-		`|^process\.env` + // Node process.env
-		`|^(?:viper|config|cfg|settings|conf)\.`, // common config accessors
+		`|^os\.(?:environ|getenv)` + // Python os.environ / os.getenv (partial capture)
+		`|^process\.env` + // Node process.env (partial capture)
+		`|^(?:viper|config|cfg|settings|conf)\.`, // common config accessors (partial capture)
 )
 
 // isLikelyFalsePositive checks for common false positive patterns.
