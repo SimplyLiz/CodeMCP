@@ -119,9 +119,10 @@ func newLogger(format string) *slog.Logger {
 	if os.Getenv("CKB_DEBUG") == "1" {
 		level = slog.LevelDebug
 	}
-	// In human format, suppress warnings (stale SCIP, etc.) — they clutter
-	// the review output. Errors still surface.
-	if format == "human" && level < slog.LevelError {
+	// Suppress warnings (stale SCIP, etc.) for all output formats unless
+	// verbose mode is explicitly enabled. Warnings on stderr corrupt
+	// machine-readable output (JSON, markdown) when stderr is redirected.
+	if level < slog.LevelError {
 		level = slog.LevelError
 	}
 	return slogutil.NewLogger(os.Stderr, level)
