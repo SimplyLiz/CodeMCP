@@ -6,6 +6,7 @@ package compliance
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/SimplyLiz/CodeMCP/internal/complexity"
@@ -16,20 +17,53 @@ import (
 type FrameworkID string
 
 const (
+	// Privacy & Data Protection
 	FrameworkGDPR     FrameworkID = "gdpr"
-	FrameworkEUAIAct  FrameworkID = "eu-ai-act"
-	FrameworkISO27001 FrameworkID = "iso27001"
+	FrameworkCCPA     FrameworkID = "ccpa"
 	FrameworkISO27701 FrameworkID = "iso27701"
+
+	// AI Governance
+	FrameworkEUAIAct FrameworkID = "eu-ai-act"
+
+	// Security Standards
+	FrameworkISO27001  FrameworkID = "iso27001"
+	FrameworkNIST80053 FrameworkID = "nist-800-53"
+	FrameworkOWASPASVS FrameworkID = "owasp-asvs"
+	FrameworkSOC2      FrameworkID = "soc2"
+
+	// Industry Regulations
+	FrameworkPCIDSS    FrameworkID = "pci-dss"
+	FrameworkHIPAA     FrameworkID = "hipaa"
+	FrameworkDORA      FrameworkID = "dora"
+	FrameworkNIS2      FrameworkID = "nis2"
+	FrameworkFDAPart11 FrameworkID = "fda-21cfr11"
+
+	// EU Product Regulations
+	FrameworkEUCRA FrameworkID = "eu-cra"
+
+	// Supply Chain
+	FrameworkSBOM FrameworkID = "sbom-slsa"
+
+	// Safety Standards
 	FrameworkIEC61508 FrameworkID = "iec61508"
+	FrameworkISO26262 FrameworkID = "iso26262"
+	FrameworkDO178C   FrameworkID = "do-178c"
+
+	// Coding Standards
+	FrameworkMISRA    FrameworkID = "misra"
+	FrameworkIEC62443 FrameworkID = "iec62443"
 )
 
 // AllFrameworkIDs returns all supported framework identifiers.
 var AllFrameworkIDs = []FrameworkID{
-	FrameworkGDPR,
+	FrameworkGDPR, FrameworkCCPA, FrameworkISO27701,
 	FrameworkEUAIAct,
-	FrameworkISO27001,
-	FrameworkISO27701,
-	FrameworkIEC61508,
+	FrameworkISO27001, FrameworkNIST80053, FrameworkOWASPASVS, FrameworkSOC2,
+	FrameworkPCIDSS, FrameworkHIPAA, FrameworkDORA, FrameworkNIS2, FrameworkFDAPart11,
+	FrameworkEUCRA,
+	FrameworkSBOM,
+	FrameworkIEC61508, FrameworkISO26262, FrameworkDO178C,
+	FrameworkMISRA, FrameworkIEC62443,
 }
 
 // Framework defines a regulatory framework that can be audited.
@@ -97,11 +131,22 @@ func (f Finding) ToReviewFinding() query.ReviewFinding {
 
 // ScanScope provides shared context to all checks.
 type ScanScope struct {
+	ComplexityMu       sync.Mutex `json:"-"` // Protects tree-sitter parser (not thread-safe)
 	RepoRoot           string
 	Files              []string // Relative paths to source files
 	Config             *ComplianceConfig
 	Logger             *slog.Logger
 	ComplexityAnalyzer *complexity.Analyzer
+}
+
+// AnalyzeFileComplexity is a thread-safe wrapper around the complexity analyzer.
+func (s *ScanScope) AnalyzeFileComplexity(ctx context.Context, filePath string) (*complexity.FileComplexity, error) {
+	if s.ComplexityAnalyzer == nil {
+		return nil, nil
+	}
+	s.ComplexityMu.Lock()
+	defer s.ComplexityMu.Unlock()
+	return s.ComplexityAnalyzer.AnalyzeFile(ctx, filePath)
 }
 
 // AuditOptions configures a compliance audit run.

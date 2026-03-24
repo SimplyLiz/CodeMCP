@@ -207,6 +207,9 @@ func RunAudit(ctx context.Context, opts AuditOptions, logger *slog.Logger) (*Com
 		})
 	}
 
+	// Enrich findings with cross-framework references
+	allFindings = EnrichWithCrossReferences(allFindings)
+
 	// Sort findings by severity then file
 	sort.Slice(allFindings, func(i, j int) bool {
 		si := severityOrder(allFindings[i].Severity)

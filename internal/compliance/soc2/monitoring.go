@@ -1,0 +1,175 @@
+package soc2
+
+import (
+	"bufio"
+	"context"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+
+	"github.com/SimplyLiz/CodeMCP/internal/compliance"
+)
+
+// --- swallowed-errors: CC7.2 — Empty catch/except blocks ---
+
+type swallowedErrorsCheck struct{}
+
+func (c *swallowedErrorsCheck) ID() string       { return "swallowed-errors" }
+func (c *swallowedErrorsCheck) Name() string     { return "Swallowed Errors" }
+func (c *swallowedErrorsCheck) Article() string   { return "CC7.2 SOC 2" }
+func (c *swallowedErrorsCheck) Severity() string  { return "warning" }
+
+var swallowedErrorPatterns = []*regexp.Regexp{
+	// Go: error explicitly ignored
+	regexp.MustCompile(`_\s*=\s*\w+\.(\w+)\(`),
+	// JavaScript/TypeScript: empty catch
+	regexp.MustCompile(`catch\s*\([^)]*\)\s*\{\s*\}`),
+	// Python: bare except pass
+	regexp.MustCompile(`except\s*:\s*pass`),
+	regexp.MustCompile(`except\s+\w+\s*:\s*pass`),
+	// Java/C#: empty catch
+	regexp.MustCompile(`catch\s*\([^)]+\)\s*\{\s*\}`),
+}
+
+// More specific Go pattern for suppressed errors.
+var goErrSuppressPattern = regexp.MustCompile(`_\s*=\s*err\b`)
+
+func (c *swallowedErrorsCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
+	var findings []compliance.Finding
+
+	for _, file := range scope.Files {
+		if ctx.Err() != nil {
+			return findings, ctx.Err()
+		}
+
+		if strings.Contains(file, "_test.") || strings.Contains(file, ".test.") {
+			continue
+		}
+
+		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+		if err != nil {
+			continue
+		}
+
+		scanner := bufio.NewScanner(f)
+		lineNum := 0
+
+		for scanner.Scan() {
+			lineNum++
+			line := scanner.Text()
+			trimmed := strings.TrimSpace(line)
+
+			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+				continue
+			}
+
+			// Check Go-specific error suppression
+			if goErrSuppressPattern.MatchString(line) {
+				findings = append(findings, compliance.Finding{
+					Severity:   "warning",
+					Article:    "CC7.2 SOC 2",
+					File:       file,
+					StartLine:  lineNum,
+					Message:    "Error explicitly suppressed — may hide operational issues",
+					Suggestion: "Handle or log errors instead of suppressing them; unhandled errors impair incident detection",
+					Confidence: 0.70,
+				})
+				continue
+			}
+
+			// Check language-agnostic patterns
+			for _, pattern := range swallowedErrorPatterns {
+				if pattern.MatchString(line) {
+					findings = append(findings, compliance.Finding{
+						Severity:   "warning",
+						Article:    "CC7.2 SOC 2",
+						File:       file,
+						StartLine:  lineNum,
+						Message:    "Empty error handler detected — errors are silently swallowed",
+						Suggestion: "Log errors at minimum; empty catch/except blocks hide failures and impair monitoring",
+						Confidence: 0.80,
+					})
+					break
+				}
+			}
+		}
+		f.Close()
+	}
+
+	return findings, nil
+}
+
+// --- missing-security-logging: CC7.2 — Auth code without logging ---
+
+type missingSecurityLoggingCheck struct{}
+
+func (c *missingSecurityLoggingCheck) ID() string       { return "missing-security-logging" }
+func (c *missingSecurityLoggingCheck) Name() string     { return "Missing Security Event Logging" }
+func (c *missingSecurityLoggingCheck) Article() string   { return "CC7.2 SOC 2" }
+func (c *missingSecurityLoggingCheck) Severity() string  { return "warning" }
+
+var securityEventPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)(login|log_in|sign_in|signin|authenticate)\s*\(`),
+	regexp.MustCompile(`(?i)(logout|log_out|sign_out|signout)\s*\(`),
+	regexp.MustCompile(`(?i)(change_password|reset_password|update_password)\s*\(`),
+	regexp.MustCompile(`(?i)(grant|revoke|change).*permission`),
+	regexp.MustCompile(`(?i)(add|remove).*role`),
+}
+
+func (c *missingSecurityLoggingCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
+	var findings []compliance.Finding
+
+	for _, file := range scope.Files {
+		if ctx.Err() != nil {
+			return findings, ctx.Err()
+		}
+
+		if strings.Contains(file, "_test.") || strings.Contains(file, ".test.") {
+			continue
+		}
+
+		content, err := os.ReadFile(filepath.Join(scope.RepoRoot, file))
+		if err != nil {
+			continue
+		}
+
+		text := string(content)
+
+		// Check if file contains security events
+		hasSecurityEvents := false
+		for _, pattern := range securityEventPatterns {
+			if pattern.MatchString(text) {
+				hasSecurityEvents = true
+				break
+			}
+		}
+
+		if !hasSecurityEvents {
+			continue
+		}
+
+		// Check if file has logging
+		textLower := strings.ToLower(text)
+		hasLogging := false
+		for _, lp := range compliance.LogFunctionPatterns {
+			if strings.Contains(textLower, lp) {
+				hasLogging = true
+				break
+			}
+		}
+
+		if !hasLogging {
+			findings = append(findings, compliance.Finding{
+				Severity:   "warning",
+				Article:    "CC7.2 SOC 2",
+				File:       file,
+				Message:    "Authentication/authorization code without logging statements",
+				Suggestion: "Add security event logging for login, logout, password changes, and permission modifications",
+				Confidence: 0.65,
+			})
+		}
+	}
+
+	return findings, nil
+}

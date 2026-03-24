@@ -11,11 +11,26 @@ import (
 
 	"github.com/SimplyLiz/CodeMCP/internal/compliance"
 	// Register all framework check packages
+	_ "github.com/SimplyLiz/CodeMCP/internal/compliance/ccpa"
+	_ "github.com/SimplyLiz/CodeMCP/internal/compliance/do178c"
+	_ "github.com/SimplyLiz/CodeMCP/internal/compliance/dora"
 	_ "github.com/SimplyLiz/CodeMCP/internal/compliance/euaiact"
+	_ "github.com/SimplyLiz/CodeMCP/internal/compliance/eucra"
+	_ "github.com/SimplyLiz/CodeMCP/internal/compliance/fda21cfr11"
 	_ "github.com/SimplyLiz/CodeMCP/internal/compliance/gdpr"
+	_ "github.com/SimplyLiz/CodeMCP/internal/compliance/hipaa"
 	_ "github.com/SimplyLiz/CodeMCP/internal/compliance/iec61508"
+	_ "github.com/SimplyLiz/CodeMCP/internal/compliance/iec62443"
+	_ "github.com/SimplyLiz/CodeMCP/internal/compliance/iso26262"
 	_ "github.com/SimplyLiz/CodeMCP/internal/compliance/iso27001"
 	_ "github.com/SimplyLiz/CodeMCP/internal/compliance/iso27701"
+	_ "github.com/SimplyLiz/CodeMCP/internal/compliance/misra"
+	_ "github.com/SimplyLiz/CodeMCP/internal/compliance/nis2"
+	_ "github.com/SimplyLiz/CodeMCP/internal/compliance/nist80053"
+	_ "github.com/SimplyLiz/CodeMCP/internal/compliance/owaspasvs"
+	_ "github.com/SimplyLiz/CodeMCP/internal/compliance/pcidss"
+	_ "github.com/SimplyLiz/CodeMCP/internal/compliance/sbom"
+	_ "github.com/SimplyLiz/CodeMCP/internal/compliance/soc2"
 )
 
 var (
