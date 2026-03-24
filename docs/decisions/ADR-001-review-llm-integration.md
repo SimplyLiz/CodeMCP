@@ -58,7 +58,7 @@ A `DismissalStore` at `.ckb/review-dismissals.json` lets users dismiss specific 
 - LLM integration is additive: narrative synthesis, not decision-making
 - Token efficiency: ~1.5k tokens per `--llm` call vs ~445k for a full LLM review from source
 - Self-enrichment reduces FP rate before the LLM sees findings, preventing FP amplification
-- The `/review` Claude Code skill orchestrates the full workflow: CKB → drill-down → semantic review
+- The `/review` and `/ckb-review` Claude Code skills orchestrate a token-optimized workflow: CKB structural scan → targeted source reading of flagged files only → terse review output
 - Framework symbol filtering (variables, constants, CLI wiring) works across Go, C++, Java, Python via SCIP symbol kinds
 
 ## Affected Modules

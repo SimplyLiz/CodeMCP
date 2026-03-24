@@ -140,6 +140,19 @@ Interactive setup prompts: "Install /ckb-review skill? [Y/n]" (default: yes).
 
 The skill is embedded in the CKB binary and written to `~/.claude/commands/ckb-review.md`. It auto-updates when `ckb setup` is re-run after an update.
 
+### Token-Optimized Design (v8.3+)
+
+The skill is designed to minimize LLM token usage:
+
+- **Early exit**: If CKB score ≥ 80 and verdict = pass, a one-line approval is emitted — no source reading
+- **CLI-first**: Uses `ckb review --format=json --compact` instead of MCP tool discovery, which is faster and more reliable
+- **Targeted reads**: Only files with warn/fail findings are read (not all hotspots, not the full diff)
+- **Structural trust**: Passed checks (secrets, breaking, dead-code) are trusted without LLM re-verification
+- **No drill-down phase**: The previous MCP drill-down step (findReferences, analyzeImpact) is removed — CLI compact output provides enough signal to decide what to read
+- **Terse output**: Flat numbered issue list instead of multi-section prose
+
+Typical cost: ~3-8k tokens for a standard PR (down from ~15-30k with the previous skill).
+
 ---
 
 ## Is This Best Practice?

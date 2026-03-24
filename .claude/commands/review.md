@@ -1,98 +1,77 @@
-Run a comprehensive code review using CKB's deterministic analysis + your semantic review.
+Run a CKB-augmented code review optimized for minimal token usage.
 
 ## Input
 $ARGUMENTS - Optional: base branch (default: main), or "staged" for staged changes, or a PR number
 
-## MCP vs CLI
+## Philosophy
 
-CKB runs as an MCP server in this environment. MCP mode is strongly preferred for interactive review because the SCIP index stays loaded between calls — drill-down tools like `findReferences`, `analyzeImpact`, and `explainSymbol` execute instantly against the in-memory index. CLI mode reloads the index on every invocation.
+CKB already answered the structural questions (secrets? breaking? dead code? test gaps?).
+The LLM's job is ONLY what CKB can't do: semantic reasoning about correctness, design,
+and intent. Every source line you read costs tokens — read only what CKB says is risky.
 
-## The Three Phases
+## Phase 1: Structural scan (~1k tokens into context)
 
-### Phase 1: CKB structural scan (5 seconds, 0 tokens)
-
-Call the `reviewPR` MCP tool with compact mode:
+```bash
+ckb review --base=main --format=json --compact 2>/dev/null
 ```
-reviewPR(baseBranch: "main", compact: true)
-```
 
-This returns ~1k tokens instead of ~30k — just the verdict, non-pass checks, top 10 findings, and action items. Use `compact: false` only if you need the full raw data.
-
-If a PR number was given, get the base branch first:
+If a PR number was given:
 ```bash
 BASE=$(gh pr view $ARGUMENTS --json baseRefName -q .baseRefName)
+ckb review --base=$BASE --format=json --compact 2>/dev/null
 ```
-Then pass it: `reviewPR(baseBranch: BASE, compact: true)`
 
-> **If CKB is not running as an MCP server** (last resort), use the CLI instead:
-> ```bash
-> ./ckb review --base=main --format=json
-> ```
-> Note: CLI mode reloads the SCIP index on every call, so drill-down steps will be slower.
+From the output, build three lists:
+- **SKIP**: passed checks — don't touch these files or topics
+- **INVESTIGATE**: warned/failed checks — these are your review scope
+- **READ**: hotspot files + files with warn/fail findings — the only files you'll read
 
-From CKB's output, immediately note:
-- **Passed checks** → skip these categories. Don't waste tokens re-checking secrets, breaking changes, test coverage, etc.
-- **Warned checks** → your review targets
-- **Top hotspot files** → read these first
-- **Test gaps** → functions to evaluate
+**Early exit**: If verdict=pass and score≥80, write a one-line approval and stop. No source reading needed.
 
-### Phase 2: Drill down on CKB findings (0 tokens via MCP)
+## Phase 2: Targeted source reading (the only token-expensive step)
 
-Before reading source code, use CKB's MCP tools to investigate specific findings. These calls are instant because the SCIP index is already loaded from Phase 1.
+Do NOT read the full diff. Do NOT read every changed file.
 
-| CKB finding | Drill-down tool | What to check |
-|---|---|---|
-| Dead code | `findReferences(symbolId: "...")` or `searchSymbols` → `findReferences` | Does it actually have references? CKB's SCIP index can miss cross-package refs |
-| Blast radius | `analyzeImpact(symbolId: "...")` | Are the "callers" real logic or just framework registrations? |
-| Coupling gap | `explainSymbol(name: "...")` on the missing file | What does the co-change partner do? Does it actually need updates? |
-| Bug patterns | Already verified by differential analysis | Just check the specific line CKB flagged |
-| Complexity | `explainFile(path: "...")` | What functions are driving the increase? |
-| Test gaps | `getAffectedTests(baseBranch: "main")` | Which tests exist? Which functions are actually untested? |
-| Hotspots | `getHotspots(limit: 10)` | Full churn history for the flagged files |
+Read ONLY:
+1. Files that appear in INVESTIGATE findings (just the changed hunks via `git diff main...HEAD -- <file>`)
+2. New files (CKB has no history for these) — but only if <500 lines each
+3. Skip generated files, test files for existing tests, and config/CI files
 
-### Phase 3: Semantic review of high-risk files
+For each file you read, look for exactly:
+- Logic errors (wrong condition, off-by-one, nil deref)
+- Security issues (injection, auth bypass, secrets)
+- Design problems (wrong abstraction, leaky interface)
+- Missing edge cases the tests don't cover
 
-Now read the actual source — but only for:
-1. Files CKB ranked as top hotspots
-2. Files with warned findings that survived drill-down
-3. New files (CKB can't assess design quality of new code)
+Do NOT look for: style, naming, formatting, documentation, test coverage —
+CKB already checked these structurally.
 
-For each file, look for things CKB CANNOT detect:
-- Logic bugs (wrong conditions, off-by-one, race conditions)
-- Security issues (injection, auth bypass, data exposure)
-- Design problems (wrong abstraction, unclear naming, leaky interfaces)
-- Edge cases (nil inputs, empty collections, concurrent access)
-- Error handling quality (not just missing — wrong strategy)
-
-### Phase 4: Write the review
-
-Format:
+## Phase 3: Write the review (be terse)
 
 ```markdown
-## Summary
-One paragraph: what the PR does, overall assessment.
+## [APPROVE|REQUEST CHANGES|DISCUSS] — CKB score: [N]/100
 
-## Must Fix
-Findings that should block merge. File:line references.
+[One sentence: what the PR does]
 
-## Should Fix
-Issues worth addressing but not blocking.
+### Issues
+1. **[must-fix|should-fix]** `file:line` — [issue in one sentence]
+2. ...
 
-## CKB Analysis
-- Verdict: [pass/warn/fail], Score: [0-100]
-- [N] checks passed, [N] warned
-- Key findings: [top 3]
-- False positives identified: [any CKB findings you disproved]
-- Test gaps: [N] untested functions — [your assessment of which matter]
+### CKB passed (no review needed)
+[comma-separated list of passed checks]
 
-## Recommendation
-Approve / Request changes / Needs discussion
+### CKB flagged (verified above)
+[for each warn/fail finding: confirmed/false-positive + one-line reason]
 ```
 
-## Tips
+If no issues found: just the header line + CKB passed list. Nothing else.
 
-- If CKB says "secrets: pass" — trust it, don't re-scan 100+ files
-- If CKB says "breaking: pass" — trust it, SCIP-verified API comparison
-- If CKB says "dead-code: FormatSARIF" — DON'T trust blindly, verify with `findReferences` or grep
-- CKB's hotspot scores are based on git churn history — higher score = more volatile file = review more carefully
-- CKB's complexity delta shows WHERE cognitive load increased — read those functions
+## Anti-patterns (token waste)
+
+- Reading files CKB marked as pass → waste
+- Reading generated files → waste
+- Summarizing what the PR does in detail → waste (git log exists)
+- Explaining why passed checks passed → waste
+- Running MCP drill-down tools when CLI already gave enough signal → waste
+- Reading test files to "verify test quality" → waste unless CKB flagged test-gaps
+- Reading hotspot-only files with no findings → high churn ≠ needs review right now
