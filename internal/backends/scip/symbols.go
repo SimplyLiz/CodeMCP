@@ -436,15 +436,51 @@ func isTestFile(path string) bool {
 		strings.HasSuffix(pathLower, ".spec.")
 }
 
+// singleReturnNew lists New* constructors known to return only (T), not (T, error).
+// These are excluded from the "New prefix implies error" heuristic.
+var singleReturnNew = map[string]bool{
+	"NewScanner":       true, // bufio.NewScanner → *Scanner
+	"NewReader":        true, // bufio/bytes/strings.NewReader → *Reader
+	"NewWriter":        true, // bufio.NewWriter → *Writer
+	"NewBuffer":        true, // bytes.NewBuffer → *Buffer
+	"NewBufferString":  true, // bytes.NewBufferString → *Buffer
+	"NewReplacer":      true, // strings.NewReplacer → *Replacer
+	"NewTicker":        true, // time.NewTicker → *Ticker
+	"NewTimer":         true, // time.NewTimer → *Timer
+	"NewCond":          true, // sync.NewCond → *Cond
+	"NewMutex":         true, // various — not stdlib but common
+	"New":              true, // log.New → *Logger, errors.New → error (neither is (T,error))
+	"NewRWMutex":       true,
+	"NewWaitGroup":     true,
+	"NewPool":          true,
+	"NewMap":           true,
+	"NewOnce":          true,
+	"NewServeMux":      true, // net/http.NewServeMux → *ServeMux
+	"NewRegexp":        true,
+	"NewParser":        true, // common single-return constructor
+	"NewLogger":        true,
+}
+
+// noErrorMethods lists method names that return bool or are routinely discarded safely,
+// even though their names match error-returning patterns.
+var noErrorMethods = map[string]bool{
+	"Scan": true, // bufio.Scanner.Scan() → bool (errors via .Err())
+}
+
 // LikelyReturnsError uses heuristics to determine if a function likely returns an error.
 // Since SignatureFull is not always populated, this uses name patterns and documentation.
 func LikelyReturnsError(symbolName string) bool {
+	// Exclude known single-return methods
+	if noErrorMethods[symbolName] {
+		return false
+	}
+
 	// Common Go stdlib/convention patterns for error-returning functions
 	errorPatterns := []string{
 		"Open", "Read", "Write", "Close", "Create",
 		"Dial", "Listen", "Accept", "Connect",
 		"Parse", "Unmarshal", "Marshal", "Decode", "Encode",
-		"Execute", "Exec", "Query", "Scan",
+		"Execute", "Exec", "Query",
 		"Send", "Recv", "Flush",
 		"Lock", "Acquire",
 		"Start", "Stop", "Init", "Setup",
@@ -457,8 +493,9 @@ func LikelyReturnsError(symbolName string) bool {
 		}
 	}
 
-	// Functions starting with New commonly return (T, error)
-	if strings.HasPrefix(symbolName, "New") {
+	// Functions starting with New commonly return (T, error),
+	// but exclude known single-return constructors.
+	if strings.HasPrefix(symbolName, "New") && !singleReturnNew[symbolName] {
 		return true
 	}
 

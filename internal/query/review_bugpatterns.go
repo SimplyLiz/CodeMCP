@@ -49,7 +49,9 @@ func (e *Engine) checkBugPatterns(ctx context.Context, files []string, opts Revi
 			goFiles = append(goFiles, f)
 		}
 	}
+	skippedFiles := 0
 	if len(goFiles) > 20 {
+		skippedFiles = len(goFiles) - 20
 		goFiles = goFiles[:20]
 	}
 
@@ -106,12 +108,39 @@ func (e *Engine) checkBugPatterns(ctx context.Context, files []string, opts Revi
 		status = "warn"
 		summary = fmt.Sprintf("%d bug pattern(s) detected", len(findings))
 	}
+	if skippedFiles > 0 {
+		summary += fmt.Sprintf(" (%d file(s) over cap, not scanned)", skippedFiles)
+	}
+
+	// Build per-rule summary for Details
+	ruleCounts := make(map[string]int)
+	for _, f := range findings {
+		ruleCounts[f.RuleID]++
+	}
+	type bugPatternSummary struct {
+		RuleID string `json:"ruleId"`
+		Count  int    `json:"count"`
+	}
+	var ruleSummaries []bugPatternSummary
+	for rule, count := range ruleCounts {
+		ruleSummaries = append(ruleSummaries, bugPatternSummary{RuleID: rule, Count: count})
+	}
+
+	details := map[string]interface{}{
+		"filesScanned": len(goFiles),
+		"filesSkipped": skippedFiles,
+		"findings":     findings,
+	}
+	if len(ruleSummaries) > 0 {
+		details["byRule"] = ruleSummaries
+	}
 
 	return ReviewCheck{
 		Name:     "bug-patterns",
 		Status:   status,
 		Severity: "warning",
 		Summary:  summary,
+		Details:  details,
 		Duration: time.Since(start).Milliseconds(),
 	}, findings
 }
@@ -123,7 +152,9 @@ func checkDeferInLoop(root *sitter.Node, source []byte, file string) []ReviewFin
 	var findings []ReviewFinding
 	forNodes := complexity.FindNodes(root, []string{"for_statement", "for_range_statement"})
 	for _, forNode := range forNodes {
-		defers := complexity.FindNodes(forNode, []string{"defer_statement"})
+		// Skip func_literal children — a defer inside func(){...}() within a
+		// loop is the correct pattern (defer fires at closure return, once per iteration).
+		defers := complexity.FindNodesSkipping(forNode, []string{"defer_statement"}, []string{"func_literal"})
 		for _, d := range defers {
 			findings = append(findings, ReviewFinding{
 				Check:      "bug-patterns",
@@ -506,9 +537,14 @@ func checkDiscardedError(root *sitter.Node, source []byte, file string) []Review
 		}
 
 		// Find discarded calls in this function body.
-		exprStmts := complexity.FindNodes(body, []string{"expression_statement"})
+		// Skip func_literal children — closures are processed as separate funcBodies above,
+		// so we must not recurse into them here (their internal calls are properly handled).
+		exprStmts := complexity.FindNodesSkipping(body, []string{"expression_statement"}, []string{"func_literal"})
 		for _, stmt := range exprStmts {
-			calls := complexity.FindNodes(stmt, []string{"call_expression"})
+			// Also skip func_literals when finding calls — an IIFE like func(){...}()
+			// is a call_expression containing a func_literal; we must not recurse into
+			// the closure body and flag its internal (properly handled) calls.
+			calls := complexity.FindNodesSkipping(stmt, []string{"call_expression"}, []string{"func_literal"})
 			for _, call := range calls {
 				// Skip nested calls whose return value IS consumed (e.g., Register(NewFramework()))
 				// A call is "discarded" only if its parent is the expression_statement itself,
@@ -705,8 +741,9 @@ func checkMissingDeferClose(root *sitter.Node, source []byte, file string) []Rev
 			continue
 		}
 
-		// Find short_var_declarations with resource-opening calls
-		shortDecls := complexity.FindNodes(body, []string{"short_var_declaration"})
+		// Find short_var_declarations with resource-opening calls.
+		// Skip func_literal children — closures are processed separately as funcBodies.
+		shortDecls := complexity.FindNodesSkipping(body, []string{"short_var_declaration"}, []string{"func_literal"})
 		for _, decl := range shortDecls {
 			right := decl.ChildByFieldName("right")
 			if right == nil {

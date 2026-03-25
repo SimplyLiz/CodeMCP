@@ -476,6 +476,15 @@ func isLikelyFalsePositive(line, secret string) bool {
 		}
 	}
 
+	// Shell/template variable interpolation — not a literal secret
+	// Covers ${VAR}, ${VAR:-default}, ${VAR:?error}, $VAR, {{ .var }}
+	if strings.Contains(secret, "${") ||
+		strings.Contains(secret, "$(") ||
+		strings.Contains(secret, "{{") ||
+		(strings.HasPrefix(strings.TrimSpace(secret), "$") && !strings.ContainsAny(secret, " \t")) {
+		return true
+	}
+
 	// Check for common test values
 	secretLower := strings.ToLower(secret)
 	if strings.HasPrefix(secretLower, "example") ||
