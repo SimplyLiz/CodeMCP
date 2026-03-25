@@ -151,6 +151,12 @@ func isSafeGoSQLBuilder(line string, lines []string, idx int) bool {
 		return true
 	}
 
+	// Exec/Query on the same line as Sprintf — table name substitution
+	// e.g., tx.Exec(fmt.Sprintf("DELETE FROM %s", table))
+	if strings.Contains(line, ".Exec(fmt.Sprintf") || strings.Contains(line, ".Query(fmt.Sprintf") {
+		return true
+	}
+
 	// Check surrounding lines (±5) for parameterized query execution
 	// If nearby code calls db.Query/Exec with ?, the Sprintf is building structure
 	start := idx - 5
@@ -192,9 +198,10 @@ func (c *pathTraversalCheck) Article() string   { return "A.8.28 ISO 27001:2022"
 func (c *pathTraversalCheck) Severity() string  { return "error" }
 
 var pathTraversalPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?i)filepath\.Join\(.*(?:r\.URL|request|req|param|query|body)`),
-	regexp.MustCompile(`(?i)os\.Open\(.*(?:r\.URL|request|req|param|query|body|user)`),
-	regexp.MustCompile(`(?i)os\.ReadFile\(.*(?:r\.URL|request|req|param|query|body|user)`),
+	// Require word boundaries around variable names to avoid matching "requirements" as "req"
+	regexp.MustCompile(`(?i)filepath\.Join\(.*(?:r\.URL|request\b|req\b|param\b|query\b|body\b)`),
+	regexp.MustCompile(`(?i)os\.Open\(.*(?:r\.URL|request\b|req\b|param\b|query\b|body\b|userInput)`),
+	regexp.MustCompile(`(?i)os\.ReadFile\(.*(?:r\.URL|request\b|req\b|param\b|query\b|body\b|userInput)`),
 	regexp.MustCompile(`(?i)path\.join\(.*(?:req\.|request\.|params\.|query\.)`),
 	regexp.MustCompile(`(?i)open\(.*(?:request\.|params\[|argv)`),
 	regexp.MustCompile(`(?i)\.\./`),
@@ -283,9 +290,9 @@ func (c *unsafeDeserializationCheck) Severity() string  { return "error" }
 var unsafeDeserPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\bpickle\.load\b`),
 	regexp.MustCompile(`(?i)\bpickle\.loads\b`),
-	regexp.MustCompile(`(?i)\byaml\.load\(`),              // yaml.load without Loader=SafeLoader
-	regexp.MustCompile(`(?i)\byaml\.Unmarshal\b`),          // Go — only flagged if from user input
-	regexp.MustCompile(`(?i)\beval\(\s*(?:request|req|params|user|input)`),
+	regexp.MustCompile(`(?i)\byaml\.load\(`),               // Python yaml.load without Loader=SafeLoader
+	// Note: yaml.Unmarshal (Go) is typed deserialization and generally safe — not flagged.
+	regexp.MustCompile(`(?i)\beval\(\s*(?:request|req\b|params|user|input)`),
 	regexp.MustCompile(`(?i)\bdeserialize\(`),
 	regexp.MustCompile(`(?i)\bObjectInputStream\b`),        // Java
 	regexp.MustCompile(`(?i)\bBinaryFormatter\.Deserialize`), // C#

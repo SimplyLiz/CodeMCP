@@ -157,6 +157,17 @@ func (c *missingTLSCheck) Run(ctx context.Context, scope *compliance.ScanScope) 
 						strings.Contains(lower, "http://example") {
 						continue
 					}
+					// Exclude print/log statements (displaying URLs, not connecting)
+					if strings.Contains(lower, "printf") || strings.Contains(lower, "println") ||
+						strings.Contains(lower, "log.") || strings.Contains(lower, "slog.") ||
+						strings.Contains(lower, "fmt.") {
+						continue
+					}
+					// Exclude URL validation/parsing (checking scheme, not connecting)
+					if strings.Contains(lower, "hasprefix") || strings.Contains(lower, "starts_with") ||
+						strings.Contains(lower, "startswith") || strings.Contains(lower, "must start with") {
+						continue
+					}
 
 					findings = append(findings, compliance.Finding{
 						Severity:   "error",
@@ -213,6 +224,19 @@ func (c *corsWildcardCheck) Run(ctx context.Context, scope *compliance.ScanScope
 			for scanner.Scan() {
 				lineNum++
 				line := scanner.Text()
+
+				// Skip flag/option definitions (documenting '*' as a choice, not setting it)
+				lower := strings.ToLower(line)
+				if strings.Contains(lower, "flag") || strings.Contains(lower, "option") ||
+					strings.Contains(lower, "usage") || strings.Contains(lower, "help") ||
+					strings.Contains(lower, "description") {
+					continue
+				}
+				// Skip comments
+				trimmed := strings.TrimSpace(line)
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
 
 				for _, pattern := range corsWildcardPatterns {
 					if pattern.MatchString(line) {

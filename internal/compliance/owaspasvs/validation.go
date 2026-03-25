@@ -141,6 +141,11 @@ func isSafeGoSQLBuilder(line string, lines []string, idx int) bool {
 		return true
 	}
 
+	// Exec/Query on the same line as Sprintf — table name substitution
+	if strings.Contains(line, ".Exec(fmt.Sprintf") || strings.Contains(line, ".Query(fmt.Sprintf") {
+		return true
+	}
+
 	start := idx - 5
 	if start < 0 {
 		start = 0

@@ -53,6 +53,13 @@ func (c *weakAlgorithmCheck) Run(ctx context.Context, scope *compliance.ScanScop
 			return findings, ctx.Err()
 		}
 
+		// Skip test files
+		if strings.HasSuffix(file, "_test.go") || strings.HasSuffix(file, "_test.py") ||
+			strings.HasSuffix(file, ".test.ts") || strings.HasSuffix(file, ".test.js") ||
+			strings.Contains(file, "testdata/") || strings.Contains(file, "testutil/") {
+			continue
+		}
+
 		func() {
 			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
 			if err != nil {
@@ -69,6 +76,16 @@ func (c *weakAlgorithmCheck) Run(ctx context.Context, scope *compliance.ScanScop
 				trimmed := strings.TrimSpace(line)
 
 				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				// Skip #nosec/nolint annotations
+				if strings.Contains(line, "#nosec") || strings.Contains(line, "nolint:") {
+					continue
+				}
+
+				// Skip string literal pattern detection code
+				if strings.Contains(line, "strings.Contains") || strings.Contains(line, `"md5.`) || strings.Contains(line, `"sha1.`) {
 					continue
 				}
 

@@ -79,9 +79,15 @@ func (c *weakCryptoCheck) Run(ctx context.Context, scope *compliance.ScanScope) 
 					continue
 				}
 
+				// Skip lines with #nosec/nolint annotations
+				if strings.Contains(line, "#nosec") || strings.Contains(line, "nolint:") {
+					continue
+				}
+
 				// Skip lines where crypto names appear as string literals
-				// in detection/pattern code (e.g., strings.Contains(x, "md5.New()"))
-				if strings.Contains(line, "strings.Contains") || strings.Contains(line, "regexp.MustCompile") {
+				// in detection/pattern code
+				if strings.Contains(line, "strings.Contains") || strings.Contains(line, "regexp.MustCompile") ||
+					strings.Contains(line, `"md5.`) || strings.Contains(line, `"sha1.`) {
 					continue
 				}
 

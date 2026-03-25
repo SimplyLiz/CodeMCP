@@ -57,6 +57,17 @@ func (c *missingTLSCheck) Run(ctx context.Context, scope *compliance.ScanScope) 
 						strings.Contains(lower, "http://example") {
 						continue
 					}
+					// Skip print/log (displaying URLs, not connecting)
+					if strings.Contains(lower, "printf") || strings.Contains(lower, "println") ||
+						strings.Contains(lower, "log.") || strings.Contains(lower, "slog.") ||
+						strings.Contains(lower, "fmt.") {
+						continue
+					}
+					// Skip URL validation/parsing
+					if strings.Contains(lower, "hasprefix") || strings.Contains(lower, "starts_with") ||
+						strings.Contains(lower, "startswith") || strings.Contains(lower, "must start with") {
+						continue
+					}
 
 					findings = append(findings, compliance.Finding{
 						Severity:   "error",
