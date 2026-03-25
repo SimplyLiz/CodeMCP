@@ -11,7 +11,7 @@ and intent. Every source line you read costs tokens — read only what CKB says 
 
 ### CKB's blind spots (what the LLM must catch)
 
-CKB runs 20 deterministic checks with AST rules, SCIP index, and git history.
+CKB runs 15 deterministic checks with AST rules, SCIP index, and git history.
 It is structurally sound but semantically blind:
 
 - **Logic errors**: wrong conditions (`>` vs `>=`), off-by-one, incorrect algorithm
@@ -39,10 +39,24 @@ BASE=$(gh pr view $ARGUMENTS --json baseRefName -q .baseRefName)
 ckb review --base=$BASE --format=json 2>/dev/null
 ```
 
-Parse the JSON output to extract: score, verdict, checks (status + summary), and
-findings (severity + file + message + ruleId). Pipe through python/jq if needed.
+If "staged" was given:
+```bash
+ckb review --staged --format=json 2>/dev/null
+```
 
-From the output, build three lists:
+Parse the JSON output to extract:
+- `score`, `verdict` — overall quality
+- `checks[]` — status + summary per check (15 checks: breaking, secrets, tests, complexity,
+  coupling, hotspots, risk, health, dead-code, test-gaps, blast-radius, comment-drift,
+  format-consistency, bug-patterns, split)
+- `findings[]` — severity + file + message + ruleId (top-level, separate from check details)
+- `narrative` — CKB AI-generated summary (if available)
+- `prTier` — small/medium/large
+- `reviewEffort` — estimated hours + complexity
+- `reviewers[]` — suggested reviewers with expertise areas
+- `healthReport` — degraded/improved file counts
+
+From checks, build three lists:
 - **SKIP**: passed checks — don't touch these files or topics
 - **INVESTIGATE**: warned/failed checks — these are your review scope
 - **READ**: files with warn/fail findings — the only files you'll read
@@ -88,6 +102,11 @@ CKB already checked these structurally.
 
 [One sentence: what the PR does]
 
+[If CKB provided narrative, include it here]
+
+**PR tier:** [small/medium/large] | **Review effort:** [N]h ([complexity])
+**Health:** [N] degraded, [N] improved
+
 ### Issues
 1. **[must-fix|should-fix]** `file:line` — [issue in one sentence]
 2. ...
@@ -97,6 +116,9 @@ CKB already checked these structurally.
 
 ### CKB flagged (verified above)
 [for each warn/fail finding: confirmed/false-positive + one-line reason]
+
+### Suggested reviewers
+[reviewer — expertise area]
 ```
 
 If no issues found: just the header line + CKB passed list. Nothing else.
@@ -105,7 +127,7 @@ If no issues found: just the header line + CKB passed list. Nothing else.
 
 - Reading files CKB marked as pass → waste
 - Reading generated files → waste
-- Summarizing what the PR does in detail → waste (git log exists)
+- Summarizing what the PR does in detail → waste (git log exists, CKB has narrative)
 - Explaining why passed checks passed → waste
 - Running MCP drill-down tools when CLI already gave enough signal → waste
 - Reading test files to "verify test quality" → waste unless CKB flagged test-gaps
@@ -113,3 +135,4 @@ If no issues found: just the header line + CKB passed list. Nothing else.
 - Trusting score >= 80 as "safe to skip" → dangerous (per-check caps hide warnings)
 - Skipping new files because CKB didn't flag them → CKB has no SCIP data for new files
 - Reading every new file in a large new package → read entry point + types first, then follow refs
+- Ignoring reviewEffort/prTier → these tell you how thorough to be
