@@ -74,8 +74,10 @@ type ExploreSymbol struct {
 	StableId   string  `json:"stableId"`
 	Name       string  `json:"name"`
 	Kind       string  `json:"kind"`
-	Line       int     `json:"line,omitempty"`
 	File       string  `json:"file,omitempty"`
+	Line       int     `json:"line,omitempty"`
+	EndLine    int     `json:"endLine,omitempty"`
+	Lines      int     `json:"lines,omitempty"` // body line count (endLine - line + 1)
 	Visibility string  `json:"visibility"`
 	Importance float64 `json:"importance"`       // ranking score
 	Reason     string  `json:"reason,omitempty"` // why it's important
@@ -418,9 +420,11 @@ func (e *Engine) getExploreSymbols(ctx context.Context, targetType, absPath, rel
 
 		file := ""
 		line := 0
+		endLine := 0
 		if sym.Location != nil {
 			file = sym.Location.FileId
 			line = sym.Location.StartLine
+			endLine = sym.Location.EndLine
 		}
 
 		visibility := "internal"
@@ -428,12 +432,19 @@ func (e *Engine) getExploreSymbols(ctx context.Context, targetType, absPath, rel
 			visibility = sym.Visibility.Visibility
 		}
 
+		lines := 0
+		if endLine > 0 && line > 0 && endLine >= line {
+			lines = endLine - line + 1
+		}
+
 		symbols = append(symbols, ExploreSymbol{
 			StableId:   sym.StableId,
 			Name:       sym.Name,
 			Kind:       sym.Kind,
-			Line:       line,
 			File:       file,
+			Line:       line,
+			EndLine:    endLine,
+			Lines:      lines,
 			Visibility: visibility,
 			Importance: importance,
 			Reason:     reason,

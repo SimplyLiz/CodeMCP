@@ -3,7 +3,7 @@
     {
       "file": "src/pkg/handler.ts",
       "kind": "class",
-      "line": 0,
+      "line": 11,
       "moduleId": "src/pkg",
       "name": "Handler"
     },
@@ -17,7 +17,7 @@
     {
       "file": "src/pkg/server.ts",
       "kind": "class",
-      "line": 0,
+      "line": 10,
       "moduleId": "src/pkg",
       "name": "Server"
     },
@@ -45,7 +45,7 @@
     {
       "file": "src/pkg/handler.ts",
       "kind": "function",
-      "line": 0,
+      "line": 23,
       "moduleId": "src/pkg",
       "name": "Handler#handle"
     },
@@ -59,7 +59,7 @@
     {
       "file": "src/pkg/handler.ts",
       "kind": "function",
-      "line": 0,
+      "line": 33,
       "moduleId": "src/pkg",
       "name": "Handler#handleBatch"
     },
@@ -87,14 +87,14 @@
     {
       "file": "src/pkg/server.ts",
       "kind": "function",
-      "line": 0,
+      "line": 21,
       "moduleId": "src/pkg",
       "name": "Server#getHandler"
     },
     {
       "file": "src/pkg/handler.ts",
       "kind": "function",
-      "line": 0,
+      "line": 53,
       "moduleId": "src/pkg",
       "name": "handler"
     },
@@ -108,14 +108,14 @@
     {
       "file": "src/main.ts",
       "kind": "function",
-      "line": 0,
+      "line": 17,
       "moduleId": "src",
       "name": "main"
     },
     {
       "file": "src/pkg/handler.ts",
       "kind": "function",
-      "line": 0,
+      "line": 43,
       "moduleId": "src/pkg",
       "name": "newHandler"
     },
@@ -129,7 +129,7 @@
     {
       "file": "src/pkg/server.ts",
       "kind": "function",
-      "line": 0,
+      "line": 43,
       "moduleId": "src/pkg",
       "name": "newServer"
     },

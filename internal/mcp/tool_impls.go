@@ -501,11 +501,18 @@ func (s *MCPServer) toolSearchSymbols(params map[string]interface{}) (*envelope.
 		}
 
 		if sym.Location != nil {
-			symbolInfo["location"] = map[string]interface{}{
+			loc := map[string]interface{}{
 				"fileId":      sym.Location.FileId,
 				"startLine":   sym.Location.StartLine,
 				"startColumn": sym.Location.StartColumn,
 			}
+			if sym.Location.EndLine > 0 {
+				loc["endLine"] = sym.Location.EndLine
+			}
+			if sym.Location.EndColumn > 0 {
+				loc["endColumn"] = sym.Location.EndColumn
+			}
+			symbolInfo["location"] = loc
 		}
 
 		// Add v5.2 ranking signals

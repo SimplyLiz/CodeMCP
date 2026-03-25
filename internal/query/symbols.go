@@ -496,6 +496,11 @@ func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (
 		}, nil
 	}
 
+	// Enrich results with body ranges from tree-sitter when SCIP only provides
+	// identifier ranges (EndLine == StartLine). This gives consumers real
+	// startLine/endLine/lines without needing to do brace-matching.
+	e.enrichWithBodyRanges(ctx, results)
+
 	// Apply ranking
 	rankSearchResults(results, opts.Query)
 
@@ -815,6 +820,85 @@ func sortReferences(refs []ReferenceInfo) {
 		}
 		return refs[i].Location.StartColumn < refs[j].Location.StartColumn
 	})
+}
+
+// enrichWithBodyRanges upgrades search results with full body ranges from
+// tree-sitter. SCIP stores the range of the symbol name token (EndLine == StartLine),
+// and FTS stores no line info at all (StartLine == 0). Tree-sitter gives us real
+// scope ranges for functions, types, and methods.
+func (e *Engine) enrichWithBodyRanges(ctx context.Context, results []SearchResultItem) {
+	if e.treesitterExtractor == nil {
+		return
+	}
+
+	// Collect files that need enrichment
+	needsEnrich := make(map[string][]int) // fileId → indices into results
+	for i, r := range results {
+		if r.Location == nil || r.Location.FileId == "" {
+			continue
+		}
+		if r.Location.EndLine <= r.Location.StartLine {
+			needsEnrich[r.Location.FileId] = append(needsEnrich[r.Location.FileId], i)
+		}
+	}
+	if len(needsEnrich) == 0 {
+		return
+	}
+
+	// Extract symbols per file and match to enrich
+	for fileId, indices := range needsEnrich {
+		absPath := filepath.Join(e.repoRoot, fileId)
+		e.tsMu.Lock()
+		syms, err := e.treesitterExtractor.ExtractFile(ctx, absPath)
+		e.tsMu.Unlock()
+		if err != nil || len(syms) == 0 {
+			continue
+		}
+
+		// Build lookups: exact match by (name, startLine), and name-only for FTS results
+		type lineKey struct {
+			name string
+			line int
+		}
+		type bodyRange struct {
+			startLine int
+			endLine   int
+		}
+		byNameLine := make(map[lineKey]bodyRange)
+		byName := make(map[string]bodyRange) // first match by name (for FTS with no line)
+		for _, sym := range syms {
+			if sym.EndLine > sym.Line {
+				br := bodyRange{sym.Line, sym.EndLine}
+				byNameLine[lineKey{sym.Name, sym.Line}] = br
+				if _, exists := byName[sym.Name]; !exists {
+					byName[sym.Name] = br
+				}
+			}
+		}
+
+		for _, idx := range indices {
+			r := &results[idx]
+			// FTS stores names as "Container#Name" (e.g., "Engine#SearchSymbols"),
+			// tree-sitter uses bare names. Extract the bare name for matching.
+			matchName := r.Name
+			if hashIdx := strings.LastIndex(matchName, "#"); hashIdx >= 0 {
+				matchName = matchName[hashIdx+1:]
+			}
+
+			// Try exact match first (SCIP results with StartLine)
+			if r.Location.StartLine > 0 {
+				if br, ok := byNameLine[lineKey{matchName, r.Location.StartLine}]; ok {
+					r.Location.EndLine = br.endLine
+				}
+			} else {
+				// FTS results: no line info, match by name only
+				if br, ok := byName[matchName]; ok {
+					r.Location.StartLine = br.startLine
+					r.Location.EndLine = br.endLine
+				}
+			}
+		}
+	}
 }
 
 // searchWithTreesitter performs symbol search using tree-sitter as fallback.

@@ -3,7 +3,7 @@
     {
       "file": "pkg/service.go",
       "kind": "class",
-      "line": 0,
+      "line": 40,
       "moduleId": "pkg",
       "name": "CachingService"
     },
@@ -24,7 +24,7 @@
     {
       "file": "pkg/service.go",
       "kind": "class",
-      "line": 0,
+      "line": 13,
       "moduleId": "pkg",
       "name": "DefaultService"
     },
@@ -38,7 +38,7 @@
     {
       "file": "pkg/handler.go",
       "kind": "class",
-      "line": 0,
+      "line": 7,
       "moduleId": "pkg",
       "name": "Handler"
     },
@@ -52,91 +52,91 @@
     {
       "file": "pkg/server.go",
       "kind": "class",
-      "line": 0,
+      "line": 5,
       "moduleId": "pkg",
       "name": "Server"
     },
     {
       "file": "pkg/service.go",
       "kind": "class",
-      "line": 0,
+      "line": 7,
       "moduleId": "pkg",
       "name": "Service"
     },
     {
       "file": "pkg/service.go",
       "kind": "class",
-      "line": 0,
+      "line": 26,
       "moduleId": "pkg",
       "name": "Service#Process"
     },
     {
       "file": "pkg/service.go",
       "kind": "class",
-      "line": 0,
+      "line": 32,
       "moduleId": "pkg",
       "name": "Service#Validate"
     },
     {
       "file": "pkg/service.go",
       "kind": "function",
-      "line": 0,
+      "line": 26,
       "moduleId": "pkg",
       "name": "CachingService#Process"
     },
     {
       "file": "pkg/service.go",
       "kind": "function",
-      "line": 0,
+      "line": 32,
       "moduleId": "pkg",
       "name": "CachingService#Validate"
     },
     {
       "file": "pkg/service.go",
       "kind": "function",
-      "line": 0,
+      "line": 26,
       "moduleId": "pkg",
       "name": "DefaultService#Process"
     },
     {
       "file": "pkg/service.go",
       "kind": "function",
-      "line": 0,
+      "line": 32,
       "moduleId": "pkg",
       "name": "DefaultService#Validate"
     },
     {
       "file": "pkg/handler.go",
       "kind": "function",
-      "line": 0,
+      "line": 18,
       "moduleId": "pkg",
       "name": "Handler#Handle"
     },
     {
       "file": "pkg/service.go",
       "kind": "function",
-      "line": 0,
+      "line": 46,
       "moduleId": "pkg",
       "name": "NewCachingService"
     },
     {
       "file": "pkg/service.go",
       "kind": "function",
-      "line": 0,
+      "line": 18,
       "moduleId": "pkg",
       "name": "NewDefaultService"
     },
     {
       "file": "pkg/handler.go",
       "kind": "function",
-      "line": 0,
+      "line": 12,
       "moduleId": "pkg",
       "name": "NewHandler"
     },
     {
       "file": "main.go",
       "kind": "function",
-      "line": 0,
+      "line": 12,
       "moduleId": ".",
       "name": "main"
     }
