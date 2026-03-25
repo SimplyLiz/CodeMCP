@@ -24,9 +24,12 @@ func (f *framework) Checks() []compliance.Check {
 		// V3 — Session Management
 		&insecureCookieCheck{},
 
-		// V5 — Validation
+		// V5 — Validation, Sanitization and Encoding
 		&sqlInjectionCheck{},
 		&xssPreventionCheck{},
+		&commandInjectionCheck{},
+		&evalInjectionCheck{},
+		&xxeCheck{},
 
 		// V6 — Cryptography
 		&weakAlgorithmCheck{},
@@ -34,5 +37,9 @@ func (f *framework) Checks() []compliance.Check {
 
 		// V9 — Communications
 		&missingTLSCheck{},
+		&tlsBypassCheck{},
+
+		// V14 — Configuration
+		&asvsCORSWildcardCheck{},
 	}
 }

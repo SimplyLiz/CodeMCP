@@ -3,6 +3,7 @@ package owaspasvs
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -239,6 +240,178 @@ func (c *xssPreventionCheck) Run(ctx context.Context, scope *compliance.ScanScop
 							Suggestion: "Use context-aware output encoding; avoid raw HTML insertion without sanitization",
 							Confidence: 0.80,
 							CWE:        "CWE-79",
+						})
+						break
+					}
+				}
+			}
+		}()
+	}
+
+	return findings, nil
+}
+
+// --- command-injection: V5.3.8 ASVS — OS command injection prevention ---
+
+type commandInjectionCheck struct{}
+
+func (c *commandInjectionCheck) ID() string       { return "command-injection" }
+func (c *commandInjectionCheck) Name() string     { return "OS Command Injection Risk" }
+func (c *commandInjectionCheck) Article() string   { return "V5.3.8 ASVS" }
+func (c *commandInjectionCheck) Severity() string  { return "error" }
+
+var commandInjectionPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)exec\.Command\(.*\+`),
+	regexp.MustCompile(`(?i)exec\.CommandContext\(.*\+`),
+	regexp.MustCompile(`(?i)os\.system\(.*\+`),
+	regexp.MustCompile(`(?i)subprocess\.(?:call|run|Popen)\(.*(?:shell=True|\+)`),
+	regexp.MustCompile(`(?i)Runtime\.getRuntime\(\)\.exec\(.*\+`),
+	regexp.MustCompile(`(?i)child_process\.exec\(.*\+`),
+	regexp.MustCompile(`(?i)child_process\.execSync\(.*\+`),
+}
+
+func (c *commandInjectionCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
+	var findings []compliance.Finding
+
+	for _, file := range scope.Files {
+		if ctx.Err() != nil {
+			return findings, ctx.Err()
+		}
+
+		// Skip test files
+		if strings.Contains(file, "_test.") || strings.Contains(file, ".test.") || strings.Contains(file, ".spec.") ||
+			strings.Contains(file, "testdata/") || strings.Contains(file, "testutil/") {
+			continue
+		}
+
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
+			}
+			defer f.Close()
+
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				// Skip comments
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "*") {
+					continue
+				}
+
+				// Skip #nosec/nolint annotations
+				if strings.Contains(line, "#nosec") || strings.Contains(line, "nolint:gosec") {
+					continue
+				}
+
+				for _, pattern := range commandInjectionPatterns {
+					if pattern.MatchString(line) {
+						findings = append(findings, compliance.Finding{
+							Severity:   "error",
+							Article:    "V5.3.8 ASVS",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "Potential OS command injection: string concatenation in command execution",
+							Suggestion: "Use parameterized command arguments instead of string concatenation; avoid shell=True with untrusted input",
+							Confidence: 0.80,
+							CWE:        "CWE-78",
+						})
+						break
+					}
+				}
+			}
+		}()
+	}
+
+	return findings, nil
+}
+
+// --- eval-injection: V5.2.4 ASVS — Dynamic code execution prevention ---
+
+type evalInjectionCheck struct{}
+
+func (c *evalInjectionCheck) ID() string       { return "eval-injection" }
+func (c *evalInjectionCheck) Name() string     { return "Dynamic Code Execution (Eval Injection)" }
+func (c *evalInjectionCheck) Article() string   { return "V5.2.4 ASVS" }
+func (c *evalInjectionCheck) Severity() string  { return "error" }
+
+var evalPatterns = []struct {
+	pattern *regexp.Regexp
+	desc    string
+}{
+	{regexp.MustCompile(`\beval\s*\(`), "eval() call"},
+	{regexp.MustCompile(`\bexec\s*\(`), "exec() call"},
+	{regexp.MustCompile(`\bnew\s+Function\s*\(`), "Function constructor"},
+	{regexp.MustCompile(`(?i)\bcompile\s*\(`), "compile() call"},
+	{regexp.MustCompile(`\b__import__\s*\(`), "dynamic __import__()"},
+}
+
+func (c *evalInjectionCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
+	var findings []compliance.Finding
+
+	for _, file := range scope.Files {
+		if ctx.Err() != nil {
+			return findings, ctx.Err()
+		}
+
+		// Skip test files
+		if strings.Contains(file, "_test.") || strings.Contains(file, ".test.") || strings.Contains(file, ".spec.") ||
+			strings.Contains(file, "testdata/") || strings.Contains(file, "testutil/") {
+			continue
+		}
+
+		// Skip Python __init__.py files (legitimate __import__ usage)
+		if strings.HasSuffix(file, "__init__.py") {
+			continue
+		}
+
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
+			}
+			defer f.Close()
+
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				// Skip comments
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "*") {
+					continue
+				}
+
+				// Skip #nosec/nolint annotations
+				if strings.Contains(line, "#nosec") || strings.Contains(line, "nolint:gosec") {
+					continue
+				}
+
+				// Skip regex/pattern definitions (they may contain 'compile')
+				if strings.Contains(line, "regexp.MustCompile") || strings.Contains(line, "regexp.Compile") ||
+					strings.Contains(line, "re.compile") || strings.Contains(line, "Compile(") {
+					continue
+				}
+
+				for _, ep := range evalPatterns {
+					if ep.pattern.MatchString(line) {
+						findings = append(findings, compliance.Finding{
+							Severity:   "error",
+							Article:    "V5.2.4 ASVS",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    fmt.Sprintf("Dynamic code execution detected: %s", ep.desc),
+							Suggestion: "Avoid eval/exec/Function constructor with dynamic input; use safe alternatives like JSON.parse() or predefined handlers",
+							Confidence: 0.75,
+							CWE:        "CWE-95",
 						})
 						break
 					}
