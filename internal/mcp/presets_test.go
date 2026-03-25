@@ -12,20 +12,20 @@ func TestPresetFiltering(t *testing.T) {
 	server := NewMCPServer("test", nil, logger)
 
 	// Test core preset (default)
-	// v8.1: Core now includes 5 compound tools + switchProject + planRefactor
+	// v8.3: Core now includes explainPath, getModuleResponsibilities, exportForLLM
 	coreTools := server.GetFilteredTools()
-	if len(coreTools) != 21 {
-		t.Errorf("expected 21 core tools (v8.1 includes planRefactor), got %d", len(coreTools))
+	if len(coreTools) != 24 {
+		t.Errorf("expected 24 core tools, got %d", len(coreTools))
 	}
 
 	// Verify compound tools come first (preferred for AI workflows)
 	expectedFirst := []string{
 		"explore", "understand", "prepareChange", "batchGet", "batchSearch",
-		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
+		"searchSymbols", "getSymbol", "explainSymbol", "explainFile", "explainPath",
 		"findReferences", "getCallGraph", "traceUsage",
-		"getArchitecture", "getModuleOverview", "listKeyConcepts",
-		"analyzeImpact", "getHotspots", "getStatus", "switchProject",
-		"planRefactor", "expandToolset",
+		"getArchitecture", "getModuleOverview", "getModuleResponsibilities", "listKeyConcepts",
+		"analyzeImpact", "getHotspots", "exportForLLM",
+		"getStatus", "switchProject", "planRefactor", "expandToolset",
 	}
 	for i, expected := range expectedFirst {
 		if i >= len(coreTools) {

@@ -13,8 +13,8 @@ import (
 const (
 	// tools/list budgets (bytes)
 	// v8.0: Increased budgets for compound tools (explore, understand, prepareChange, batchGet, batchSearch)
-	maxCorePresetBytes   = 60000  // ~15k tokens - v8.0: core now includes 5 compound tools
-	maxReviewPresetBytes = 100000 // ~25k tokens - review adds test/risk/dead-code tools
+	maxCorePresetBytes   = 75000  // ~19k tokens - v8.3: +explainPath, getModuleResponsibilities, exportForLLM
+	maxReviewPresetBytes = 120000 // ~30k tokens - v8.3: +analyzeChange, getFileComplexity, listEntrypoints
 	maxFullPresetBytes   = 285000 // ~71k tokens - all 93 tools (v8.2: +reviewPR)
 
 	// Per-tool schema budget (bytes) - catches bloated schemas
@@ -33,8 +33,8 @@ func TestToolsListTokenBudget(t *testing.T) {
 		minTools int // Ensure we don't accidentally drop tools
 		maxTools int
 	}{
-		{PresetCore, maxCorePresetBytes, 17, 21},     // v8.0: 19 tools (14 + 5 compound)
-		{PresetReview, maxReviewPresetBytes, 22, 33}, // v8.3: 33 tools (+tests, risk, dead-code, API compare)
+		{PresetCore, maxCorePresetBytes, 20, 24},     // v8.3: 24 tools (+explainPath, responsibilities, exportForLLM)
+		{PresetReview, maxReviewPresetBytes, 30, 39}, // v8.3: 39 tools (+change, complexity, entrypoints)
 		{PresetFull, maxFullPresetBytes, 80, 93},     // v8.2: 93 tools (+reviewPR)
 	}
 
