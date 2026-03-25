@@ -1850,7 +1850,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		// v8.3 Compliance Audit
 		{
 			Name:        "auditCompliance",
-			Description: "Audit codebase against regulatory compliance frameworks (GDPR, PCI DSS, HIPAA, ISO 27001, OWASP ASVS, and 15 more). Maps findings to specific regulation articles with CWE references, confidence scores, and cross-framework references. Uses the persistent SCIP index for fast analysis.",
+			Description: "Audit codebase against 20 regulatory compliance frameworks (131 checks). Use this when asked about compliance, regulations, or security posture. Specify frameworks by domain: privacy (gdpr, ccpa), security (iso27001, owasp-asvs, nist-800-53), payments (pci-dss), healthcare (hipaa), EU (dora, nis2, eu-cra, eu-ai-act), safety (iec61508, iso26262, misra), or 'all'. Returns verdict (pass/warn/fail), per-framework scores, findings mapped to specific regulation articles (e.g., 'Art. 32 GDPR', 'Req 6.2.4 PCI DSS 4.0') with CWE references and confidence scores. Cross-framework mapping means one finding shows all applicable regulations. Use --scope to limit scan to specific directories.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -1891,7 +1891,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		// v8.2 Unified PR Review
 		{
 			Name:        "reviewPR",
-			Description: "Run a comprehensive PR review with 20 quality gates. Orchestrates checks (breaking, secrets, tests, complexity, health, coupling, hotspots, risk, critical-path, traceability, independence, generated, classify, split, dead-code, test-gaps, blast-radius, comment-drift, format-consistency, bug-patterns) concurrently. Returns verdict (pass/warn/fail), score, findings with file:line locations, health report, split suggestion, and suggested reviewers. Use this FIRST when reviewing a PR — it gives you structural context (what changed, what's risky, what's untested) so you can focus your review on what matters. MCP mode is preferred for interactive review: the SCIP index stays loaded between calls, so follow-up tools (findReferences, analyzeImpact, explainSymbol, explainFile) execute instantly against the in-memory index without reloading.",
+			Description: "Run a comprehensive PR review with 15 quality checks. Use this FIRST when reviewing a PR — it gives you structural context so you can focus on what matters. Checks: breaking changes, secrets, test coverage, complexity, health, coupling, hotspots, risk, dead code, test gaps, blast radius, comment drift, format consistency, bug patterns, split suggestions. Returns verdict (pass/warn/fail), score (0-100), findings with file:line, health report, review effort estimate, PR tier, and suggested reviewers. Follow up with findReferences, analyzeImpact, or explainSymbol to drill into specific findings — the SCIP index stays loaded between calls.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
