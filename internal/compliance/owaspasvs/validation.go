@@ -11,13 +11,13 @@ import (
 	"github.com/SimplyLiz/CodeMCP/internal/compliance"
 )
 
-// --- sql-injection: V5.3.3 ASVS — SQL parameterization ---
+// --- sql-injection: V5.3.4 ASVS — SQL parameterization ---
 
 type sqlInjectionCheck struct{}
 
 func (c *sqlInjectionCheck) ID() string       { return "sql-injection" }
 func (c *sqlInjectionCheck) Name() string     { return "SQL Injection Risk" }
-func (c *sqlInjectionCheck) Article() string   { return "V5.3.3 ASVS" }
+func (c *sqlInjectionCheck) Article() string   { return "V5.3.4 ASVS" }
 func (c *sqlInjectionCheck) Severity() string  { return "error" }
 
 var asvsSQLInjectionPatterns = []*regexp.Regexp{
@@ -115,7 +115,7 @@ func (c *sqlInjectionCheck) Run(ctx context.Context, scope *compliance.ScanScope
 					if pattern.MatchString(line) {
 						findings = append(findings, compliance.Finding{
 							Severity:   "error",
-							Article:    "V5.3.3 ASVS",
+							Article:    "V5.3.4 ASVS",
 							File:       file,
 							StartLine:  lineNum,
 							Message:    "Potential SQL injection: string interpolation/concatenation in SQL query",
@@ -173,13 +173,13 @@ func isSafeGoSQLBuilder(line string, lines []string, idx int) bool {
 	return false
 }
 
-// --- xss-prevention: V5.3.4 ASVS — Output encoding ---
+// --- xss-prevention: V5.3.3 ASVS — Output encoding ---
 
 type xssPreventionCheck struct{}
 
 func (c *xssPreventionCheck) ID() string       { return "xss-prevention" }
 func (c *xssPreventionCheck) Name() string     { return "Cross-Site Scripting (XSS) Risk" }
-func (c *xssPreventionCheck) Article() string   { return "V5.3.4 ASVS" }
+func (c *xssPreventionCheck) Article() string   { return "V5.3.3 ASVS" }
 func (c *xssPreventionCheck) Severity() string  { return "error" }
 
 var xssPatterns = []struct {
@@ -232,7 +232,7 @@ func (c *xssPreventionCheck) Run(ctx context.Context, scope *compliance.ScanScop
 					if xss.pattern.MatchString(line) {
 						findings = append(findings, compliance.Finding{
 							Severity:   "error",
-							Article:    "V5.3.4 ASVS",
+							Article:    "V5.3.3 ASVS",
 							File:       file,
 							StartLine:  lineNum,
 							Message:    "Potential XSS vulnerability: " + xss.desc,

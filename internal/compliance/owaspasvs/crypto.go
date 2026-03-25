@@ -12,13 +12,13 @@ import (
 	"github.com/SimplyLiz/CodeMCP/internal/compliance"
 )
 
-// --- weak-algorithm: V6.2.1 ASVS — Cryptographic algorithms ---
+// --- weak-algorithm: V6.2.5 ASVS — Deprecated cryptographic algorithms ---
 
 type weakAlgorithmCheck struct{}
 
 func (c *weakAlgorithmCheck) ID() string       { return "weak-algorithm" }
 func (c *weakAlgorithmCheck) Name() string     { return "Deprecated Cryptographic Algorithm" }
-func (c *weakAlgorithmCheck) Article() string   { return "V6.2.1 ASVS" }
+func (c *weakAlgorithmCheck) Article() string   { return "V6.2.5 ASVS" }
 func (c *weakAlgorithmCheck) Severity() string  { return "error" }
 
 var asvsWeakAlgorithms = []struct {
@@ -93,7 +93,7 @@ func (c *weakAlgorithmCheck) Run(ctx context.Context, scope *compliance.ScanScop
 					if algo.pattern.MatchString(line) {
 						findings = append(findings, compliance.Finding{
 							Severity:   "error",
-							Article:    "V6.2.1 ASVS",
+							Article:    "V6.2.5 ASVS",
 							File:       file,
 							StartLine:  lineNum,
 							Message:    fmt.Sprintf("Deprecated cryptographic algorithm '%s' detected", algo.name),
@@ -111,13 +111,13 @@ func (c *weakAlgorithmCheck) Run(ctx context.Context, scope *compliance.ScanScop
 	return findings, nil
 }
 
-// --- insecure-random: V6.2.5 ASVS — Cryptographic random ---
+// --- insecure-random: V6.3.1 ASVS — Cryptographic random ---
 
 type insecureRandomCheck struct{}
 
 func (c *insecureRandomCheck) ID() string       { return "insecure-random" }
 func (c *insecureRandomCheck) Name() string     { return "Insecure Random Number Generator" }
-func (c *insecureRandomCheck) Article() string   { return "V6.2.5 ASVS" }
+func (c *insecureRandomCheck) Article() string   { return "V6.3.1 ASVS" }
 func (c *insecureRandomCheck) Severity() string  { return "error" }
 
 var asvsInsecureRandomPatterns = []*regexp.Regexp{
@@ -172,7 +172,7 @@ func (c *insecureRandomCheck) Run(ctx context.Context, scope *compliance.ScanSco
 
 						findings = append(findings, compliance.Finding{
 							Severity:   "error",
-							Article:    "V6.2.5 ASVS",
+							Article:    "V6.3.1 ASVS",
 							File:       file,
 							StartLine:  lineNum,
 							Message:    "Non-cryptographic random number generator used",

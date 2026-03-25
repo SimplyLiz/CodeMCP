@@ -48,7 +48,7 @@ var crossMappings = map[string]CrossFrameworkMapping{
 			{FrameworkISO27001, "A.8.24 ISO 27001:2022", "ISO 27001 A.8.24"},
 			{FrameworkNIST80053, "SC-13 NIST 800-53", "NIST SC-13"},
 			{FrameworkPCIDSS, "Req 4.2.1 PCI DSS 4.0", "PCI DSS 4.2.1"},
-			{FrameworkOWASPASVS, "V6.2.1 ASVS", "ASVS V6.2.1"},
+			{FrameworkOWASPASVS, "V6.2.5 ASVS", "ASVS V6.2.5"},
 			{FrameworkNIS2, "Art. 21(2)(j) NIS2", "NIS2 Art.21"},
 			{FrameworkGDPR, "Art. 32 GDPR", "GDPR Art.32"},
 			{FrameworkHIPAA, "§164.312(a)(2)(iv) HIPAA", "HIPAA §164.312"},
@@ -59,7 +59,7 @@ var crossMappings = map[string]CrossFrameworkMapping{
 		Category: "sql-injection",
 		CWE:      "CWE-89",
 		References: []FrameworkReference{
-			{FrameworkOWASPASVS, "V5.3.3 ASVS", "ASVS V5.3.3"},
+			{FrameworkOWASPASVS, "V5.3.4 ASVS", "ASVS V5.3.4"},
 			{FrameworkPCIDSS, "Req 6.2.4 PCI DSS 4.0", "PCI DSS 6.2.4"},
 			{FrameworkISO27001, "A.8.28 ISO 27001:2022", "ISO 27001 A.8.28"},
 			{FrameworkNIST80053, "SI-10 NIST 800-53", "NIST SI-10"},
@@ -71,7 +71,7 @@ var crossMappings = map[string]CrossFrameworkMapping{
 		Category: "xss",
 		CWE:      "CWE-79",
 		References: []FrameworkReference{
-			{FrameworkOWASPASVS, "V5.3.4 ASVS", "ASVS V5.3.4"},
+			{FrameworkOWASPASVS, "V5.3.3 ASVS", "ASVS V5.3.3"},
 			{FrameworkPCIDSS, "Req 6.2.4 PCI DSS 4.0", "PCI DSS 6.2.4"},
 			{FrameworkISO27001, "A.8.28 ISO 27001:2022", "ISO 27001 A.8.28"},
 			{FrameworkNIST80053, "SI-10 NIST 800-53", "NIST SI-10"},
