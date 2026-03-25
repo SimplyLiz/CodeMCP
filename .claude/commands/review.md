@@ -11,7 +11,7 @@ and intent. Every source line you read costs tokens — read only what CKB says 
 
 ### CKB's blind spots (what the LLM must catch)
 
-CKB runs 15 deterministic checks with AST rules, SCIP index, and git history.
+CKB runs 20 deterministic checks with AST rules, SCIP index, and git history.
 It is structurally sound but semantically blind:
 
 - **Logic errors**: wrong conditions (`>` vs `>=`), off-by-one, incorrect algorithm
@@ -19,6 +19,7 @@ It is structurally sound but semantically blind:
 - **Design fitness**: wrong abstraction, leaky interface, coupling that metrics miss
 - **Input validation**: missing bounds checks, nil guards outside AST patterns
 - **Race conditions**: concurrency issues, mutex ordering, shared state
+- **Resource leaks**: file handles, goroutines, connections not closed on all paths
 - **Incomplete refactoring**: callers missed across module boundaries
 - **Domain edge cases**: error paths, boundary conditions tests don't cover
 
@@ -29,19 +30,22 @@ so pre-existing issues interacting with new code won't surface.
 ## Phase 1: Structural scan (~1k tokens into context)
 
 ```bash
-ckb review --base=main --format=json --compact 2>/dev/null
+ckb review --base=main --format=json 2>/dev/null
 ```
 
 If a PR number was given:
 ```bash
 BASE=$(gh pr view $ARGUMENTS --json baseRefName -q .baseRefName)
-ckb review --base=$BASE --format=json --compact 2>/dev/null
+ckb review --base=$BASE --format=json 2>/dev/null
 ```
+
+Parse the JSON output to extract: score, verdict, checks (status + summary), and
+findings (severity + file + message + ruleId). Pipe through python/jq if needed.
 
 From the output, build three lists:
 - **SKIP**: passed checks — don't touch these files or topics
 - **INVESTIGATE**: warned/failed checks — these are your review scope
-- **READ**: hotspot files + files with warn/fail findings — the only files you'll read
+- **READ**: files with warn/fail findings — the only files you'll read
 
 **Early exit**: Skip LLM ONLY when ALL conditions are met:
 1. Score ≥ 90 (not 80 — per-check caps hide warnings at 80)
@@ -56,14 +60,20 @@ the code is semantically correct.
 
 Do NOT read the full diff. Do NOT read every changed file.
 
-Read ONLY:
-1. Files that appear in INVESTIGATE findings (just the changed hunks via `git diff main...HEAD -- <file>`)
-2. New files (CKB has no history for these) — but only if <500 lines each
-3. Skip generated files, test files for existing tests, and config/CI files
+**For files CKB flagged (INVESTIGATE list):**
+Read only the changed hunks via `git diff main...HEAD -- <file>`.
 
-For each file you read, look for exactly:
+**For new files** (CKB has no history — these are your biggest blind spot):
+- If it's a new package/module: read the entry point and types/interfaces first,
+  then follow references to understand the architecture before reading individual files
+- If < 500 lines: read the file
+- If > 500 lines: read the first 100 lines (types/imports) + functions CKB flagged
+- Skip generated files, test files for existing tests, and config/CI/docs files
+
+**For each file you read, look for exactly:**
 - Logic errors (wrong condition, off-by-one, nil deref, race condition)
-- Security issues (injection, auth bypass, secrets CKB's 26 patterns missed)
+- Resource leaks (file handles, connections, goroutines not closed on error paths)
+- Security issues (injection, auth bypass, secrets CKB's patterns missed)
 - Design problems (wrong abstraction, leaky interface, coupling metrics don't catch)
 - Missing edge cases the tests don't cover
 - Incomplete refactoring (callers that should have changed but didn't)
@@ -102,3 +112,4 @@ If no issues found: just the header line + CKB passed list. Nothing else.
 - Reading hotspot-only files with no findings → high churn ≠ needs review right now
 - Trusting score >= 80 as "safe to skip" → dangerous (per-check caps hide warnings)
 - Skipping new files because CKB didn't flag them → CKB has no SCIP data for new files
+- Reading every new file in a large new package → read entry point + types first, then follow refs
