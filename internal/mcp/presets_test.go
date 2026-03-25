@@ -42,9 +42,9 @@ func TestPresetFiltering(t *testing.T) {
 		t.Fatalf("failed to set full preset: %v", err)
 	}
 	fullTools := server.GetFilteredTools()
-	// v8.2: Full now includes reviewPR (93 = 92 + 1)
-	if len(fullTools) != 93 {
-		t.Errorf("expected 93 full tools (v8.2 includes reviewPR), got %d", len(fullTools))
+	// v8.3: Full now includes auditCompliance (94 = 93 + 1)
+	if len(fullTools) != 94 {
+		t.Errorf("expected 94 full tools (v8.3 includes auditCompliance), got %d", len(fullTools))
 	}
 
 	// Full preset should still have core tools first

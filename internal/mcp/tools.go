@@ -111,7 +111,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 					},
 					"scope": map[string]interface{}{
 						"type":        "string",
-						"description": "Optional module ID to limit search scope",
+						"description": "Path prefix or module ID to limit search scope (e.g., 'src/services/', 'internal/query')",
 					},
 					"kinds": map[string]interface{}{
 						"type": "array",
@@ -141,7 +141,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 					},
 					"scope": map[string]interface{}{
 						"type":        "string",
-						"description": "Optional module ID to limit search scope",
+						"description": "Path prefix or module ID to limit search scope (e.g., 'src/services/', 'internal/query')",
 					},
 					"merge": map[string]interface{}{
 						"type":        "string",
@@ -1847,6 +1847,47 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		// v8.3 Compliance Audit
+		{
+			Name:        "auditCompliance",
+			Description: "Audit codebase against regulatory compliance frameworks (GDPR, PCI DSS, HIPAA, ISO 27001, OWASP ASVS, and 15 more). Maps findings to specific regulation articles with CWE references, confidence scores, and cross-framework references. Uses the persistent SCIP index for fast analysis.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"frameworks": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "Framework IDs to audit: gdpr, ccpa, iso27701, eu-ai-act, iso27001, nist-800-53, owasp-asvs, soc2, pci-dss, hipaa, dora, nis2, fda-21cfr11, eu-cra, sbom-slsa, iec61508, iso26262, do-178c, misra, iec62443, or 'all'",
+					},
+					"scope": map[string]interface{}{
+						"type":        "string",
+						"description": "Path prefix to limit scan scope (e.g., 'internal/auth/')",
+					},
+					"minConfidence": map[string]interface{}{
+						"type":        "number",
+						"default":     0.5,
+						"description": "Minimum confidence threshold (0.0-1.0) to include findings",
+					},
+					"silLevel": map[string]interface{}{
+						"type":        "number",
+						"default":     2,
+						"description": "SIL level for IEC 61508 checks (1-4)",
+					},
+					"checks": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "Filter to specific check IDs",
+					},
+					"failOn": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"error", "warning", "none"},
+						"default":     "error",
+						"description": "Severity threshold for verdict failure",
+					},
+				},
+				"required": []string{"frameworks"},
+			},
+		},
 		// v8.2 Unified PR Review
 		{
 			Name:        "reviewPR",
@@ -2380,6 +2421,8 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["auditRisk"] = s.toolAuditRisk
 	// v8.0 Secret Detection
 	s.tools["scanSecrets"] = s.toolScanSecrets
+	// v8.3 Compliance Audit
+	s.tools["auditCompliance"] = s.toolAuditCompliance
 	// v8.2 Unified Review
 	s.tools["reviewPR"] = s.toolReviewPR
 	// v7.3 Doc-Symbol Linking tools

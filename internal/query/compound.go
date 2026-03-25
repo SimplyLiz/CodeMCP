@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SimplyLiz/CodeMCP/internal/complexity"
 	"github.com/SimplyLiz/CodeMCP/internal/coupling"
 	"github.com/SimplyLiz/CodeMCP/internal/errors"
 	"github.com/SimplyLiz/CodeMCP/internal/output"
@@ -77,7 +78,9 @@ type ExploreSymbol struct {
 	File       string  `json:"file,omitempty"`
 	Line       int     `json:"line,omitempty"`
 	EndLine    int     `json:"endLine,omitempty"`
-	Lines      int     `json:"lines,omitempty"` // body line count (endLine - line + 1)
+	Lines      int     `json:"lines,omitempty"`      // body line count (endLine - line + 1)
+	Cyclomatic int     `json:"cyclomatic,omitempty"` // cyclomatic complexity
+	Cognitive  int     `json:"cognitive,omitempty"`  // cognitive complexity
 	Visibility string  `json:"visibility"`
 	Importance float64 `json:"importance"`       // ranking score
 	Reason     string  `json:"reason,omitempty"` // why it's important
@@ -461,7 +464,57 @@ func (e *Engine) getExploreSymbols(ctx context.Context, targetType, absPath, rel
 		symbols = symbols[:limit]
 	}
 
+	// Enrich with per-symbol complexity from tree-sitter
+	e.enrichSymbolComplexity(ctx, symbols)
+
 	return symbols, nil
+}
+
+// enrichSymbolComplexity adds cyclomatic/cognitive complexity to ExploreSymbols
+// by running tree-sitter analysis on their source files.
+func (e *Engine) enrichSymbolComplexity(ctx context.Context, symbols []ExploreSymbol) {
+	if e.complexityAnalyzer == nil {
+		return
+	}
+
+	// Group symbols by file
+	byFile := make(map[string][]int) // file → indices
+	for i, s := range symbols {
+		if s.File != "" && s.Line > 0 {
+			byFile[s.File] = append(byFile[s.File], i)
+		}
+	}
+
+	for file, indices := range byFile {
+		absPath := filepath.Join(e.repoRoot, file)
+		fc, err := e.complexityAnalyzer.GetFileComplexityFull(ctx, absPath)
+		if err != nil || fc == nil {
+			continue
+		}
+
+		// Build lookup by (name, startLine)
+		type key struct {
+			name string
+			line int
+		}
+		cxMap := make(map[key]complexity.ComplexityResult)
+		for _, fn := range fc.Functions {
+			cxMap[key{fn.Name, fn.StartLine}] = fn
+		}
+
+		for _, idx := range indices {
+			s := &symbols[idx]
+			// Strip Container# prefix for matching
+			matchName := s.Name
+			if hashIdx := strings.LastIndex(matchName, "#"); hashIdx >= 0 {
+				matchName = matchName[hashIdx+1:]
+			}
+			if cr, ok := cxMap[key{matchName, s.Line}]; ok {
+				s.Cyclomatic = cr.Cyclomatic
+				s.Cognitive = cr.Cognitive
+			}
+		}
+	}
 }
 
 // calculateSymbolImportance computes importance score for ranking.

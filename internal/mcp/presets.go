@@ -97,7 +97,8 @@ var Presets = map[string][]string{
 		"auditRisk",        // Multi-factor risk scoring
 		"analyzeChange",    // Change analysis
 		"getFileComplexity", // File complexity for review
-		"listEntrypoints",  // Key entry points in changed code
+		"listEntrypoints",    // Key entry points in changed code
+		"auditCompliance",    // Regulatory compliance audit
 	},
 
 	// Refactor: core + refactoring analysis tools
@@ -123,6 +124,7 @@ var Presets = map[string][]string{
 		"planRefactor",        // v8.1: Unified refactor planning
 		"findCycles",          // v8.1: Dependency cycle detection
 		"suggestRefactorings", // v8.1: Proactive refactoring suggestions
+		"getFileComplexity",   // v8.3: File complexity for health pipeline
 	},
 
 	// Federation: core + federation + contract tools
