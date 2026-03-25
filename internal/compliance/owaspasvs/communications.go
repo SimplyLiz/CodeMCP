@@ -31,44 +31,46 @@ func (c *missingTLSCheck) Run(ctx context.Context, scope *compliance.ScanScope) 
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			if strings.Contains(line, "http://") {
-				lower := strings.ToLower(line)
-				if strings.Contains(lower, "http://localhost") || strings.Contains(lower, "http://127.0.0.1") ||
-					strings.Contains(lower, "http://0.0.0.0") || strings.Contains(lower, "http://[::1]") ||
-					strings.Contains(lower, "http://example") {
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
 					continue
 				}
 
-				findings = append(findings, compliance.Finding{
-					Severity:   "error",
-					Article:    "V9.1.1 ASVS",
-					File:       file,
-					StartLine:  lineNum,
-					Message:    "Unencrypted HTTP connection detected — all data in transit must use TLS",
-					Suggestion: "Replace http:// with https:// or configure TLS for all connections carrying sensitive data",
-					Confidence: 0.80,
-					CWE:        "CWE-319",
-				})
+				if strings.Contains(line, "http://") {
+					lower := strings.ToLower(line)
+					if strings.Contains(lower, "http://localhost") || strings.Contains(lower, "http://127.0.0.1") ||
+						strings.Contains(lower, "http://0.0.0.0") || strings.Contains(lower, "http://[::1]") ||
+						strings.Contains(lower, "http://example") {
+						continue
+					}
+
+					findings = append(findings, compliance.Finding{
+						Severity:   "error",
+						Article:    "V9.1.1 ASVS",
+						File:       file,
+						StartLine:  lineNum,
+						Message:    "Unencrypted HTTP connection detected — all data in transit must use TLS",
+						Suggestion: "Replace http:// with https:// or configure TLS for all connections carrying sensitive data",
+						Confidence: 0.80,
+						CWE:        "CWE-319",
+					})
+				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

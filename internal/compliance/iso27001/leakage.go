@@ -47,40 +47,42 @@ func (c *hardcodedSecretCheck) Run(ctx context.Context, scope *compliance.ScanSc
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			for _, pattern := range secretPatterns {
-				if pattern.MatchString(line) {
-					findings = append(findings, compliance.Finding{
-						Severity:   "error",
-						Article:    "A.8.4 ISO 27001:2022",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "Potential hardcoded secret/credential detected",
-						Suggestion: "Use environment variables, secret managers (Vault, AWS Secrets Manager), or .env files (gitignored)",
-						Confidence: 0.80,
-						CWE:        "CWE-798",
-					})
-					break
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				for _, pattern := range secretPatterns {
+					if pattern.MatchString(line) {
+						findings = append(findings, compliance.Finding{
+							Severity:   "error",
+							Article:    "A.8.4 ISO 27001:2022",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "Potential hardcoded secret/credential detected",
+							Suggestion: "Use environment variables, secret managers (Vault, AWS Secrets Manager), or .env files (gitignored)",
+							Confidence: 0.80,
+							CWE:        "CWE-798",
+						})
+						break
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

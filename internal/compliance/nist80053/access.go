@@ -139,40 +139,42 @@ func (c *defaultCredentialsCheck) Run(ctx context.Context, scope *compliance.Sca
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			for _, pattern := range defaultCredentialPatterns {
-				if pattern.MatchString(line) {
-					findings = append(findings, compliance.Finding{
-						Severity:   "error",
-						Article:    "IA-5(1) NIST 800-53",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "Default or well-known credential detected in source code",
-						Suggestion: "Remove default credentials; require strong, unique credentials configured via environment variables or secret management",
-						Confidence: 0.85,
-						CWE:        "CWE-798",
-					})
-					break
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				for _, pattern := range defaultCredentialPatterns {
+					if pattern.MatchString(line) {
+						findings = append(findings, compliance.Finding{
+							Severity:   "error",
+							Article:    "IA-5(1) NIST 800-53",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "Default or well-known credential detected in source code",
+							Suggestion: "Remove default credentials; require strong, unique credentials configured via environment variables or secret management",
+							Confidence: 0.85,
+							CWE:        "CWE-798",
+						})
+						break
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

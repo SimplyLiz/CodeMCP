@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -98,10 +99,20 @@ func RunAudit(ctx context.Context, opts AuditOptions, logger *slog.Logger) (*Com
 	results := make([]checkResult, len(allChecks))
 	var wg sync.WaitGroup
 
+	// Limit concurrency to avoid exhausting file descriptors.
+	// Each check opens files; 126 checks × N files can exceed ulimit.
+	maxWorkers := runtime.GOMAXPROCS(0) * 4
+	if maxWorkers > 32 {
+		maxWorkers = 32
+	}
+	sem := make(chan struct{}, maxWorkers)
+
 	for i, entry := range allChecks {
 		wg.Add(1)
 		go func(idx int, fw Framework, c Check) {
 			defer wg.Done()
+			sem <- struct{}{}        // acquire
+			defer func() { <-sem }() // release
 			checkStart := time.Now()
 
 			findings, err := c.Run(ctx, scope)

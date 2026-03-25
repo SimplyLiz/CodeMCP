@@ -48,43 +48,45 @@ func (c *weakPIICryptoCheck) Run(ctx context.Context, scope *compliance.ScanScop
 			return findings, ctx.Err()
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			// Skip comments and imports
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") ||
-				strings.HasPrefix(trimmed, "import") || strings.HasPrefix(trimmed, "require") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			for i, pattern := range weakCryptoPatterns {
-				if pattern.MatchString(line) {
-					algoName := weakCryptoNames[i]
-					findings = append(findings, compliance.Finding{
-						Severity:   "error",
-						Article:    "Art. 32 GDPR",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    fmt.Sprintf("Weak/deprecated cryptographic algorithm '%s' detected", algoName),
-						Suggestion: "Use AES-256-GCM, SHA-256+, or bcrypt/argon2 for password hashing",
-						Confidence: 0.85,
-						CWE:        "CWE-327",
-					})
-					break // One finding per line
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				// Skip comments and imports
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") ||
+					strings.HasPrefix(trimmed, "import") || strings.HasPrefix(trimmed, "require") {
+					continue
+				}
+
+				for i, pattern := range weakCryptoPatterns {
+					if pattern.MatchString(line) {
+						algoName := weakCryptoNames[i]
+						findings = append(findings, compliance.Finding{
+							Severity:   "error",
+							Article:    "Art. 32 GDPR",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    fmt.Sprintf("Weak/deprecated cryptographic algorithm '%s' detected", algoName),
+							Suggestion: "Use AES-256-GCM, SHA-256+, or bcrypt/argon2 for password hashing",
+							Confidence: 0.85,
+							CWE:        "CWE-327",
+						})
+						break // One finding per line
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

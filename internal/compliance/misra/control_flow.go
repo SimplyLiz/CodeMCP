@@ -43,32 +43,34 @@ func (c *gotoUsageCheck) Run(ctx context.Context, scope *compliance.ScanScope) (
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-
-			if misraGotoPattern.MatchString(line) {
-				findings = append(findings, compliance.Finding{
-					CheckID:    "goto-usage",
-					Framework:  compliance.FrameworkMISRA,
-					Severity:   "error",
-					Article:    "Rule 15.1 MISRA C",
-					File:       file,
-					StartLine:  lineNum,
-					Message:    "goto statement violates MISRA C Rule 15.1",
-					Suggestion: "Refactor to use structured control flow (loops, conditionals, early returns)",
-					Confidence: 0.95,
-				})
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
-		}
-		f.Close()
+			defer f.Close()
+
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+
+				if misraGotoPattern.MatchString(line) {
+					findings = append(findings, compliance.Finding{
+						CheckID:    "goto-usage",
+						Framework:  compliance.FrameworkMISRA,
+						Severity:   "error",
+						Article:    "Rule 15.1 MISRA C",
+						File:       file,
+						StartLine:  lineNum,
+						Message:    "goto statement violates MISRA C Rule 15.1",
+						Suggestion: "Refactor to use structured control flow (loops, conditionals, early returns)",
+						Confidence: 0.95,
+					})
+				}
+			}
+		}()
 	}
 
 	return findings, nil
@@ -96,57 +98,59 @@ func (c *unreachableCodeCheck) Run(ctx context.Context, scope *compliance.ScanSc
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
+			}
+			defer f.Close()
 
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-		afterTerminator := false
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+			afterTerminator := false
 
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
 
-			// Skip empty lines, comments, and closing braces
-			if trimmed == "" || strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") ||
-				strings.HasPrefix(trimmed, "*") || trimmed == "}" || trimmed == "{" {
-				if trimmed == "}" {
+				// Skip empty lines, comments, and closing braces
+				if trimmed == "" || strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") ||
+					strings.HasPrefix(trimmed, "*") || trimmed == "}" || trimmed == "{" {
+					if trimmed == "}" {
+						afterTerminator = false
+					}
+					continue
+				}
+
+				// If previous non-blank line was a terminator, this code is unreachable
+				if afterTerminator {
+					// Don't flag labels (used by goto/switch)
+					if !strings.HasSuffix(trimmed, ":") || strings.HasPrefix(trimmed, "case ") || trimmed == "default:" {
+						if !strings.HasPrefix(trimmed, "case ") && trimmed != "default:" {
+							findings = append(findings, compliance.Finding{
+								CheckID:    "unreachable-code",
+								Framework:  compliance.FrameworkMISRA,
+								Severity:   "warning",
+								Article:    "Rule 2.1 MISRA C",
+								File:       file,
+								StartLine:  lineNum,
+								Message:    fmt.Sprintf("Code after control flow terminator is unreachable: %s", trimmed),
+								Suggestion: "Remove unreachable code or restructure control flow",
+								Confidence: 0.75,
+							})
+						}
+					}
 					afterTerminator = false
 				}
-				continue
-			}
 
-			// If previous non-blank line was a terminator, this code is unreachable
-			if afterTerminator {
-				// Don't flag labels (used by goto/switch)
-				if !strings.HasSuffix(trimmed, ":") || strings.HasPrefix(trimmed, "case ") || trimmed == "default:" {
-					if !strings.HasPrefix(trimmed, "case ") && trimmed != "default:" {
-						findings = append(findings, compliance.Finding{
-							CheckID:    "unreachable-code",
-							Framework:  compliance.FrameworkMISRA,
-							Severity:   "warning",
-							Article:    "Rule 2.1 MISRA C",
-							File:       file,
-							StartLine:  lineNum,
-							Message:    fmt.Sprintf("Code after control flow terminator is unreachable: %s", trimmed),
-							Suggestion: "Remove unreachable code or restructure control flow",
-							Confidence: 0.75,
-						})
-					}
+				if terminatorPattern.MatchString(line) {
+					afterTerminator = true
+				} else {
+					afterTerminator = false
 				}
-				afterTerminator = false
 			}
-
-			if terminatorPattern.MatchString(line) {
-				afterTerminator = true
-			} else {
-				afterTerminator = false
-			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

@@ -141,41 +141,43 @@ func (s *PIIScanner) CheckPIIInLogs(ctx context.Context, scope *ScanScope) ([]Fi
 			return findings, ctx.Err()
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			lineLower := strings.ToLower(line)
-
-			// Check if this is a log statement
-			if !isLogStatement(lineLower) {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			// Check for PII identifiers in the log line
-			identifiers := extractIdentifiers(line)
-			for _, ident := range identifiers {
-				normalized := normalizeIdentifier(ident)
-				if p, ok := s.matchPII(normalized); ok {
-					findings = append(findings, Finding{
-						Severity:   "error",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "PII field '" + ident + "' (" + p.PIIType + ") found in log statement",
-						Suggestion: "Remove PII from logs or use a redaction/masking function",
-						Confidence: 0.85,
-					})
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				lineLower := strings.ToLower(line)
+
+				// Check if this is a log statement
+				if !isLogStatement(lineLower) {
+					continue
+				}
+
+				// Check for PII identifiers in the log line
+				identifiers := extractIdentifiers(line)
+				for _, ident := range identifiers {
+					normalized := normalizeIdentifier(ident)
+					if p, ok := s.matchPII(normalized); ok {
+						findings = append(findings, Finding{
+							Severity:   "error",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "PII field '" + ident + "' (" + p.PIIType + ") found in log statement",
+							Suggestion: "Remove PII from logs or use a redaction/masking function",
+							Confidence: 0.85,
+						})
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil
@@ -190,39 +192,41 @@ func (s *PIIScanner) CheckPIIInErrors(ctx context.Context, scope *ScanScope) ([]
 			return findings, ctx.Err()
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			lineLower := strings.ToLower(line)
-
-			if !isErrorStatement(lineLower) {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			identifiers := extractIdentifiers(line)
-			for _, ident := range identifiers {
-				normalized := normalizeIdentifier(ident)
-				if p, ok := s.matchPII(normalized); ok {
-					findings = append(findings, Finding{
-						Severity:   "error",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "PII field '" + ident + "' (" + p.PIIType + ") exposed in error message",
-						Suggestion: "Do not include PII in error messages returned to clients",
-						Confidence: 0.80,
-					})
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				lineLower := strings.ToLower(line)
+
+				if !isErrorStatement(lineLower) {
+					continue
+				}
+
+				identifiers := extractIdentifiers(line)
+				for _, ident := range identifiers {
+					normalized := normalizeIdentifier(ident)
+					if p, ok := s.matchPII(normalized); ok {
+						findings = append(findings, Finding{
+							Severity:   "error",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "PII field '" + ident + "' (" + p.PIIType + ") exposed in error message",
+							Suggestion: "Do not include PII in error messages returned to clients",
+							Confidence: 0.80,
+						})
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

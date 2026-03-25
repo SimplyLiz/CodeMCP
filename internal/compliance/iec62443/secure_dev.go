@@ -43,39 +43,41 @@ func (c *unsafeFunctionsCheck) Run(ctx context.Context, scope *compliance.ScanSc
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			if m := bannedFuncPattern.FindStringSubmatch(line); len(m) > 1 {
-				funcName := m[1]
-				findings = append(findings, compliance.Finding{
-					CheckID:    "unsafe-functions",
-					Framework:  compliance.FrameworkIEC62443,
-					Severity:   "error",
-					Article:    "SD-4 IEC 62443-4-1",
-					File:       file,
-					StartLine:  lineNum,
-					Message:    fmt.Sprintf("Banned unsafe function '%s' used in industrial control system code", funcName),
-					Suggestion: fmt.Sprintf("Replace '%s' with a safe alternative per IEC 62443 secure development requirements", funcName),
-					Confidence: 0.95,
-					CWE:        "CWE-676",
-				})
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
+					continue
+				}
+
+				if m := bannedFuncPattern.FindStringSubmatch(line); len(m) > 1 {
+					funcName := m[1]
+					findings = append(findings, compliance.Finding{
+						CheckID:    "unsafe-functions",
+						Framework:  compliance.FrameworkIEC62443,
+						Severity:   "error",
+						Article:    "SD-4 IEC 62443-4-1",
+						File:       file,
+						StartLine:  lineNum,
+						Message:    fmt.Sprintf("Banned unsafe function '%s' used in industrial control system code", funcName),
+						Suggestion: fmt.Sprintf("Replace '%s' with a safe alternative per IEC 62443 secure development requirements", funcName),
+						Confidence: 0.95,
+						CWE:        "CWE-676",
+					})
+				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

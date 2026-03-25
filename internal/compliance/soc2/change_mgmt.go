@@ -36,32 +36,34 @@ func (c *todoInProductionCheck) Run(ctx context.Context, scope *compliance.ScanS
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-
-			if todoPattern.MatchString(line) {
-				match := todoPattern.FindString(line)
-				findings = append(findings, compliance.Finding{
-					Severity:   "info",
-					Article:    "CC8.1 SOC 2",
-					File:       file,
-					StartLine:  lineNum,
-					Message:    strings.ToUpper(match) + " comment in production code — indicates incomplete or temporary implementation",
-					Suggestion: "Resolve TODO/FIXME items before release; track them in issue tracker for change management",
-					Confidence: 0.95,
-				})
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
-		}
-		f.Close()
+			defer f.Close()
+
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+
+				if todoPattern.MatchString(line) {
+					match := todoPattern.FindString(line)
+					findings = append(findings, compliance.Finding{
+						Severity:   "info",
+						Article:    "CC8.1 SOC 2",
+						File:       file,
+						StartLine:  lineNum,
+						Message:    strings.ToUpper(match) + " comment in production code — indicates incomplete or temporary implementation",
+						Suggestion: "Resolve TODO/FIXME items before release; track them in issue tracker for change management",
+						Confidence: 0.95,
+					})
+				}
+			}
+		}()
 	}
 
 	return findings, nil
@@ -103,39 +105,41 @@ func (c *debugModeEnabledCheck) Run(ctx context.Context, scope *compliance.ScanS
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			for _, pattern := range debugPatterns {
-				if pattern.MatchString(line) {
-					findings = append(findings, compliance.Finding{
-						Severity:   "warning",
-						Article:    "CC8.1 SOC 2",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "Debug mode or verbose logging flag enabled in non-development code",
-						Suggestion: "Ensure debug mode is disabled in production; use environment-based configuration for debug settings",
-						Confidence: 0.75,
-					})
-					break
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				for _, pattern := range debugPatterns {
+					if pattern.MatchString(line) {
+						findings = append(findings, compliance.Finding{
+							Severity:   "warning",
+							Article:    "CC8.1 SOC 2",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "Debug mode or verbose logging flag enabled in non-development code",
+							Suggestion: "Ensure debug mode is disabled in production; use environment-based configuration for debug settings",
+							Confidence: 0.75,
+						})
+						break
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

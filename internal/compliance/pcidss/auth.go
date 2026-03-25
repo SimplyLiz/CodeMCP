@@ -43,39 +43,41 @@ func (c *weakPasswordPolicyCheck) Run(ctx context.Context, scope *compliance.Sca
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			for _, pattern := range weakPasswordPatterns {
-				if pattern.MatchString(line) {
-					findings = append(findings, compliance.Finding{
-						Severity:   "warning",
-						Article:    "Req 8.3.6 PCI DSS 4.0",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "Password policy with minimum length below 12 characters detected",
-						Suggestion: "PCI DSS 4.0 requires minimum 12-character passwords; update password validation accordingly",
-						Confidence: 0.70,
-					})
-					break
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				for _, pattern := range weakPasswordPatterns {
+					if pattern.MatchString(line) {
+						findings = append(findings, compliance.Finding{
+							Severity:   "warning",
+							Article:    "Req 8.3.6 PCI DSS 4.0",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "Password policy with minimum length below 12 characters detected",
+							Suggestion: "PCI DSS 4.0 requires minimum 12-character passwords; update password validation accordingly",
+							Confidence: 0.70,
+						})
+						break
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil
@@ -116,40 +118,42 @@ func (c *hardcodedCredentialsCheck) Run(ctx context.Context, scope *compliance.S
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			for _, pattern := range pciSecretPatterns {
-				if pattern.MatchString(line) {
-					findings = append(findings, compliance.Finding{
-						Severity:   "error",
-						Article:    "Req 8.6.2 PCI DSS 4.0",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "Potential hardcoded credential/secret detected",
-						Suggestion: "Use environment variables, secret managers (Vault, AWS Secrets Manager), or encrypted configuration",
-						Confidence: 0.80,
-						CWE:        "CWE-798",
-					})
-					break
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				for _, pattern := range pciSecretPatterns {
+					if pattern.MatchString(line) {
+						findings = append(findings, compliance.Finding{
+							Severity:   "error",
+							Article:    "Req 8.6.2 PCI DSS 4.0",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "Potential hardcoded credential/secret detected",
+							Suggestion: "Use environment variables, secret managers (Vault, AWS Secrets Manager), or encrypted configuration",
+							Confidence: 0.80,
+							CWE:        "CWE-798",
+						})
+						break
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

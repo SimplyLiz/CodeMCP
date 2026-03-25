@@ -53,40 +53,42 @@ func (c *deprecatedCryptoCheck) Run(ctx context.Context, scope *compliance.ScanS
 			return findings, ctx.Err()
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			for _, algo := range nis2WeakAlgorithms {
-				if algo.pattern.MatchString(line) {
-					findings = append(findings, compliance.Finding{
-						Severity:   "error",
-						Article:    "Art. 21(2)(j) NIS2",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    fmt.Sprintf("Deprecated cryptographic algorithm '%s' detected", algo.name),
-						Suggestion: "Use SHA-256+, AES-256-GCM, or bcrypt/argon2 for password hashing per NIS2 cryptography requirements",
-						Confidence: 0.90,
-						CWE:        "CWE-327",
-					})
-					break
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				for _, algo := range nis2WeakAlgorithms {
+					if algo.pattern.MatchString(line) {
+						findings = append(findings, compliance.Finding{
+							Severity:   "error",
+							Article:    "Art. 21(2)(j) NIS2",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    fmt.Sprintf("Deprecated cryptographic algorithm '%s' detected", algo.name),
+							Suggestion: "Use SHA-256+, AES-256-GCM, or bcrypt/argon2 for password hashing per NIS2 cryptography requirements",
+							Confidence: 0.90,
+							CWE:        "CWE-327",
+						})
+						break
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil
@@ -127,40 +129,42 @@ func (c *hardcodedSecretsCheck) Run(ctx context.Context, scope *compliance.ScanS
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			for _, pattern := range nis2SecretPatterns {
-				if pattern.MatchString(line) {
-					findings = append(findings, compliance.Finding{
-						Severity:   "error",
-						Article:    "Art. 21(2)(g) NIS2",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "Potential hardcoded secret/credential detected",
-						Suggestion: "Use environment variables, secret managers (Vault, AWS Secrets Manager), or .env files (gitignored)",
-						Confidence: 0.80,
-						CWE:        "CWE-798",
-					})
-					break
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				for _, pattern := range nis2SecretPatterns {
+					if pattern.MatchString(line) {
+						findings = append(findings, compliance.Finding{
+							Severity:   "error",
+							Article:    "Art. 21(2)(g) NIS2",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "Potential hardcoded secret/credential detected",
+							Suggestion: "Use environment variables, secret managers (Vault, AWS Secrets Manager), or .env files (gitignored)",
+							Confidence: 0.80,
+							CWE:        "CWE-798",
+						})
+						break
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

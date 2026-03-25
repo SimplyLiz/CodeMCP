@@ -53,54 +53,56 @@ func (c *insecureDefaultsCheck) Run(ctx context.Context, scope *compliance.ScanS
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			for _, pattern := range insecureDefaultPatterns {
-				if pattern.MatchString(line) {
-					// Special handling for 0.0.0.0 — skip if it's in env/config context
-					if strings.Contains(line, "0.0.0.0") {
-						excluded := false
-						lowerLine := strings.ToLower(line)
-						for _, excl := range bindExclusions {
-							if strings.Contains(lowerLine, excl) {
-								excluded = true
-								break
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				for _, pattern := range insecureDefaultPatterns {
+					if pattern.MatchString(line) {
+						// Special handling for 0.0.0.0 — skip if it's in env/config context
+						if strings.Contains(line, "0.0.0.0") {
+							excluded := false
+							lowerLine := strings.ToLower(line)
+							for _, excl := range bindExclusions {
+								if strings.Contains(lowerLine, excl) {
+									excluded = true
+									break
+								}
+							}
+							if excluded {
+								continue
 							}
 						}
-						if excluded {
-							continue
-						}
-					}
 
-					findings = append(findings, compliance.Finding{
-						Severity:   "error",
-						Article:    "Art. 13 EU CRA",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "Insecure default configuration detected (default credential, permissive binding, or debug mode)",
-						Suggestion: "EU CRA requires secure-by-default configuration; remove default credentials and restrict default network exposure",
-						Confidence: 0.80,
-					})
-					break
+						findings = append(findings, compliance.Finding{
+							Severity:   "error",
+							Article:    "Art. 13 EU CRA",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "Insecure default configuration detected (default credential, permissive binding, or debug mode)",
+							Suggestion: "EU CRA requires secure-by-default configuration; remove default credentials and restrict default network exposure",
+							Confidence: 0.80,
+						})
+						break
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil
@@ -144,58 +146,60 @@ func (c *unnecessaryAttackSurfaceCheck) Run(ctx context.Context, scope *complian
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-		// Track context: look at surrounding lines for restriction indicators
-		var recentLines []string
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			recentLines = append(recentLines, strings.ToLower(line))
-			if len(recentLines) > 10 {
-				recentLines = recentLines[1:]
-			}
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+			// Track context: look at surrounding lines for restriction indicators
+			var recentLines []string
 
-			for _, pattern := range attackSurfacePatterns {
-				if pattern.MatchString(line) {
-					// Check if there are restriction indicators nearby
-					context := strings.Join(recentLines, " ")
-					hasRestriction := false
-					for _, indicator := range restrictionIndicators {
-						if strings.Contains(context, indicator) {
-							hasRestriction = true
-							break
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				recentLines = append(recentLines, strings.ToLower(line))
+				if len(recentLines) > 10 {
+					recentLines = recentLines[1:]
+				}
+
+				for _, pattern := range attackSurfacePatterns {
+					if pattern.MatchString(line) {
+						// Check if there are restriction indicators nearby
+						context := strings.Join(recentLines, " ")
+						hasRestriction := false
+						for _, indicator := range restrictionIndicators {
+							if strings.Contains(context, indicator) {
+								hasRestriction = true
+								break
+							}
 						}
-					}
 
-					if !hasRestriction {
-						findings = append(findings, compliance.Finding{
-							Severity:   "warning",
-							Article:    "Annex I, Part I(1) EU CRA",
-							File:       file,
-							StartLine:  lineNum,
-							Message:    "Potentially unnecessary attack surface: exposed endpoint or service without visible access restriction",
-							Suggestion: "Minimize attack surface: restrict admin/debug endpoints, limit network listeners, and apply authentication to all exposed services",
-							Confidence: 0.55,
-						})
+						if !hasRestriction {
+							findings = append(findings, compliance.Finding{
+								Severity:   "warning",
+								Article:    "Annex I, Part I(1) EU CRA",
+								File:       file,
+								StartLine:  lineNum,
+								Message:    "Potentially unnecessary attack surface: exposed endpoint or service without visible access restriction",
+								Suggestion: "Minimize attack surface: restrict admin/debug endpoints, limit network listeners, and apply authentication to all exposed services",
+								Confidence: 0.55,
+							})
+						}
+						break
 					}
-					break
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

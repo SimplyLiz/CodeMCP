@@ -55,29 +55,31 @@ func (c *missingCircuitBreakerCheck) Run(ctx context.Context, scope *compliance.
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
+			}
+			defer f.Close()
 
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			line := scanner.Text()
+			scanner := bufio.NewScanner(f)
+			for scanner.Scan() {
+				line := scanner.Text()
 
-			for _, p := range circuitBreakerPatterns {
-				if p.MatchString(line) {
-					hasCircuitBreaker = true
+				for _, p := range circuitBreakerPatterns {
+					if p.MatchString(line) {
+						hasCircuitBreaker = true
+					}
+				}
+
+				for _, p := range httpClientPatterns {
+					if p.MatchString(line) {
+						hasExternalCalls = true
+						callFiles = append(callFiles, file)
+					}
 				}
 			}
-
-			for _, p := range httpClientPatterns {
-				if p.MatchString(line) {
-					hasExternalCalls = true
-					callFiles = append(callFiles, file)
-				}
-			}
-		}
-		f.Close()
+		}()
 	}
 
 	if hasExternalCalls && !hasCircuitBreaker {
@@ -146,51 +148,53 @@ func (c *missingTimeoutCheck) Run(ctx context.Context, scope *compliance.ScanSco
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			for _, nt := range noTimeoutPatterns {
-				if nt.pattern.MatchString(line) {
-					// Check if timeout is configured nearby (same line)
-					hasTimeout := false
-					for _, excl := range timeoutExclusions {
-						if excl.MatchString(line) {
-							hasTimeout = true
-							break
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				for _, nt := range noTimeoutPatterns {
+					if nt.pattern.MatchString(line) {
+						// Check if timeout is configured nearby (same line)
+						hasTimeout := false
+						for _, excl := range timeoutExclusions {
+							if excl.MatchString(line) {
+								hasTimeout = true
+								break
+							}
 						}
-					}
-					if hasTimeout {
-						continue
-					}
+						if hasTimeout {
+							continue
+						}
 
-					findings = append(findings, compliance.Finding{
-						Severity:   "warning",
-						Article:    "Art. 9 DORA",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "HTTP client without timeout configuration: " + nt.name,
-						Suggestion: "Configure explicit timeouts on all external HTTP calls to prevent cascading failures",
-						Confidence: 0.75,
-					})
-					break
+						findings = append(findings, compliance.Finding{
+							Severity:   "warning",
+							Article:    "Art. 9 DORA",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "HTTP client without timeout configuration: " + nt.name,
+							Suggestion: "Configure explicit timeouts on all external HTTP calls to prevent cascading failures",
+							Confidence: 0.75,
+						})
+						break
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil
@@ -232,35 +236,37 @@ func (c *missingRetryLogicCheck) Run(ctx context.Context, scope *compliance.Scan
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-
-			for _, p := range retryPatterns {
-				if p.MatchString(line) {
-					hasRetryLogic = true
-				}
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			if !hasExternalCalls {
-				for _, p := range httpClientPatterns {
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+
+				for _, p := range retryPatterns {
 					if p.MatchString(line) {
-						hasExternalCalls = true
-						firstCallFile = file
-						firstCallLine = lineNum
+						hasRetryLogic = true
+					}
+				}
+
+				if !hasExternalCalls {
+					for _, p := range httpClientPatterns {
+						if p.MatchString(line) {
+							hasExternalCalls = true
+							firstCallFile = file
+							firstCallLine = lineNum
+						}
 					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	if hasExternalCalls && !hasRetryLogic {

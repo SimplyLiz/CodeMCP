@@ -35,55 +35,57 @@ func (c *missingAuthorityCheckCheck) Run(ctx context.Context, scope *compliance.
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-		// Track if we've seen an auth check in the current function context
-		authCheckSeen := false
-		braceDepth := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			prevDepth := braceDepth
-			braceDepth += strings.Count(line, "{") - strings.Count(line, "}")
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+			// Track if we've seen an auth check in the current function context
+			authCheckSeen := false
+			braceDepth := 0
 
-			// Reset auth tracking at function boundaries
-			if braceDepth <= 0 && prevDepth > 0 {
-				authCheckSeen = false
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") {
+					continue
+				}
+
+				prevDepth := braceDepth
+				braceDepth += strings.Count(line, "{") - strings.Count(line, "}")
+
+				// Reset auth tracking at function boundaries
+				if braceDepth <= 0 && prevDepth > 0 {
+					authCheckSeen = false
+				}
+
+				// Track auth checks
+				if authCheckPattern.MatchString(line) {
+					authCheckSeen = true
+				}
+
+				// Detect modification calls without preceding auth check
+				if modificationCallPattern.MatchString(line) && !authCheckSeen {
+					findings = append(findings, compliance.Finding{
+						CheckID:    "missing-authority-check",
+						Framework:  compliance.FrameworkFDAPart11,
+						Severity:   "warning",
+						Article:    "§11.10(d) 21 CFR Part 11",
+						File:       file,
+						StartLine:  lineNum,
+						Message:    "Data modification operation without preceding authorization check",
+						Suggestion: "Add authorization/permission check before data modification operations",
+						Confidence: 0.55,
+					})
+				}
 			}
-
-			// Track auth checks
-			if authCheckPattern.MatchString(line) {
-				authCheckSeen = true
-			}
-
-			// Detect modification calls without preceding auth check
-			if modificationCallPattern.MatchString(line) && !authCheckSeen {
-				findings = append(findings, compliance.Finding{
-					CheckID:    "missing-authority-check",
-					Framework:  compliance.FrameworkFDAPart11,
-					Severity:   "warning",
-					Article:    "§11.10(d) 21 CFR Part 11",
-					File:       file,
-					StartLine:  lineNum,
-					Message:    "Data modification operation without preceding authorization check",
-					Suggestion: "Add authorization/permission check before data modification operations",
-					Confidence: 0.55,
-				})
-			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

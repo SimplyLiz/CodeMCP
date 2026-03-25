@@ -228,8 +228,11 @@ func EnrichWithCrossReferences(findings []query.ReviewFinding) []query.ReviewFin
 		// Build cross-reference string
 		var refs []string
 		for _, ref := range mapping.References {
-			// Don't duplicate the original framework's reference
-			if strings.Contains(findings[i].RuleID, string(ref.Framework)) {
+			// Don't duplicate the original framework's reference.
+			// Use prefix match on slash-delimited ruleID (e.g., "gdpr/pii-in-logs")
+			// to avoid substring collisions (e.g., "nis2" matching "nis").
+			rulePrefix := strings.SplitN(findings[i].RuleID, "/", 2)[0]
+			if rulePrefix == string(ref.Framework) {
 				continue
 			}
 			refs = append(refs, ref.Control)

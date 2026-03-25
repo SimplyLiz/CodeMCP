@@ -85,22 +85,24 @@ func (c *missingSBOMGenerationCheck) Run(ctx context.Context, scope *compliance.
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
+			}
+			defer f.Close()
 
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			line := scanner.Text()
+			scanner := bufio.NewScanner(f)
+			for scanner.Scan() {
+				line := scanner.Text()
 
-			for _, p := range sbomToolPatterns {
-				if p.MatchString(line) {
-					hasSBOMTool = true
+				for _, p := range sbomToolPatterns {
+					if p.MatchString(line) {
+						hasSBOMTool = true
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	if !hasSBOMFile && !hasSBOMTool {

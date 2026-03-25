@@ -47,79 +47,81 @@ func (c *panInSourceCheck) Run(ctx context.Context, scope *compliance.ScanScope)
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			// Skip lines that are regex pattern definitions
-			if regexDefinitionPattern.MatchString(line) {
-				continue
-			}
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
 
-			// Check for known test card numbers first
-			for _, card := range testCardNumbers {
-				if strings.Contains(line, card) {
-					findings = append(findings, compliance.Finding{
-						Severity:   "error",
-						Article:    "Req 3.4 PCI DSS 4.0",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "Known test card number detected in source code",
-						Suggestion: "Remove card numbers from source code; use tokenization or references to a secure vault",
-						Confidence: 0.90,
-						CWE:        "CWE-312",
-					})
-					break
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
 				}
-			}
 
-			// Check for PAN-like patterns in string literals or comments
-			if (strings.Contains(line, `"`) || strings.Contains(line, `'`)) && panPattern.MatchString(line) {
-				matches := panPattern.FindAllString(line, -1)
-				for _, m := range matches {
-					// Filter out common non-PAN numbers (timestamps, IDs, etc.)
-					if len(m) >= 13 && len(m) <= 19 {
-						// Skip if it's already caught as test card
-						isTestCard := false
-						for _, card := range testCardNumbers {
-							if m == card {
-								isTestCard = true
-								break
-							}
-						}
-						if isTestCard {
-							continue
-						}
+				// Skip lines that are regex pattern definitions
+				if regexDefinitionPattern.MatchString(line) {
+					continue
+				}
 
+				// Check for known test card numbers first
+				for _, card := range testCardNumbers {
+					if strings.Contains(line, card) {
 						findings = append(findings, compliance.Finding{
 							Severity:   "error",
 							Article:    "Req 3.4 PCI DSS 4.0",
 							File:       file,
 							StartLine:  lineNum,
-							Message:    "Potential PAN (Primary Account Number) detected in source code",
-							Suggestion: "Never store full PAN in source code; use tokenization, truncation, or masking",
-							Confidence: 0.70,
+							Message:    "Known test card number detected in source code",
+							Suggestion: "Remove card numbers from source code; use tokenization or references to a secure vault",
+							Confidence: 0.90,
 							CWE:        "CWE-312",
 						})
 						break
 					}
 				}
+
+				// Check for PAN-like patterns in string literals or comments
+				if (strings.Contains(line, `"`) || strings.Contains(line, `'`)) && panPattern.MatchString(line) {
+					matches := panPattern.FindAllString(line, -1)
+					for _, m := range matches {
+						// Filter out common non-PAN numbers (timestamps, IDs, etc.)
+						if len(m) >= 13 && len(m) <= 19 {
+							// Skip if it's already caught as test card
+							isTestCard := false
+							for _, card := range testCardNumbers {
+								if m == card {
+									isTestCard = true
+									break
+								}
+							}
+							if isTestCard {
+								continue
+							}
+
+							findings = append(findings, compliance.Finding{
+								Severity:   "error",
+								Article:    "Req 3.4 PCI DSS 4.0",
+								File:       file,
+								StartLine:  lineNum,
+								Message:    "Potential PAN (Primary Account Number) detected in source code",
+								Suggestion: "Never store full PAN in source code; use tokenization, truncation, or masking",
+								Confidence: 0.70,
+								CWE:        "CWE-312",
+							})
+							break
+						}
+					}
+				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil
@@ -148,47 +150,49 @@ func (c *panInLogsCheck) Run(ctx context.Context, scope *compliance.ScanScope) (
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
+			}
+			defer f.Close()
 
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
 
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
 
-			// Check if line is a log statement
-			isLog := false
-			lower := strings.ToLower(line)
-			for _, lp := range compliance.LogFunctionPatterns {
-				if strings.Contains(lower, lp) {
-					isLog = true
-					break
+				// Check if line is a log statement
+				isLog := false
+				lower := strings.ToLower(line)
+				for _, lp := range compliance.LogFunctionPatterns {
+					if strings.Contains(lower, lp) {
+						isLog = true
+						break
+					}
+				}
+
+				if !isLog {
+					continue
+				}
+
+				// Check if log statement contains card-related fields
+				if cardFieldPatterns.MatchString(line) {
+					findings = append(findings, compliance.Finding{
+						Severity:   "error",
+						Article:    "Req 3.3.1 PCI DSS 4.0",
+						File:       file,
+						StartLine:  lineNum,
+						Message:    "Card data field name referenced in log statement",
+						Suggestion: "Never log card numbers, CVV, or track data; mask or omit payment card fields in logs",
+						Confidence: 0.85,
+						CWE:        "CWE-532",
+					})
 				}
 			}
-
-			if !isLog {
-				continue
-			}
-
-			// Check if log statement contains card-related fields
-			if cardFieldPatterns.MatchString(line) {
-				findings = append(findings, compliance.Finding{
-					Severity:   "error",
-					Article:    "Req 3.3.1 PCI DSS 4.0",
-					File:       file,
-					StartLine:  lineNum,
-					Message:    "Card data field name referenced in log statement",
-					Suggestion: "Never log card numbers, CVV, or track data; mask or omit payment card fields in logs",
-					Confidence: 0.85,
-					CWE:        "CWE-532",
-				})
-			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

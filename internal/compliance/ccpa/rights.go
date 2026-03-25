@@ -56,31 +56,33 @@ func (c *missingDataAccessCheck) Run(ctx context.Context, scope *compliance.Scan
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			line := scanner.Text()
-
-			for _, p := range dataAccessPatterns {
-				if p.MatchString(line) {
-					hasDataAccess = true
-				}
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			if !hasUserData {
-				for _, p := range userDataPatterns {
+			scanner := bufio.NewScanner(f)
+			for scanner.Scan() {
+				line := scanner.Text()
+
+				for _, p := range dataAccessPatterns {
 					if p.MatchString(line) {
-						hasUserData = true
-						userDataFile = file
+						hasDataAccess = true
+					}
+				}
+
+				if !hasUserData {
+					for _, p := range userDataPatterns {
+						if p.MatchString(line) {
+							hasUserData = true
+							userDataFile = file
+						}
 					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	if hasUserData && !hasDataAccess {
@@ -136,31 +138,33 @@ func (c *missingDeletionCheck) Run(ctx context.Context, scope *compliance.ScanSc
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			line := scanner.Text()
-
-			for _, p := range dataDeletionPatterns {
-				if p.MatchString(line) {
-					hasDeletion = true
-				}
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			if !hasUserData {
-				for _, p := range userDataPatterns {
+			scanner := bufio.NewScanner(f)
+			for scanner.Scan() {
+				line := scanner.Text()
+
+				for _, p := range dataDeletionPatterns {
 					if p.MatchString(line) {
-						hasUserData = true
-						userDataFile = file
+						hasDeletion = true
+					}
+				}
+
+				if !hasUserData {
+					for _, p := range userDataPatterns {
+						if p.MatchString(line) {
+							hasUserData = true
+							userDataFile = file
+						}
 					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	if hasUserData && !hasDeletion {

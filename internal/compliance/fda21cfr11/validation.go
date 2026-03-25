@@ -42,80 +42,82 @@ func (c *missingInputValidationCheck) Run(ctx context.Context, scope *compliance
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-		hasInput := false
-		hasValidation := false
-		inputLine := 0
-
-		// Simple function-scope tracking
-		braceDepth := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			prevDepth := braceDepth
-			braceDepth += strings.Count(line, "{") - strings.Count(line, "}")
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+			hasInput := false
+			hasValidation := false
+			inputLine := 0
 
-			// Reset at function boundaries
-			if braceDepth <= 0 && prevDepth > 0 {
-				if hasInput && !hasValidation {
-					findings = append(findings, compliance.Finding{
-						CheckID:    "missing-input-validation",
-						Framework:  compliance.FrameworkFDAPart11,
-						Severity:   "warning",
-						Article:    "§11.10(a) 21 CFR Part 11",
-						File:       file,
-						StartLine:  inputLine,
-						Message:    "Form/API input handling without input validation",
-						Suggestion: "Add input validation and sanitization for all user-submitted data per 21 CFR Part 11",
-						Confidence: 0.60,
-					})
+			// Simple function-scope tracking
+			braceDepth := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") {
+					continue
 				}
-				hasInput = false
-				hasValidation = false
-			}
 
-			for _, pattern := range inputPatterns {
-				if pattern.MatchString(line) {
-					hasInput = true
-					inputLine = lineNum
-					break
+				prevDepth := braceDepth
+				braceDepth += strings.Count(line, "{") - strings.Count(line, "}")
+
+				// Reset at function boundaries
+				if braceDepth <= 0 && prevDepth > 0 {
+					if hasInput && !hasValidation {
+						findings = append(findings, compliance.Finding{
+							CheckID:    "missing-input-validation",
+							Framework:  compliance.FrameworkFDAPart11,
+							Severity:   "warning",
+							Article:    "§11.10(a) 21 CFR Part 11",
+							File:       file,
+							StartLine:  inputLine,
+							Message:    "Form/API input handling without input validation",
+							Suggestion: "Add input validation and sanitization for all user-submitted data per 21 CFR Part 11",
+							Confidence: 0.60,
+						})
+					}
+					hasInput = false
+					hasValidation = false
+				}
+
+				for _, pattern := range inputPatterns {
+					if pattern.MatchString(line) {
+						hasInput = true
+						inputLine = lineNum
+						break
+					}
+				}
+
+				if validationPatterns.MatchString(line) {
+					hasValidation = true
 				}
 			}
 
-			if validationPatterns.MatchString(line) {
-				hasValidation = true
+			// Handle last function in file
+			if hasInput && !hasValidation {
+				findings = append(findings, compliance.Finding{
+					CheckID:    "missing-input-validation",
+					Framework:  compliance.FrameworkFDAPart11,
+					Severity:   "warning",
+					Article:    "§11.10(a) 21 CFR Part 11",
+					File:       file,
+					StartLine:  inputLine,
+					Message:    "Form/API input handling without input validation",
+					Suggestion: "Add input validation and sanitization for all user-submitted data per 21 CFR Part 11",
+					Confidence: 0.60,
+				})
 			}
-		}
 
-		// Handle last function in file
-		if hasInput && !hasValidation {
-			findings = append(findings, compliance.Finding{
-				CheckID:    "missing-input-validation",
-				Framework:  compliance.FrameworkFDAPart11,
-				Severity:   "warning",
-				Article:    "§11.10(a) 21 CFR Part 11",
-				File:       file,
-				StartLine:  inputLine,
-				Message:    "Form/API input handling without input validation",
-				Suggestion: "Add input validation and sanitization for all user-submitted data per 21 CFR Part 11",
-				Confidence: 0.60,
-			})
-		}
-
-		f.Close()
+		}()
 	}
 
 	return findings, nil

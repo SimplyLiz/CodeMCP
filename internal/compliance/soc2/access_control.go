@@ -149,40 +149,42 @@ func (c *insecureTLSConfigCheck) Run(ctx context.Context, scope *compliance.Scan
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			for _, pattern := range insecureTLSPatterns {
-				if pattern.MatchString(line) {
-					findings = append(findings, compliance.Finding{
-						Severity:   "error",
-						Article:    "CC6.7 SOC 2",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "TLS certificate verification disabled — connections are vulnerable to MITM attacks",
-						Suggestion: "Enable TLS certificate verification; use proper CA certificates instead of disabling verification",
-						Confidence: 0.90,
-						CWE:        "CWE-295",
-					})
-					break
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				for _, pattern := range insecureTLSPatterns {
+					if pattern.MatchString(line) {
+						findings = append(findings, compliance.Finding{
+							Severity:   "error",
+							Article:    "CC6.7 SOC 2",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "TLS certificate verification disabled — connections are vulnerable to MITM attacks",
+							Suggestion: "Enable TLS certificate verification; use proper CA certificates instead of disabling verification",
+							Confidence: 0.90,
+							CWE:        "CWE-295",
+						})
+						break
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

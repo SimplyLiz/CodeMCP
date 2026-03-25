@@ -42,40 +42,42 @@ func (c *implicitConversionCheck) Run(ctx context.Context, scope *compliance.Sca
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			for _, pattern := range implicitConversionPatterns {
-				if pattern.MatchString(line) {
-					findings = append(findings, compliance.Finding{
-						CheckID:    "implicit-conversion",
-						Framework:  compliance.FrameworkMISRA,
-						Severity:   "warning",
-						Article:    "Rule 10.1 MISRA C",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "Potential implicit type conversion between signed/unsigned or narrowing types",
-						Suggestion: "Use explicit casts to make type conversions visible and intentional",
-						Confidence: 0.65,
-					})
-					break // One finding per line
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
+					continue
+				}
+
+				for _, pattern := range implicitConversionPatterns {
+					if pattern.MatchString(line) {
+						findings = append(findings, compliance.Finding{
+							CheckID:    "implicit-conversion",
+							Framework:  compliance.FrameworkMISRA,
+							Severity:   "warning",
+							Article:    "Rule 10.1 MISRA C",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "Potential implicit type conversion between signed/unsigned or narrowing types",
+							Suggestion: "Use explicit casts to make type conversions visible and intentional",
+							Confidence: 0.65,
+						})
+						break // One finding per line
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

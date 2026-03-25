@@ -53,51 +53,53 @@ func (c *hardcodedConfigCheck) Run(ctx context.Context, scope *compliance.ScanSc
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			for _, pattern := range hardcodedConfigPatterns {
-				if pattern.MatchString(line) {
-					// Check exclusions
-					excluded := false
-					for _, excl := range configExclusions {
-						if strings.Contains(strings.ToLower(line), excl) {
-							excluded = true
-							break
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				for _, pattern := range hardcodedConfigPatterns {
+					if pattern.MatchString(line) {
+						// Check exclusions
+						excluded := false
+						for _, excl := range configExclusions {
+							if strings.Contains(strings.ToLower(line), excl) {
+								excluded = true
+								break
+							}
 						}
-					}
-					if excluded {
-						continue
-					}
+						if excluded {
+							continue
+						}
 
-					findings = append(findings, compliance.Finding{
-						Severity:   "warning",
-						Article:    "A.8.9 ISO 27001:2022",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "Hardcoded configuration value detected (hostname, port, or connection string)",
-						Suggestion: "Use environment variables or configuration files for environment-specific values",
-						Confidence: 0.65,
-					})
-					break
+						findings = append(findings, compliance.Finding{
+							Severity:   "warning",
+							Article:    "A.8.9 ISO 27001:2022",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "Hardcoded configuration value detected (hostname, port, or connection string)",
+							Suggestion: "Use environment variables or configuration files for environment-specific values",
+							Confidence: 0.65,
+						})
+						break
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil
@@ -128,45 +130,47 @@ func (c *missingTLSCheck) Run(ctx context.Context, scope *compliance.ScanScope) 
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			if strings.Contains(line, "http://") {
-				// Exclude localhost/loopback
-				lower := strings.ToLower(line)
-				if strings.Contains(lower, "http://localhost") || strings.Contains(lower, "http://127.0.0.1") ||
-					strings.Contains(lower, "http://0.0.0.0") || strings.Contains(lower, "http://[::1]") ||
-					strings.Contains(lower, "http://example") {
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
 					continue
 				}
 
-				findings = append(findings, compliance.Finding{
-					Severity:   "error",
-					Article:    "A.8.20 ISO 27001:2022",
-					File:       file,
-					StartLine:  lineNum,
-					Message:    "Unencrypted HTTP connection detected — use TLS for data in transit",
-					Suggestion: "Replace http:// with https:// or use TLS configuration",
-					Confidence: 0.80,
-					CWE:        "CWE-319",
-				})
+				if strings.Contains(line, "http://") {
+					// Exclude localhost/loopback
+					lower := strings.ToLower(line)
+					if strings.Contains(lower, "http://localhost") || strings.Contains(lower, "http://127.0.0.1") ||
+						strings.Contains(lower, "http://0.0.0.0") || strings.Contains(lower, "http://[::1]") ||
+						strings.Contains(lower, "http://example") {
+						continue
+					}
+
+					findings = append(findings, compliance.Finding{
+						Severity:   "error",
+						Article:    "A.8.20 ISO 27001:2022",
+						File:       file,
+						StartLine:  lineNum,
+						Message:    "Unencrypted HTTP connection detected — use TLS for data in transit",
+						Suggestion: "Replace http:// with https:// or use TLS configuration",
+						Confidence: 0.80,
+						CWE:        "CWE-319",
+					})
+				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil
@@ -196,34 +200,36 @@ func (c *corsWildcardCheck) Run(ctx context.Context, scope *compliance.ScanScope
 			return findings, ctx.Err()
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
+			}
+			defer f.Close()
 
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
 
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
 
-			for _, pattern := range corsWildcardPatterns {
-				if pattern.MatchString(line) {
-					findings = append(findings, compliance.Finding{
-						Severity:   "warning",
-						Article:    "A.8.27 ISO 27001:2022",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "CORS wildcard origin (*) allows any website to make requests",
-						Suggestion: "Restrict CORS origins to specific trusted domains",
-						Confidence: 0.85,
-					})
-					break
+				for _, pattern := range corsWildcardPatterns {
+					if pattern.MatchString(line) {
+						findings = append(findings, compliance.Finding{
+							Severity:   "warning",
+							Article:    "A.8.27 ISO 27001:2022",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "CORS wildcard origin (*) allows any website to make requests",
+							Suggestion: "Restrict CORS origins to specific trusted domains",
+							Confidence: 0.85,
+						})
+						break
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

@@ -53,40 +53,42 @@ func (c *weakAlgorithmCheck) Run(ctx context.Context, scope *compliance.ScanScop
 			return findings, ctx.Err()
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			for _, algo := range asvsWeakAlgorithms {
-				if algo.pattern.MatchString(line) {
-					findings = append(findings, compliance.Finding{
-						Severity:   "error",
-						Article:    "V6.2.1 ASVS",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    fmt.Sprintf("Deprecated cryptographic algorithm '%s' detected", algo.name),
-						Suggestion: "Use SHA-256+, AES-256-GCM, or approved algorithms per OWASP ASVS V6.2",
-						Confidence: 0.90,
-						CWE:        "CWE-327",
-					})
-					break
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				for _, algo := range asvsWeakAlgorithms {
+					if algo.pattern.MatchString(line) {
+						findings = append(findings, compliance.Finding{
+							Severity:   "error",
+							Article:    "V6.2.1 ASVS",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    fmt.Sprintf("Deprecated cryptographic algorithm '%s' detected", algo.name),
+							Suggestion: "Use SHA-256+, AES-256-GCM, or approved algorithms per OWASP ASVS V6.2",
+							Confidence: 0.90,
+							CWE:        "CWE-327",
+						})
+						break
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil
@@ -124,46 +126,48 @@ func (c *insecureRandomCheck) Run(ctx context.Context, scope *compliance.ScanSco
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
+			}
+			defer f.Close()
 
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
 
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
 
-			for _, pattern := range asvsInsecureRandomPatterns {
-				if pattern.MatchString(line) {
-					lower := strings.ToLower(line)
-					securityContext := strings.Contains(lower, "token") || strings.Contains(lower, "secret") ||
-						strings.Contains(lower, "key") || strings.Contains(lower, "nonce") ||
-						strings.Contains(lower, "salt") || strings.Contains(lower, "session") ||
-						strings.Contains(lower, "password") || strings.Contains(lower, "auth")
+				for _, pattern := range asvsInsecureRandomPatterns {
+					if pattern.MatchString(line) {
+						lower := strings.ToLower(line)
+						securityContext := strings.Contains(lower, "token") || strings.Contains(lower, "secret") ||
+							strings.Contains(lower, "key") || strings.Contains(lower, "nonce") ||
+							strings.Contains(lower, "salt") || strings.Contains(lower, "session") ||
+							strings.Contains(lower, "password") || strings.Contains(lower, "auth")
 
-					confidence := 0.60
-					if securityContext {
-						confidence = 0.90
+						confidence := 0.60
+						if securityContext {
+							confidence = 0.90
+						}
+
+						findings = append(findings, compliance.Finding{
+							Severity:   "error",
+							Article:    "V6.2.5 ASVS",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "Non-cryptographic random number generator used",
+							Suggestion: "Use crypto/rand (Go), crypto.getRandomValues (JS), or secrets module (Python) for security-sensitive random values",
+							Confidence: confidence,
+							CWE:        "CWE-338",
+						})
+						break
 					}
-
-					findings = append(findings, compliance.Finding{
-						Severity:   "error",
-						Article:    "V6.2.5 ASVS",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "Non-cryptographic random number generator used",
-						Suggestion: "Use crypto/rand (Go), crypto.getRandomValues (JS), or secrets module (Python) for security-sensitive random values",
-						Confidence: confidence,
-						CWE:        "CWE-338",
-					})
-					break
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

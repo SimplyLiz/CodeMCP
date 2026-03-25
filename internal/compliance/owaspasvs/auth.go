@@ -68,66 +68,68 @@ func (c *weakPasswordHashCheck) Run(ctx context.Context, scope *compliance.ScanS
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			// Check if this line is in a password context
-			inPasswordContext := false
-			for _, p := range passwordContextPatterns {
-				if p.MatchString(line) {
-					inPasswordContext = true
-					break
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				// Check if this line is in a password context
+				inPasswordContext := false
+				for _, p := range passwordContextPatterns {
+					if p.MatchString(line) {
+						inPasswordContext = true
+						break
+					}
+				}
+
+				if !inPasswordContext {
+					continue
+				}
+
+				// Check if an approved hash is used
+				hasApproved := false
+				for _, p := range approvedPasswordHashPatterns {
+					if p.MatchString(line) {
+						hasApproved = true
+						break
+					}
+				}
+				if hasApproved {
+					continue
+				}
+
+				// Check for weak hash algorithms in password context
+				for _, algo := range weakHashForPasswordPatterns {
+					if algo.pattern.MatchString(line) {
+						findings = append(findings, compliance.Finding{
+							Severity:   "error",
+							Article:    "V2.4.1 ASVS",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "Password hashing with non-approved algorithm: " + algo.name,
+							Suggestion: "Use bcrypt, scrypt, argon2, or PBKDF2 with sufficient iterations for password storage",
+							Confidence: 0.85,
+							CWE:        "CWE-916",
+						})
+						break
+					}
 				}
 			}
-
-			if !inPasswordContext {
-				continue
-			}
-
-			// Check if an approved hash is used
-			hasApproved := false
-			for _, p := range approvedPasswordHashPatterns {
-				if p.MatchString(line) {
-					hasApproved = true
-					break
-				}
-			}
-			if hasApproved {
-				continue
-			}
-
-			// Check for weak hash algorithms in password context
-			for _, algo := range weakHashForPasswordPatterns {
-				if algo.pattern.MatchString(line) {
-					findings = append(findings, compliance.Finding{
-						Severity:   "error",
-						Article:    "V2.4.1 ASVS",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "Password hashing with non-approved algorithm: " + algo.name,
-						Suggestion: "Use bcrypt, scrypt, argon2, or PBKDF2 with sufficient iterations for password storage",
-						Confidence: 0.85,
-						CWE:        "CWE-916",
-					})
-					break
-				}
-			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil
@@ -168,40 +170,42 @@ func (c *hardcodedCredentialsCheck) Run(ctx context.Context, scope *compliance.S
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			for _, pattern := range asvsSecretPatterns {
-				if pattern.MatchString(line) {
-					findings = append(findings, compliance.Finding{
-						Severity:   "error",
-						Article:    "V2.10.4 ASVS",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "Potential hardcoded credential detected",
-						Suggestion: "Use environment variables, secret managers, or configuration files excluded from version control",
-						Confidence: 0.80,
-						CWE:        "CWE-798",
-					})
-					break
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				for _, pattern := range asvsSecretPatterns {
+					if pattern.MatchString(line) {
+						findings = append(findings, compliance.Finding{
+							Severity:   "error",
+							Article:    "V2.10.4 ASVS",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "Potential hardcoded credential detected",
+							Suggestion: "Use environment variables, secret managers, or configuration files excluded from version control",
+							Confidence: 0.80,
+							CWE:        "CWE-798",
+						})
+						break
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

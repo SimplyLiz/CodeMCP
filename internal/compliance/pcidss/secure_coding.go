@@ -42,40 +42,42 @@ func (c *sqlInjectionCheck) Run(ctx context.Context, scope *compliance.ScanScope
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			for _, pattern := range pciSQLInjectionPatterns {
-				if pattern.MatchString(line) {
-					findings = append(findings, compliance.Finding{
-						Severity:   "error",
-						Article:    "Req 6.2.4 PCI DSS 4.0",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "Potential SQL injection: string interpolation/concatenation in SQL query",
-						Suggestion: "Use parameterized queries or prepared statements instead of string concatenation",
-						Confidence: 0.75,
-						CWE:        "CWE-89",
-					})
-					break
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				for _, pattern := range pciSQLInjectionPatterns {
+					if pattern.MatchString(line) {
+						findings = append(findings, compliance.Finding{
+							Severity:   "error",
+							Article:    "Req 6.2.4 PCI DSS 4.0",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "Potential SQL injection: string interpolation/concatenation in SQL query",
+							Suggestion: "Use parameterized queries or prepared statements instead of string concatenation",
+							Confidence: 0.75,
+							CWE:        "CWE-89",
+						})
+						break
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil
@@ -114,40 +116,42 @@ func (c *xssPreventionCheck) Run(ctx context.Context, scope *compliance.ScanScop
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			for _, pattern := range xssPatterns {
-				if pattern.MatchString(line) {
-					findings = append(findings, compliance.Finding{
-						Severity:   "error",
-						Article:    "Req 6.2.4 PCI DSS 4.0",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "Potential XSS: unescaped user input rendered in HTML",
-						Suggestion: "Use context-aware output encoding; avoid innerHTML, dangerouslySetInnerHTML, and unescaped template directives",
-						Confidence: 0.80,
-						CWE:        "CWE-79",
-					})
-					break
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				for _, pattern := range xssPatterns {
+					if pattern.MatchString(line) {
+						findings = append(findings, compliance.Finding{
+							Severity:   "error",
+							Article:    "Req 6.2.4 PCI DSS 4.0",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "Potential XSS: unescaped user input rendered in HTML",
+							Suggestion: "Use context-aware output encoding; avoid innerHTML, dangerouslySetInnerHTML, and unescaped template directives",
+							Confidence: 0.80,
+							CWE:        "CWE-79",
+						})
+						break
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

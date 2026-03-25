@@ -39,40 +39,42 @@ func (c *sqlInjectionCheck) Run(ctx context.Context, scope *compliance.ScanScope
 			return findings, ctx.Err()
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			for _, pattern := range sqlInjectionPatterns {
-				if pattern.MatchString(line) {
-					findings = append(findings, compliance.Finding{
-						Severity:   "error",
-						Article:    "A.8.28 ISO 27001:2022",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "Potential SQL injection: string interpolation/concatenation in SQL query",
-						Suggestion: "Use parameterized queries or prepared statements instead of string concatenation",
-						Confidence: 0.75,
-						CWE:        "CWE-89",
-					})
-					break
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				for _, pattern := range sqlInjectionPatterns {
+					if pattern.MatchString(line) {
+						findings = append(findings, compliance.Finding{
+							Severity:   "error",
+							Article:    "A.8.28 ISO 27001:2022",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "Potential SQL injection: string interpolation/concatenation in SQL query",
+							Suggestion: "Use parameterized queries or prepared statements instead of string concatenation",
+							Confidence: 0.75,
+							CWE:        "CWE-89",
+						})
+						break
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil
@@ -109,57 +111,59 @@ func (c *pathTraversalCheck) Run(ctx context.Context, scope *compliance.ScanScop
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			for _, pattern := range pathTraversalPatterns {
-				if pattern.MatchString(line) {
-					// Skip patterns that are just path.join in comment-free code
-					if strings.Contains(line, "../") {
-						// Only flag ../ if it looks like string construction, not constants
-						if !strings.Contains(trimmed, "//") {
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				for _, pattern := range pathTraversalPatterns {
+					if pattern.MatchString(line) {
+						// Skip patterns that are just path.join in comment-free code
+						if strings.Contains(line, "../") {
+							// Only flag ../ if it looks like string construction, not constants
+							if !strings.Contains(trimmed, "//") {
+								findings = append(findings, compliance.Finding{
+									Severity:   "warning",
+									Article:    "A.8.28 ISO 27001:2022",
+									File:       file,
+									StartLine:  lineNum,
+									Message:    "Path traversal pattern detected (../ in path construction)",
+									Suggestion: "Validate and sanitize file paths; use filepath.Clean and ensure path stays within allowed directory",
+									Confidence: 0.60,
+									CWE:        "CWE-22",
+								})
+							}
+						} else {
 							findings = append(findings, compliance.Finding{
-								Severity:   "warning",
+								Severity:   "error",
 								Article:    "A.8.28 ISO 27001:2022",
 								File:       file,
 								StartLine:  lineNum,
-								Message:    "Path traversal pattern detected (../ in path construction)",
+								Message:    "Potential path traversal: user-controlled input in file path operation",
 								Suggestion: "Validate and sanitize file paths; use filepath.Clean and ensure path stays within allowed directory",
-								Confidence: 0.60,
+								Confidence: 0.70,
 								CWE:        "CWE-22",
 							})
 						}
-					} else {
-						findings = append(findings, compliance.Finding{
-							Severity:   "error",
-							Article:    "A.8.28 ISO 27001:2022",
-							File:       file,
-							StartLine:  lineNum,
-							Message:    "Potential path traversal: user-controlled input in file path operation",
-							Suggestion: "Validate and sanitize file paths; use filepath.Clean and ensure path stays within allowed directory",
-							Confidence: 0.70,
-							CWE:        "CWE-22",
-						})
+						break
 					}
-					break
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil
@@ -199,40 +203,42 @@ func (c *unsafeDeserializationCheck) Run(ctx context.Context, scope *compliance.
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			for _, pattern := range unsafeDeserPatterns {
-				if pattern.MatchString(line) {
-					findings = append(findings, compliance.Finding{
-						Severity:   "error",
-						Article:    "A.8.7 ISO 27001:2022",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "Potentially unsafe deserialization detected",
-						Suggestion: "Avoid deserializing untrusted data; use safe alternatives (json, yaml.SafeLoader, protobuf)",
-						Confidence: 0.75,
-						CWE:        "CWE-502",
-					})
-					break
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				for _, pattern := range unsafeDeserPatterns {
+					if pattern.MatchString(line) {
+						findings = append(findings, compliance.Finding{
+							Severity:   "error",
+							Article:    "A.8.7 ISO 27001:2022",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "Potentially unsafe deserialization detected",
+							Suggestion: "Avoid deserializing untrusted data; use safe alternatives (json, yaml.SafeLoader, protobuf)",
+							Confidence: 0.75,
+							CWE:        "CWE-502",
+						})
+						break
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

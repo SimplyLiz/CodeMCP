@@ -58,40 +58,42 @@ func (c *nonFIPSCryptoCheck) Run(ctx context.Context, scope *compliance.ScanScop
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			for _, algo := range nonFIPSAlgorithms {
-				if algo.pattern.MatchString(line) {
-					findings = append(findings, compliance.Finding{
-						Severity:   "error",
-						Article:    "SC-13 NIST 800-53",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    fmt.Sprintf("Non-FIPS-approved cryptographic algorithm '%s' detected", algo.name),
-						Suggestion: "Use FIPS 140-2 approved algorithms: AES (128/192/256), SHA-2 (256/384/512), RSA (2048+), ECDSA",
-						Confidence: 0.90,
-						CWE:        "CWE-327",
-					})
-					break
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				for _, algo := range nonFIPSAlgorithms {
+					if algo.pattern.MatchString(line) {
+						findings = append(findings, compliance.Finding{
+							Severity:   "error",
+							Article:    "SC-13 NIST 800-53",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    fmt.Sprintf("Non-FIPS-approved cryptographic algorithm '%s' detected", algo.name),
+							Suggestion: "Use FIPS 140-2 approved algorithms: AES (128/192/256), SHA-2 (256/384/512), RSA (2048+), ECDSA",
+							Confidence: 0.90,
+							CWE:        "CWE-327",
+						})
+						break
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

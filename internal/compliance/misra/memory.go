@@ -34,37 +34,39 @@ func (c *dynamicAllocationCheck) Run(ctx context.Context, scope *compliance.Scan
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			if m := dynamicAllocPattern.FindString(line); m != "" {
-				findings = append(findings, compliance.Finding{
-					CheckID:    "dynamic-allocation",
-					Framework:  compliance.FrameworkMISRA,
-					Severity:   "warning",
-					Article:    "Rule 21.3 MISRA C",
-					File:       file,
-					StartLine:  lineNum,
-					Message:    fmt.Sprintf("Dynamic memory allocation '%s' used in safety-critical code", strings.TrimSpace(m)),
-					Suggestion: "Use statically allocated buffers or memory pools instead of dynamic allocation",
-					Confidence: 0.90,
-				})
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
+					continue
+				}
+
+				if m := dynamicAllocPattern.FindString(line); m != "" {
+					findings = append(findings, compliance.Finding{
+						CheckID:    "dynamic-allocation",
+						Framework:  compliance.FrameworkMISRA,
+						Severity:   "warning",
+						Article:    "Rule 21.3 MISRA C",
+						File:       file,
+						StartLine:  lineNum,
+						Message:    fmt.Sprintf("Dynamic memory allocation '%s' used in safety-critical code", strings.TrimSpace(m)),
+						Suggestion: "Use statically allocated buffers or memory pools instead of dynamic allocation",
+						Confidence: 0.90,
+					})
+				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil
@@ -100,40 +102,42 @@ func (c *unsafeStringFunctionsCheck) Run(ctx context.Context, scope *compliance.
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			if m := unsafeFuncPattern.FindStringSubmatch(line); len(m) > 1 {
-				funcName := m[1]
-				replacement := unsafeFuncReplacements[funcName]
-				findings = append(findings, compliance.Finding{
-					CheckID:    "unsafe-string-functions",
-					Framework:  compliance.FrameworkMISRA,
-					Severity:   "error",
-					Article:    "Rule 21.14 MISRA C",
-					File:       file,
-					StartLine:  lineNum,
-					Message:    fmt.Sprintf("Banned unsafe function '%s' used", funcName),
-					Suggestion: fmt.Sprintf("Replace '%s' with bounds-checked '%s'", funcName, replacement),
-					Confidence: 0.95,
-					CWE:        "CWE-676",
-				})
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
+					continue
+				}
+
+				if m := unsafeFuncPattern.FindStringSubmatch(line); len(m) > 1 {
+					funcName := m[1]
+					replacement := unsafeFuncReplacements[funcName]
+					findings = append(findings, compliance.Finding{
+						CheckID:    "unsafe-string-functions",
+						Framework:  compliance.FrameworkMISRA,
+						Severity:   "error",
+						Article:    "Rule 21.14 MISRA C",
+						File:       file,
+						StartLine:  lineNum,
+						Message:    fmt.Sprintf("Banned unsafe function '%s' used", funcName),
+						Suggestion: fmt.Sprintf("Replace '%s' with bounds-checked '%s'", funcName, replacement),
+						Confidence: 0.95,
+						CWE:        "CWE-676",
+					})
+				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

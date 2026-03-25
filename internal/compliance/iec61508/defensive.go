@@ -47,42 +47,44 @@ func (c *uncheckedErrorCheck) Run(ctx context.Context, scope *compliance.ScanSco
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			// Detect error explicitly discarded with _
-			if strings.Contains(line, ", _ =") || strings.Contains(line, ", _ :=") {
-				// Check if it looks like an error being discarded
-				if strings.Contains(strings.ToLower(line), "err") ||
-					strings.Contains(line, "Close()") || strings.Contains(line, "Write(") ||
-					strings.Contains(line, "Read(") || strings.Contains(line, "Flush(") {
-					findings = append(findings, compliance.Finding{
-						Severity:   "error",
-						Article:    "Table A.3 IEC 61508-3",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "Error return value explicitly discarded",
-						Suggestion: "Handle all error returns; do not discard with _ in safety-critical code",
-						Confidence: 0.85,
-					})
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") {
+					continue
+				}
+
+				// Detect error explicitly discarded with _
+				if strings.Contains(line, ", _ =") || strings.Contains(line, ", _ :=") {
+					// Check if it looks like an error being discarded
+					if strings.Contains(strings.ToLower(line), "err") ||
+						strings.Contains(line, "Close()") || strings.Contains(line, "Write(") ||
+						strings.Contains(line, "Read(") || strings.Contains(line, "Flush(") {
+						findings = append(findings, compliance.Finding{
+							Severity:   "error",
+							Article:    "Table A.3 IEC 61508-3",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "Error return value explicitly discarded",
+							Suggestion: "Handle all error returns; do not discard with _ in safety-critical code",
+							Confidence: 0.85,
+						})
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

@@ -219,40 +219,42 @@ func (c *minimumNecessaryCheck) Run(ctx context.Context, scope *compliance.ScanS
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		fileScanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for fileScanner.Scan() {
-			lineNum++
-			line := fileScanner.Text()
-
-			matches := selectStarPattern.FindStringSubmatch(line)
-			if len(matches) < 2 {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			tableName := strings.ToLower(matches[1])
-			for _, indicator := range phiTableIndicators {
-				if strings.Contains(tableName, indicator) {
-					findings = append(findings, compliance.Finding{
-						Severity:   "warning",
-						Article:    "§164.502(b) HIPAA",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    fmt.Sprintf("SELECT * on PHI-bearing table '%s' violates minimum necessary principle", matches[1]),
-						Suggestion: "Select only the specific PHI columns required for the operation; avoid SELECT * on tables containing protected health information",
-						Confidence: 0.75,
-					})
-					break
+			fileScanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for fileScanner.Scan() {
+				lineNum++
+				line := fileScanner.Text()
+
+				matches := selectStarPattern.FindStringSubmatch(line)
+				if len(matches) < 2 {
+					continue
+				}
+
+				tableName := strings.ToLower(matches[1])
+				for _, indicator := range phiTableIndicators {
+					if strings.Contains(tableName, indicator) {
+						findings = append(findings, compliance.Finding{
+							Severity:   "warning",
+							Article:    "§164.502(b) HIPAA",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    fmt.Sprintf("SELECT * on PHI-bearing table '%s' violates minimum necessary principle", matches[1]),
+							Suggestion: "Select only the specific PHI columns required for the operation; avoid SELECT * on tables containing protected health information",
+							Confidence: 0.75,
+						})
+						break
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

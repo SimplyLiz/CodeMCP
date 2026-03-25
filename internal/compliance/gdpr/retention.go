@@ -109,39 +109,41 @@ func (c *noDeletionEndpointCheck) Run(ctx context.Context, scope *compliance.Sca
 			break
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			lower := strings.ToLower(scanner.Text())
-
-			for _, p := range deletionPatterns {
-				if strings.Contains(lower, p) {
-					hasDeleteCapability = true
-					break
-				}
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			// Check for DELETE HTTP method handlers
-			if strings.Contains(lower, "\"delete\"") || strings.Contains(lower, "'delete'") ||
-				strings.Contains(lower, "methods.delete") || strings.Contains(lower, "handledelete") ||
-				strings.Contains(lower, ".delete(") {
-				for _, hp := range httpDeletePatterns {
-					if strings.Contains(lower, hp) && (strings.Contains(lower, "user") || strings.Contains(lower, "account") || strings.Contains(lower, "profile")) {
-						hasHTTPDelete = true
+			scanner := bufio.NewScanner(f)
+			for scanner.Scan() {
+				lower := strings.ToLower(scanner.Text())
+
+				for _, p := range deletionPatterns {
+					if strings.Contains(lower, p) {
+						hasDeleteCapability = true
 						break
 					}
 				}
-			}
 
-			if hasDeleteCapability {
-				break
+				// Check for DELETE HTTP method handlers
+				if strings.Contains(lower, "\"delete\"") || strings.Contains(lower, "'delete'") ||
+					strings.Contains(lower, "methods.delete") || strings.Contains(lower, "handledelete") ||
+					strings.Contains(lower, ".delete(") {
+					for _, hp := range httpDeletePatterns {
+						if strings.Contains(lower, hp) && (strings.Contains(lower, "user") || strings.Contains(lower, "account") || strings.Contains(lower, "profile")) {
+							hasHTTPDelete = true
+							break
+						}
+					}
+				}
+
+				if hasDeleteCapability {
+					break
+				}
 			}
-		}
-		f.Close()
+		}()
 
 		if hasDeleteCapability {
 			break
@@ -243,33 +245,35 @@ func (c *excessiveCollectionCheck) Run(ctx context.Context, scope *compliance.Sc
 			return findings, ctx.Err()
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			upper := strings.ToUpper(strings.TrimSpace(line))
-
-			// Detect SELECT * patterns
-			if strings.Contains(upper, "SELECT *") || strings.Contains(upper, "SELECT * FROM") {
-				findings = append(findings, compliance.Finding{
-					Severity:   "warning",
-					Article:    "Art. 25 GDPR",
-					File:       file,
-					StartLine:  lineNum,
-					Message:    "SELECT * may fetch more personal data than needed (data minimization violation)",
-					Suggestion: "Select only the specific columns required for the operation",
-					Confidence: 0.70,
-				})
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
-		}
-		f.Close()
+			defer f.Close()
+
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				upper := strings.ToUpper(strings.TrimSpace(line))
+
+				// Detect SELECT * patterns
+				if strings.Contains(upper, "SELECT *") || strings.Contains(upper, "SELECT * FROM") {
+					findings = append(findings, compliance.Finding{
+						Severity:   "warning",
+						Article:    "Art. 25 GDPR",
+						File:       file,
+						StartLine:  lineNum,
+						Message:    "SELECT * may fetch more personal data than needed (data minimization violation)",
+						Suggestion: "Select only the specific columns required for the operation",
+						Confidence: 0.70,
+					})
+				}
+			}
+		}()
 	}
 
 	return findings, nil
@@ -292,41 +296,43 @@ func (c *unencryptedTransportCheck) Run(ctx context.Context, scope *compliance.S
 			return findings, ctx.Err()
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			// Skip comments
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "*") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			// Detect hardcoded HTTP URLs (not HTTPS) in code
-			if strings.Contains(line, "http://") && !strings.Contains(line, "http://localhost") &&
-				!strings.Contains(line, "http://127.0.0.1") && !strings.Contains(line, "http://0.0.0.0") &&
-				!strings.Contains(line, "http://[::1]") {
-				findings = append(findings, compliance.Finding{
-					Severity:   "error",
-					Article:    "Art. 32 GDPR",
-					File:       file,
-					StartLine:  lineNum,
-					Message:    "Unencrypted HTTP URL detected — data in transit must be encrypted",
-					Suggestion: "Use HTTPS for all data transmission, especially when handling personal data",
-					Confidence: 0.75,
-					CWE:        "CWE-319",
-				})
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				// Skip comments
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "*") {
+					continue
+				}
+
+				// Detect hardcoded HTTP URLs (not HTTPS) in code
+				if strings.Contains(line, "http://") && !strings.Contains(line, "http://localhost") &&
+					!strings.Contains(line, "http://127.0.0.1") && !strings.Contains(line, "http://0.0.0.0") &&
+					!strings.Contains(line, "http://[::1]") {
+					findings = append(findings, compliance.Finding{
+						Severity:   "error",
+						Article:    "Art. 32 GDPR",
+						File:       file,
+						StartLine:  lineNum,
+						Message:    "Unencrypted HTTP URL detected — data in transit must be encrypted",
+						Suggestion: "Use HTTPS for all data transmission, especially when handling personal data",
+						Confidence: 0.75,
+						CWE:        "CWE-319",
+					})
+				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

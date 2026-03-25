@@ -40,30 +40,32 @@ func (c *gotoUsageCheck) Run(ctx context.Context, scope *compliance.ScanScope) (
 			return findings, ctx.Err()
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-
-			if gotoPattern.MatchString(line) {
-				findings = append(findings, compliance.Finding{
-					Severity:   severity,
-					Article:    "Table B.1 IEC 61508-3",
-					File:       file,
-					StartLine:  lineNum,
-					Message:    fmt.Sprintf("goto statement violates structured programming requirement (SIL %d)", silLevel),
-					Suggestion: "Refactor to use loops, conditionals, or early returns instead of goto",
-					Confidence: 0.95,
-				})
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
-		}
-		f.Close()
+			defer f.Close()
+
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+
+				if gotoPattern.MatchString(line) {
+					findings = append(findings, compliance.Finding{
+						Severity:   severity,
+						Article:    "Table B.1 IEC 61508-3",
+						File:       file,
+						StartLine:  lineNum,
+						Message:    fmt.Sprintf("goto statement violates structured programming requirement (SIL %d)", silLevel),
+						Suggestion: "Refactor to use loops, conditionals, or early returns instead of goto",
+						Confidence: 0.95,
+					})
+				}
+			}
+		}()
 	}
 
 	return findings, nil
@@ -158,34 +160,36 @@ func (c *deepNestingCheck) Run(ctx context.Context, scope *compliance.ScanScope)
 			return findings, ctx.Err()
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-		depth := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-
-			depth += strings.Count(line, "{") - strings.Count(line, "}")
-
-			if depth > maxDepth {
-				findings = append(findings, compliance.Finding{
-					Severity:   "warning",
-					Article:    "Table B.1 IEC 61508-3",
-					File:       file,
-					StartLine:  lineNum,
-					Message:    fmt.Sprintf("Nesting depth %d exceeds limit of %d", depth, maxDepth),
-					Suggestion: "Reduce nesting by extracting functions, using early returns, or guard clauses",
-					Confidence: 0.85,
-				})
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
-		}
-		f.Close()
+			defer f.Close()
+
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+			depth := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+
+				depth += strings.Count(line, "{") - strings.Count(line, "}")
+
+				if depth > maxDepth {
+					findings = append(findings, compliance.Finding{
+						Severity:   "warning",
+						Article:    "Table B.1 IEC 61508-3",
+						File:       file,
+						StartLine:  lineNum,
+						Message:    fmt.Sprintf("Nesting depth %d exceeds limit of %d", depth, maxDepth),
+						Suggestion: "Reduce nesting by extracting functions, using early returns, or guard clauses",
+						Confidence: 0.85,
+					})
+				}
+			}
+		}()
 	}
 
 	return findings, nil
@@ -285,52 +289,54 @@ func (c *globalStateCheck) Run(ctx context.Context, scope *compliance.ScanScope)
 			return findings, ctx.Err()
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-		braceDepth := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			braceDepth += strings.Count(line, "{") - strings.Count(line, "}")
-
-			// Only check top-level declarations (braceDepth 0 or 1 for Go package level)
-			if braceDepth > 1 {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
-			}
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+			braceDepth := 0
 
-			for _, pattern := range globalMutablePatterns {
-				if pattern.MatchString(trimmed) {
-					// Skip constants and immutable declarations
-					if strings.Contains(trimmed, "const") || strings.Contains(trimmed, "sync.") ||
-						strings.Contains(trimmed, "Mutex") {
-						continue
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				braceDepth += strings.Count(line, "{") - strings.Count(line, "}")
+
+				// Only check top-level declarations (braceDepth 0 or 1 for Go package level)
+				if braceDepth > 1 {
+					continue
+				}
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				for _, pattern := range globalMutablePatterns {
+					if pattern.MatchString(trimmed) {
+						// Skip constants and immutable declarations
+						if strings.Contains(trimmed, "const") || strings.Contains(trimmed, "sync.") ||
+							strings.Contains(trimmed, "Mutex") {
+							continue
+						}
+						findings = append(findings, compliance.Finding{
+							Severity:   "warning",
+							Article:    "Table B.9 IEC 61508-3",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "Global mutable state detected",
+							Suggestion: "Avoid global mutable state in safety-critical code; use dependency injection or pass state explicitly",
+							Confidence: 0.65,
+						})
+						break
 					}
-					findings = append(findings, compliance.Finding{
-						Severity:   "warning",
-						Article:    "Table B.9 IEC 61508-3",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "Global mutable state detected",
-						Suggestion: "Avoid global mutable state in safety-critical code; use dependency injection or pass state explicitly",
-						Confidence: 0.65,
-					})
-					break
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

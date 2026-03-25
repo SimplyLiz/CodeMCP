@@ -56,31 +56,33 @@ func (c *missingHealthEndpointCheck) Run(ctx context.Context, scope *compliance.
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			line := scanner.Text()
-
-			for _, p := range healthEndpointPatterns {
-				if p.MatchString(line) {
-					hasHealthEndpoint = true
-				}
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			if !hasWebService {
-				for _, p := range webServicePatterns {
+			scanner := bufio.NewScanner(f)
+			for scanner.Scan() {
+				line := scanner.Text()
+
+				for _, p := range healthEndpointPatterns {
 					if p.MatchString(line) {
-						hasWebService = true
-						serviceFile = file
+						hasHealthEndpoint = true
+					}
+				}
+
+				if !hasWebService {
+					for _, p := range webServicePatterns {
+						if p.MatchString(line) {
+							hasWebService = true
+							serviceFile = file
+						}
 					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	if hasWebService && !hasHealthEndpoint {
@@ -135,32 +137,34 @@ func (c *missingCorrelationIDCheck) Run(ctx context.Context, scope *compliance.S
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			line := scanner.Text()
-
-			for _, p := range correlationPatterns {
-				if p.MatchString(line) {
-					hasCorrelation = true
-				}
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			// Detect distributed service patterns (multiple service calls)
-			if !hasDistributedService {
-				for _, p := range httpClientPatterns {
+			scanner := bufio.NewScanner(f)
+			for scanner.Scan() {
+				line := scanner.Text()
+
+				for _, p := range correlationPatterns {
 					if p.MatchString(line) {
-						hasDistributedService = true
-						serviceFile = file
+						hasCorrelation = true
+					}
+				}
+
+				// Detect distributed service patterns (multiple service calls)
+				if !hasDistributedService {
+					for _, p := range httpClientPatterns {
+						if p.MatchString(line) {
+							hasDistributedService = true
+							serviceFile = file
+						}
 					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	if hasDistributedService && !hasCorrelation {

@@ -93,45 +93,47 @@ func (c *sensitivePIExposureCheck) Run(ctx context.Context, scope *compliance.Sc
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-		foundCategories := make(map[string]bool) // Avoid duplicate categories per file
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			for _, spi := range sensitivePIPatterns {
-				if spi.pattern.MatchString(line) {
-					if foundCategories[spi.category] {
-						continue
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+			foundCategories := make(map[string]bool) // Avoid duplicate categories per file
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				for _, spi := range sensitivePIPatterns {
+					if spi.pattern.MatchString(line) {
+						if foundCategories[spi.category] {
+							continue
+						}
+						foundCategories[spi.category] = true
+
+						findings = append(findings, compliance.Finding{
+							Severity:   "warning",
+							Article:    "§1798.121 CCPA",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "CCPA sensitive personal information detected: " + spi.category,
+							Suggestion: "Ensure use limitation is enforced for sensitive PI; consumers must be able to limit use per CCPA §1798.121",
+							Confidence: 0.65,
+						})
+						break
 					}
-					foundCategories[spi.category] = true
-
-					findings = append(findings, compliance.Finding{
-						Severity:   "warning",
-						Article:    "§1798.121 CCPA",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "CCPA sensitive personal information detected: " + spi.category,
-						Suggestion: "Ensure use limitation is enforced for sensitive PI; consumers must be able to limit use per CCPA §1798.121",
-						Confidence: 0.65,
-					})
-					break
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

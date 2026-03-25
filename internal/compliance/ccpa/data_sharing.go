@@ -61,35 +61,37 @@ func (c *missingDoNotSellCheck) Run(ctx context.Context, scope *compliance.ScanS
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-
-			for _, p := range optOutPatterns {
-				if p.MatchString(line) {
-					hasOptOut = true
-				}
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			if !hasThirdPartySharing {
-				for _, p := range thirdPartyDataPatterns {
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+
+				for _, p := range optOutPatterns {
 					if p.MatchString(line) {
-						hasThirdPartySharing = true
-						sharingFile = file
-						sharingLine = lineNum
+						hasOptOut = true
+					}
+				}
+
+				if !hasThirdPartySharing {
+					for _, p := range thirdPartyDataPatterns {
+						if p.MatchString(line) {
+							hasThirdPartySharing = true
+							sharingFile = file
+							sharingLine = lineNum
+						}
 					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	if hasThirdPartySharing && !hasOptOut {
@@ -130,39 +132,41 @@ func (c *thirdPartySharingCheck) Run(ctx context.Context, scope *compliance.Scan
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			for _, p := range thirdPartyDataPatterns {
-				if p.MatchString(line) {
-					findings = append(findings, compliance.Finding{
-						Severity:   "info",
-						Article:    "§1798.100 CCPA",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "Third-party data sharing integration detected (analytics/tracking/advertising SDK)",
-						Suggestion: "Ensure third-party data sharing is disclosed in your privacy policy and consumers can request information about shared data",
-						Confidence: 0.75,
-					})
-					break // One finding per file
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				for _, p := range thirdPartyDataPatterns {
+					if p.MatchString(line) {
+						findings = append(findings, compliance.Finding{
+							Severity:   "info",
+							Article:    "§1798.100 CCPA",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "Third-party data sharing integration detected (analytics/tracking/advertising SDK)",
+							Suggestion: "Ensure third-party data sharing is disclosed in your privacy policy and consumers can request information about shared data",
+							Confidence: 0.75,
+						})
+						break // One finding per file
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

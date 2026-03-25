@@ -231,22 +231,24 @@ func (c *missingProvenanceCheck) Run(ctx context.Context, scope *compliance.Scan
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
+			}
+			defer f.Close()
 
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			line := scanner.Text()
+			scanner := bufio.NewScanner(f)
+			for scanner.Scan() {
+				line := scanner.Text()
 
-			for _, p := range provenancePatterns {
-				if p.MatchString(line) {
-					hasProvenance = true
+				for _, p := range provenancePatterns {
+					if p.MatchString(line) {
+						hasProvenance = true
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	if !hasProvenance {
@@ -319,22 +321,24 @@ func (c *unsignedCommitsCheck) Run(ctx context.Context, scope *compliance.ScanSc
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
+			}
+			defer f.Close()
 
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			line := scanner.Text()
+			scanner := bufio.NewScanner(f)
+			for scanner.Scan() {
+				line := scanner.Text()
 
-			for _, p := range commitSigningPatterns {
-				if p.MatchString(line) {
-					hasSigningPolicy = true
+				for _, p := range commitSigningPatterns {
+					if p.MatchString(line) {
+						hasSigningPolicy = true
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	if !hasSigningPolicy {

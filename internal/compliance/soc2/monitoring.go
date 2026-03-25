@@ -47,54 +47,56 @@ func (c *swallowedErrorsCheck) Run(ctx context.Context, scope *compliance.ScanSc
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			// Check Go-specific error suppression
-			if goErrSuppressPattern.MatchString(line) {
-				findings = append(findings, compliance.Finding{
-					Severity:   "warning",
-					Article:    "CC7.2 SOC 2",
-					File:       file,
-					StartLine:  lineNum,
-					Message:    "Error explicitly suppressed — may hide operational issues",
-					Suggestion: "Handle or log errors instead of suppressing them; unhandled errors impair incident detection",
-					Confidence: 0.70,
-				})
-				continue
-			}
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
 
-			// Check language-agnostic patterns
-			for _, pattern := range swallowedErrorPatterns {
-				if pattern.MatchString(line) {
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				// Check Go-specific error suppression
+				if goErrSuppressPattern.MatchString(line) {
 					findings = append(findings, compliance.Finding{
 						Severity:   "warning",
 						Article:    "CC7.2 SOC 2",
 						File:       file,
 						StartLine:  lineNum,
-						Message:    "Empty error handler detected — errors are silently swallowed",
-						Suggestion: "Log errors at minimum; empty catch/except blocks hide failures and impair monitoring",
-						Confidence: 0.80,
+						Message:    "Error explicitly suppressed — may hide operational issues",
+						Suggestion: "Handle or log errors instead of suppressing them; unhandled errors impair incident detection",
+						Confidence: 0.70,
 					})
-					break
+					continue
+				}
+
+				// Check language-agnostic patterns
+				for _, pattern := range swallowedErrorPatterns {
+					if pattern.MatchString(line) {
+						findings = append(findings, compliance.Finding{
+							Severity:   "warning",
+							Article:    "CC7.2 SOC 2",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "Empty error handler detected — errors are silently swallowed",
+							Suggestion: "Log errors at minimum; empty catch/except blocks hide failures and impair monitoring",
+							Confidence: 0.80,
+						})
+						break
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

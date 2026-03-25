@@ -42,80 +42,82 @@ func (c *unvalidatedInputCheck) Run(ctx context.Context, scope *compliance.ScanS
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-		hasBinaryInput := false
-		binaryInputLine := 0
-		hasBoundsCheck := false
-		braceDepth := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			prevDepth := braceDepth
-			braceDepth += strings.Count(line, "{") - strings.Count(line, "}")
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+			hasBinaryInput := false
+			binaryInputLine := 0
+			hasBoundsCheck := false
+			braceDepth := 0
 
-			// Reset at function boundaries
-			if braceDepth <= 0 && prevDepth > 0 {
-				if hasBinaryInput && !hasBoundsCheck {
-					findings = append(findings, compliance.Finding{
-						CheckID:    "unvalidated-input",
-						Framework:  compliance.FrameworkIEC62443,
-						Severity:   "error",
-						Article:    "CR 3.5 IEC 62443-4-2",
-						File:       file,
-						StartLine:  binaryInputLine,
-						Message:    "Network/binary input parsing without bounds checking or validation",
-						Suggestion: "Add bounds checking and input validation before processing network data",
-						Confidence: 0.65,
-						CWE:        "CWE-20",
-					})
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") {
+					continue
 				}
-				hasBinaryInput = false
-				hasBoundsCheck = false
-			}
 
-			for _, pattern := range binaryInputPatterns {
-				if pattern.MatchString(line) {
-					hasBinaryInput = true
-					binaryInputLine = lineNum
-					break
+				prevDepth := braceDepth
+				braceDepth += strings.Count(line, "{") - strings.Count(line, "}")
+
+				// Reset at function boundaries
+				if braceDepth <= 0 && prevDepth > 0 {
+					if hasBinaryInput && !hasBoundsCheck {
+						findings = append(findings, compliance.Finding{
+							CheckID:    "unvalidated-input",
+							Framework:  compliance.FrameworkIEC62443,
+							Severity:   "error",
+							Article:    "CR 3.5 IEC 62443-4-2",
+							File:       file,
+							StartLine:  binaryInputLine,
+							Message:    "Network/binary input parsing without bounds checking or validation",
+							Suggestion: "Add bounds checking and input validation before processing network data",
+							Confidence: 0.65,
+							CWE:        "CWE-20",
+						})
+					}
+					hasBinaryInput = false
+					hasBoundsCheck = false
+				}
+
+				for _, pattern := range binaryInputPatterns {
+					if pattern.MatchString(line) {
+						hasBinaryInput = true
+						binaryInputLine = lineNum
+						break
+					}
+				}
+
+				if boundsCheckPattern.MatchString(line) {
+					hasBoundsCheck = true
 				}
 			}
 
-			if boundsCheckPattern.MatchString(line) {
-				hasBoundsCheck = true
+			// Handle last function in file
+			if hasBinaryInput && !hasBoundsCheck {
+				findings = append(findings, compliance.Finding{
+					CheckID:    "unvalidated-input",
+					Framework:  compliance.FrameworkIEC62443,
+					Severity:   "error",
+					Article:    "CR 3.5 IEC 62443-4-2",
+					File:       file,
+					StartLine:  binaryInputLine,
+					Message:    "Network/binary input parsing without bounds checking or validation",
+					Suggestion: "Add bounds checking and input validation before processing network data",
+					Confidence: 0.65,
+					CWE:        "CWE-20",
+				})
 			}
-		}
 
-		// Handle last function in file
-		if hasBinaryInput && !hasBoundsCheck {
-			findings = append(findings, compliance.Finding{
-				CheckID:    "unvalidated-input",
-				Framework:  compliance.FrameworkIEC62443,
-				Severity:   "error",
-				Article:    "CR 3.5 IEC 62443-4-2",
-				File:       file,
-				StartLine:  binaryInputLine,
-				Message:    "Network/binary input parsing without bounds checking or validation",
-				Suggestion: "Add bounds checking and input validation before processing network data",
-				Confidence: 0.65,
-				CWE:        "CWE-20",
-			})
-		}
-
-		f.Close()
+		}()
 	}
 
 	return findings, nil

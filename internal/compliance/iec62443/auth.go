@@ -45,42 +45,44 @@ func (c *defaultCredentialsCheck) Run(ctx context.Context, scope *compliance.Sca
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") ||
-				strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			for _, pattern := range credentialPatterns {
-				if m := pattern.FindString(line); m != "" {
-					findings = append(findings, compliance.Finding{
-						CheckID:    "default-credentials",
-						Framework:  compliance.FrameworkIEC62443,
-						Severity:   "error",
-						Article:    "CR 1.1 IEC 62443-4-2",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    fmt.Sprintf("Hardcoded credential detected: %s", m),
-						Suggestion: "Use environment variables, a secrets manager, or secure configuration for credentials",
-						Confidence: 0.85,
-						CWE:        "CWE-798",
-					})
-					break // One finding per line
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") ||
+					strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
+					continue
+				}
+
+				for _, pattern := range credentialPatterns {
+					if m := pattern.FindString(line); m != "" {
+						findings = append(findings, compliance.Finding{
+							CheckID:    "default-credentials",
+							Framework:  compliance.FrameworkIEC62443,
+							Severity:   "error",
+							Article:    "CR 1.1 IEC 62443-4-2",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    fmt.Sprintf("Hardcoded credential detected: %s", m),
+							Suggestion: "Use environment variables, a secrets manager, or secure configuration for credentials",
+							Confidence: 0.85,
+							CWE:        "CWE-798",
+						})
+						break // One finding per line
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil

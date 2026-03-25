@@ -96,34 +96,36 @@ func (c *unverifiedDependenciesCheck) Run(ctx context.Context, scope *compliance
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
+			}
+			defer f.Close()
 
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
 
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
 
-			for _, p := range wildcardVersionPatterns {
-				if p.MatchString(line) {
-					findings = append(findings, compliance.Finding{
-						Severity:   "warning",
-						Article:    "Art. 21(2)(d) NIS2",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    "Wildcard or unpinned dependency version range detected",
-						Suggestion: "Pin dependencies to specific versions or use lock files to ensure supply chain integrity",
-						Confidence: 0.80,
-					})
-					break
+				for _, p := range wildcardVersionPatterns {
+					if p.MatchString(line) {
+						findings = append(findings, compliance.Finding{
+							Severity:   "warning",
+							Article:    "Art. 21(2)(d) NIS2",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    "Wildcard or unpinned dependency version range detected",
+							Suggestion: "Pin dependencies to specific versions or use lock files to ensure supply chain integrity",
+							Confidence: 0.80,
+						})
+						break
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil
@@ -179,38 +181,40 @@ func (c *missingIntegrityCheckCheck) Run(ctx context.Context, scope *compliance.
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
 		hasDownload := false
 		hasIntegrity := false
 		var downloadLine int
 
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
+			}
+			defer f.Close()
 
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
 
-			for _, p := range downloadPatterns {
-				if p.MatchString(line) {
-					hasDownload = true
-					if downloadLine == 0 {
-						downloadLine = lineNum
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+
+				for _, p := range downloadPatterns {
+					if p.MatchString(line) {
+						hasDownload = true
+						if downloadLine == 0 {
+							downloadLine = lineNum
+						}
+					}
+				}
+
+				for _, p := range integrityPatterns {
+					if p.MatchString(line) {
+						hasIntegrity = true
 					}
 				}
 			}
-
-			for _, p := range integrityPatterns {
-				if p.MatchString(line) {
-					hasIntegrity = true
-				}
-			}
-		}
-		f.Close()
+		}()
 
 		if hasDownload && !hasIntegrity {
 			findings = append(findings, compliance.Finding{

@@ -42,58 +42,60 @@ func (c *missingNullCheckCheck) Run(ctx context.Context, scope *compliance.ScanS
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-		recentNullCheck := false
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			// Track null checks — if we see one, subsequent dereferences are guarded
-			if nullCheckPattern.MatchString(line) {
-				recentNullCheck = true
-				continue
-			}
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+			recentNullCheck := false
 
-			// Reset null check tracking at closing braces (conservative)
-			if trimmed == "}" {
-				recentNullCheck = false
-				continue
-			}
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
 
-			// Detect dereferences without recent null check
-			if !recentNullCheck && derefPattern.MatchString(line) {
-				// Skip declarations (type *name = ...)
-				if strings.Contains(line, "=") && strings.Contains(line, "*") && !strings.Contains(line, "==") {
-					// Likely a pointer declaration, not a dereference
+				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
 					continue
 				}
 
-				findings = append(findings, compliance.Finding{
-					CheckID:    "missing-null-check",
-					Framework:  compliance.FrameworkISO26262,
-					Severity:   "warning",
-					Article:    "Part 6, 8.4.4 ISO 26262",
-					File:       file,
-					StartLine:  lineNum,
-					Message:    "Pointer dereference without preceding null check",
-					Suggestion: "Add null/nullptr check before dereferencing pointer for defensive programming",
-					Confidence: 0.60,
-				})
+				// Track null checks — if we see one, subsequent dereferences are guarded
+				if nullCheckPattern.MatchString(line) {
+					recentNullCheck = true
+					continue
+				}
+
+				// Reset null check tracking at closing braces (conservative)
+				if trimmed == "}" {
+					recentNullCheck = false
+					continue
+				}
+
+				// Detect dereferences without recent null check
+				if !recentNullCheck && derefPattern.MatchString(line) {
+					// Skip declarations (type *name = ...)
+					if strings.Contains(line, "=") && strings.Contains(line, "*") && !strings.Contains(line, "==") {
+						// Likely a pointer declaration, not a dereference
+						continue
+					}
+
+					findings = append(findings, compliance.Finding{
+						CheckID:    "missing-null-check",
+						Framework:  compliance.FrameworkISO26262,
+						Severity:   "warning",
+						Article:    "Part 6, 8.4.4 ISO 26262",
+						File:       file,
+						StartLine:  lineNum,
+						Message:    "Pointer dereference without preceding null check",
+						Suggestion: "Add null/nullptr check before dereferencing pointer for defensive programming",
+						Confidence: 0.60,
+					})
+				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil
@@ -123,43 +125,45 @@ func (c *uncheckedReturnCheck) Run(ctx context.Context, scope *compliance.ScanSc
 			continue
 		}
 
-		f, err := os.Open(filepath.Join(scope.RepoRoot, file))
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-
-			if strings.HasPrefix(trimmed, "//") {
-				continue
+		func() {
+			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
+			if err != nil {
+				return
 			}
+			defer f.Close()
 
-			// Detect error explicitly discarded with _
-			if strings.Contains(line, ", _ =") || strings.Contains(line, ", _ :=") {
-				if strings.Contains(strings.ToLower(line), "err") ||
-					strings.Contains(line, "Close()") || strings.Contains(line, "Write(") ||
-					strings.Contains(line, "Read(") || strings.Contains(line, "Flush(") {
-					findings = append(findings, compliance.Finding{
-						CheckID:    "unchecked-return",
-						Framework:  compliance.FrameworkISO26262,
-						Severity:   "error",
-						Article:    "Part 6, 8.4.4 ISO 26262",
-						File:       file,
-						StartLine:  lineNum,
-						Message:    fmt.Sprintf("Error return value explicitly discarded at line %d", lineNum),
-						Suggestion: "Handle all error returns; do not discard with _ in automotive safety-critical code",
-						Confidence: 0.85,
-					})
+			scanner := bufio.NewScanner(f)
+			lineNum := 0
+
+			for scanner.Scan() {
+				lineNum++
+				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				if strings.HasPrefix(trimmed, "//") {
+					continue
+				}
+
+				// Detect error explicitly discarded with _
+				if strings.Contains(line, ", _ =") || strings.Contains(line, ", _ :=") {
+					if strings.Contains(strings.ToLower(line), "err") ||
+						strings.Contains(line, "Close()") || strings.Contains(line, "Write(") ||
+						strings.Contains(line, "Read(") || strings.Contains(line, "Flush(") {
+						findings = append(findings, compliance.Finding{
+							CheckID:    "unchecked-return",
+							Framework:  compliance.FrameworkISO26262,
+							Severity:   "error",
+							Article:    "Part 6, 8.4.4 ISO 26262",
+							File:       file,
+							StartLine:  lineNum,
+							Message:    fmt.Sprintf("Error return value explicitly discarded at line %d", lineNum),
+							Suggestion: "Handle all error returns; do not discard with _ in automotive safety-critical code",
+							Confidence: 0.85,
+						})
+					}
 				}
 			}
-		}
-		f.Close()
+		}()
 	}
 
 	return findings, nil
