@@ -38,6 +38,11 @@ structurally correct but contextually blind:
 ckb audit compliance --framework=$ARGUMENTS --format=json --min-confidence=0.7 2>/dev/null
 ```
 
+For large repos, scope to a specific path to reduce noise:
+```bash
+ckb audit compliance --framework=$ARGUMENTS --scope=src/api --format=json --min-confidence=0.7 2>/dev/null
+```
+
 If no framework specified, pick based on repo context:
 - Has health/patient/medical code → `hipaa,gdpr`
 - Has payment/billing/card code → `pci-dss,soc2`
@@ -67,9 +72,10 @@ Note:
 Do NOT read every flagged file. Group findings by root cause first:
 
 1. **Deduplicate cross-framework findings** — a hardcoded secret flagged by GDPR, PCI DSS, HIPAA, and ISO 27001 is one fix
-2. **Check applicability** — does this repo actually fall under the flagged framework? (e.g., HIPAA findings in a non-healthcare repo)
-3. **Read only error-severity files** — warnings and info can wait
-4. **For each error finding**, read just the flagged lines (not the whole file) and assess:
+2. **Check for dominant category** — if > 50% of findings are one category (e.g., "sql-injection"), investigate that category systemically (is the pattern matching too broad?) rather than checking each file individually
+3. **Check applicability** — does this repo actually fall under the flagged framework? (e.g., HIPAA findings in a non-healthcare repo)
+4. **Read only error-severity files** — warnings and info can wait
+5. **For each error finding**, read just the flagged lines (not the whole file) and assess:
    - Is this a real compliance risk or a pattern false positive?
    - Are there compensating controls elsewhere? (check imports, config, middleware)
    - What's the remediation effort: one-liner fix vs architectural change?

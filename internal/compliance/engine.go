@@ -43,6 +43,18 @@ func RunAudit(ctx context.Context, opts AuditOptions, logger *slog.Logger) (*Com
 		return nil, fmt.Errorf("finding source files: %w", err)
 	}
 
+	// Exclude the compliance package itself from scanning — its check
+	// definitions contain pattern strings (regex for "http://", "md5.New()",
+	// "dangerouslySetInnerHTML", etc.) that trigger sibling checks,
+	// producing systematic false positives.
+	filtered := files[:0]
+	for _, f := range files {
+		if !strings.HasPrefix(f, "internal/compliance/") {
+			filtered = append(filtered, f)
+		}
+	}
+	files = filtered
+
 	logger.Debug("Compliance audit starting",
 		"frameworks", len(frameworks),
 		"files", len(files),

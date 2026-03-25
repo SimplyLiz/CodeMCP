@@ -53,30 +53,43 @@ func (c *sqlInjectionCheck) Run(ctx context.Context, scope *compliance.ScanScope
 			}
 			defer f.Close()
 
+			// Read all lines so we can check context around flagged lines
+			var lines []string
 			scanner := bufio.NewScanner(f)
-			lineNum := 0
-
 			for scanner.Scan() {
-				lineNum++
-				line := scanner.Text()
+				lines = append(lines, scanner.Text())
+			}
+
+			for lineIdx, line := range lines {
+				lineNum := lineIdx + 1
 				trimmed := strings.TrimSpace(line)
 
 				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
 					continue
 				}
 
-				// Skip lines that define regex patterns or string constants
-				// (e.g., compliance check code scanning for SQL patterns)
+				// Skip regex/pattern definitions
 				if strings.Contains(line, "regexp.MustCompile") || strings.Contains(line, "Compile(") {
 					continue
 				}
 
-				// Skip lines with parameterized placeholders — these are safe
-				lower := strings.ToLower(line)
-				if strings.Contains(lower, "select") || strings.Contains(lower, "insert") ||
-					strings.Contains(lower, "update") || strings.Contains(lower, "delete") {
-					// If the line also contains ? placeholders, it's parameterized
-					if strings.Contains(line, "?") || strings.Contains(line, "$1") || strings.Contains(line, ":=") {
+				// Skip lines with parameterized placeholders on the same line
+				if strings.Contains(line, "?") || strings.Contains(line, "$1") {
+					continue
+				}
+
+				// Go-specific: skip fmt.Sprintf that builds placeholder lists.
+				// Pattern: fmt.Sprintf("...IN (%s)", strings.Join(placeholders...))
+				// These are safe because %s inserts "?,?,?" not user data.
+				if strings.Contains(line, "fmt.Sprintf") && isSafeGoSQLBuilder(line, lines, lineIdx) {
+					continue
+				}
+
+				// Skip error-message formatting that mentions SQL keywords
+				// e.g., fmt.Sprintf("failed to insert symbol %s: %w", ...)
+				if strings.Contains(line, "fmt.Sprintf") || strings.Contains(line, "fmt.Errorf") {
+					if strings.Contains(line, "failed to") || strings.Contains(line, "error") ||
+						strings.Contains(line, "warning") || strings.Contains(line, "%w") {
 						continue
 					}
 				}
@@ -101,6 +114,47 @@ func (c *sqlInjectionCheck) Run(ctx context.Context, scope *compliance.ScanScope
 	}
 
 	return findings, nil
+}
+
+// isSafeGoSQLBuilder checks if a fmt.Sprintf line is building safe SQL structure
+// (placeholder lists, table/column names) rather than injecting user input.
+func isSafeGoSQLBuilder(line string, lines []string, idx int) bool {
+	lower := strings.ToLower(line)
+
+	// Building placeholder lists: strings.Join(placeholders, ",")
+	if strings.Contains(lower, "strings.join") && (strings.Contains(lower, "placeholder") || strings.Contains(lower, `","`) || strings.Contains(lower, `", "`)) {
+		return true
+	}
+
+	// Check surrounding lines (±5) for parameterized query execution
+	// If nearby code calls db.Query/Exec with ?, the Sprintf is building structure
+	start := idx - 5
+	if start < 0 {
+		start = 0
+	}
+	end := idx + 5
+	if end > len(lines) {
+		end = len(lines)
+	}
+	for i := start; i < end; i++ {
+		ctx := lines[i]
+		// Parameterized execution nearby
+		if strings.Contains(ctx, "QueryContext") || strings.Contains(ctx, "ExecContext") ||
+			strings.Contains(ctx, "db.Query") || strings.Contains(ctx, "db.Exec") ||
+			strings.Contains(ctx, "tx.Query") || strings.Contains(ctx, "tx.Exec") ||
+			strings.Contains(ctx, "stmt.Exec") {
+			if strings.Contains(ctx, "?") || strings.Contains(ctx, "args...") || strings.Contains(ctx, "args)") {
+				return true
+			}
+		}
+	}
+
+	// Building WHERE clause structure with pre-validated column names
+	if strings.Contains(lower, "where") && (strings.Contains(lower, "clauses") || strings.Contains(lower, "conditions")) {
+		return true
+	}
+
+	return false
 }
 
 // --- path-traversal: A.8.28 — User input in file paths ---

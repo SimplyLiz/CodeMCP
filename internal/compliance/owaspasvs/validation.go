@@ -51,28 +51,39 @@ func (c *sqlInjectionCheck) Run(ctx context.Context, scope *compliance.ScanScope
 			}
 			defer f.Close()
 
+			var lines []string
 			scanner := bufio.NewScanner(f)
-			lineNum := 0
-
 			for scanner.Scan() {
-				lineNum++
-				line := scanner.Text()
+				lines = append(lines, scanner.Text())
+			}
+
+			for lineIdx, line := range lines {
+				lineNum := lineIdx + 1
 				trimmed := strings.TrimSpace(line)
 
 				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
 					continue
 				}
 
-				// Skip regex/pattern definitions (compliance check code itself)
+				// Skip regex/pattern definitions
 				if strings.Contains(line, "regexp.MustCompile") || strings.Contains(line, "Compile(") {
 					continue
 				}
 
-				// Skip parameterized queries (safe)
-				lower := strings.ToLower(line)
-				if strings.Contains(lower, "select") || strings.Contains(lower, "insert") ||
-					strings.Contains(lower, "update") || strings.Contains(lower, "delete") {
-					if strings.Contains(line, "?") || strings.Contains(line, "$1") || strings.Contains(line, ":=") {
+				// Skip lines with parameterized placeholders
+				if strings.Contains(line, "?") || strings.Contains(line, "$1") {
+					continue
+				}
+
+				// Go-specific: skip safe SQL builder patterns
+				if strings.Contains(line, "fmt.Sprintf") && isSafeGoSQLBuilder(line, lines, lineIdx) {
+					continue
+				}
+
+				// Skip error-message formatting
+				if strings.Contains(line, "fmt.Sprintf") || strings.Contains(line, "fmt.Errorf") {
+					if strings.Contains(line, "failed to") || strings.Contains(line, "error") ||
+						strings.Contains(line, "warning") || strings.Contains(line, "%w") {
 						continue
 					}
 				}
@@ -97,6 +108,41 @@ func (c *sqlInjectionCheck) Run(ctx context.Context, scope *compliance.ScanScope
 	}
 
 	return findings, nil
+}
+
+// isSafeGoSQLBuilder checks if a fmt.Sprintf line is building safe SQL structure.
+func isSafeGoSQLBuilder(line string, lines []string, idx int) bool {
+	lower := strings.ToLower(line)
+
+	if strings.Contains(lower, "strings.join") && (strings.Contains(lower, "placeholder") || strings.Contains(lower, `","`) || strings.Contains(lower, `", "`)) {
+		return true
+	}
+
+	start := idx - 5
+	if start < 0 {
+		start = 0
+	}
+	end := idx + 5
+	if end > len(lines) {
+		end = len(lines)
+	}
+	for i := start; i < end; i++ {
+		ctx := lines[i]
+		if strings.Contains(ctx, "QueryContext") || strings.Contains(ctx, "ExecContext") ||
+			strings.Contains(ctx, "db.Query") || strings.Contains(ctx, "db.Exec") ||
+			strings.Contains(ctx, "tx.Query") || strings.Contains(ctx, "tx.Exec") ||
+			strings.Contains(ctx, "stmt.Exec") {
+			if strings.Contains(ctx, "?") || strings.Contains(ctx, "args...") || strings.Contains(ctx, "args)") {
+				return true
+			}
+		}
+	}
+
+	if strings.Contains(lower, "where") && (strings.Contains(lower, "clauses") || strings.Contains(lower, "conditions")) {
+		return true
+	}
+
+	return false
 }
 
 // --- xss-prevention: V5.3.4 ASVS — Output encoding ---
