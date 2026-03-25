@@ -21,10 +21,12 @@ func (c *sqlInjectionCheck) Article() string   { return "V5.3.3 ASVS" }
 func (c *sqlInjectionCheck) Severity() string  { return "error" }
 
 var asvsSQLInjectionPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?i)(SELECT|INSERT|UPDATE|DELETE|WHERE).*\+\s*[\w]+`),
-	regexp.MustCompile(`(?i)(SELECT|INSERT|UPDATE|DELETE|WHERE).*%[sv]`),
-	regexp.MustCompile(`(?i)fmt\.Sprintf\(.*(?:SELECT|INSERT|UPDATE|DELETE|WHERE)`),
-	regexp.MustCompile(`(?i)f["'].*(?:SELECT|INSERT|UPDATE|DELETE|WHERE).*\{`),
+	regexp.MustCompile(`(?i)["'].*SELECT\s+.+FROM\s.*["'].*\+\s*\w`),
+	regexp.MustCompile(`(?i)["'].*SELECT\s+.+FROM\s.*%[sv]`),
+	regexp.MustCompile(`(?i)["'].*(?:INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM)\s.*%[sv]`),
+	regexp.MustCompile(`(?i)fmt\.Sprintf\(\s*["'].*SELECT\s+.+FROM\s.*%[sv]`),
+	regexp.MustCompile(`(?i)fmt\.Sprintf\(\s*["'].*(?:INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM)\s.*%[sv]`),
+	regexp.MustCompile(`(?i)f["'].*(?:SELECT\s+.+FROM|INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM)\s.*\{`),
 	regexp.MustCompile(`(?i)execute\(\s*["'].*\+`),
 	regexp.MustCompile(`(?i)\.query\(\s*["'].*\+`),
 	regexp.MustCompile(`(?i)\.raw\(\s*["'].*\+`),
@@ -40,7 +42,8 @@ func (c *sqlInjectionCheck) Run(ctx context.Context, scope *compliance.ScanScope
 
 		// Skip test files and test fixtures
 		if strings.Contains(file, "_test.") || strings.Contains(file, ".test.") ||
-			strings.Contains(file, "testdata/") || strings.Contains(file, "fixtures") {
+			strings.Contains(file, "testdata/") || strings.Contains(file, "fixtures") ||
+			strings.Contains(file, "testutil/") {
 			continue
 		}
 
@@ -70,6 +73,17 @@ func (c *sqlInjectionCheck) Run(ctx context.Context, scope *compliance.ScanScope
 					continue
 				}
 
+				// Skip lines marked safe by other linters (check current + previous line)
+				if strings.Contains(line, "#nosec") || strings.Contains(line, "nolint:gosec") {
+					continue
+				}
+				if lineIdx > 0 {
+					prev := lines[lineIdx-1]
+					if strings.Contains(prev, "#nosec") || strings.Contains(prev, "nolint:gosec") {
+						continue
+					}
+				}
+
 				// Skip lines with parameterized placeholders
 				if strings.Contains(line, "?") || strings.Contains(line, "$1") {
 					continue
@@ -80,12 +94,21 @@ func (c *sqlInjectionCheck) Run(ctx context.Context, scope *compliance.ScanScope
 					continue
 				}
 
-				// Skip error-message formatting
+				// Skip error/log formatting
 				if strings.Contains(line, "fmt.Sprintf") || strings.Contains(line, "fmt.Errorf") {
 					if strings.Contains(line, "failed to") || strings.Contains(line, "error") ||
-						strings.Contains(line, "warning") || strings.Contains(line, "%w") {
+						strings.Contains(line, "warning") || strings.Contains(line, "%w") ||
+						strings.Contains(line, "\\033[") || strings.Contains(line, "ANSI") {
 						continue
 					}
+				}
+
+				// Skip safe dynamic SQL construction
+				if strings.Contains(line, "strings.Join") {
+					continue
+				}
+				if strings.Contains(line, "%d") && !strings.Contains(line, "%s") && !strings.Contains(line, "%v") {
+					continue
 				}
 
 				for _, pattern := range asvsSQLInjectionPatterns {

@@ -53,6 +53,13 @@ func (c *weakCryptoCheck) Run(ctx context.Context, scope *compliance.ScanScope) 
 			return findings, ctx.Err()
 		}
 
+		// Skip test files
+		if strings.HasSuffix(file, "_test.go") || strings.HasSuffix(file, "_test.py") ||
+			strings.HasSuffix(file, ".test.ts") || strings.HasSuffix(file, ".test.js") ||
+			strings.Contains(file, "testdata/") || strings.Contains(file, "testutil/") {
+			continue
+		}
+
 		func() {
 			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
 			if err != nil {
@@ -69,6 +76,12 @@ func (c *weakCryptoCheck) Run(ctx context.Context, scope *compliance.ScanScope) 
 				trimmed := strings.TrimSpace(line)
 
 				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				// Skip lines where crypto names appear as string literals
+				// in detection/pattern code (e.g., strings.Contains(x, "md5.New()"))
+				if strings.Contains(line, "strings.Contains") || strings.Contains(line, "regexp.MustCompile") {
 					continue
 				}
 
