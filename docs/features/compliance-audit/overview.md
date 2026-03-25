@@ -5,7 +5,7 @@ CKB's compliance audit (`ckb audit compliance`) performs static analysis of your
 ## Key Stats
 
 - **20 frameworks** across 8 categories (privacy, AI governance, security, industry, EU product, supply chain, safety, coding standards)
-- **129 checks** total, each mapped to specific regulation articles
+- **131 checks** total, each mapped to specific regulation articles
 - **Cross-framework mapping** — one finding, all applicable regulations
 - **Confidence scoring** — 0.0-1.0 per finding to reduce false positives
 - **4 output formats** — human, JSON, markdown, SARIF (GitHub Code Scanning compatible)
@@ -49,4 +49,4 @@ ckb audit compliance --framework=all --min-confidence=0.7 --format=sarif
 ckb audit compliance --framework=gdpr,pci-dss,hipaa --ci --fail-on=error
 ```
 
-See [checks.md](checks.md) for the complete reference of all 129 checks.
+See [checks.md](checks.md) for the complete reference of all 131 checks.

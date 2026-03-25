@@ -1,6 +1,6 @@
 # Compliance Audit — Complete Check Reference
 
-All 126 checks across 20 frameworks. Generated from source code.
+All 131 checks across 20 frameworks. Generated from source code.
 
 ---
 
@@ -91,18 +91,23 @@ All 126 checks across 20 frameworks. Generated from source code.
 
 ---
 
-## OWASP ASVS 4.0 (Application Security Verification Standard) — `owasp-asvs` (8 checks)
+## OWASP ASVS 4.0 (Application Security Verification Standard) — `owasp-asvs` (13 checks)
 
 | Check ID | Article | What It Detects | Severity | CWE | Confidence |
 |----------|---------|-----------------|----------|-----|------------|
 | `weak-password-hash` | V2.4.1 ASVS | Weak Password Hashing Algorithm | error | CWE-916 | 0.85 |
 | `hardcoded-credentials` | V2.10.4 ASVS | Hardcoded Credentials | error | CWE-798 | 0.80 |
 | `insecure-cookie` | V3.4.2/V3.4.3 ASVS | Insecure Cookie Configuration | warning | CWE-614 | 0.60-0.80 |
+| `eval-injection` | V5.2.4 ASVS | Dynamic Code Execution (Eval Injection) | error | CWE-95 | 0.75 |
 | `sql-injection` | V5.3.4 ASVS | SQL Injection Risk | error | CWE-89 | 0.75 |
 | `xss-prevention` | V5.3.3 ASVS | Cross-Site Scripting (XSS) Risk | error | CWE-79 | 0.80 |
+| `command-injection` | V5.3.8 ASVS | OS Command Injection Risk | error | CWE-78 | 0.80 |
+| `xxe` | V5.5.2 ASVS | XML External Entity (XXE) Risk | warning | CWE-611 | 0.60 |
 | `weak-algorithm` | V6.2.5 ASVS | Deprecated Cryptographic Algorithm | error | CWE-327 | 0.90 |
 | `insecure-random` | V6.3.1 ASVS | Insecure Random Number Generator | error | CWE-338 | 0.60-0.90 |
 | `missing-tls` | V9.1.1 ASVS | Missing TLS for Sensitive Data | error | CWE-319 | 0.80 |
+| `tls-bypass` | V9.2.1 ASVS | TLS Certificate Validation Bypass | error | CWE-295 | 0.90 |
+| `asvs-cors-wildcard` | V14.5.3 ASVS | CORS Wildcard Origin | warning | CWE-346 | 0.85 |
 
 ---
 
