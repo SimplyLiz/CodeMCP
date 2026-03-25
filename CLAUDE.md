@@ -53,6 +53,13 @@ golangci-lint run
 ./ckb review --base=develop --format=markdown
 ./ckb review --checks=breaking,secrets,health --ci
 
+# Run compliance audit (131 checks across 20 regulatory frameworks)
+./ckb audit compliance --framework=gdpr
+./ckb audit compliance --framework=gdpr,iso27001,owasp-asvs
+./ckb audit compliance --framework=all --min-confidence=0.7 --format=sarif
+./ckb audit compliance --framework=pci-dss,hipaa --ci --fail-on=error
+./ckb audit compliance --framework=iec61508 --sil-level=3
+
 # Auto-configure AI tool integration (interactive)
 ./ckb setup
 
@@ -92,7 +99,7 @@ ckb setup --tool=cursor --global
 claude mcp add ckb -- npx @tastehub/ckb mcp
 ```
 
-`ckb setup --tool=claude-code` also installs the `/ckb-review` slash command for Claude Code, which orchestrates CKB's structural analysis with LLM semantic review.
+`ckb setup --tool=claude-code` also installs the `/ckb-review` and `/ckb-audit` slash commands for Claude Code, which orchestrate CKB's structural analysis with LLM semantic review.
 
 ### Key MCP Tools
 
@@ -162,6 +169,7 @@ Storage Layer (internal/storage/) - SQLite for caching and symbol mappings
 - **internal/coupling/**: Co-change analysis from git history.
 - **internal/streaming/**: SSE streaming infrastructure for long-running MCP operations.
 - **internal/envelope/**: Response metadata (ConfidenceFactor, CacheInfo) for AI transparency.
+- **internal/compliance/**: Regulatory compliance auditing (131 checks, 20 frameworks). Each framework is a subpackage (gdpr/, iso27001/, owaspasvs/, etc.) with checks that map findings to regulation articles.
 
 ### Data Flow
 
