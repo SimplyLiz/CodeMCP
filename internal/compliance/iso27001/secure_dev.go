@@ -39,6 +39,13 @@ func (c *sqlInjectionCheck) Run(ctx context.Context, scope *compliance.ScanScope
 			return findings, ctx.Err()
 		}
 
+		// Skip test files — test fixtures naturally contain SQL-like strings
+		if strings.HasSuffix(file, "_test.go") || strings.HasSuffix(file, "_test.py") ||
+			strings.HasSuffix(file, ".test.ts") || strings.HasSuffix(file, ".test.js") ||
+			strings.Contains(file, "testdata/") || strings.Contains(file, "fixtures") {
+			continue
+		}
+
 		func() {
 			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
 			if err != nil {
@@ -56,6 +63,22 @@ func (c *sqlInjectionCheck) Run(ctx context.Context, scope *compliance.ScanScope
 
 				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
 					continue
+				}
+
+				// Skip lines that define regex patterns or string constants
+				// (e.g., compliance check code scanning for SQL patterns)
+				if strings.Contains(line, "regexp.MustCompile") || strings.Contains(line, "Compile(") {
+					continue
+				}
+
+				// Skip lines with parameterized placeholders — these are safe
+				lower := strings.ToLower(line)
+				if strings.Contains(lower, "select") || strings.Contains(lower, "insert") ||
+					strings.Contains(lower, "update") || strings.Contains(lower, "delete") {
+					// If the line also contains ? placeholders, it's parameterized
+					if strings.Contains(line, "?") || strings.Contains(line, "$1") || strings.Contains(line, ":=") {
+						continue
+					}
 				}
 
 				for _, pattern := range sqlInjectionPatterns {

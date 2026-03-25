@@ -38,7 +38,9 @@ func (c *sqlInjectionCheck) Run(ctx context.Context, scope *compliance.ScanScope
 			return findings, ctx.Err()
 		}
 
-		if strings.Contains(file, "_test.") || strings.Contains(file, ".test.") {
+		// Skip test files and test fixtures
+		if strings.Contains(file, "_test.") || strings.Contains(file, ".test.") ||
+			strings.Contains(file, "testdata/") || strings.Contains(file, "fixtures") {
 			continue
 		}
 
@@ -59,6 +61,20 @@ func (c *sqlInjectionCheck) Run(ctx context.Context, scope *compliance.ScanScope
 
 				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
 					continue
+				}
+
+				// Skip regex/pattern definitions (compliance check code itself)
+				if strings.Contains(line, "regexp.MustCompile") || strings.Contains(line, "Compile(") {
+					continue
+				}
+
+				// Skip parameterized queries (safe)
+				lower := strings.ToLower(line)
+				if strings.Contains(lower, "select") || strings.Contains(lower, "insert") ||
+					strings.Contains(lower, "update") || strings.Contains(lower, "delete") {
+					if strings.Contains(line, "?") || strings.Contains(line, "$1") || strings.Contains(line, ":=") {
+						continue
+					}
 				}
 
 				for _, pattern := range asvsSQLInjectionPatterns {

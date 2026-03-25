@@ -141,6 +141,13 @@ func (s *PIIScanner) CheckPIIInLogs(ctx context.Context, scope *ScanScope) ([]Fi
 			return findings, ctx.Err()
 		}
 
+		// Skip test files — test assertions naturally reference PII field names
+		if strings.HasSuffix(file, "_test.go") || strings.HasSuffix(file, "_test.py") ||
+			strings.HasSuffix(file, ".test.ts") || strings.HasSuffix(file, ".test.js") ||
+			strings.Contains(file, "testdata/") || strings.Contains(file, "fixtures") {
+			continue
+		}
+
 		func() {
 			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
 			if err != nil {
@@ -257,6 +264,21 @@ func (s *PIIScanner) matchPII(normalized string) (PIIPattern, bool) {
 
 // isNonPIIIdentifier filters out identifiers that look like PII but aren't.
 func isNonPIIIdentifier(normalized string) bool {
+	// "fingerprint" in code almost always means hash/checksum, not biometric.
+	// Only flag it when paired with actual biometric context.
+	if strings.Contains(normalized, "fingerprint") {
+		// Allow: biometric_fingerprint, user_fingerprint
+		// Reject: build_fingerprint, symbol_fingerprint, sarif_fingerprint, etc.
+		if !strings.Contains(normalized, "biometric") && !strings.Contains(normalized, "user_fingerprint") {
+			return true
+		}
+	}
+
+	// "display_name" / "language_display_name" refer to UI labels, not people
+	if strings.Contains(normalized, "display_name") {
+		return true
+	}
+
 	// Identifiers where "name" refers to code entities, not people
 	nonPIISuffixes := []string{
 		"file_name", "filename", "func_name", "function_name",
