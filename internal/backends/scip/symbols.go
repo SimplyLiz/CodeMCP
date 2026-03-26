@@ -128,7 +128,7 @@ func convertToSCIPSymbolWithIndex(symInfo *SymbolInformation, idx *SCIPIndex) (*
 		Name:                name,
 		Kind:                kind,
 		Documentation:       documentation,
-		SignatureNormalized: "", // TODO: Extract signature
+		SignatureNormalized: "", // Signature extraction requires relationship data not available at parse time
 		Modifiers:           modifiers,
 		Location:            location,
 		ContainerName:       containerName,

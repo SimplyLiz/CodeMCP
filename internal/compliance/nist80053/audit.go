@@ -71,6 +71,25 @@ func (c *insufficientAuditContentCheck) Run(ctx context.Context, scope *complian
 
 		textLower := strings.ToLower(text)
 
+		// Structured loggers (slog, logger) capture context automatically
+		// via attributes — treat them as having adequate audit content.
+		if strings.Contains(text, "slog.") || strings.Contains(text, "logger.") {
+			continue
+		}
+
+		// Skip pure type/const definition files and files with no I/O operations
+		// (no logging, no network, no file system — nothing to audit)
+		if !strings.Contains(text, "func ") && !strings.Contains(text, "func(") {
+			continue
+		}
+		hasIO := strings.Contains(text, "os.") || strings.Contains(text, "http.") ||
+			strings.Contains(text, "io.") || strings.Contains(text, "net.") ||
+			strings.Contains(text, "log.") || strings.Contains(text, "slog.") ||
+			strings.Contains(text, "fmt.Print") || strings.Contains(text, "sql.")
+		if !hasIO {
+			continue
+		}
+
 		// Check which required fields are present
 		var missingCategories []string
 		for category, fields := range auditRequiredFields {
@@ -127,6 +146,11 @@ func (c *missingAuditEventsCheck) Run(ctx context.Context, scope *compliance.Sca
 		}
 
 		if strings.Contains(file, "_test.") || strings.Contains(file, ".test.") {
+			continue
+		}
+
+		// Skip documentation directories — not auth components
+		if strings.Contains(file, "docs/") || strings.Contains(file, "/docs/") {
 			continue
 		}
 

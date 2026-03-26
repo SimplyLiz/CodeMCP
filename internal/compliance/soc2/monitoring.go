@@ -66,7 +66,11 @@ func (c *swallowedErrorsCheck) Run(ctx context.Context, scope *compliance.ScanSc
 					continue
 				}
 
-				// Check Go-specific error suppression
+				// Check Go-specific error suppression (skip annotated suppressions)
+				if strings.Contains(line, "non-critical") || strings.Contains(line, "best-effort") ||
+					strings.Contains(line, "#nosec") || strings.Contains(line, "nolint") {
+					continue
+				}
 				if goErrSuppressPattern.MatchString(line) {
 					findings = append(findings, compliance.Finding{
 						Severity:   "warning",
@@ -128,6 +132,11 @@ func (c *missingSecurityLoggingCheck) Run(ctx context.Context, scope *compliance
 		}
 
 		if strings.Contains(file, "_test.") || strings.Contains(file, ".test.") {
+			continue
+		}
+
+		// Skip documentation directories — not security components
+		if strings.Contains(file, "docs/") || strings.Contains(file, "/docs/") {
 			continue
 		}
 

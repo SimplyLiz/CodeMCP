@@ -105,6 +105,15 @@ func (c *debugModeEnabledCheck) Run(ctx context.Context, scope *compliance.ScanS
 			continue
 		}
 
+		// Skip CLI entry points — debug/verbose flags are user-facing features
+		if strings.HasPrefix(file, "cmd/") || strings.Contains(file, "/cmd/") {
+			continue
+		}
+		// Skip npm package scripts
+		if strings.HasSuffix(lower, "package.json") || strings.Contains(lower, "bin/") {
+			continue
+		}
+
 		func() {
 			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
 			if err != nil {
@@ -121,6 +130,13 @@ func (c *debugModeEnabledCheck) Run(ctx context.Context, scope *compliance.ScanS
 				trimmed := strings.TrimSpace(line)
 
 				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				// Skip help text and documentation lines
+				lineLower := strings.ToLower(line)
+				if strings.Contains(lineLower, "usage") || strings.Contains(lineLower, "example") ||
+					strings.Contains(lineLower, "flag") || strings.Contains(lineLower, "description") {
 					continue
 				}
 

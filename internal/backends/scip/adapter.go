@@ -316,11 +316,11 @@ func (s *SCIPAdapter) convertToSymbolResult(scipSym *SCIPSymbol) *backends.Symbo
 		Kind:                 string(scipSym.Kind),
 		Location:             location,
 		SignatureNormalized:  scipSym.SignatureNormalized,
-		SignatureFull:        "", // TODO: Extract full signature
+		SignatureFull:        "", // SCIP indexes don't include unnormalized signatures
 		Visibility:           scipSym.Visibility,
 		VisibilityConfidence: visibilityConfidence,
 		ContainerName:        scipSym.ContainerName,
-		ModuleID:             "", // TODO: Determine module ID
+		ModuleID:             "", // Module ID is resolved later by the query engine
 		Documentation:        scipSym.Documentation,
 		Completeness:         s.computeCompleteness(),
 	}

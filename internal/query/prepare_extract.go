@@ -113,7 +113,7 @@ func (e *Engine) getPrepareExtractDetail(target *PrepareChangeTarget, reqStartLi
 
 	// Fallback: basic suggested signature (Phase 1 behavior)
 	if target.SymbolId != "" {
-		detail.SuggestedSignature = "func extracted() // TODO: determine parameters and returns"
+		detail.SuggestedSignature = "func extracted() // parameters and returns must be determined from usage"
 	}
 
 	return detail

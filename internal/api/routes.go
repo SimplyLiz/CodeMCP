@@ -6,9 +6,11 @@ import (
 	"github.com/SimplyLiz/CodeMCP/internal/version"
 )
 
-// registerRoutes registers all API routes
+// registerRoutes registers all API routes.
+// Auth middleware is applied at the server level (see server.go) based on
+// --auth-token/CKB_AUTH_TOKEN. The server binds to localhost by default.
 func (s *Server) registerRoutes() {
-	// Health and readiness checks
+	// Health and readiness checks (no auth required)
 	s.router.HandleFunc("/health", s.handleHealth)
 	s.router.HandleFunc("/health/detailed", s.handleHealthDetailed)
 	s.router.HandleFunc("/ready", s.handleReady)

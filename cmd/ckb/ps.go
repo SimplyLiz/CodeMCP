@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/SimplyLiz/CodeMCP/internal/config"
 	"github.com/SimplyLiz/CodeMCP/internal/daemon"
 )
 
@@ -90,11 +91,11 @@ func getDaemonProcess() ProcessInfo {
 
 	proc.Status = "running"
 	proc.PID = pid
-	proc.Port = 9120 // default
+	proc.Port = config.DefaultDaemonPort
 
 	// Try to get uptime from health endpoint
 	client := &http.Client{Timeout: 500 * time.Millisecond}
-	resp, err := client.Get("http://localhost:9120/health")
+	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/health", config.DefaultDaemonPort))
 	if err != nil {
 		return proc
 	}

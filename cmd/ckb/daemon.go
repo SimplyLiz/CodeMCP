@@ -134,7 +134,7 @@ func init() {
 	daemonScheduleListCmd.Flags().StringVar(&scheduleFormat, "format", "human", "Output format (human, json)")
 
 	// Start flags
-	daemonStartCmd.Flags().IntVar(&daemonPort, "port", 9120, "HTTP port")
+	daemonStartCmd.Flags().IntVar(&daemonPort, "port", config.DefaultDaemonPort, "HTTP port")
 	daemonStartCmd.Flags().StringVar(&daemonBind, "bind", "localhost", "Bind address")
 	daemonStartCmd.Flags().BoolVar(&daemonForeground, "foreground", false, "Run in foreground")
 
@@ -203,7 +203,7 @@ func runDaemonBackground() error {
 
 	// Build command to run daemon in foreground
 	args := []string{"daemon", "start", "--foreground"}
-	if daemonPort != 9120 {
+	if daemonPort != config.DefaultDaemonPort {
 		args = append(args, fmt.Sprintf("--port=%d", daemonPort))
 	}
 	if daemonBind != "localhost" {

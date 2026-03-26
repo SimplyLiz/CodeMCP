@@ -50,6 +50,12 @@ var validationIndicators = []string{
 	"regexp", "regex", "pattern", "constraint",
 	"joi.", "yup.", "zod.", "class-validator",
 	"@valid", "@notempty", "@notblank", "@size",
+	// Go validation patterns (lowercase for case-insensitive matching)
+	"strconv.", "parseint", "parsefloat", "parsebool", "atoi",
+	"json.unmarshal", "json.newdecoder", "json.decode",
+	"statusbadrequest", "http.error", "badrequest",
+	"limitreader", "maxbytesreader",
+	"filepath.clean", "filepath.abs",
 }
 
 func (c *missingInputValidationCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {

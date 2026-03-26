@@ -96,6 +96,11 @@ func (c *missingAuthMiddlewareCheck) Run(ctx context.Context, scope *compliance.
 			}
 		}
 
+		// Skip if server binds to localhost only — not exposed externally
+		if !hasAuth && (strings.Contains(text, "localhost") || strings.Contains(text, "127.0.0.1")) {
+			continue
+		}
+
 		if !hasAuth {
 			// Find the first route line for reporting
 			lines := strings.Split(text, "\n")

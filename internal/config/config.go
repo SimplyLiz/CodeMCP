@@ -11,6 +11,9 @@ import (
 	"github.com/spf13/viper"
 )
 
+// DefaultDaemonPort is the default port the CKB daemon listens on.
+const DefaultDaemonPort = 9120
+
 // EnvOverride records an environment variable override that was applied
 type EnvOverride struct {
 	EnvVar    string      // e.g., "CKB_BUDGET_MAX_MODULES"
@@ -425,7 +428,7 @@ func DefaultConfig() *Config {
 			Level:  "info",
 		},
 		Daemon: DaemonConfig{
-			Port:     9120,
+			Port:     DefaultDaemonPort,
 			Bind:     "localhost",
 			LogLevel: "info",
 			LogFile:  "", // Default: ~/.ckb/daemon/daemon.log
