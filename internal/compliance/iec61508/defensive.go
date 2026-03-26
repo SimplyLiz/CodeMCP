@@ -127,7 +127,7 @@ func (c *complexityExceededCheck) Run(ctx context.Context, scope *compliance.Sca
 			}
 
 			fullPath := filepath.Join(scope.RepoRoot, file)
-			fc, err := scope.ComplexityAnalyzer.AnalyzeFile(ctx, fullPath)
+			fc, err := scope.AnalyzeFileComplexity(ctx, fullPath)
 			if err != nil || fc == nil || fc.Error != "" {
 				continue
 			}
