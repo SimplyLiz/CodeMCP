@@ -111,7 +111,7 @@ func (s *Server) handleDeltaIngest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Refresh FTS index
-	if err := s.engine.RefreshFTS(ctx); err != nil {
+	if err = s.engine.RefreshFTS(ctx); err != nil {
 		warnings = append(warnings, "FTS refresh failed: "+err.Error())
 	}
 

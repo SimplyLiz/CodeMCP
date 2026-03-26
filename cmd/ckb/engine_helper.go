@@ -31,12 +31,14 @@ func getEngine(repoRoot string, logger *slog.Logger) (*query.Engine, error) {
 			cfg = config.DefaultConfig()
 		}
 
-		// Open storage
+		// Open storage — db is passed to the engine and lives for the process lifetime.
+		// Intentionally not deferred: the engine needs the DB for every subsequent call.
 		db, err := storage.Open(repoRoot, logger)
 		if err != nil {
 			engineErr = fmt.Errorf("failed to open database: %w", err)
 			return
 		}
+		// db.Close() is called at process exit (OS reclaims resources)
 
 		// Create engine
 		engine, err := query.NewEngine(repoRoot, db, logger, cfg)
@@ -54,9 +56,9 @@ func getEngine(repoRoot string, logger *slog.Logger) (*query.Engine, error) {
 		engine.SetTierMode(tierMode)
 
 		// Validate that the tier requirements can be satisfied
-		if err := engine.ValidateTierMode(); err != nil {
+		if validErr := engine.ValidateTierMode(); validErr != nil {
 			// Log warning but don't fail - fall back to available tier
-			logger.Warn("Requested tier not available", "error", err.Error())
+			logger.Warn("Requested tier not available", "error", validErr.Error())
 		}
 
 		sharedEngine = engine

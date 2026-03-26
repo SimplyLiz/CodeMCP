@@ -485,9 +485,19 @@ func checkShadowedErr(root *sitter.Node, source []byte, file string) []ReviewFin
 					// Check if any of the declared vars is "err"
 					for _, part := range strings.Split(leftText, ",") {
 						if strings.TrimSpace(part) == "err" {
+							// If the := is inside an if/for/switch initializer,
+							// its scope is limited to that statement — treat it as
+							// depth+1 so it won't trigger on inner re-declarations.
+							d := depth
+							if node.Parent() != nil {
+								pt := node.Parent().Type()
+								if pt == "if_statement" || pt == "for_statement" || pt == "switch_statement" {
+									d++
+								}
+							}
 							errDecls = append(errDecls, errDecl{
 								line:  int(node.StartPoint().Row) + 1,
-								depth: depth,
+								depth: d,
 							})
 							break
 						}
@@ -500,10 +510,13 @@ func checkShadowedErr(root *sitter.Node, source []byte, file string) []ReviewFin
 		}
 		walk(body, 0)
 
-		// Report inner declarations that shadow outer ones
+		// Report inner declarations that shadow outer ones.
+		// Only flag when the outer declaration is at depth 0 (function body level).
+		// Inner err := inside nested if-blocks is idiomatic Go (if err := f(); err != nil {})
+		// and doesn't cause real shadowing bugs.
 		for i, inner := range errDecls {
 			for j, outer := range errDecls {
-				if i != j && inner.depth > outer.depth && inner.line > outer.line {
+				if i != j && inner.depth > outer.depth && inner.line > outer.line && outer.depth == 0 {
 					findings = append(findings, ReviewFinding{
 						Check:      "bug-patterns",
 						Severity:   "info",

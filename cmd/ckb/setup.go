@@ -799,7 +799,7 @@ func installClaudeCodeSkills() error {
 	}
 
 	commandsDir := filepath.Join(home, ".claude", "commands")
-	if err := os.MkdirAll(commandsDir, 0755); err != nil {
+	if err = os.MkdirAll(commandsDir, 0755); err != nil {
 		return err
 	}
 
@@ -1140,7 +1140,7 @@ func configureVSCodeGlobal(ckbCommand string, ckbArgs []string) error {
 	execCmd.Stdout = os.Stdout
 	execCmd.Stderr = os.Stderr
 
-	if err := execCmd.Run(); err != nil {
+	if err = execCmd.Run(); err != nil {
 		return fmt.Errorf("failed to add CKB to VS Code: %w", err)
 	}
 
@@ -1178,7 +1178,7 @@ func getClaudeMcpConfig() (*claudeConfigEntry, error) {
 	var config struct {
 		McpServers map[string]claudeConfigEntry `json:"mcpServers"`
 	}
-	if err := json.Unmarshal(data, &config); err != nil {
+	if err = json.Unmarshal(data, &config); err != nil {
 		return nil, err
 	}
 
@@ -1202,7 +1202,7 @@ func getGrokMcpConfig() (*grokMcpEntry, error) {
 	}
 
 	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
+	if err = json.Unmarshal(data, &raw); err != nil {
 		return nil, err
 	}
 
@@ -1212,7 +1212,7 @@ func getGrokMcpConfig() (*grokMcpEntry, error) {
 	}
 
 	var mcpServers map[string]grokMcpEntry
-	if err := json.Unmarshal(mcpServersRaw, &mcpServers); err != nil {
+	if err = json.Unmarshal(mcpServersRaw, &mcpServers); err != nil {
 		return nil, err
 	}
 
@@ -1257,7 +1257,7 @@ func getVSCodeGlobalMcpConfig() (*vsCodeMcpEntry, error) {
 	}
 
 	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
+	if err = json.Unmarshal(data, &raw); err != nil {
 		return nil, err
 	}
 
@@ -1267,7 +1267,7 @@ func getVSCodeGlobalMcpConfig() (*vsCodeMcpEntry, error) {
 	}
 
 	var mcpSection map[string]json.RawMessage
-	if err := json.Unmarshal(mcpRaw, &mcpSection); err != nil {
+	if err = json.Unmarshal(mcpRaw, &mcpSection); err != nil {
 		return nil, err
 	}
 
@@ -1277,7 +1277,7 @@ func getVSCodeGlobalMcpConfig() (*vsCodeMcpEntry, error) {
 	}
 
 	var servers map[string]vsCodeMcpEntry
-	if err := json.Unmarshal(serversRaw, &servers); err != nil {
+	if err = json.Unmarshal(serversRaw, &servers); err != nil {
 		return nil, err
 	}
 
