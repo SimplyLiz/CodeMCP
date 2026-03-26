@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/SimplyLiz/CodeMCP/internal/backends"
+	"github.com/SimplyLiz/CodeMCP/internal/complexity"
 	"github.com/SimplyLiz/CodeMCP/internal/compression"
 	"github.com/SimplyLiz/CodeMCP/internal/errors"
 	"github.com/SimplyLiz/CodeMCP/internal/output"
@@ -305,6 +306,10 @@ type SearchResultItem struct {
 	Visibility *VisibilityInfo `json:"visibility,omitempty"`
 	Score      float64         `json:"score"`
 	Ranking    *RankingV52     `json:"ranking,omitempty"`
+	// Body metrics (enriched via tree-sitter when available)
+	Lines      int `json:"lines,omitempty"`      // body line count
+	Cyclomatic int `json:"cyclomatic,omitempty"` // cyclomatic complexity
+	Cognitive  int `json:"cognitive,omitempty"`  // cognitive complexity
 }
 
 // generateCacheKey creates a deterministic cache key for search options.
@@ -822,22 +827,23 @@ func sortReferences(refs []ReferenceInfo) {
 	})
 }
 
-// enrichWithBodyRanges upgrades search results with full body ranges from
-// tree-sitter. SCIP stores the range of the symbol name token (EndLine == StartLine),
-// and FTS stores no line info at all (StartLine == 0). Tree-sitter gives us real
-// scope ranges for functions, types, and methods.
+// enrichWithBodyRanges upgrades search results with full body ranges and
+// per-symbol complexity from tree-sitter. SCIP stores the range of the symbol
+// name token (EndLine == StartLine), and FTS stores no line info at all
+// (StartLine == 0). Tree-sitter gives us real scope ranges, and the complexity
+// analyzer gives us cyclomatic/cognitive metrics per function.
 func (e *Engine) enrichWithBodyRanges(ctx context.Context, results []SearchResultItem) {
 	if e.treesitterExtractor == nil {
 		return
 	}
 
-	// Collect files that need enrichment
+	// Collect files that need enrichment (no endLine or no complexity)
 	needsEnrich := make(map[string][]int) // fileId → indices into results
 	for i, r := range results {
 		if r.Location == nil || r.Location.FileId == "" {
 			continue
 		}
-		if r.Location.EndLine <= r.Location.StartLine {
+		if r.Location.EndLine <= r.Location.StartLine || r.Cyclomatic == 0 {
 			needsEnrich[r.Location.FileId] = append(needsEnrich[r.Location.FileId], i)
 		}
 	}
@@ -845,57 +851,100 @@ func (e *Engine) enrichWithBodyRanges(ctx context.Context, results []SearchResul
 		return
 	}
 
-	// Extract symbols per file and match to enrich
+	// Extract symbols and complexity per file
 	for fileId, indices := range needsEnrich {
 		absPath := filepath.Join(e.repoRoot, fileId)
+
+		// Get body ranges from symbol extractor
 		e.tsMu.Lock()
 		syms, err := e.treesitterExtractor.ExtractFile(ctx, absPath)
 		e.tsMu.Unlock()
-		if err != nil || len(syms) == 0 {
+
+		// Get complexity from complexity analyzer
+		var cxFuncs []complexity.ComplexityResult
+		if e.complexityAnalyzer != nil {
+			if fc, cxErr := e.complexityAnalyzer.GetFileComplexityFull(ctx, absPath); cxErr == nil && fc != nil {
+				cxFuncs = fc.Functions
+			}
+		}
+
+		if (err != nil || len(syms) == 0) && len(cxFuncs) == 0 {
 			continue
 		}
 
-		// Build lookups: exact match by (name, startLine), and name-only for FTS results
+		// Build lookups for body ranges
 		type lineKey struct {
 			name string
 			line int
 		}
-		type bodyRange struct {
-			startLine int
-			endLine   int
+		type symbolMetrics struct {
+			startLine  int
+			endLine    int
+			lines      int
+			cyclomatic int
+			cognitive  int
 		}
-		byNameLine := make(map[lineKey]bodyRange)
-		byName := make(map[string]bodyRange) // first match by name (for FTS with no line)
+		byNameLine := make(map[lineKey]*symbolMetrics)
+		byName := make(map[string]*symbolMetrics)
+
+		// Populate from symbol extractor (body ranges)
 		for _, sym := range syms {
 			if sym.EndLine > sym.Line {
-				br := bodyRange{sym.Line, sym.EndLine}
-				byNameLine[lineKey{sym.Name, sym.Line}] = br
+				m := &symbolMetrics{
+					startLine: sym.Line,
+					endLine:   sym.EndLine,
+					lines:     sym.EndLine - sym.Line + 1,
+				}
+				byNameLine[lineKey{sym.Name, sym.Line}] = m
 				if _, exists := byName[sym.Name]; !exists {
-					byName[sym.Name] = br
+					byName[sym.Name] = m
 				}
 			}
 		}
 
+		// Merge complexity data
+		for _, fn := range cxFuncs {
+			key := lineKey{fn.Name, fn.StartLine}
+			if m, ok := byNameLine[key]; ok {
+				m.cyclomatic = fn.Cyclomatic
+				m.cognitive = fn.Cognitive
+			} else if m, ok := byName[fn.Name]; ok && m.startLine == fn.StartLine {
+				m.cyclomatic = fn.Cyclomatic
+				m.cognitive = fn.Cognitive
+			}
+		}
+
+		// Apply to results
 		for _, idx := range indices {
 			r := &results[idx]
-			// FTS stores names as "Container#Name" (e.g., "Engine#SearchSymbols"),
-			// tree-sitter uses bare names. Extract the bare name for matching.
 			matchName := r.Name
 			if hashIdx := strings.LastIndex(matchName, "#"); hashIdx >= 0 {
 				matchName = matchName[hashIdx+1:]
 			}
 
-			// Try exact match first (SCIP results with StartLine)
+			var m *symbolMetrics
 			if r.Location.StartLine > 0 {
-				if br, ok := byNameLine[lineKey{matchName, r.Location.StartLine}]; ok {
-					r.Location.EndLine = br.endLine
+				m = byNameLine[lineKey{matchName, r.Location.StartLine}]
+			}
+			if m == nil {
+				m = byName[matchName]
+			}
+			if m == nil {
+				continue
+			}
+
+			if r.Location.EndLine <= r.Location.StartLine {
+				if r.Location.StartLine == 0 {
+					r.Location.StartLine = m.startLine
 				}
-			} else {
-				// FTS results: no line info, match by name only
-				if br, ok := byName[matchName]; ok {
-					r.Location.StartLine = br.startLine
-					r.Location.EndLine = br.endLine
-				}
+				r.Location.EndLine = m.endLine
+			}
+			if m.lines > 0 {
+				r.Lines = m.lines
+			}
+			if m.cyclomatic > 0 {
+				r.Cyclomatic = m.cyclomatic
+				r.Cognitive = m.cognitive
 			}
 		}
 	}

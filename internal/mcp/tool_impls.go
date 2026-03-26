@@ -515,6 +515,15 @@ func (s *MCPServer) toolSearchSymbols(params map[string]interface{}) (*envelope.
 			symbolInfo["location"] = loc
 		}
 
+		// Body metrics from tree-sitter enrichment
+		if sym.Lines > 0 {
+			symbolInfo["lines"] = sym.Lines
+		}
+		if sym.Cyclomatic > 0 {
+			symbolInfo["cyclomatic"] = sym.Cyclomatic
+			symbolInfo["cognitive"] = sym.Cognitive
+		}
+
 		// Add v5.2 ranking signals
 		if sym.Ranking != nil {
 			symbolInfo["ranking"] = map[string]interface{}{

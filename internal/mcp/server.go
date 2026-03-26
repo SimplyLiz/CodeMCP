@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"bufio"
+	"context"
 	stderrors "errors"
 	"fmt"
 	"io"
@@ -95,6 +96,19 @@ func NewMCPServer(version string, engine *query.Engine, logger *slog.Logger) *MC
 	// Wire up metrics persistence if database is available
 	if engine != nil && engine.DB() != nil {
 		SetMetricsDB(engine.DB())
+	}
+
+	// Warm up the symbol search index in the background so the first
+	// searchSymbols/listSymbols call doesn't hit a cold cache.
+	if engine != nil {
+		go func() {
+			warmCtx, warmCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer warmCancel()
+			_, _ = engine.SearchSymbols(warmCtx, query.SearchSymbolsOptions{
+				Query: "",
+				Limit: 1,
+			})
+		}()
 	}
 
 	// Store initial engine in cache for auto-resolution

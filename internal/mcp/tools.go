@@ -130,6 +130,71 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 			},
 		},
 		{
+			Name:        "listSymbols",
+			Description: "Bulk list symbols in a scope without search query. Returns functions, types, and classes with body ranges and complexity metrics (lines, endLine, cyclomatic, cognitive). Use for complete symbol inventory — no search query needed.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"scope": map[string]interface{}{
+						"type":        "string",
+						"description": "Path prefix to list symbols from (e.g., 'src/services/', 'internal/query/')",
+					},
+					"kinds": map[string]interface{}{
+						"type":  "array",
+						"items": map[string]interface{}{"type": "string"},
+						"description": "Symbol kinds: 'function', 'method', 'class', 'type', 'interface' (default: function, method)",
+					},
+					"minLines": map[string]interface{}{
+						"type":    "number",
+						"default": 3,
+						"description": "Minimum body line count (filters trivial getters/setters)",
+					},
+					"minComplexity": map[string]interface{}{
+						"type":    "number",
+						"default": 0,
+						"description": "Minimum cyclomatic complexity to include",
+					},
+					"sortBy": map[string]interface{}{
+						"type":    "string",
+						"enum":    []string{"complexity", "lines", "name"},
+						"default": "complexity",
+						"description": "Sort order",
+					},
+					"limit": map[string]interface{}{
+						"type":    "number",
+						"default": 50,
+						"description": "Max results (default 50, max 200)",
+					},
+				},
+			},
+		},
+		{
+			Name:        "getSymbolGraph",
+			Description: "Batch call graph for multiple symbols. Returns nodes and edges for all requested symbols in one call, replacing N serial getCallGraph calls with 1 batch call.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"symbolIds": map[string]interface{}{
+						"type":  "array",
+						"items": map[string]interface{}{"type": "string"},
+						"description": "Symbol IDs to get call graph for (max 30)",
+					},
+					"depth": map[string]interface{}{
+						"type":    "number",
+						"default": 1,
+						"description": "Call graph depth per symbol (1-3)",
+					},
+					"direction": map[string]interface{}{
+						"type":    "string",
+						"enum":    []string{"callers", "callees", "both"},
+						"default": "both",
+						"description": "Direction to traverse",
+					},
+				},
+				"required": []string{"symbolIds"},
+			},
+		},
+		{
 			Name:        "findReferences",
 			Description: "Find all references to a symbol with completeness information",
 			InputSchema: map[string]interface{}{
@@ -2341,6 +2406,8 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["expandToolset"] = s.toolExpandToolset
 	s.tools["getSymbol"] = s.toolGetSymbol
 	s.tools["searchSymbols"] = s.toolSearchSymbols
+	s.tools["listSymbols"] = s.toolListSymbols
+	s.tools["getSymbolGraph"] = s.toolGetSymbolGraph
 	s.tools["findReferences"] = s.toolFindReferences
 	s.tools["getArchitecture"] = s.toolGetArchitecture
 	s.tools["analyzeImpact"] = s.toolAnalyzeImpact
