@@ -54,12 +54,15 @@ func (s *MCPServer) toolListSymbols(params map[string]interface{}) (*envelope.Re
 		limit = 200
 	}
 
-	// Use searchSymbols with empty query to list all symbols in scope
+	// Use searchSymbols with empty query to list all symbols in scope.
+	// Exclude struct fields (#) by default — listSymbols is for behavioral
+	// analysis (functions/types), not data shape (use getSymbol for that).
 	searchResp, err := s.engine().SearchSymbols(ctx, query.SearchSymbolsOptions{
-		Query: "",
-		Scope: scope,
-		Kinds: kinds,
-		Limit: limit * 3, // Request more to filter
+		Query:           "",
+		Scope:           scope,
+		Kinds:           kinds,
+		Limit:           limit * 5, // Request more to survive filtering
+		ExcludePatterns: []string{"#"},
 	})
 	if err != nil {
 		return nil, err
@@ -68,7 +71,12 @@ func (s *MCPServer) toolListSymbols(params map[string]interface{}) (*envelope.Re
 	// Filter by minLines and minComplexity
 	var filtered []map[string]interface{}
 	for _, sym := range searchResp.Symbols {
-		if sym.Lines > 0 && sym.Lines < minLines {
+		// Skip symbols without body ranges when minLines is set
+		if minLines > 0 && sym.Lines > 0 && sym.Lines < minLines {
+			continue
+		}
+		// Skip anonymous/unknown symbols
+		if sym.Name == "<anonymous>" || sym.Name == "<unknown>" || sym.Name == "" {
 			continue
 		}
 		if minComplexity > 0 && sym.Cyclomatic < minComplexity {
