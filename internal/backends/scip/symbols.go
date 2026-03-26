@@ -464,7 +464,8 @@ var singleReturnNew = map[string]bool{
 // noErrorMethods lists method names that return bool or are routinely discarded safely,
 // even though their names match error-returning patterns.
 var noErrorMethods = map[string]bool{
-	"Scan": true, // bufio.Scanner.Scan() → bool (errors via .Err())
+	"Scan":        true, // bufio.Scanner.Scan() → bool (errors via .Err())
+	"WriteHeader": true, // http.ResponseWriter.WriteHeader() returns nothing
 }
 
 // LikelyReturnsError uses heuristics to determine if a function likely returns an error.

@@ -394,9 +394,17 @@ func checkNilAfterDeref(root *sitter.Node, source []byte, file string) []ReviewF
 		}
 		walk(body)
 
-		// Report cases where deref comes before nil check
+		// Report cases where deref comes before nil check.
+		// Skip cases where both the deref and nil check involve re-declared
+		// variables (separate := in different scopes — flat name tracking
+		// can't distinguish them).
 		for varName, derefLine := range derefLines {
 			if nilLine, ok := nilCheckLines[varName]; ok && derefLine < nilLine {
+				// Skip if the gap is large (>30 lines) — likely different scopes
+				// with re-declared variables that our flat walk conflates.
+				if nilLine-derefLine > 30 {
+					continue
+				}
 				findings = append(findings, ReviewFinding{
 					Check:      "bug-patterns",
 					Severity:   "warning",
@@ -729,9 +737,11 @@ func checkMissingDeferClose(root *sitter.Node, source []byte, file string) []Rev
 	// Resource-opening function names
 	openFuncs := map[string]bool{
 		"Open": true, "OpenFile": true, "Create": true,
-		"Dial": true, "DialContext": true, "NewReader": true,
-		"NewWriter": true, "NewFile": true,
-		// Note: NewScanner (bufio.Scanner) is NOT included — Scanner doesn't implement io.Closer
+		"Dial": true, "DialContext": true,
+		"NewFile": true,
+		// Note: NewReader/NewWriter (bufio) wrap existing readers and don't implement io.Closer.
+		// NewScanner (bufio.Scanner) also doesn't implement io.Closer.
+		// Only flag resource-owning constructors that allocate OS handles.
 	}
 
 	funcBodies := complexity.FindNodes(root, []string{"function_declaration", "method_declaration", "func_literal"})
