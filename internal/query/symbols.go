@@ -50,6 +50,10 @@ type SymbolInfo struct {
 	Location            *LocationInfo   `json:"location"`
 	LocationFreshness   string          `json:"locationFreshness"`
 	Documentation       string          `json:"documentation,omitempty"`
+	// Lightweight counts (populated by BatchGet when includeCounts is true)
+	ReferenceCount int `json:"referenceCount,omitempty"`
+	CallerCount    int `json:"callerCount,omitempty"`
+	CalleeCount    int `json:"calleeCount,omitempty"`
 }
 
 // VisibilityInfo describes symbol visibility.
@@ -263,10 +267,13 @@ func (e *Engine) getLocationFreshness(repoState *RepoState) string {
 
 // SearchSymbolsOptions contains options for searchSymbols.
 type SearchSymbolsOptions struct {
-	Query string
-	Scope string
-	Kinds []string
-	Limit int
+	Query           string
+	Scope           string
+	Kinds           []string
+	Limit           int
+	MinLines        int      // Filter: minimum body line count (post-enrichment)
+	MinComplexity   int      // Filter: minimum cyclomatic complexity (post-enrichment)
+	ExcludePatterns []string // Filter: exclude symbols whose name contains any pattern (e.g., "#", ".()")
 }
 
 // SearchSymbolsResponse is the response for searchSymbols.
@@ -501,10 +508,33 @@ func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (
 		}, nil
 	}
 
-	// Enrich results with body ranges from tree-sitter when SCIP only provides
-	// identifier ranges (EndLine == StartLine). This gives consumers real
-	// startLine/endLine/lines without needing to do brace-matching.
+	// Enrich results with body ranges and complexity from tree-sitter.
 	e.enrichWithBodyRanges(ctx, results)
+
+	// Apply post-enrichment filters (minLines, minComplexity, excludePatterns)
+	if opts.MinLines > 0 || opts.MinComplexity > 0 || len(opts.ExcludePatterns) > 0 {
+		filtered := results[:0]
+		for _, r := range results {
+			if opts.MinLines > 0 && r.Lines > 0 && r.Lines < opts.MinLines {
+				continue
+			}
+			if opts.MinComplexity > 0 && r.Cyclomatic < opts.MinComplexity {
+				continue
+			}
+			excluded := false
+			for _, p := range opts.ExcludePatterns {
+				if strings.Contains(r.Name, p) {
+					excluded = true
+					break
+				}
+			}
+			if excluded {
+				continue
+			}
+			filtered = append(filtered, r)
+		}
+		results = filtered
+	}
 
 	// Apply ranking
 	rankSearchResults(results, opts.Query)

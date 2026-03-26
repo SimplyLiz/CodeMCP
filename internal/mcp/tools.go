@@ -125,6 +125,19 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 						"default":     20,
 						"description": "Maximum number of results to return",
 					},
+					"minLines": map[string]interface{}{
+						"type":        "number",
+						"description": "Minimum body line count (filters trivial getters). Applied after tree-sitter enrichment.",
+					},
+					"minComplexity": map[string]interface{}{
+						"type":        "number",
+						"description": "Minimum cyclomatic complexity. Applied after tree-sitter enrichment.",
+					},
+					"excludePatterns": map[string]interface{}{
+						"type":  "array",
+						"items": map[string]interface{}{"type": "string"},
+						"description": "Exclude symbols whose name contains any pattern (e.g., '#' for struct fields, '<anonymous>')",
+					},
 				},
 				"required": []string{"query"},
 			},
@@ -2234,7 +2247,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "batchGet",
-			Description: "Retrieve multiple symbols by ID in a single call. Max 50 symbols.",
+			Description: "Retrieve multiple symbols by ID in a single call. Max 50 symbols. With includeCounts, also returns referenceCount, callerCount, calleeCount per symbol.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -2244,6 +2257,11 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 							"type": "string",
 						},
 						"description": "Array of symbol IDs to retrieve (max 50)",
+					},
+					"includeCounts": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Include referenceCount, callerCount, calleeCount per symbol (adds SCIP lookups per symbol)",
 					},
 				},
 				"required": []string{"symbolIds"},

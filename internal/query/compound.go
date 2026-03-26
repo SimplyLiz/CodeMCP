@@ -1880,7 +1880,8 @@ func (e *Engine) calculatePrepareRisk(
 
 // BatchGetOptions controls batchGet behavior.
 type BatchGetOptions struct {
-	SymbolIds []string // max 50
+	SymbolIds     []string // max 50
+	IncludeCounts bool     // populate referenceCount, callerCount, calleeCount
 }
 
 // BatchGetResponse returns multiple symbols by ID.
@@ -1934,6 +1935,25 @@ func (e *Engine) BatchGet(ctx context.Context, opts BatchGetOptions) (*BatchGetR
 	}
 
 	wg.Wait()
+
+	// Populate reference/caller/callee counts if requested
+	if opts.IncludeCounts && e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
+		for symId, info := range results {
+			if refs, err := e.FindReferences(ctx, FindReferencesOptions{SymbolId: symId, Limit: 500}); err == nil {
+				info.ReferenceCount = refs.TotalCount
+			}
+			if cg, err := e.GetCallGraph(ctx, CallGraphOptions{SymbolId: symId, Direction: "both", Depth: 1}); err == nil {
+				for _, n := range cg.Nodes {
+					switch n.Role {
+					case "caller":
+						info.CallerCount++
+					case "callee":
+						info.CalleeCount++
+					}
+				}
+			}
+		}
+	}
 
 	// Build provenance
 	var backendContribs []BackendContribution

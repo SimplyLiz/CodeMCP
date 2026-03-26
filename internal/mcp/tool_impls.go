@@ -467,12 +467,32 @@ func (s *MCPServer) toolSearchSymbols(params map[string]interface{}) (*envelope.
 		"limit", limit,
 	)
 
+	minLines := 0
+	if v, ok := params["minLines"].(float64); ok {
+		minLines = int(v)
+	}
+	minComplexity := 0
+	if v, ok := params["minComplexity"].(float64); ok {
+		minComplexity = int(v)
+	}
+	var excludePatterns []string
+	if v, ok := params["excludePatterns"].([]interface{}); ok {
+		for _, p := range v {
+			if ps, ok := p.(string); ok {
+				excludePatterns = append(excludePatterns, ps)
+			}
+		}
+	}
+
 	ctx := context.Background()
 	opts := query.SearchSymbolsOptions{
-		Query: queryStr,
-		Scope: scope,
-		Kinds: kinds,
-		Limit: limit,
+		Query:           queryStr,
+		Scope:           scope,
+		Kinds:           kinds,
+		Limit:           limit,
+		MinLines:        minLines,
+		MinComplexity:   minComplexity,
+		ExcludePatterns: excludePatterns,
 	}
 
 	searchResp, err := s.engine().SearchSymbols(ctx, opts)
