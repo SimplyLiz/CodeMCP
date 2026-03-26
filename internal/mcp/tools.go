@@ -204,7 +204,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "analyzeImpact",
-			Description: "Analyze the impact of changing a symbol. Returns callers, affected modules, and risk score—answers 'what breaks if I change X?'. For comprehensive pre-change analysis, use prepareChange instead.",
+			Description: "Use this to check 'what breaks if I change X?' — returns callers, affected modules, and risk score for a single symbol. For full pre-change analysis with tests and coupling, use prepareChange instead. For analyzing a git diff of changes already made, use analyzeChange.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -234,7 +234,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "analyzeChange",
-			Description: "Analyze the impact of a set of code changes from git diff. Answers: What might break? Which tests should run? Who needs to review?",
+			Description: "Use this AFTER changes are made to analyze a git diff — answers: what might break? which tests should run? who needs to review? For pre-change planning (before writing code), use prepareChange instead. For full PR review with quality gates, use reviewPR.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -398,7 +398,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "summarizeDiff",
-			Description: "Compress diffs into 'what changed, what might break'. Supports commit ranges, single commits, or time windows. Default: last 30 days.",
+			Description: "Use this for a quick summary of what changed — compresses diffs into 'what changed, what might break'. Supports commit ranges, single commits, or time windows. For a full PR review with quality gates and scoring, use reviewPR instead. For branch-vs-branch comparison, use summarizePr.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -799,7 +799,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		// v6.1 CI/CD tools
 		{
 			Name:        "summarizePr",
-			Description: "Analyze changes between branches and provide a PR summary with risk assessment, affected modules, hotspots touched, and suggested reviewers.",
+			Description: "Use this for a PR summary with risk assessment — compares branches and returns affected modules, hotspots, and suggested reviewers. Lighter than reviewPR (no quality gates or scoring). For full review with 15 checks, use reviewPR. For commit-level diffs, use summarizeDiff.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -1550,7 +1550,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		// v7.6 Static Dead Code Detection (SCIP-based, no telemetry required)
 		{
 			Name:        "findDeadCode",
-			Description: "Find dead code using static analysis of the SCIP index. Detects: symbols with zero references, self-only references, test-only references, and over-exported symbols. Works without telemetry.",
+			Description: "Use this to find dead code — detects symbols with zero references, self-only references, test-only references, and over-exported symbols. Uses SCIP index for precision. For runtime-based dead code detection (what's actually called), use findDeadCodeCandidates with telemetry data.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -1594,7 +1594,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		// v7.6 Affected Tests Tool
 		{
 			Name:        "getAffectedTests",
-			Description: "Find tests affected by current code changes. Uses SCIP symbol analysis and heuristics to trace from changed code to test files. Useful for targeted test runs in CI or local development.",
+			Description: "Use this to find which tests to run after code changes — traces from changed symbols to test files using SCIP analysis. Returns test files ranked by relevance. For finding untested code (gaps), use analyzeTestGaps instead.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -1624,7 +1624,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		// v7.6 Breaking Change Detection Tool
 		{
 			Name:        "compareAPI",
-			Description: "Compare API surfaces between two git refs to detect breaking changes. Finds removed symbols, signature changes, visibility changes, and renames. Useful for release planning and API compatibility checks.",
+			Description: "Use this to detect breaking API changes between git refs — finds removed symbols, signature changes, visibility changes, and renames. Essential for release planning and backwards compatibility. For general change impact (not API-specific), use analyzeChange.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -1759,7 +1759,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "auditRisk",
-			Description: "Find risky code based on multiple signals: complexity, test coverage, bus factor, staleness, security sensitivity, error rate, coupling, and churn.",
+			Description: "Use this to find risky code areas — scores files/symbols using 8 weighted signals: complexity, test coverage, bus factor, staleness, security sensitivity, error rate, coupling, and churn. Returns risk scores with top contributing factors. For regulatory compliance risk, use auditCompliance instead.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -1789,7 +1789,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		// v8.0 Secret Detection
 		{
 			Name:        "scanSecrets",
-			Description: "Scan for exposed secrets (API keys, tokens, passwords) in the codebase. Uses builtin patterns and optionally external tools (gitleaks, trufflehog).",
+			Description: "Use this to find exposed secrets (API keys, tokens, passwords) in specific files or paths. For a broader security/compliance check across regulations, use auditCompliance with iso27001 or owasp-asvs. Returns findings with redacted context, entropy scores, and confidence levels.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -2082,7 +2082,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		// v8.0 Compound Tools - aggregate multiple queries to reduce tool calls
 		{
 			Name:        "explore",
-			Description: "Comprehensive area exploration returning structure, key symbols, and change hotspots in one call. Best starting point for file/directory/module questions. Aggregates: explainFile → searchSymbols → getCallGraph → getHotspots.",
+			Description: "Use this FIRST when asked about a file, directory, or module — returns structure, key symbols, and change hotspots in one call. Best starting point for 'what is this?' or 'what's in this directory?' questions. For questions about a specific symbol, use understand instead.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -2108,7 +2108,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "understand",
-			Description: "Comprehensive symbol deep-dive returning full context in one call. Ideal for 'what does X do?' or 'how does X work?' questions. Aggregates: searchSymbols → getSymbol → explainSymbol → findReferences → getCallGraph.",
+			Description: "Use this when asked about a specific symbol — returns full context (definition, references, call graph, explanation) in one call. Ideal for 'what does X do?' or 'how is X used?' questions. For file/directory-level questions, use explore instead.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -2137,7 +2137,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "prepareChange",
-			Description: "Pre-change impact analysis showing blast radius, affected tests, coupled files, and risk score. Essential before modifying, renaming, deleting, or moving code to prevent breaking changes.",
+			Description: "Use this BEFORE making a code change — returns blast radius, affected tests, coupled files, and risk score. Essential before modifying, renaming, deleting, or moving code. More comprehensive than analyzeImpact (includes tests + coupling). For analyzing changes already made, use analyzeChange instead.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -2224,7 +2224,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		// v8.1 Test Gap Analysis
 		{
 			Name:        "analyzeTestGaps",
-			Description: "Find functions that lack test coverage. Returns untested functions sorted by complexity (highest-risk untested code first). Uses SCIP references when available, falls back to heuristic name matching.",
+			Description: "Use this to find untested functions — returns functions without test coverage, sorted by complexity (highest-risk first). For finding which existing tests cover specific changes, use getAffectedTests instead.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
