@@ -72,6 +72,13 @@ func (c *hardcodedConfigCheck) Run(ctx context.Context, scope *compliance.ScanSc
 					continue
 				}
 
+				// Skip regex pattern definitions — these contain URIs as match targets, not configs
+				if strings.Contains(line, "regexp.MustCompile") || strings.Contains(line, "regexp.Compile") ||
+					strings.Contains(line, "MustCompile(") || strings.Contains(line, "Compile(") ||
+					strings.Contains(line, "Regex:") {
+					continue
+				}
+
 				for _, pattern := range hardcodedConfigPatterns {
 					if pattern.MatchString(line) {
 						// Check exclusions

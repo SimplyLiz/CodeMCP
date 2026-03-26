@@ -168,7 +168,7 @@ func (c *insecureRandomCheck) Run(ctx context.Context, scope *compliance.ScanSco
 				lineNum++
 				line := scanner.Text()
 
-				// Track import statements for Go files
+				// Track import statements and nosec annotations for Go files
 				if isGoFile && lineNum <= 30 {
 					if strings.Contains(line, `"crypto/rand"`) {
 						hasCryptoRand = true
@@ -177,11 +177,19 @@ func (c *insecureRandomCheck) Run(ctx context.Context, scope *compliance.ScanSco
 						hasMathRand = true
 					}
 				}
+				// Skip lines with #nosec/nolint annotations
+				if strings.Contains(line, "#nosec") || strings.Contains(line, "nolint:") {
+					continue
+				}
 
 				for _, pattern := range insecureRandomPatterns {
 					if pattern.MatchString(line) {
 						// If this Go file only imports crypto/rand, skip rand.* call matches
 						if isGoFile && hasCryptoRand && !hasMathRand && goRandCallPattern.MatchString(line) {
+							continue
+						}
+						// Skip import lines — flag usage, not declarations
+						if isGoFile && (strings.Contains(line, `"math/rand"`) || strings.Contains(line, `"crypto/rand"`)) {
 							continue
 						}
 						// Check context: is this used for security-related purposes?

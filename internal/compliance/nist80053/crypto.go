@@ -77,6 +77,24 @@ func (c *nonFIPSCryptoCheck) Run(ctx context.Context, scope *compliance.ScanScop
 					continue
 				}
 
+				// Skip lines with security linter suppression annotations
+				if strings.Contains(line, "#nosec") || strings.Contains(line, "nolint:gosec") {
+					continue
+				}
+
+				// Skip pattern-matching code that references crypto names without using them
+				// e.g., strings.Contains(text, "md5.New()") is detection logic, not crypto usage
+				if strings.Contains(line, "strings.Contains") || strings.Contains(line, "strings.HasPrefix") ||
+					strings.Contains(line, "strings.HasSuffix") || strings.Contains(line, "strings.EqualFold") {
+					continue
+				}
+
+				// Skip string literals in allowlist/map definitions (e.g., "MD5": ..., algoName = "SHA-1")
+				// These reference algorithm names as data, not actual crypto calls.
+				if isAlgoNameInMapOrAssignment(trimmed) {
+					continue
+				}
+
 				for _, algo := range nonFIPSAlgorithms {
 					if algo.pattern.MatchString(line) {
 						findings = append(findings, compliance.Finding{
@@ -97,4 +115,20 @@ func (c *nonFIPSCryptoCheck) Run(ctx context.Context, scope *compliance.ScanScop
 	}
 
 	return findings, nil
+}
+
+// algoNameInMapRe matches quoted algorithm names in map/variable definitions,
+// e.g. `"MD5": something` or `name = "SHA-1"` — these are data references, not crypto calls.
+var algoNameInMapRe = regexp.MustCompile(`(?i)["'](MD5|SHA-?1|DES|3DES|RC4|Blowfish)["']\s*[,:\]}]|=\s*["'](MD5|SHA-?1|DES|3DES|RC4|Blowfish)["']`)
+
+func isAlgoNameInMapOrAssignment(trimmed string) bool {
+	if !algoNameInMapRe.MatchString(trimmed) {
+		return false
+	}
+	// Ensure it's not an actual function call (e.g., md5.New())
+	if strings.Contains(trimmed, ".New") || strings.Contains(trimmed, ".getInstance") ||
+		strings.Contains(trimmed, "NewCipher") || strings.Contains(trimmed, "NewDecoder") {
+		return false
+	}
+	return true
 }

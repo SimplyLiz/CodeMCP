@@ -215,8 +215,9 @@ func (c *pathTraversalCheck) Run(ctx context.Context, scope *compliance.ScanScop
 			return findings, ctx.Err()
 		}
 
-		// Skip test files
-		if strings.Contains(file, "_test.") || strings.Contains(file, ".test.") {
+		// Skip test files, testdata, and fixture directories
+		if strings.Contains(file, "_test.") || strings.Contains(file, ".test.") ||
+			strings.Contains(file, "testdata/") || strings.Contains(file, "fixtures/") {
 			continue
 		}
 
@@ -243,6 +244,15 @@ func (c *pathTraversalCheck) Run(ctx context.Context, scope *compliance.ScanScop
 					if pattern.MatchString(line) {
 						// Skip patterns that are just path.join in comment-free code
 						if strings.Contains(line, "../") {
+							// Skip ../ inside standard path resolution or string comparisons
+							if strings.Contains(line, "filepath.Join") || strings.Contains(line, "filepath.Rel") ||
+								strings.Contains(line, "filepath.Dir") || strings.Contains(line, "path.Join") ||
+								strings.Contains(line, "filepath.Clean") ||
+								strings.Contains(line, "HasPrefix") || strings.Contains(line, "Contains") ||
+								strings.Contains(line, "HasSuffix") || strings.Contains(line, `"../"`) ||
+								strings.Contains(line, `"..\\`) {
+								break
+							}
 							// Only flag ../ if it looks like string construction, not constants
 							if !strings.Contains(trimmed, "//") {
 								findings = append(findings, compliance.Finding{

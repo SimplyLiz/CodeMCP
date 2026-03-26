@@ -108,6 +108,34 @@ func (c *missingAccessEnforcementCheck) Run(ctx context.Context, scope *complian
 	return findings, nil
 }
 
+// isStructFieldOrPathAssignment returns true for lines that are Go struct field
+// assignments, file path values, or variable-only assignments without credential-like values.
+func isStructFieldOrPathAssignment(trimmed string) bool {
+	// File path extensions — not credentials
+	for _, ext := range []string{".db", ".json", ".yaml", ".yml", ".toml", ".conf", ".cfg", ".sqlite"} {
+		if strings.Contains(trimmed, ext) {
+			return true
+		}
+	}
+
+	// Go struct field assignment: `FieldName: variableOrExpr,`
+	// Match `word:` followed by a non-quoted value (variable reference, not a hardcoded credential)
+	if strings.Contains(trimmed, ":") && !strings.Contains(trimmed, "://") {
+		parts := strings.SplitN(trimmed, ":", 2)
+		if len(parts) == 2 {
+			val := strings.TrimSpace(parts[1])
+			val = strings.TrimSuffix(val, ",")
+			val = strings.TrimSpace(val)
+			// Value is a bare identifier (variable), not a quoted string — not a hardcoded cred
+			if len(val) > 0 && !strings.HasPrefix(val, `"`) && !strings.HasPrefix(val, `'`) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 // --- default-credentials: IA-5(1) — Default/hardcoded passwords ---
 
 type defaultCredentialsCheck struct{}
@@ -155,6 +183,11 @@ func (c *defaultCredentialsCheck) Run(ctx context.Context, scope *compliance.Sca
 				trimmed := strings.TrimSpace(line)
 
 				if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+
+				// Skip struct field assignments (e.g., `Root: rootId`) and file path values
+				if isStructFieldOrPathAssignment(trimmed) {
 					continue
 				}
 

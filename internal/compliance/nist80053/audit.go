@@ -53,6 +53,22 @@ func (c *insufficientAuditContentCheck) Run(ctx context.Context, scope *complian
 			continue
 		}
 
+		// Only check audit-relevant files: auth/, api/ directories,
+		// or files with authentication/authorization patterns.
+		// Skip purely internal utility files (slogutil, suggest, config, tool_impls, etc.)
+		isAuditRelevantPath := strings.Contains(file, "auth/") || strings.Contains(file, "api/") ||
+			strings.Contains(file, "middleware/") || strings.Contains(file, "handler/") ||
+			strings.Contains(file, "security/")
+		if !isAuditRelevantPath {
+			textCheck := strings.ToLower(text)
+			hasAuthPatterns := strings.Contains(textCheck, "authenticate") || strings.Contains(textCheck, "authorization") ||
+				strings.Contains(textCheck, "login") || strings.Contains(textCheck, "access control") ||
+				strings.Contains(textCheck, "permission") || strings.Contains(textCheck, "credential")
+			if !hasAuthPatterns {
+				continue
+			}
+		}
+
 		textLower := strings.ToLower(text)
 
 		// Check which required fields are present

@@ -71,6 +71,14 @@ func (c *missingInputValidationCheck) Run(ctx context.Context, scope *compliance
 
 		text := string(content)
 
+		// Only flag actual HTTP handler files (importing "net/http"), not internal
+		// packages that happen to read from io.Reader or other non-HTTP sources.
+		if !strings.Contains(text, `"net/http"`) && !strings.Contains(text, "req.body") &&
+			!strings.Contains(text, "request.form") && !strings.Contains(text, "request.json") &&
+			!strings.Contains(text, "@RequestBody") && !strings.Contains(text, "@RequestParam") {
+			continue
+		}
+
 		// Check if file reads user input
 		hasInputRead := false
 		var firstInputLine int

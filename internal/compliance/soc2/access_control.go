@@ -55,6 +55,11 @@ func (c *missingAuthMiddlewareCheck) Run(ctx context.Context, scope *compliance.
 			continue
 		}
 
+		// Skip test fixture directories
+		if strings.Contains(file, "testdata/") || strings.Contains(file, "fixtures/") {
+			continue
+		}
+
 		content, err := os.ReadFile(filepath.Join(scope.RepoRoot, file))
 		if err != nil {
 			continue
@@ -62,6 +67,12 @@ func (c *missingAuthMiddlewareCheck) Run(ctx context.Context, scope *compliance.
 
 		text := string(content)
 		textLower := strings.ToLower(text)
+
+		// Only flag files that are actual HTTP handler files:
+		// must import "net/http" or contain http handler registration patterns.
+		if !isHTTPHandlerFile(text) {
+			continue
+		}
 
 		// Check if this file has route registrations
 		hasRoutes := false
@@ -109,6 +120,23 @@ func (c *missingAuthMiddlewareCheck) Run(ctx context.Context, scope *compliance.
 	}
 
 	return findings, nil
+}
+
+// isHTTPHandlerFile returns true if the file content indicates it's an HTTP handler file.
+func isHTTPHandlerFile(text string) bool {
+	if strings.Contains(text, `"net/http"`) {
+		return true
+	}
+	// Check for common HTTP handler registration patterns
+	if strings.Contains(text, "http.Handle") || strings.Contains(text, "http.HandleFunc") ||
+		strings.Contains(text, "router.GET") || strings.Contains(text, "router.POST") ||
+		strings.Contains(text, "router.PUT") || strings.Contains(text, "router.DELETE") ||
+		strings.Contains(text, "app.get(") || strings.Contains(text, "app.post(") ||
+		strings.Contains(text, "@app.route") || strings.Contains(text, "@GetMapping") ||
+		strings.Contains(text, "@PostMapping") || strings.Contains(text, "@RequestMapping") {
+		return true
+	}
+	return false
 }
 
 // --- insecure-tls-config: CC6.7 — TLS verification disabled ---
