@@ -136,6 +136,9 @@ var insecureRandomPatterns = []*regexp.Regexp{
 func (c *insecureRandomCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	var findings []compliance.Finding
 
+	// Go-specific rand.* patterns that are safe when crypto/rand is imported
+	goRandCallPattern := regexp.MustCompile(`\brand\.(New|Int|Intn|Float|Read)\b`)
+
 	for _, file := range scope.Files {
 		if ctx.Err() != nil {
 			return findings, ctx.Err()
@@ -153,6 +156,11 @@ func (c *insecureRandomCheck) Run(ctx context.Context, scope *compliance.ScanSco
 			}
 			defer f.Close()
 
+			// For Go files, check imports to distinguish crypto/rand from math/rand.
+			isGoFile := strings.HasSuffix(file, ".go")
+			hasCryptoRand := false
+			hasMathRand := false
+
 			scanner := bufio.NewScanner(f)
 			lineNum := 0
 
@@ -160,8 +168,22 @@ func (c *insecureRandomCheck) Run(ctx context.Context, scope *compliance.ScanSco
 				lineNum++
 				line := scanner.Text()
 
+				// Track import statements for Go files
+				if isGoFile && lineNum <= 30 {
+					if strings.Contains(line, `"crypto/rand"`) {
+						hasCryptoRand = true
+					}
+					if strings.Contains(line, `"math/rand"`) {
+						hasMathRand = true
+					}
+				}
+
 				for _, pattern := range insecureRandomPatterns {
 					if pattern.MatchString(line) {
+						// If this Go file only imports crypto/rand, skip rand.* call matches
+						if isGoFile && hasCryptoRand && !hasMathRand && goRandCallPattern.MatchString(line) {
+							continue
+						}
 						// Check context: is this used for security-related purposes?
 						lower := strings.ToLower(line)
 						securityContext := strings.Contains(lower, "token") || strings.Contains(lower, "secret") ||

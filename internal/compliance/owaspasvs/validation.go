@@ -376,6 +376,12 @@ func (c *evalInjectionCheck) Run(ctx context.Context, scope *compliance.ScanScop
 			continue
 		}
 
+		// Skip CI/CD configurations — e.g. GitHub Actions use @actions/exec
+		// which is a safe subprocess runner, not JavaScript eval().
+		if strings.Contains(file, ".github/") {
+			continue
+		}
+
 		func() {
 			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
 			if err != nil {
