@@ -370,6 +370,12 @@ func (c *evalInjectionCheck) Run(ctx context.Context, scope *compliance.ScanScop
 			continue
 		}
 
+		// Go doesn't have eval/exec builtins — exec.Command is OS command
+		// execution (handled by command-injection check, not eval-injection).
+		if strings.HasSuffix(file, ".go") {
+			continue
+		}
+
 		func() {
 			f, err := os.Open(filepath.Join(scope.RepoRoot, file))
 			if err != nil {

@@ -211,8 +211,14 @@ func RunAudit(ctx context.Context, opts AuditOptions, logger *slog.Logger) (*Com
 				stat.Passed++
 			}
 
-			// Convert findings to ReviewFinding
-			for _, f := range filtered {
+			// Convert findings to ReviewFinding.
+			// Cap findings per check to avoid a single noisy check dominating output.
+			const maxFindingsPerCheck = 50
+			for fi, f := range filtered {
+				if fi >= maxFindingsPerCheck {
+					summary = fmt.Sprintf("%d finding(s) — %s (showing %d)", len(filtered), r.article, maxFindingsPerCheck)
+					break
+				}
 				rf := f.ToReviewFinding()
 				allFindings = append(allFindings, rf)
 				if f.File != "" {

@@ -153,11 +153,18 @@ func (c *deepNestingCheck) Severity() string  { return "warning" }
 
 func (c *deepNestingCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	var findings []compliance.Finding
-	maxDepth := 4
+	maxDepth := 6 // Depth 4 is normal for Go (func→if→for→if). 6+ is genuinely deep.
+
+	funcPattern := regexp.MustCompile(`^\s*func\b`)
 
 	for _, file := range scope.Files {
 		if ctx.Err() != nil {
 			return findings, ctx.Err()
+		}
+
+		// Skip test files — test helpers often have deeply nested setup
+		if strings.Contains(file, "_test.") || strings.Contains(file, ".test.") {
+			continue
 		}
 
 		func() {
@@ -170,14 +177,26 @@ func (c *deepNestingCheck) Run(ctx context.Context, scope *compliance.ScanScope)
 			scanner := bufio.NewScanner(f)
 			lineNum := 0
 			depth := 0
+			fileFindingCount := 0
+			reported := make(map[int]bool) // Only report once per depth level per file
 
 			for scanner.Scan() {
 				lineNum++
 				line := scanner.Text()
 
-				depth += strings.Count(line, "{") - strings.Count(line, "}")
+				// Reset depth at function boundaries
+				if funcPattern.MatchString(line) {
+					depth = 0
+				}
 
-				if depth > maxDepth {
+				depth += strings.Count(line, "{") - strings.Count(line, "}")
+				if depth < 0 {
+					depth = 0
+				}
+
+				if depth > maxDepth && !reported[depth] && fileFindingCount < 3 {
+					reported[depth] = true
+					fileFindingCount++
 					findings = append(findings, compliance.Finding{
 						Severity:   "warning",
 						Article:    "Table B.1 IEC 61508-3",
@@ -318,9 +337,13 @@ func (c *globalStateCheck) Run(ctx context.Context, scope *compliance.ScanScope)
 
 				for _, pattern := range globalMutablePatterns {
 					if pattern.MatchString(trimmed) {
-						// Skip constants and immutable declarations
+						// Skip constants, sync primitives, and common Go patterns
 						if strings.Contains(trimmed, "const") || strings.Contains(trimmed, "sync.") ||
-							strings.Contains(trimmed, "Mutex") {
+							strings.Contains(trimmed, "Mutex") || strings.Contains(trimmed, "Once") ||
+							strings.Contains(trimmed, "regexp.MustCompile") || strings.Contains(trimmed, "regexp.Compile") ||
+							strings.Contains(trimmed, "errors.New") || strings.Contains(trimmed, "= map[string]") ||
+							strings.Contains(trimmed, "= []string") || strings.Contains(trimmed, "= []") ||
+							strings.Contains(trimmed, "= map[") {
 							continue
 						}
 						findings = append(findings, compliance.Finding{

@@ -37,6 +37,14 @@ func (c *deadCodeCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([
 			continue
 		}
 
+		// Skip Go files — Go's unreachable-code detection is handled by the
+		// bug-patterns check (tree-sitter AST-based, higher accuracy). The
+		// commented-code heuristic produces excessive FPs in Go (commented
+		// examples, build tag alternatives, documentation snippets).
+		if strings.HasSuffix(file, ".go") {
+			continue
+		}
+
 		fullPath := filepath.Join(scope.RepoRoot, file)
 
 		// Check 1: Unreachable code after return/break/continue/goto

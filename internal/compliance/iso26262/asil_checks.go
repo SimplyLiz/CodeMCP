@@ -201,6 +201,14 @@ func (c *dynamicMemoryCheck) Run(ctx context.Context, scope *compliance.ScanScop
 			continue
 		}
 
+		// Dynamic memory restrictions apply to C/C++/Rust safety-critical code.
+		// Go, JS, Python, Java are garbage-collected — flagging make()/new is noise.
+		ext := filepath.Ext(file)
+		if ext == ".go" || ext == ".js" || ext == ".ts" || ext == ".tsx" || ext == ".jsx" ||
+			ext == ".py" || ext == ".java" || ext == ".kt" || ext == ".rb" || ext == ".cs" || ext == ".dart" {
+			continue
+		}
+
 		content, err := os.ReadFile(filepath.Join(scope.RepoRoot, file))
 		if err != nil {
 			continue

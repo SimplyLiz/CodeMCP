@@ -21,8 +21,6 @@ func (c *swallowedErrorsCheck) Article() string   { return "CC7.2 SOC 2" }
 func (c *swallowedErrorsCheck) Severity() string  { return "warning" }
 
 var swallowedErrorPatterns = []*regexp.Regexp{
-	// Go: error explicitly ignored
-	regexp.MustCompile(`_\s*=\s*\w+\.(\w+)\(`),
 	// JavaScript/TypeScript: empty catch
 	regexp.MustCompile(`catch\s*\([^)]*\)\s*\{\s*\}`),
 	// Python: bare except pass
@@ -30,6 +28,8 @@ var swallowedErrorPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`except\s+\w+\s*:\s*pass`),
 	// Java/C#: empty catch
 	regexp.MustCompile(`catch\s*\([^)]+\)\s*\{\s*\}`),
+	// Note: Go `_ = obj.Method()` pattern was removed — too broad.
+	// Go-specific `_ = err` is handled by goErrSuppressPattern below.
 }
 
 // More specific Go pattern for suppressed errors.
