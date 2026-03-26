@@ -415,6 +415,57 @@ func (e *Engine) getExploreSymbols(ctx context.Context, targetType, absPath, rel
 		return nil, err
 	}
 
+	// Supplement with tree-sitter functions when SCIP/FTS returns none.
+	// FTS returns only type/field definitions for empty-query file-scoped
+	// searches; tree-sitter reliably extracts function declarations.
+	hasFunctions := false
+	for _, sym := range searchResp.Symbols {
+		if sym.Kind == "function" || sym.Kind == "method" {
+			hasFunctions = true
+			break
+		}
+	}
+	if !hasFunctions && e.treesitterExtractor != nil {
+		var tsSyms []SearchResultItem
+		if targetType == "file" {
+			// ExtractFile for single-file targets (searchWithTreesitter uses
+			// ExtractDirectory which fails on file paths)
+			e.tsMu.Lock()
+			rawSyms, tsErr := e.treesitterExtractor.ExtractFile(ctx, absPath)
+			e.tsMu.Unlock()
+			if tsErr == nil {
+				relFile, _ := filepath.Rel(e.repoRoot, absPath)
+				for _, sym := range rawSyms {
+					if sym.Kind != "function" && sym.Kind != "method" {
+						continue
+					}
+					tsSyms = append(tsSyms, SearchResultItem{
+						Name: sym.Name,
+						Kind: sym.Kind,
+						Location: &LocationInfo{
+							FileId:    relFile,
+							StartLine: sym.Line,
+							EndLine:   sym.EndLine,
+						},
+						Visibility: &VisibilityInfo{
+							Visibility: inferVisibility(sym.Name, sym.Kind),
+							Confidence: 0.5,
+							Source:     "treesitter",
+						},
+					})
+				}
+			}
+		} else {
+			tsSyms, _ = e.searchWithTreesitter(ctx, SearchSymbolsOptions{
+				Query: "",
+				Scope: relTarget,
+				Kinds: []string{"function", "method"},
+				Limit: limit * 2,
+			})
+		}
+		searchResp.Symbols = append(searchResp.Symbols, tsSyms...)
+	}
+
 	// Convert and rank symbols
 	symbols := make([]ExploreSymbol, 0, len(searchResp.Symbols))
 	for _, sym := range searchResp.Symbols {
@@ -518,8 +569,15 @@ func (e *Engine) enrichSymbolComplexity(ctx context.Context, symbols []ExploreSy
 }
 
 // calculateSymbolImportance computes importance score for ranking.
+// Prioritizes functions/methods and top-level types over struct fields,
+// since consumers use keySymbols for understanding behavior (SRP, complexity)
+// not data shape (which they can get from getSymbol).
 func calculateSymbolImportance(sym SearchResultItem) float64 {
 	score := 0.0
+
+	// Struct fields (Container#Field) are implementation details, not key symbols.
+	// SCIP labels them as kind=class, but they should rank below functions.
+	isStructField := strings.Contains(sym.Name, "#")
 
 	// Visibility weight
 	if sym.Visibility != nil {
@@ -533,21 +591,27 @@ func calculateSymbolImportance(sym SearchResultItem) float64 {
 		}
 	}
 
-	// Kind weight
-	switch sym.Kind {
-	case "class", "interface", "struct":
-		score += 30
-	case "function", "method":
-		score += 25
-	case "type":
-		score += 20
-	case "constant", "variable":
-		score += 10
+	// Kind weight — functions/methods rank highest for behavioral analysis
+	if isStructField {
+		score += 5 // Minimal: fields are discoverable via getSymbol on the type
+	} else {
+		switch sym.Kind {
+		case "function", "method":
+			score += 35
+		case "class", "interface", "struct", "type":
+			score += 25
+		case "constant", "variable":
+			score += 15
+		}
 	}
 
-	// Add existing ranking score if available
+	// Add existing ranking score if available (SCIP results have this,
+	// tree-sitter results don't — functions from tree-sitter get a flat
+	// bonus to compensate, keeping them competitive with SCIP types).
 	if sym.Ranking != nil {
-		score += sym.Ranking.Score * 0.3
+		score += sym.Ranking.Score * 0.2
+	} else if sym.Kind == "function" || sym.Kind == "method" {
+		score += 15 // Compensate for missing ranking data
 	}
 
 	return score
@@ -555,17 +619,24 @@ func calculateSymbolImportance(sym SearchResultItem) float64 {
 
 // inferImportanceReason explains why a symbol is important.
 func inferImportanceReason(sym SearchResultItem, importance float64) string {
-	if sym.Visibility != nil && sym.Visibility.Visibility == "public" {
-		return "exported API"
+	isStructField := strings.Contains(sym.Name, "#")
+	if isStructField {
+		return "field"
 	}
 	switch sym.Kind {
-	case "class", "interface", "struct":
-		return "key type"
 	case "function", "method":
-		if importance > 50 {
-			return "high-visibility function"
+		if sym.Visibility != nil && sym.Visibility.Visibility == "public" {
+			return "exported function"
 		}
 		return "function"
+	case "class", "interface", "struct", "type":
+		if sym.Visibility != nil && sym.Visibility.Visibility == "public" {
+			return "exported type"
+		}
+		return "key type"
+	}
+	if sym.Visibility != nil && sym.Visibility.Visibility == "public" {
+		return "exported"
 	}
 	return ""
 }
