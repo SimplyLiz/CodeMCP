@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -42,6 +43,7 @@ var (
 	complianceMinConf    float64
 	complianceSILLevel   int
 	complianceChecks     string
+	complianceRecommend  bool
 )
 
 var auditComplianceCmd = &cobra.Command{
@@ -61,6 +63,7 @@ Each finding maps to a specific regulation article/clause with severity,
 confidence score, and CWE reference where applicable.
 
 Examples:
+  ckb audit compliance --recommend
   ckb audit compliance --framework=gdpr
   ckb audit compliance --framework=gdpr,iso27001
   ckb audit compliance --framework=all --min-confidence=0.7
@@ -79,8 +82,8 @@ func init() {
 	auditComplianceCmd.Flags().Float64Var(&complianceMinConf, "min-confidence", 0.5, "Minimum confidence to include findings (0.0-1.0)")
 	auditComplianceCmd.Flags().IntVar(&complianceSILLevel, "sil-level", 2, "SIL level for IEC 61508 (1-4)")
 	auditComplianceCmd.Flags().StringVar(&complianceChecks, "checks", "", "Filter to specific check IDs (comma-separated)")
+	auditComplianceCmd.Flags().BoolVar(&complianceRecommend, "recommend", false, "Analyze codebase and recommend applicable frameworks")
 
-	_ = auditComplianceCmd.MarkFlagRequired("framework")
 	auditCmd.AddCommand(auditComplianceCmd)
 }
 
@@ -89,6 +92,25 @@ func runAuditCompliance(cmd *cobra.Command, args []string) {
 	logger := newLogger(complianceFormat)
 
 	repoRoot := mustGetRepoRoot()
+
+	// Handle --recommend mode
+	if complianceRecommend {
+		recs, err := compliance.RecommendFrameworks(repoRoot)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error analyzing codebase: %v\n", err)
+			os.Exit(1)
+		}
+		printRecommendations(recs, repoRoot, time.Since(start))
+		return
+	}
+
+	// Validate that --framework is provided when not in recommend mode
+	if complianceFrameworks == "" {
+		fmt.Fprintln(os.Stderr, "Error: required flag \"framework\" not set")
+		fmt.Fprintln(os.Stderr, "  Use --framework=gdpr,iso27001 to specify frameworks")
+		fmt.Fprintln(os.Stderr, "  Use --recommend to auto-detect applicable frameworks")
+		os.Exit(1)
+	}
 
 	// Parse frameworks
 	var frameworks []compliance.FrameworkID
@@ -171,4 +193,52 @@ func runAuditCompliance(cmd *cobra.Command, args []string) {
 			}
 		}
 	}
+}
+
+func printRecommendations(recs []compliance.Recommendation, repoRoot string, elapsed time.Duration) {
+	fmt.Println("======================================================================")
+	fmt.Println("  CKB FRAMEWORK RECOMMENDATION")
+	fmt.Println("======================================================================")
+	fmt.Println()
+	fmt.Printf("  Repository: %s\n", filepath.Base(repoRoot))
+	fmt.Printf("  Analysis:   %dms\n", elapsed.Milliseconds())
+	fmt.Println()
+
+	if len(recs) == 0 {
+		fmt.Println("  No specific frameworks recommended. Use --framework=owasp-asvs,iso27001 as a baseline.")
+		return
+	}
+
+	// Group by category
+	categories := []string{"security", "privacy", "safety", "supply-chain"}
+	catNames := map[string]string{
+		"security":     "Security & Compliance",
+		"privacy":      "Privacy & Data Protection",
+		"safety":       "Safety-Critical",
+		"supply-chain": "Supply Chain",
+	}
+
+	var frameworkIDs []string
+	for _, cat := range categories {
+		var catRecs []compliance.Recommendation
+		for _, r := range recs {
+			if r.Category == cat {
+				catRecs = append(catRecs, r)
+			}
+		}
+		if len(catRecs) == 0 {
+			continue
+		}
+		fmt.Printf("  %s\n", catNames[cat])
+		fmt.Printf("  %s\n", strings.Repeat("-", 60))
+		for _, r := range catRecs {
+			conf := fmt.Sprintf("%.0f%%", r.Confidence*100)
+			fmt.Printf("  %-16s %-40s %s\n", string(r.Framework), r.Reason, conf)
+			frameworkIDs = append(frameworkIDs, string(r.Framework))
+		}
+		fmt.Println()
+	}
+
+	fmt.Printf("  Run: ckb audit compliance --framework=%s\n", strings.Join(frameworkIDs, ","))
+	fmt.Println()
 }

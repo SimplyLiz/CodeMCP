@@ -61,6 +61,25 @@ func (c *sqlInjectionCheck) Run(ctx context.Context, scope *compliance.ScanScope
 					continue
 				}
 
+				// Skip parameterized queries and safe patterns
+				if strings.Contains(line, "?") || strings.Contains(line, "$1") ||
+					strings.Contains(line, "#nosec") || strings.Contains(line, "nolint:gosec") {
+					continue
+				}
+				// Skip error/log messages containing SQL keywords
+				if strings.Contains(line, "Errorf") || strings.Contains(line, "failed to") ||
+					strings.Contains(line, "error") && strings.Contains(line, "%w") {
+					continue
+				}
+				// Skip integer-only placeholders (no injection risk)
+				if strings.Contains(line, "%d") && !strings.Contains(line, "%s") && !strings.Contains(line, "%v") {
+					continue
+				}
+				// Skip regex/pattern definitions
+				if strings.Contains(line, "regexp.") || strings.Contains(line, "Compile(") {
+					continue
+				}
+
 				for _, pattern := range pciSQLInjectionPatterns {
 					if pattern.MatchString(line) {
 						findings = append(findings, compliance.Finding{
