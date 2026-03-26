@@ -3,8 +3,10 @@ package mcp
 import (
 	"context"
 	"sort"
+	"strings"
 	"sync"
 
+	"github.com/SimplyLiz/CodeMCP/internal/complexity"
 	"github.com/SimplyLiz/CodeMCP/internal/envelope"
 	"github.com/SimplyLiz/CodeMCP/internal/query"
 )
@@ -234,6 +236,10 @@ func (s *MCPServer) toolGetSymbolGraph(params map[string]interface{}) (*envelope
 				if n.Location != nil {
 					node["file"] = n.Location.FileId
 					node["line"] = n.Location.StartLine
+					if n.Location.EndLine > 0 {
+						node["endLine"] = n.Location.EndLine
+						node["lines"] = n.Location.EndLine - n.Location.StartLine + 1
+					}
 				}
 				nodes = append(nodes, node)
 			}
@@ -278,9 +284,48 @@ func (s *MCPServer) toolGetSymbolGraph(params map[string]interface{}) (*envelope
 		}
 	}
 
+	// Enrich nodes with complexity from tree-sitter
+	if complexity.IsAvailable() {
+		analyzer := complexity.NewAnalyzer()
+		// Group nodes by file
+		fileNodes := make(map[string][]int)
+		for i, n := range allNodes {
+			if f, ok := n["file"].(string); ok && f != "" {
+				fileNodes[f] = append(fileNodes[f], i)
+			}
+		}
+		repoRoot := s.engine().GetRepoRoot()
+		for file, indices := range fileNodes {
+			absPath := repoRoot + "/" + file
+			fc, err := analyzer.AnalyzeFile(ctx, absPath)
+			if err != nil || fc == nil || fc.Error != "" {
+				continue
+			}
+			// Build lookup by (name, startLine)
+			type key struct{ name string; line int }
+			cxMap := make(map[key]struct{ cyc, cog int })
+			for _, fn := range fc.Functions {
+				cxMap[key{fn.Name, fn.StartLine}] = struct{ cyc, cog int }{fn.Cyclomatic, fn.Cognitive}
+			}
+			for _, idx := range indices {
+				n := allNodes[idx]
+				name, _ := n["name"].(string)
+				line, _ := n["line"].(int)
+				// Strip container prefix for matching
+				if hashIdx := strings.LastIndex(name, "#"); hashIdx >= 0 {
+					name = name[hashIdx+1:]
+				}
+				if cx, ok := cxMap[key{name, line}]; ok {
+					n["cyclomatic"] = cx.cyc
+					n["cognitive"] = cx.cog
+				}
+			}
+		}
+	}
+
 	data := map[string]interface{}{
-		"nodes":      allNodes,
-		"edges":      allEdges,
+		"nodes":       allNodes,
+		"edges":       allEdges,
 		"symbolCount": len(symbolIds),
 	}
 	if len(errors) > 0 {

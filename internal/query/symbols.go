@@ -382,8 +382,13 @@ func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (
 	var backendContribs []BackendContribution
 	var completeness CompletenessInfo
 
-	// Try FTS5 first for fast symbol search
-	ftsResults, ftsErr := e.SearchSymbolsFTS(ctx, opts.Query, opts.Limit*2)
+	// Try FTS5 first for fast symbol search.
+	// Request more results when filters are set, since most will be excluded.
+	ftsMultiplier := 2
+	if len(opts.ExcludePatterns) > 0 || opts.MinLines > 0 || opts.MinComplexity > 0 {
+		ftsMultiplier = 10
+	}
+	ftsResults, ftsErr := e.SearchSymbolsFTS(ctx, opts.Query, opts.Limit*ftsMultiplier)
 	if ftsErr == nil && len(ftsResults) > 0 {
 		for _, r := range ftsResults {
 			// Filter by kinds if specified
