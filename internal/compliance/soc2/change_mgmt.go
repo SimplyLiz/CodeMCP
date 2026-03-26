@@ -20,7 +20,10 @@ func (c *todoInProductionCheck) Name() string     { return "TODO/FIXME in Produc
 func (c *todoInProductionCheck) Article() string   { return "CC8.1 SOC 2" }
 func (c *todoInProductionCheck) Severity() string  { return "info" }
 
-var todoPattern = regexp.MustCompile(`(?i)\b(TODO|FIXME|HACK|XXX|TEMP)\b`)
+// Match TODO/FIXME/HACK/XXX markers. TEMP requires uppercase to avoid
+// matching the English word "temp" in "temp file", "temp directory".
+var todoPattern = regexp.MustCompile(`(?i)\b(TODO|FIXME|HACK|XXX)\b`)
+var tempPattern = regexp.MustCompile(`\bTEMP\b`) // case-sensitive
 
 func (c *todoInProductionCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	var findings []compliance.Finding
@@ -59,13 +62,16 @@ func (c *todoInProductionCheck) Run(ctx context.Context, scope *compliance.ScanS
 					continue
 				}
 
-				if todoPattern.MatchString(line) {
+				if todoPattern.MatchString(line) || tempPattern.MatchString(line) {
 					// Skip "Stub:" comments (already converted from TODOs)
 					if strings.Contains(trimmed, "Stub:") || strings.Contains(trimmed, "Placeholder:") ||
 						strings.Contains(trimmed, "Note:") {
 						continue
 					}
 					match := todoPattern.FindString(line)
+					if match == "" {
+						match = tempPattern.FindString(line)
+					}
 					findings = append(findings, compliance.Finding{
 						Severity:   "info",
 						Article:    "CC8.1 SOC 2",

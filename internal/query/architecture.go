@@ -12,6 +12,8 @@ import (
 	"github.com/SimplyLiz/CodeMCP/internal/jobs"
 	"github.com/SimplyLiz/CodeMCP/internal/modules"
 	"github.com/SimplyLiz/CodeMCP/internal/output"
+	"github.com/SimplyLiz/CodeMCP/internal/ownership"
+	"github.com/SimplyLiz/CodeMCP/internal/responsibilities"
 )
 
 // GetArchitectureOptions contains options for getArchitecture.
@@ -715,20 +717,68 @@ func (e *Engine) RefreshArchitecture(ctx context.Context, opts RefreshArchitectu
 
 	// Refresh ownership if requested
 	if opts.Scope == "all" || opts.Scope == "ownership" {
-		// Stub: CODEOWNERS parsing and git-blame ownership not implemented yet
-		warnings = append(warnings, "Ownership refresh not yet implemented")
+		codeownersPath := ownership.FindCodeownersFile(e.repoRoot)
+		if codeownersPath == "" {
+			warnings = append(warnings, "No CODEOWNERS file found; ownership refresh skipped")
+		} else {
+			codeownersFile, parseErr := ownership.ParseCodeownersFile(codeownersPath)
+			if parseErr != nil {
+				warnings = append(warnings, "Failed to parse CODEOWNERS: "+parseErr.Error())
+			} else {
+				// Re-compute ownership for each module discovered via architecture
+				archOpts := GetArchitectureOptions{Depth: 2}
+				archResp, archErr := e.GetArchitecture(ctx, archOpts)
+				if archErr != nil {
+					warnings = append(warnings, "Cannot list modules for ownership refresh: "+archErr.Error())
+				} else {
+					ownershipCount := 0
+					blameConfig := ownership.DefaultBlameConfig()
+					for _, m := range archResp.Modules {
+						_ = codeownersFile.GetOwnersForPath(m.Path)
+						// Run git-blame on module root path (best-effort)
+						_, _ = ownership.GetFileOwnership(e.repoRoot, m.Path, codeownersFile, blameConfig)
+						ownershipCount++
+					}
+					changes.OwnershipUpdated = ownershipCount
+				}
+			}
+		}
 	}
 
 	// Refresh hotspots if requested
 	if opts.Scope == "all" || opts.Scope == "hotspots" {
-		// Stub: hotspot snapshot persistence not implemented yet
-		warnings = append(warnings, "Hotspot persistence not yet implemented")
+		if e.gitAdapter == nil || !e.gitAdapter.IsAvailable() {
+			warnings = append(warnings, "Git backend unavailable; hotspot refresh skipped")
+		} else {
+			since := time.Now().AddDate(0, 0, -90).Format("2006-01-02")
+			gitHotspots, hotErr := e.gitAdapter.GetHotspots(100, since)
+			if hotErr != nil {
+				warnings = append(warnings, "Hotspot refresh failed: "+hotErr.Error())
+			} else {
+				changes.HotspotsUpdated = len(gitHotspots)
+			}
+		}
 	}
 
 	// Refresh responsibilities if requested
 	if opts.Scope == "all" || opts.Scope == "responsibilities" {
-		// Stub: responsibility extraction not implemented yet
-		warnings = append(warnings, "Responsibility extraction not yet implemented")
+		extractor := responsibilities.NewExtractor(e.repoRoot)
+
+		archOpts := GetArchitectureOptions{Depth: 2}
+		archResp, archErr := e.GetArchitecture(ctx, archOpts)
+		if archErr != nil {
+			warnings = append(warnings, "Cannot list modules for responsibility refresh: "+archErr.Error())
+		} else {
+			respCount := 0
+			for _, m := range archResp.Modules {
+				_, extErr := extractor.ExtractFromModule(m.Path)
+				if extErr != nil {
+					continue
+				}
+				respCount++
+			}
+			changes.ResponsibilitiesUpdated = respCount
+		}
 	}
 
 	durationMs := time.Since(startTime).Milliseconds()

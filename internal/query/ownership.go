@@ -10,6 +10,7 @@ import (
 	"github.com/SimplyLiz/CodeMCP/internal/errors"
 	"github.com/SimplyLiz/CodeMCP/internal/output"
 	"github.com/SimplyLiz/CodeMCP/internal/ownership"
+	"github.com/SimplyLiz/CodeMCP/internal/storage"
 	"github.com/SimplyLiz/CodeMCP/internal/version"
 )
 
@@ -170,11 +171,28 @@ func (e *Engine) GetOwnership(ctx context.Context, opts GetOwnershipOptions) (*G
 		}
 	}
 
-	// Get history if requested (placeholder - would query storage)
+	// Get history if requested
 	var history []OwnershipHistoryEvent
 	if opts.IncludeHistory {
-		// Stub: ownership_history table query not implemented yet
-		limitations = append(limitations, "Ownership history not yet implemented")
+		if e.db != nil {
+			ownershipRepo := storage.NewOwnershipRepository(e.db)
+			records, histErr := ownershipRepo.GetHistoryByPattern(normalizedPath, 50)
+			if histErr != nil {
+				limitations = append(limitations, "Failed to query ownership history: "+histErr.Error())
+			} else {
+				for _, r := range records {
+					history = append(history, OwnershipHistoryEvent{
+						Pattern:    r.Pattern,
+						OwnerID:    r.OwnerID,
+						Event:      r.Event,
+						Reason:     r.Reason,
+						RecordedAt: r.RecordedAt.Format(time.RFC3339),
+					})
+				}
+			}
+		} else {
+			limitations = append(limitations, "Storage unavailable; ownership history requires index data")
+		}
 	}
 
 	// Compute overall confidence

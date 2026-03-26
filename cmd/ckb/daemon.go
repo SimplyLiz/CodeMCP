@@ -2,9 +2,11 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/exec"
 	"time"
@@ -297,8 +299,36 @@ func runDaemonStatus(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Status: running\n")
 	fmt.Printf("PID: %d\n", pid)
 
-	// Try to get more info from the HTTP API
-	// Stub: HTTP health query not yet implemented; only PID-based status is reported
+	// Query HTTP health endpoint for additional info
+	port := config.DefaultDaemonPort
+	url := fmt.Sprintf("http://localhost:%d/health", port)
+
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(url) // #nosec G107 -- URL is constructed from constant port
+	if err != nil {
+		fmt.Printf("Health: unreachable (%v)\n", err)
+		return nil
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	var health struct {
+		Status  string            `json:"status"`
+		Version string            `json:"version"`
+		Uptime  string            `json:"uptime"`
+		Checks  map[string]string `json:"checks"`
+	}
+
+	if decErr := json.NewDecoder(resp.Body).Decode(&health); decErr != nil {
+		fmt.Printf("Health: could not parse response\n")
+		return nil
+	}
+
+	fmt.Printf("Version: %s\n", health.Version)
+	fmt.Printf("Uptime: %s\n", health.Uptime)
+	fmt.Printf("Health: %s\n", health.Status)
+	for check, status := range health.Checks {
+		fmt.Printf("  %s: %s\n", check, status)
+	}
 
 	return nil
 }
