@@ -98,16 +98,15 @@ func NewMCPServer(version string, engine *query.Engine, logger *slog.Logger) *MC
 		SetMetricsDB(engine.DB())
 	}
 
-	// Warm up the symbol search index in the background so the first
-	// searchSymbols/listSymbols call doesn't hit a cold cache.
+	// Warm up the FTS index in the background. This populates FTS from SCIP
+	// if needed, so the first searchSymbols/listSymbols call doesn't hit empty FTS.
+	// We call RefreshFTS instead of SearchSymbols to avoid caching empty results
+	// that would mask SCIP data loaded after warmup.
 	if engine != nil {
 		go func() {
-			warmCtx, warmCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			warmCtx, warmCancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer warmCancel()
-			_, _ = engine.SearchSymbols(warmCtx, query.SearchSymbolsOptions{
-				Query: "",
-				Limit: 1,
-			})
+			_ = engine.RefreshFTS(warmCtx)
 		}()
 	}
 
