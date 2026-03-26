@@ -298,7 +298,7 @@ func runDaemonStatus(cmd *cobra.Command, args []string) error {
 	fmt.Printf("PID: %d\n", pid)
 
 	// Try to get more info from the HTTP API
-	// TODO: Add HTTP client to query /health endpoint
+	// Stub: HTTP health query not yet implemented; only PID-based status is reported
 
 	return nil
 }

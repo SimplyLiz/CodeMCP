@@ -63,26 +63,39 @@ func (c *missingSBOMGenerationCheck) Run(ctx context.Context, scope *compliance.
 		}
 	}
 
-	// Check for SBOM tool references in CI/CD and build files
-	for _, file := range scope.Files {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
+	// Check for SBOM tool references in CI/CD and build files.
+	// These files (.yml, Makefile, etc.) aren't in scope.Files (source-only),
+	// so scan them directly from the repo root.
+	var ciFiles []string
+	for _, ciDir := range []string{".github/workflows", ".circleci", ".gitlab"} {
+		dirPath := filepath.Join(scope.RepoRoot, ciDir)
+		entries, err := os.ReadDir(dirPath)
+		if err != nil {
+			continue
 		}
-
-		isRelevant := false
-		for _, ciFile := range sbomCIFiles {
-			if strings.Contains(file, ciFile) {
-				isRelevant = true
-				break
+		for _, e := range entries {
+			if !e.IsDir() {
+				ciFiles = append(ciFiles, filepath.Join(ciDir, e.Name()))
 			}
 		}
+	}
+	// Also check top-level build files
+	for _, bf := range []string{"Makefile", "makefile", "Taskfile", "Taskfile.yml", "Jenkinsfile", ".gitlab-ci.yml"} {
+		if _, err := os.Stat(filepath.Join(scope.RepoRoot, bf)); err == nil {
+			ciFiles = append(ciFiles, bf)
+		}
+	}
+	// Include shell scripts from scope.Files
+	for _, file := range scope.Files {
 		ext := filepath.Ext(file)
 		if ext == ".sh" || ext == ".bash" || ext == ".ps1" {
-			isRelevant = true
+			ciFiles = append(ciFiles, file)
 		}
+	}
 
-		if !isRelevant {
-			continue
+	for _, file := range ciFiles {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
 		}
 
 		func() {
@@ -119,6 +132,30 @@ func (c *missingSBOMGenerationCheck) Run(ctx context.Context, scope *compliance.
 	}
 
 	return nil, nil
+}
+
+// findCIFiles returns CI/CD config file paths relative to repoRoot.
+// These aren't in scope.Files (source-only), so we scan directories directly.
+func findCIFiles(repoRoot string) []string {
+	var files []string
+	for _, ciDir := range []string{".github/workflows", ".circleci", ".gitlab"} {
+		dirPath := filepath.Join(repoRoot, ciDir)
+		entries, err := os.ReadDir(dirPath)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if !e.IsDir() {
+				files = append(files, filepath.Join(ciDir, e.Name()))
+			}
+		}
+	}
+	for _, bf := range []string{"Makefile", "makefile", "Taskfile", "Taskfile.yml", "Jenkinsfile", ".gitlab-ci.yml"} {
+		if _, err := os.Stat(filepath.Join(repoRoot, bf)); err == nil {
+			files = append(files, bf)
+		}
+	}
+	return files
 }
 
 // --- missing-lock-file: SLSA Level 1 — Dependency lock files ---

@@ -208,27 +208,18 @@ var provenancePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\brekor\b`),
 	regexp.MustCompile(`(?i)\bfulcio\b`),
 	regexp.MustCompile(`(?i)\bprovenance\b`),
-	regexp.MustCompile(`(?i)\battestation\b`),
+	regexp.MustCompile(`(?i)\battestations?\b`),
+	regexp.MustCompile(`(?i)\battest[_\-]sbom\b`),
 }
 
 func (c *missingProvenanceCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	hasProvenance := false
 
-	for _, file := range scope.Files {
+	// Scan CI config files directly (not in scope.Files which is source-only)
+	ciFiles := findCIFiles(scope.RepoRoot)
+	for _, file := range ciFiles {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
-		}
-
-		// Check CI/CD files and build configs
-		isRelevant := false
-		for _, ciFile := range sbomCIFiles {
-			if strings.Contains(file, ciFile) {
-				isRelevant = true
-				break
-			}
-		}
-		if !isRelevant {
-			continue
 		}
 
 		func() {
@@ -299,26 +290,11 @@ func (c *unsignedCommitsCheck) Run(ctx context.Context, scope *compliance.ScanSc
 		}
 	}
 
-	// Check CI/CD files for verification
-	for _, file := range scope.Files {
+	// Scan CI config files directly (not in scope.Files which is source-only)
+	ciFiles := findCIFiles(scope.RepoRoot)
+	for _, file := range ciFiles {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
-		}
-
-		isRelevant := false
-		for _, ciFile := range sbomCIFiles {
-			if strings.Contains(file, ciFile) {
-				isRelevant = true
-				break
-			}
-		}
-		base := filepath.Base(file)
-		if base == ".gitconfig" || base == ".gitattributes" || strings.Contains(file, ".github/") {
-			isRelevant = true
-		}
-
-		if !isRelevant {
-			continue
 		}
 
 		func() {

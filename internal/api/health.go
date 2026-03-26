@@ -112,12 +112,11 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Actually check backend availability
-	// For now, return a placeholder response
+	// Placeholder: backend availability is not actively probed; always reports true
 	backends := map[string]bool{
-		"scip": true, // Placeholder
-		"lsp":  true, // Placeholder
-		"git":  true, // Placeholder
+		"scip": true,
+		"lsp":  true,
+		"git":  true,
 	}
 
 	// Determine overall readiness

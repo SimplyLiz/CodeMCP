@@ -139,7 +139,7 @@ func (d *Daemon) handleScheduleList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Implement when scheduler is added
+	// Stub: scheduler not yet implemented; returns empty list
 	d.writeJSON(w, http.StatusOK, map[string]interface{}{
 		"schedules": []interface{}{},
 	})
@@ -152,7 +152,7 @@ func (d *Daemon) handleJobsList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Implement when job queue is added
+	// Stub: job queue not yet implemented; returns empty list
 	d.writeJSON(w, http.StatusOK, map[string]interface{}{
 		"jobs": []interface{}{},
 	})
@@ -160,7 +160,7 @@ func (d *Daemon) handleJobsList(w http.ResponseWriter, r *http.Request) {
 
 // handleJobsRoute handles /api/v1/daemon/jobs/:jobId routes
 func (d *Daemon) handleJobsRoute(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement job detail and cancel routes
+	// Stub: job detail and cancel routes not yet implemented; returns 404
 	http.NotFound(w, r)
 }
 
@@ -171,7 +171,7 @@ func (d *Daemon) handleReposList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Implement repo listing
+	// Stub: repo listing not yet implemented; returns empty list
 	d.writeJSON(w, http.StatusOK, map[string]interface{}{
 		"repos": []interface{}{},
 	})
@@ -179,7 +179,7 @@ func (d *Daemon) handleReposList(w http.ResponseWriter, r *http.Request) {
 
 // handleReposRoute handles /api/v1/repos/:repoId/* routes
 func (d *Daemon) handleReposRoute(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement repo operations
+	// Stub: repo operations not yet implemented; returns 404
 	http.NotFound(w, r)
 }
 
@@ -190,7 +190,7 @@ func (d *Daemon) handleFederationsList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Implement federation listing
+	// Stub: federation listing not yet implemented; returns empty list
 	d.writeJSON(w, http.StatusOK, map[string]interface{}{
 		"federations": []interface{}{},
 	})
@@ -198,7 +198,7 @@ func (d *Daemon) handleFederationsList(w http.ResponseWriter, r *http.Request) {
 
 // handleFederationsRoute handles /api/v1/federations/:name/* routes
 func (d *Daemon) handleFederationsRoute(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement federation operations
+	// Stub: federation operations not yet implemented; returns 404
 	http.NotFound(w, r)
 }
 

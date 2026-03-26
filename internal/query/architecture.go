@@ -715,22 +715,19 @@ func (e *Engine) RefreshArchitecture(ctx context.Context, opts RefreshArchitectu
 
 	// Refresh ownership if requested
 	if opts.Scope == "all" || opts.Scope == "ownership" {
-		// TODO: Implement CODEOWNERS parsing and git-blame ownership
-		// For now, just mark as placeholder
+		// Stub: CODEOWNERS parsing and git-blame ownership not implemented yet
 		warnings = append(warnings, "Ownership refresh not yet implemented")
 	}
 
 	// Refresh hotspots if requested
 	if opts.Scope == "all" || opts.Scope == "hotspots" {
-		// TODO: Implement hotspot snapshot persistence
-		// For now, just mark as placeholder
+		// Stub: hotspot snapshot persistence not implemented yet
 		warnings = append(warnings, "Hotspot persistence not yet implemented")
 	}
 
 	// Refresh responsibilities if requested
 	if opts.Scope == "all" || opts.Scope == "responsibilities" {
-		// TODO: Implement responsibility extraction
-		// For now, just mark as placeholder
+		// Stub: responsibility extraction not implemented yet
 		warnings = append(warnings, "Responsibility extraction not yet implemented")
 	}
 

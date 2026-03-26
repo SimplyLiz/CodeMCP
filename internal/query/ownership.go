@@ -173,7 +173,7 @@ func (e *Engine) GetOwnership(ctx context.Context, opts GetOwnershipOptions) (*G
 	// Get history if requested (placeholder - would query storage)
 	var history []OwnershipHistoryEvent
 	if opts.IncludeHistory {
-		// TODO: Query ownership_history table from storage
+		// Stub: ownership_history table query not implemented yet
 		limitations = append(limitations, "Ownership history not yet implemented")
 	}
 

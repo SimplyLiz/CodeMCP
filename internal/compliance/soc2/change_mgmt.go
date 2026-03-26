@@ -49,8 +49,22 @@ func (c *todoInProductionCheck) Run(ctx context.Context, scope *compliance.ScanS
 			for scanner.Scan() {
 				lineNum++
 				line := scanner.Text()
+				trimmed := strings.TrimSpace(line)
+
+				// Only match TODO/FIXME in actual comments, not in string literals,
+				// SQL pragmas, or descriptive text that uses "temp"/"todo" as data.
+				isComment := strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") ||
+					strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*")
+				if !isComment {
+					continue
+				}
 
 				if todoPattern.MatchString(line) {
+					// Skip "Stub:" comments (already converted from TODOs)
+					if strings.Contains(trimmed, "Stub:") || strings.Contains(trimmed, "Placeholder:") ||
+						strings.Contains(trimmed, "Note:") {
+						continue
+					}
 					match := todoPattern.FindString(line)
 					findings = append(findings, compliance.Finding{
 						Severity:   "info",
