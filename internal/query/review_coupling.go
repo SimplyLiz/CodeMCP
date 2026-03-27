@@ -228,11 +228,11 @@ func isCouplingNoiseFile(path string) bool {
 		"testdata/",
 		"fixtures/",
 		"__tests__/",
-		"l10n/",           // Flutter/i18n localization generated files
-		"generated/",      // Common generated code directory
-		"__generated__/",  // GraphQL/Relay generated
-		".dart_tool/",     // Dart tooling
-		"__pycache__/",    // Python bytecode cache
+		"l10n/",          // Flutter/i18n localization generated files
+		"generated/",     // Common generated code directory
+		"__generated__/", // GraphQL/Relay generated
+		".dart_tool/",    // Dart tooling
+		"__pycache__/",   // Python bytecode cache
 	}
 	for _, prefix := range noisePrefixes {
 		if strings.HasPrefix(path, prefix) {
@@ -283,7 +283,7 @@ func isCouplingNoiseFile(path string) bool {
 		"package.json":      true,
 		"package-lock.json": true,
 		"yarn.lock":         true,
-		"pnpm-lock.yaml":   true,
+		"pnpm-lock.yaml":    true,
 		"Cargo.lock":        true,
 		"Cargo.toml":        true,
 		"requirements.txt":  true,

@@ -88,17 +88,17 @@ var Presets = map[string][]string{
 		"getOwnership",
 		"getOwnershipDrift",
 		"recentlyRelevant",
-		"scanSecrets",      // Secret detection for PR reviews
-		"reviewPR",         // Unified PR review with quality gates
-		"getAffectedTests", // Tests covering changed code
-		"analyzeTestGaps",  // Untested functions in changed files
-		"compareAPI",       // Breaking API changes
-		"findDeadCode",     // Dead code in changes
-		"auditRisk",        // Multi-factor risk scoring
-		"analyzeChange",    // Change analysis
+		"scanSecrets",       // Secret detection for PR reviews
+		"reviewPR",          // Unified PR review with quality gates
+		"getAffectedTests",  // Tests covering changed code
+		"analyzeTestGaps",   // Untested functions in changed files
+		"compareAPI",        // Breaking API changes
+		"findDeadCode",      // Dead code in changes
+		"auditRisk",         // Multi-factor risk scoring
+		"analyzeChange",     // Change analysis
 		"getFileComplexity", // File complexity for review
-		"listEntrypoints",    // Key entry points in changed code
-		"auditCompliance",    // Regulatory compliance audit
+		"listEntrypoints",   // Key entry points in changed code
+		"auditCompliance",   // Regulatory compliance audit
 	},
 
 	// Refactor: core + refactoring analysis tools

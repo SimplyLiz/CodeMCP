@@ -302,7 +302,10 @@ func (s *MCPServer) toolGetSymbolGraph(params map[string]interface{}) (*envelope
 				continue
 			}
 			// Build lookup by (name, startLine)
-			type key struct{ name string; line int }
+			type key struct {
+				name string
+				line int
+			}
 			cxMap := make(map[key]struct{ cyc, cog int })
 			for _, fn := range fc.Functions {
 				cxMap[key{fn.Name, fn.StartLine}] = struct{ cyc, cog int }{fn.Cyclomatic, fn.Cognitive}

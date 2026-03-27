@@ -61,7 +61,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		// Meta-tool for dynamic preset expansion
 		{
-			Name:        "expandToolset",
+			Name: "expandToolset",
 			Description: "Switch to a larger toolset for a specific workflow. Call this when you need tools not in the current set. Presets (each includes all core tools plus):\n" +
 				"• review (39 tools): reviewPR, auditCompliance, scanSecrets, analyzeTestGaps, getAffectedTests, compareAPI, findDeadCode, auditRisk, getOwnership — use for PR reviews, test coverage analysis, compliance audits, security\n" +
 				"• refactor (32 tools): analyzeCoupling, findCycles, suggestRefactorings, findDeadCode, compareAPI, explainOrigin — use for refactoring, dependency analysis, dead code removal\n" +
@@ -140,8 +140,8 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 						"description": "Minimum cyclomatic complexity. Applied after tree-sitter enrichment.",
 					},
 					"excludePatterns": map[string]interface{}{
-						"type":  "array",
-						"items": map[string]interface{}{"type": "string"},
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
 						"description": "Exclude symbols whose name contains any pattern (e.g., '#' for struct fields, '<anonymous>')",
 					},
 				},
@@ -159,29 +159,29 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 						"description": "Path prefix to list symbols from (e.g., 'src/services/', 'internal/query/')",
 					},
 					"kinds": map[string]interface{}{
-						"type":  "array",
-						"items": map[string]interface{}{"type": "string"},
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
 						"description": "Symbol kinds: 'function', 'method', 'class', 'type', 'interface' (default: function, method)",
 					},
 					"minLines": map[string]interface{}{
-						"type":    "number",
-						"default": 3,
+						"type":        "number",
+						"default":     3,
 						"description": "Minimum body line count (filters trivial getters/setters)",
 					},
 					"minComplexity": map[string]interface{}{
-						"type":    "number",
-						"default": 0,
+						"type":        "number",
+						"default":     0,
 						"description": "Minimum cyclomatic complexity to include",
 					},
 					"sortBy": map[string]interface{}{
-						"type":    "string",
-						"enum":    []string{"complexity", "lines", "name"},
-						"default": "complexity",
+						"type":        "string",
+						"enum":        []string{"complexity", "lines", "name"},
+						"default":     "complexity",
 						"description": "Sort order",
 					},
 					"limit": map[string]interface{}{
-						"type":    "number",
-						"default": 50,
+						"type":        "number",
+						"default":     50,
 						"description": "Max results (default 50, max 200)",
 					},
 				},
@@ -194,19 +194,19 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				"type": "object",
 				"properties": map[string]interface{}{
 					"symbolIds": map[string]interface{}{
-						"type":  "array",
-						"items": map[string]interface{}{"type": "string"},
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
 						"description": "Symbol IDs to get call graph for (max 30)",
 					},
 					"depth": map[string]interface{}{
-						"type":    "number",
-						"default": 1,
+						"type":        "number",
+						"default":     1,
 						"description": "Call graph depth per symbol (1-3)",
 					},
 					"direction": map[string]interface{}{
-						"type":    "string",
-						"enum":    []string{"callers", "callees", "both"},
-						"default": "both",
+						"type":        "string",
+						"enum":        []string{"callers", "callees", "both"},
+						"default":     "both",
 						"description": "Direction to traverse",
 					},
 				},

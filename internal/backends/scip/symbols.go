@@ -439,40 +439,40 @@ func isTestFile(path string) bool {
 // singleReturnNew lists New* constructors known to return only (T), not (T, error).
 // These are excluded from the "New prefix implies error" heuristic.
 var singleReturnNew = map[string]bool{
-	"NewScanner":       true, // bufio.NewScanner → *Scanner
-	"NewReader":        true, // bufio/bytes/strings.NewReader → *Reader
-	"NewWriter":        true, // bufio.NewWriter → *Writer
-	"NewBuffer":        true, // bytes.NewBuffer → *Buffer
-	"NewBufferString":  true, // bytes.NewBufferString → *Buffer
-	"NewReplacer":      true, // strings.NewReplacer → *Replacer
-	"NewTicker":        true, // time.NewTicker → *Ticker
-	"NewTimer":         true, // time.NewTimer → *Timer
-	"NewCond":          true, // sync.NewCond → *Cond
-	"NewMutex":         true, // various — not stdlib but common
-	"New":              true, // log.New → *Logger, errors.New → error (neither is (T,error))
-	"NewRWMutex":       true,
-	"NewWaitGroup":     true,
-	"NewPool":          true,
-	"NewMap":           true,
-	"NewOnce":          true,
-	"NewServeMux":      true, // net/http.NewServeMux → *ServeMux
-	"NewRegexp":        true,
-	"NewParser":        true, // common single-return constructor
-	"NewLogger":        true,
+	"NewScanner":      true, // bufio.NewScanner → *Scanner
+	"NewReader":       true, // bufio/bytes/strings.NewReader → *Reader
+	"NewWriter":       true, // bufio.NewWriter → *Writer
+	"NewBuffer":       true, // bytes.NewBuffer → *Buffer
+	"NewBufferString": true, // bytes.NewBufferString → *Buffer
+	"NewReplacer":     true, // strings.NewReplacer → *Replacer
+	"NewTicker":       true, // time.NewTicker → *Ticker
+	"NewTimer":        true, // time.NewTimer → *Timer
+	"NewCond":         true, // sync.NewCond → *Cond
+	"NewMutex":        true, // various — not stdlib but common
+	"New":             true, // log.New → *Logger, errors.New → error (neither is (T,error))
+	"NewRWMutex":      true,
+	"NewWaitGroup":    true,
+	"NewPool":         true,
+	"NewMap":          true,
+	"NewOnce":         true,
+	"NewServeMux":     true, // net/http.NewServeMux → *ServeMux
+	"NewRegexp":       true,
+	"NewParser":       true, // common single-return constructor
+	"NewLogger":       true,
 }
 
 // noErrorMethods lists method names that return bool or are routinely discarded safely,
 // even though their names match error-returning patterns.
 var noErrorMethods = map[string]bool{
-	"Scan":          true, // bufio.Scanner.Scan() → bool (errors via .Err())
-	"WriteHeader":   true, // http.ResponseWriter.WriteHeader() returns nothing
-	"WriteJSON":     true, // common HTTP helpers that handle errors internally
+	"Scan":           true, // bufio.Scanner.Scan() → bool (errors via .Err())
+	"WriteHeader":    true, // http.ResponseWriter.WriteHeader() returns nothing
+	"WriteJSON":      true, // common HTTP helpers that handle errors internally
 	"WriteJSONError": true,
-	"WriteError":    true,
-	"WriteCkbError": true,
-	"BadRequest":    true, // HTTP convenience wrappers (no return value)
-	"NotFound":      true,
-	"InternalError": true,
+	"WriteError":     true,
+	"WriteCkbError":  true,
+	"BadRequest":     true, // HTTP convenience wrappers (no return value)
+	"NotFound":       true,
+	"InternalError":  true,
 }
 
 // LikelyReturnsError uses heuristics to determine if a function likely returns an error.
