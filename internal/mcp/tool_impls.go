@@ -117,6 +117,18 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 		"Use 'searchSymbols' instead of grep for semantic code search",
 	}
 
+	// Preset-aware hints: tell the LLM what's available and what needs expansion
+	if preset == PresetCore {
+		hints = append(hints,
+			"Current preset: core (24 tools). Use 'expandToolset' to unlock more:",
+			"→ 'review' for PR review, compliance audit, secrets scan, test gaps",
+			"→ 'refactor' for coupling analysis, dead code, dependency cycles",
+			"→ 'docs' for documentation coverage, ADRs, symbol-doc linking",
+		)
+	} else {
+		hints = append(hints, fmt.Sprintf("Current preset: %s (%d tools)", preset, exposedCount))
+	}
+
 	// v8.0: Add repo-awareness hints based on resolution
 	resolved, _ := repos.ResolveActiveRepo("")
 	if resolved != nil {

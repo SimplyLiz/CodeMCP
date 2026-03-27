@@ -62,14 +62,20 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		// Meta-tool for dynamic preset expansion
 		{
 			Name:        "expandToolset",
-			Description: "Add more tools for a specific workflow. Available presets: review, refactor, federation, docs, ops, full.",
+			Description: "Switch to a larger toolset for a specific workflow. Call this when you need tools not in the current set. Presets (each includes all core tools plus):\n" +
+				"• review (39 tools): reviewPR, auditCompliance, scanSecrets, summarizeDiff, summarizePr, compareAPI, getAffectedTests, analyzeTestGaps, findDeadCode, auditRisk, getOwnership — use for PR reviews, compliance audits, security analysis\n" +
+				"• refactor (32 tools): analyzeCoupling, findCycles, suggestRefactorings, findDeadCode, compareAPI, explainOrigin — use for refactoring, dependency analysis, dead code removal\n" +
+				"• federation (36 tools): federationSearch*, listContracts, analyzeContractImpact — use for multi-repo queries, cross-repo analysis\n" +
+				"• docs (27 tools): indexDocs, getDocsForSymbol, checkDocStaleness, getDecisions, recordDecision — use for documentation, ADRs\n" +
+				"• ops (33 tools): doctor, reindex, daemonStatus, listJobs, webhooks, telemetry — use for diagnostics, daemon management\n" +
+				"• full (94 tools): everything — use when you need tools from multiple presets",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"preset": map[string]interface{}{
 						"type":        "string",
 						"enum":        []string{"review", "refactor", "federation", "docs", "ops", "full"},
-						"description": "The preset to expand to",
+						"description": "The preset to expand to. Pick the smallest preset that has the tools you need.",
 					},
 					"reason": map[string]interface{}{
 						"type":        "string",
