@@ -17,8 +17,8 @@ type missingTLSCheck struct{}
 
 func (c *missingTLSCheck) ID() string       { return "missing-tls" }
 func (c *missingTLSCheck) Name() string     { return "Missing TLS for Sensitive Data" }
-func (c *missingTLSCheck) Article() string   { return "V9.1.1 ASVS" }
-func (c *missingTLSCheck) Severity() string  { return "error" }
+func (c *missingTLSCheck) Article() string  { return "V9.1.1 ASVS" }
+func (c *missingTLSCheck) Severity() string { return "error" }
 
 func (c *missingTLSCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	var findings []compliance.Finding
@@ -94,8 +94,8 @@ type tlsBypassCheck struct{}
 
 func (c *tlsBypassCheck) ID() string       { return "tls-bypass" }
 func (c *tlsBypassCheck) Name() string     { return "TLS Certificate Validation Bypass" }
-func (c *tlsBypassCheck) Article() string   { return "V9.2.1 ASVS" }
-func (c *tlsBypassCheck) Severity() string  { return "error" }
+func (c *tlsBypassCheck) Article() string  { return "V9.2.1 ASVS" }
+func (c *tlsBypassCheck) Severity() string { return "error" }
 
 var tlsBypassPatterns = []struct {
 	pattern *regexp.Regexp

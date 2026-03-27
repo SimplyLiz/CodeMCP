@@ -18,8 +18,8 @@ type deadCodeCheck struct{}
 
 func (c *deadCodeCheck) ID() string       { return "dead-code" }
 func (c *deadCodeCheck) Name() string     { return "Dead Code Detection" }
-func (c *deadCodeCheck) Article() string   { return "§6.4.4.2 DO-178C" }
-func (c *deadCodeCheck) Severity() string  { return "error" }
+func (c *deadCodeCheck) Article() string  { return "§6.4.4.2 DO-178C" }
+func (c *deadCodeCheck) Severity() string { return "error" }
 
 var terminatorPattern = regexp.MustCompile(`^\s*(return\b|break\s*;|continue\s*;|goto\s+\w+)`)
 var commentedCodePattern = regexp.MustCompile(`^\s*//\s*(if|for|while|switch|return|int|char|void|func|def|class)\b`)
@@ -103,7 +103,6 @@ func detectUnreachableCode(fullPath, relPath string) []compliance.Finding {
 					})
 				}
 			}
-			afterTerminator = false
 		}
 
 		if terminatorPattern.MatchString(line) {

@@ -11,9 +11,9 @@ import (
 // This is CKB's key differentiator: a hardcoded credential doesn't just violate one standard,
 // it violates PCI DSS 8.3.6, NIST 800-53 IA-5, SOC 2 CC6.1, OWASP ASVS V2.10.4, etc.
 type CrossFrameworkMapping struct {
-	Category    string              // e.g., "hardcoded-credential"
-	CWE         string              // e.g., "CWE-798"
-	References  []FrameworkReference // All applicable framework articles
+	Category   string               // e.g., "hardcoded-credential"
+	CWE        string               // e.g., "CWE-798"
+	References []FrameworkReference // All applicable framework articles
 }
 
 // FrameworkReference links a finding to a specific regulation clause.

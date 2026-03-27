@@ -26,12 +26,12 @@ func RecommendFrameworks(repoRoot string) ([]Recommendation, error) {
 	// Universal security frameworks — always recommended
 	recs = append(recs, Recommendation{
 		Framework: FrameworkISO27001, Name: "ISO 27001:2022",
-		Reason: "Information security baseline — applicable to all software projects",
+		Reason:     "Information security baseline — applicable to all software projects",
 		Confidence: 0.95, Category: "security",
 	})
 	recs = append(recs, Recommendation{
 		Framework: FrameworkOWASPASVS, Name: "OWASP ASVS 4.0",
-		Reason: "Application security verification — applicable to all codebases",
+		Reason:     "Application security verification — applicable to all codebases",
 		Confidence: 0.90, Category: "security",
 	})
 

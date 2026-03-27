@@ -17,8 +17,8 @@ type missingHealthEndpointCheck struct{}
 
 func (c *missingHealthEndpointCheck) ID() string       { return "missing-health-endpoint" }
 func (c *missingHealthEndpointCheck) Name() string     { return "Missing Health Check Endpoint" }
-func (c *missingHealthEndpointCheck) Article() string   { return "Art. 10 DORA" }
-func (c *missingHealthEndpointCheck) Severity() string  { return "warning" }
+func (c *missingHealthEndpointCheck) Article() string  { return "Art. 10 DORA" }
+func (c *missingHealthEndpointCheck) Severity() string { return "warning" }
 
 var healthEndpointPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)["/]health\b`),
@@ -107,8 +107,8 @@ type missingCorrelationIDCheck struct{}
 
 func (c *missingCorrelationIDCheck) ID() string       { return "missing-correlation-id" }
 func (c *missingCorrelationIDCheck) Name() string     { return "Missing Correlation/Trace ID Propagation" }
-func (c *missingCorrelationIDCheck) Article() string   { return "Art. 10 DORA" }
-func (c *missingCorrelationIDCheck) Severity() string  { return "info" }
+func (c *missingCorrelationIDCheck) Article() string  { return "Art. 10 DORA" }
+func (c *missingCorrelationIDCheck) Severity() string { return "info" }
 
 var correlationPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)correlation[_\-]?id`),

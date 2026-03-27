@@ -17,8 +17,8 @@ type insecureCookieCheck struct{}
 
 func (c *insecureCookieCheck) ID() string       { return "insecure-cookie" }
 func (c *insecureCookieCheck) Name() string     { return "Insecure Cookie Configuration" }
-func (c *insecureCookieCheck) Article() string   { return "V3.4.2/V3.4.3 ASVS" }
-func (c *insecureCookieCheck) Severity() string  { return "warning" }
+func (c *insecureCookieCheck) Article() string  { return "V3.4.2/V3.4.3 ASVS" }
+func (c *insecureCookieCheck) Severity() string { return "warning" }
 
 var cookieCreationPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)Set-Cookie:`),

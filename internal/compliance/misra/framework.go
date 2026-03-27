@@ -14,7 +14,7 @@ func NewFramework() compliance.Framework { return &framework{} }
 
 func (f *framework) ID() compliance.FrameworkID { return compliance.FrameworkMISRA }
 func (f *framework) Name() string               { return "MISRA C:2023 / C++:2023" }
-func (f *framework) Version() string             { return "2023" }
+func (f *framework) Version() string            { return "2023" }
 
 func (f *framework) Checks() []compliance.Check {
 	return []compliance.Check{

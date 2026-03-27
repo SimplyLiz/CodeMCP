@@ -464,8 +464,8 @@ func TestDetectGeneratedFile_DistPattern(t *testing.T) {
 		{".github/actions/pr-analysis/dist/index.js", true},
 		{"frontend/dist/bundle.js", true},
 		{"frontend/dist/styles.css", true},
-		{"src/dist.go", false},         // not a dist/ directory
-		{"dist/README.md", false},      // not JS/CSS
+		{"src/dist.go", false},           // not a dist/ directory
+		{"dist/README.md", false},        // not JS/CSS
 		{"src/components/app.js", false}, // not in dist/
 	}
 

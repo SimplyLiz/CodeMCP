@@ -13,7 +13,7 @@ func NewFramework() compliance.Framework { return &framework{} }
 
 func (f *framework) ID() compliance.FrameworkID { return compliance.FrameworkDORA }
 func (f *framework) Name() string               { return "DORA (Digital Operational Resilience Act)" }
-func (f *framework) Version() string             { return "2022/2554" }
+func (f *framework) Version() string            { return "2022/2554" }
 
 func (f *framework) Checks() []compliance.Check {
 	return []compliance.Check{

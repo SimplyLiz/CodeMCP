@@ -13,7 +13,7 @@ func NewFramework() compliance.Framework { return &framework{} }
 
 func (f *framework) ID() compliance.FrameworkID { return compliance.FrameworkISO27001 }
 func (f *framework) Name() string               { return "ISO 27001:2022 (Annex A)" }
-func (f *framework) Version() string             { return "2022" }
+func (f *framework) Version() string            { return "2022" }
 
 func (f *framework) Checks() []compliance.Check {
 	return []compliance.Check{

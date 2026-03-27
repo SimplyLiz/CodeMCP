@@ -17,8 +17,8 @@ type todoInProductionCheck struct{}
 
 func (c *todoInProductionCheck) ID() string       { return "todo-in-production" }
 func (c *todoInProductionCheck) Name() string     { return "TODO/FIXME in Production Code" }
-func (c *todoInProductionCheck) Article() string   { return "CC8.1 SOC 2" }
-func (c *todoInProductionCheck) Severity() string  { return "info" }
+func (c *todoInProductionCheck) Article() string  { return "CC8.1 SOC 2" }
+func (c *todoInProductionCheck) Severity() string { return "info" }
 
 // Match TODO/FIXME/HACK/XXX markers. TEMP requires uppercase to avoid
 // matching the English word "temp" in "temp file", "temp directory".
@@ -95,8 +95,8 @@ type debugModeEnabledCheck struct{}
 
 func (c *debugModeEnabledCheck) ID() string       { return "debug-mode-enabled" }
 func (c *debugModeEnabledCheck) Name() string     { return "Debug Mode Enabled" }
-func (c *debugModeEnabledCheck) Article() string   { return "CC8.1 SOC 2" }
-func (c *debugModeEnabledCheck) Severity() string  { return "warning" }
+func (c *debugModeEnabledCheck) Article() string  { return "CC8.1 SOC 2" }
+func (c *debugModeEnabledCheck) Severity() string { return "warning" }
 
 var debugPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)DEBUG\s*[:=]\s*(true|1|"true"|'true')`),

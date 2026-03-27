@@ -14,7 +14,7 @@ func NewFramework() compliance.Framework { return &framework{} }
 
 func (f *framework) ID() compliance.FrameworkID { return compliance.FrameworkPCIDSS }
 func (f *framework) Name() string               { return "PCI DSS 4.0 (Payment Card Industry)" }
-func (f *framework) Version() string             { return "4.0" }
+func (f *framework) Version() string            { return "4.0" }
 
 func (f *framework) Checks() []compliance.Check {
 	return []compliance.Check{

@@ -17,8 +17,8 @@ type missingAuthorityCheckCheck struct{}
 
 func (c *missingAuthorityCheckCheck) ID() string       { return "missing-authority-check" }
 func (c *missingAuthorityCheckCheck) Name() string     { return "Missing Authority Check" }
-func (c *missingAuthorityCheckCheck) Article() string   { return "§11.10(d) 21 CFR Part 11" }
-func (c *missingAuthorityCheckCheck) Severity() string  { return "warning" }
+func (c *missingAuthorityCheckCheck) Article() string  { return "§11.10(d) 21 CFR Part 11" }
+func (c *missingAuthorityCheckCheck) Severity() string { return "warning" }
 
 var modificationCallPattern = regexp.MustCompile(`(?i)\.(save|create|update|delete|destroy|remove|put|post)\s*\(`)
 var authCheckPattern = regexp.MustCompile(`(?i)(auth|permission|role|authorize|authorized|is_admin|has_permission|check_access|access_control|rbac|acl)`)
@@ -97,8 +97,8 @@ type missingESignatureCheck struct{}
 
 func (c *missingESignatureCheck) ID() string       { return "missing-esignature" }
 func (c *missingESignatureCheck) Name() string     { return "Missing Electronic Signature Support" }
-func (c *missingESignatureCheck) Article() string   { return "§11.50 21 CFR Part 11" }
-func (c *missingESignatureCheck) Severity() string  { return "info" }
+func (c *missingESignatureCheck) Article() string  { return "§11.50 21 CFR Part 11" }
+func (c *missingESignatureCheck) Severity() string { return "info" }
 
 var approvalWorkflowPattern = regexp.MustCompile(`(?i)(approval|approve|approved|review|workflow|submit_for_review|pending_approval|approval_status)`)
 var eSignaturePattern = regexp.MustCompile(`(?i)(e_signature|esignature|digital_signature|sign_off|signoff|signer|signatory|electronic_signature)`)

@@ -13,7 +13,7 @@ func NewFramework() compliance.Framework { return &framework{} }
 
 func (f *framework) ID() compliance.FrameworkID { return compliance.FrameworkNIST80053 }
 func (f *framework) Name() string               { return "NIST SP 800-53 Rev 5" }
-func (f *framework) Version() string             { return "Rev 5" }
+func (f *framework) Version() string            { return "Rev 5" }
 
 func (f *framework) Checks() []compliance.Check {
 	return []compliance.Check{

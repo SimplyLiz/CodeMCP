@@ -59,8 +59,8 @@ type missingModelLoggingCheck struct{}
 
 func (c *missingModelLoggingCheck) ID() string       { return "missing-model-logging" }
 func (c *missingModelLoggingCheck) Name() string     { return "Missing Model I/O Logging" }
-func (c *missingModelLoggingCheck) Article() string   { return "Art. 12 EU AI Act" }
-func (c *missingModelLoggingCheck) Severity() string  { return "error" }
+func (c *missingModelLoggingCheck) Article() string  { return "Art. 12 EU AI Act" }
+func (c *missingModelLoggingCheck) Severity() string { return "error" }
 
 func (c *missingModelLoggingCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	var findings []compliance.Finding
@@ -122,8 +122,8 @@ type noAuditTrailCheck struct{}
 
 func (c *noAuditTrailCheck) ID() string       { return "no-audit-trail" }
 func (c *noAuditTrailCheck) Name() string     { return "Missing AI Audit Trail" }
-func (c *noAuditTrailCheck) Article() string   { return "Art. 12, 19 EU AI Act" }
-func (c *noAuditTrailCheck) Severity() string  { return "error" }
+func (c *noAuditTrailCheck) Article() string  { return "Art. 12, 19 EU AI Act" }
+func (c *noAuditTrailCheck) Severity() string { return "error" }
 
 func (c *noAuditTrailCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	auditPatterns := []string{
@@ -183,8 +183,8 @@ type missingConfidenceScoreCheck struct{}
 
 func (c *missingConfidenceScoreCheck) ID() string       { return "missing-confidence-score" }
 func (c *missingConfidenceScoreCheck) Name() string     { return "Missing Confidence Scores" }
-func (c *missingConfidenceScoreCheck) Article() string   { return "Art. 13 EU AI Act" }
-func (c *missingConfidenceScoreCheck) Severity() string  { return "warning" }
+func (c *missingConfidenceScoreCheck) Article() string  { return "Art. 13 EU AI Act" }
+func (c *missingConfidenceScoreCheck) Severity() string { return "warning" }
 
 func (c *missingConfidenceScoreCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	var findings []compliance.Finding

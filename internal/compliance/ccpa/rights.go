@@ -17,8 +17,8 @@ type missingDataAccessCheck struct{}
 
 func (c *missingDataAccessCheck) ID() string       { return "missing-data-access" }
 func (c *missingDataAccessCheck) Name() string     { return "Missing Data Access/Export Capability" }
-func (c *missingDataAccessCheck) Article() string   { return "§1798.110 CCPA" }
-func (c *missingDataAccessCheck) Severity() string  { return "warning" }
+func (c *missingDataAccessCheck) Article() string  { return "§1798.110 CCPA" }
+func (c *missingDataAccessCheck) Severity() string { return "warning" }
 
 var dataAccessPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)data[_\-]?export`),
@@ -107,8 +107,8 @@ type missingDeletionCheck struct{}
 
 func (c *missingDeletionCheck) ID() string       { return "missing-deletion" }
 func (c *missingDeletionCheck) Name() string     { return "Missing Data Deletion Capability" }
-func (c *missingDeletionCheck) Article() string   { return "§1798.105 CCPA" }
-func (c *missingDeletionCheck) Severity() string  { return "warning" }
+func (c *missingDeletionCheck) Article() string  { return "§1798.105 CCPA" }
+func (c *missingDeletionCheck) Severity() string { return "warning" }
 
 var dataDeletionPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)delete[_\-]?account`),

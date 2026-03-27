@@ -29,8 +29,8 @@ type complexityExceededCheck struct{}
 
 func (c *complexityExceededCheck) ID() string       { return "complexity-exceeded" }
 func (c *complexityExceededCheck) Name() string     { return "Complexity Limit Exceeded" }
-func (c *complexityExceededCheck) Article() string   { return "§6.3.4 DO-178C" }
-func (c *complexityExceededCheck) Severity() string  { return "error" }
+func (c *complexityExceededCheck) Article() string  { return "§6.3.4 DO-178C" }
+func (c *complexityExceededCheck) Severity() string { return "error" }
 
 // SILLevel mapping: 4=DAL A, 3=DAL B, 2=DAL C, 1=DAL D
 var dalComplexityLimits = map[int]int{
@@ -94,8 +94,8 @@ type gotoUsageCheck struct{}
 
 func (c *gotoUsageCheck) ID() string       { return "goto-usage" }
 func (c *gotoUsageCheck) Name() string     { return "Goto Statement Usage" }
-func (c *gotoUsageCheck) Article() string   { return "§6.3.4 DO-178C" }
-func (c *gotoUsageCheck) Severity() string  { return "error" }
+func (c *gotoUsageCheck) Article() string  { return "§6.3.4 DO-178C" }
+func (c *gotoUsageCheck) Severity() string { return "error" }
 
 var gotoPattern = regexp.MustCompile(`(?m)^\s*goto\s+\w+`)
 
@@ -139,8 +139,8 @@ type recursionCheck struct{}
 
 func (c *recursionCheck) ID() string       { return "recursion" }
 func (c *recursionCheck) Name() string     { return "Recursive Function Calls" }
-func (c *recursionCheck) Article() string   { return "§6.3.4 DO-178C" }
-func (c *recursionCheck) Severity() string  { return "error" }
+func (c *recursionCheck) Article() string  { return "§6.3.4 DO-178C" }
+func (c *recursionCheck) Severity() string { return "error" }
 
 func (c *recursionCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	var findings []compliance.Finding

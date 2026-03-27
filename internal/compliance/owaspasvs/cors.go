@@ -17,8 +17,8 @@ type asvsCORSWildcardCheck struct{}
 
 func (c *asvsCORSWildcardCheck) ID() string       { return "asvs-cors-wildcard" }
 func (c *asvsCORSWildcardCheck) Name() string     { return "CORS Wildcard Origin" }
-func (c *asvsCORSWildcardCheck) Article() string   { return "V14.5.3 ASVS" }
-func (c *asvsCORSWildcardCheck) Severity() string  { return "warning" }
+func (c *asvsCORSWildcardCheck) Article() string  { return "V14.5.3 ASVS" }
+func (c *asvsCORSWildcardCheck) Severity() string { return "warning" }
 
 var asvsCORSWildcardPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)Access-Control-Allow-Origin.*\*`),

@@ -17,8 +17,8 @@ type insecureDefaultsCheck struct{}
 
 func (c *insecureDefaultsCheck) ID() string       { return "insecure-defaults" }
 func (c *insecureDefaultsCheck) Name() string     { return "Insecure Default Configuration" }
-func (c *insecureDefaultsCheck) Article() string   { return "Art. 13 EU CRA" }
-func (c *insecureDefaultsCheck) Severity() string  { return "error" }
+func (c *insecureDefaultsCheck) Article() string  { return "Art. 13 EU CRA" }
+func (c *insecureDefaultsCheck) Severity() string { return "error" }
 
 var insecureDefaultPatterns = []*regexp.Regexp{
 	// Default passwords
@@ -114,8 +114,8 @@ type unnecessaryAttackSurfaceCheck struct{}
 
 func (c *unnecessaryAttackSurfaceCheck) ID() string       { return "unnecessary-attack-surface" }
 func (c *unnecessaryAttackSurfaceCheck) Name() string     { return "Unnecessary Attack Surface" }
-func (c *unnecessaryAttackSurfaceCheck) Article() string   { return "Annex I, Part I(1) EU CRA" }
-func (c *unnecessaryAttackSurfaceCheck) Severity() string  { return "warning" }
+func (c *unnecessaryAttackSurfaceCheck) Article() string  { return "Annex I, Part I(1) EU CRA" }
+func (c *unnecessaryAttackSurfaceCheck) Severity() string { return "warning" }
 
 var attackSurfacePatterns = []*regexp.Regexp{
 	// Admin/debug endpoints without restriction

@@ -18,8 +18,8 @@ type nonFIPSCryptoCheck struct{}
 
 func (c *nonFIPSCryptoCheck) ID() string       { return "non-fips-crypto" }
 func (c *nonFIPSCryptoCheck) Name() string     { return "Non-FIPS Cryptographic Algorithm" }
-func (c *nonFIPSCryptoCheck) Article() string   { return "SC-13 NIST 800-53" }
-func (c *nonFIPSCryptoCheck) Severity() string  { return "error" }
+func (c *nonFIPSCryptoCheck) Article() string  { return "SC-13 NIST 800-53" }
+func (c *nonFIPSCryptoCheck) Severity() string { return "error" }
 
 var nonFIPSAlgorithms = []struct {
 	pattern *regexp.Regexp

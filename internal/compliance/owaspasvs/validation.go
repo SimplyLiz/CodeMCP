@@ -18,8 +18,8 @@ type sqlInjectionCheck struct{}
 
 func (c *sqlInjectionCheck) ID() string       { return "sql-injection" }
 func (c *sqlInjectionCheck) Name() string     { return "SQL Injection Risk" }
-func (c *sqlInjectionCheck) Article() string   { return "V5.3.4 ASVS" }
-func (c *sqlInjectionCheck) Severity() string  { return "error" }
+func (c *sqlInjectionCheck) Article() string  { return "V5.3.4 ASVS" }
+func (c *sqlInjectionCheck) Severity() string { return "error" }
 
 var asvsSQLInjectionPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)["'].*SELECT\s+.+FROM\s.*["'].*\+\s*\w`),
@@ -180,8 +180,8 @@ type xssPreventionCheck struct{}
 
 func (c *xssPreventionCheck) ID() string       { return "xss-prevention" }
 func (c *xssPreventionCheck) Name() string     { return "Cross-Site Scripting (XSS) Risk" }
-func (c *xssPreventionCheck) Article() string   { return "V5.3.3 ASVS" }
-func (c *xssPreventionCheck) Severity() string  { return "error" }
+func (c *xssPreventionCheck) Article() string  { return "V5.3.3 ASVS" }
+func (c *xssPreventionCheck) Severity() string { return "error" }
 
 var xssPatterns = []struct {
 	pattern *regexp.Regexp
@@ -257,8 +257,8 @@ type commandInjectionCheck struct{}
 
 func (c *commandInjectionCheck) ID() string       { return "command-injection" }
 func (c *commandInjectionCheck) Name() string     { return "OS Command Injection Risk" }
-func (c *commandInjectionCheck) Article() string   { return "V5.3.8 ASVS" }
-func (c *commandInjectionCheck) Severity() string  { return "error" }
+func (c *commandInjectionCheck) Article() string  { return "V5.3.8 ASVS" }
+func (c *commandInjectionCheck) Severity() string { return "error" }
 
 var commandInjectionPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)exec\.Command\(.*\+`),
@@ -367,8 +367,8 @@ type evalInjectionCheck struct{}
 
 func (c *evalInjectionCheck) ID() string       { return "eval-injection" }
 func (c *evalInjectionCheck) Name() string     { return "Dynamic Code Execution (Eval Injection)" }
-func (c *evalInjectionCheck) Article() string   { return "V5.2.4 ASVS" }
-func (c *evalInjectionCheck) Severity() string  { return "error" }
+func (c *evalInjectionCheck) Article() string  { return "V5.2.4 ASVS" }
+func (c *evalInjectionCheck) Severity() string { return "error" }
 
 var evalPatterns = []struct {
 	pattern *regexp.Regexp

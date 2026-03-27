@@ -17,8 +17,8 @@ type xxeCheck struct{}
 
 func (c *xxeCheck) ID() string       { return "xxe" }
 func (c *xxeCheck) Name() string     { return "XML External Entity (XXE) Risk" }
-func (c *xxeCheck) Article() string   { return "V5.5.2 ASVS" }
-func (c *xxeCheck) Severity() string  { return "warning" }
+func (c *xxeCheck) Article() string  { return "V5.5.2 ASVS" }
+func (c *xxeCheck) Severity() string { return "warning" }
 
 var xxePatterns = []struct {
 	pattern *regexp.Regexp

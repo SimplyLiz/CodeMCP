@@ -341,13 +341,13 @@ func normalizeIdentifier(s string) string {
 
 // extractContainer detects struct/class/type declarations.
 var containerPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`type\s+(\w+)\s+struct\b`),                // Go
-	regexp.MustCompile(`class\s+(\w+)`),                          // Java/Python/TS
-	regexp.MustCompile(`interface\s+(\w+)`),                      // TS/Java/Go
-	regexp.MustCompile(`(?:export\s+)?type\s+(\w+)\s*=?\s*\{`),   // TypeScript type
-	regexp.MustCompile(`data\s+class\s+(\w+)`),                   // Kotlin
-	regexp.MustCompile(`struct\s+(\w+)`),                         // Rust/C
-	regexp.MustCompile(`(?:pub\s+)?struct\s+(\w+)`),              // Rust
+	regexp.MustCompile(`type\s+(\w+)\s+struct\b`),              // Go
+	regexp.MustCompile(`class\s+(\w+)`),                        // Java/Python/TS
+	regexp.MustCompile(`interface\s+(\w+)`),                    // TS/Java/Go
+	regexp.MustCompile(`(?:export\s+)?type\s+(\w+)\s*=?\s*\{`), // TypeScript type
+	regexp.MustCompile(`data\s+class\s+(\w+)`),                 // Kotlin
+	regexp.MustCompile(`struct\s+(\w+)`),                       // Rust/C
+	regexp.MustCompile(`(?:pub\s+)?struct\s+(\w+)`),            // Rust
 }
 
 func extractContainer(line string) string {

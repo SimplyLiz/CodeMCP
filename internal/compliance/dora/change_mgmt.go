@@ -15,8 +15,8 @@ type missingRollbackCheck struct{}
 
 func (c *missingRollbackCheck) ID() string       { return "missing-rollback" }
 func (c *missingRollbackCheck) Name() string     { return "Missing Migration Rollback" }
-func (c *missingRollbackCheck) Article() string   { return "Art. 15 DORA" }
-func (c *missingRollbackCheck) Severity() string  { return "warning" }
+func (c *missingRollbackCheck) Article() string  { return "Art. 15 DORA" }
+func (c *missingRollbackCheck) Severity() string { return "warning" }
 
 var migrationDirs = []string{
 	"migrations", "migration", "db/migrations", "db/migrate",

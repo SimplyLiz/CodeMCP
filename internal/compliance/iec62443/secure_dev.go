@@ -18,8 +18,8 @@ type unsafeFunctionsCheck struct{}
 
 func (c *unsafeFunctionsCheck) ID() string       { return "unsafe-functions" }
 func (c *unsafeFunctionsCheck) Name() string     { return "Unsafe/Banned Functions" }
-func (c *unsafeFunctionsCheck) Article() string   { return "SD-4 IEC 62443-4-1" }
-func (c *unsafeFunctionsCheck) Severity() string  { return "error" }
+func (c *unsafeFunctionsCheck) Article() string  { return "SD-4 IEC 62443-4-1" }
+func (c *unsafeFunctionsCheck) Severity() string { return "error" }
 
 var bannedFuncPattern = regexp.MustCompile(`\b(gets|sprintf|strcpy|strcat|scanf|system|popen|exec)\s*\(`)
 
@@ -89,8 +89,8 @@ type missingErrorHandlingCheck struct{}
 
 func (c *missingErrorHandlingCheck) ID() string       { return "missing-error-handling" }
 func (c *missingErrorHandlingCheck) Name() string     { return "Missing Error Handling" }
-func (c *missingErrorHandlingCheck) Article() string   { return "SD-4 IEC 62443-4-1" }
-func (c *missingErrorHandlingCheck) Severity() string  { return "warning" }
+func (c *missingErrorHandlingCheck) Article() string  { return "SD-4 IEC 62443-4-1" }
+func (c *missingErrorHandlingCheck) Severity() string { return "warning" }
 
 func (c *missingErrorHandlingCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	var findings []compliance.Finding

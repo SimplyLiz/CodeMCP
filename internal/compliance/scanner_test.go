@@ -38,7 +38,7 @@ func TestMatchPII(t *testing.T) {
 	scanner := NewPIIScanner(nil)
 
 	tests := []struct {
-		identifier string
+		identifier  string
 		shouldMatch bool
 		piiType     string
 	}{

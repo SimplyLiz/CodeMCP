@@ -15,8 +15,8 @@ type noConsentMechanismCheck struct{}
 
 func (c *noConsentMechanismCheck) ID() string       { return "no-consent-mechanism" }
 func (c *noConsentMechanismCheck) Name() string     { return "Missing Consent Mechanism" }
-func (c *noConsentMechanismCheck) Article() string   { return "A.7.2.2 ISO 27701" }
-func (c *noConsentMechanismCheck) Severity() string  { return "warning" }
+func (c *noConsentMechanismCheck) Article() string  { return "A.7.2.2 ISO 27701" }
+func (c *noConsentMechanismCheck) Severity() string { return "warning" }
 
 func (c *noConsentMechanismCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	consentPatterns := []string{
@@ -75,8 +75,8 @@ type noDeletionEndpointCheck struct{}
 
 func (c *noDeletionEndpointCheck) ID() string       { return "no-deletion-endpoint" }
 func (c *noDeletionEndpointCheck) Name() string     { return "Missing Data Erasure Endpoint" }
-func (c *noDeletionEndpointCheck) Article() string   { return "A.7.3.6 ISO 27701" }
-func (c *noDeletionEndpointCheck) Severity() string  { return "warning" }
+func (c *noDeletionEndpointCheck) Article() string  { return "A.7.3.6 ISO 27701" }
+func (c *noDeletionEndpointCheck) Severity() string { return "warning" }
 
 func (c *noDeletionEndpointCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	deletionPatterns := []string{
@@ -131,8 +131,8 @@ type noAccessEndpointCheck struct{}
 
 func (c *noAccessEndpointCheck) ID() string       { return "no-access-endpoint" }
 func (c *noAccessEndpointCheck) Name() string     { return "Missing Data Access Endpoint" }
-func (c *noAccessEndpointCheck) Article() string   { return "A.7.3.6 ISO 27701" }
-func (c *noAccessEndpointCheck) Severity() string  { return "warning" }
+func (c *noAccessEndpointCheck) Article() string  { return "A.7.3.6 ISO 27701" }
+func (c *noAccessEndpointCheck) Severity() string { return "warning" }
 
 func (c *noAccessEndpointCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	accessPatterns := []string{
@@ -188,8 +188,8 @@ type noDataPortabilityCheck struct{}
 
 func (c *noDataPortabilityCheck) ID() string       { return "no-data-portability" }
 func (c *noDataPortabilityCheck) Name() string     { return "Missing Data Portability" }
-func (c *noDataPortabilityCheck) Article() string   { return "A.7.3.6 ISO 27701" }
-func (c *noDataPortabilityCheck) Severity() string  { return "info" }
+func (c *noDataPortabilityCheck) Article() string  { return "A.7.3.6 ISO 27701" }
+func (c *noDataPortabilityCheck) Severity() string { return "info" }
 
 func (c *noDataPortabilityCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	portabilityPatterns := []string{

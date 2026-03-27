@@ -12,8 +12,10 @@ type framework struct{}
 func NewFramework() compliance.Framework { return &framework{} }
 
 func (f *framework) ID() compliance.FrameworkID { return compliance.FrameworkOWASPASVS }
-func (f *framework) Name() string               { return "OWASP ASVS 4.0 (Application Security Verification Standard)" }
-func (f *framework) Version() string             { return "4.0.3" }
+func (f *framework) Name() string {
+	return "OWASP ASVS 4.0 (Application Security Verification Standard)"
+}
+func (f *framework) Version() string { return "4.0.3" }
 
 func (f *framework) Checks() []compliance.Check {
 	return []compliance.Check{

@@ -416,6 +416,7 @@ var configKeyVarRe = regexp.MustCompile(`(?i)["'](?:secret|token|password|passwd
 //	api_key=os.environ["KEY"]               (env lookup)
 //	token = process.env.TOKEN               (Node env)
 //	key := viper.GetString("api_key")       (Go config)
+//
 // varRefRe matches variable/attribute references. The first branch (dotted
 // chain anchored with $) covers fully-qualified references like config.apiKey.
 // Branches 2-4 handle partial captures where the scanner only grabs a prefix

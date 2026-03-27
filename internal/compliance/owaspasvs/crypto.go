@@ -18,8 +18,8 @@ type weakAlgorithmCheck struct{}
 
 func (c *weakAlgorithmCheck) ID() string       { return "weak-algorithm" }
 func (c *weakAlgorithmCheck) Name() string     { return "Deprecated Cryptographic Algorithm" }
-func (c *weakAlgorithmCheck) Article() string   { return "V6.2.5 ASVS" }
-func (c *weakAlgorithmCheck) Severity() string  { return "error" }
+func (c *weakAlgorithmCheck) Article() string  { return "V6.2.5 ASVS" }
+func (c *weakAlgorithmCheck) Severity() string { return "error" }
 
 var asvsWeakAlgorithms = []struct {
 	pattern *regexp.Regexp
@@ -117,8 +117,8 @@ type insecureRandomCheck struct{}
 
 func (c *insecureRandomCheck) ID() string       { return "insecure-random" }
 func (c *insecureRandomCheck) Name() string     { return "Insecure Random Number Generator" }
-func (c *insecureRandomCheck) Article() string   { return "V6.3.1 ASVS" }
-func (c *insecureRandomCheck) Severity() string  { return "error" }
+func (c *insecureRandomCheck) Article() string  { return "V6.3.1 ASVS" }
+func (c *insecureRandomCheck) Severity() string { return "error" }
 
 var asvsInsecureRandomPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`\bmath/rand\b`),
@@ -179,7 +179,7 @@ func (c *insecureRandomCheck) Run(ctx context.Context, scope *compliance.ScanSco
 					continue
 				}
 
-			trimmed := strings.TrimSpace(line)
+				trimmed := strings.TrimSpace(line)
 
 				for _, pattern := range asvsInsecureRandomPatterns {
 					if pattern.MatchString(line) {

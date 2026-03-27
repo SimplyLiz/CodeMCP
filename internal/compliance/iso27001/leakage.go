@@ -17,8 +17,8 @@ type hardcodedSecretCheck struct{}
 
 func (c *hardcodedSecretCheck) ID() string       { return "hardcoded-secret" }
 func (c *hardcodedSecretCheck) Name() string     { return "Hardcoded Secrets" }
-func (c *hardcodedSecretCheck) Article() string   { return "A.8.4 ISO 27001:2022" }
-func (c *hardcodedSecretCheck) Severity() string  { return "error" }
+func (c *hardcodedSecretCheck) Article() string  { return "A.8.4 ISO 27001:2022" }
+func (c *hardcodedSecretCheck) Severity() string { return "error" }
 
 var secretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)(api[_-]?key|apikey)\s*[:=]\s*["'][\w\-]{16,}`),
@@ -94,8 +94,8 @@ type piiInLogsCheck struct{}
 
 func (c *piiInLogsCheck) ID() string       { return "pii-in-logs" }
 func (c *piiInLogsCheck) Name() string     { return "PII Data Leakage in Logs" }
-func (c *piiInLogsCheck) Article() string   { return "A.8.12 ISO 27001:2022" }
-func (c *piiInLogsCheck) Severity() string  { return "error" }
+func (c *piiInLogsCheck) Article() string  { return "A.8.12 ISO 27001:2022" }
+func (c *piiInLogsCheck) Severity() string { return "error" }
 
 func (c *piiInLogsCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	scanner := compliance.NewPIIScanner(scope.Config.PIIFieldPatterns)

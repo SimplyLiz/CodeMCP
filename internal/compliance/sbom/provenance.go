@@ -17,21 +17,21 @@ type unpinnedDependenciesCheck struct{}
 
 func (c *unpinnedDependenciesCheck) ID() string       { return "unpinned-dependencies" }
 func (c *unpinnedDependenciesCheck) Name() string     { return "Unpinned Dependency Versions" }
-func (c *unpinnedDependenciesCheck) Article() string   { return "SLSA Level 2" }
-func (c *unpinnedDependenciesCheck) Severity() string  { return "warning" }
+func (c *unpinnedDependenciesCheck) Article() string  { return "SLSA Level 2" }
+func (c *unpinnedDependenciesCheck) Severity() string { return "warning" }
 
 var unpinnedPackageJSONPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`"[^"]+"\s*:\s*"\^`),       // "dep": "^1.0.0"
-	regexp.MustCompile(`"[^"]+"\s*:\s*"~`),         // "dep": "~1.0.0"
-	regexp.MustCompile(`"[^"]+"\s*:\s*"\*"`),       // "dep": "*"
-	regexp.MustCompile(`"[^"]+"\s*:\s*"latest"`),   // "dep": "latest"
-	regexp.MustCompile(`"[^"]+"\s*:\s*">=`),        // "dep": ">=1.0.0"
+	regexp.MustCompile(`"[^"]+"\s*:\s*"\^`),      // "dep": "^1.0.0"
+	regexp.MustCompile(`"[^"]+"\s*:\s*"~`),       // "dep": "~1.0.0"
+	regexp.MustCompile(`"[^"]+"\s*:\s*"\*"`),     // "dep": "*"
+	regexp.MustCompile(`"[^"]+"\s*:\s*"latest"`), // "dep": "latest"
+	regexp.MustCompile(`"[^"]+"\s*:\s*">=`),      // "dep": ">=1.0.0"
 }
 
 var unpinnedRequirementsPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`^[a-zA-Z][\w\-]*\s*$`),                    // package without any version
-	regexp.MustCompile(`^[a-zA-Z][\w\-]*\s*>=`),                   // package>=1.0
-	regexp.MustCompile(`^[a-zA-Z][\w\-]*\s*~=`),                   // package~=1.0
+	regexp.MustCompile(`^[a-zA-Z][\w\-]*\s*$`),  // package without any version
+	regexp.MustCompile(`^[a-zA-Z][\w\-]*\s*>=`), // package>=1.0
+	regexp.MustCompile(`^[a-zA-Z][\w\-]*\s*~=`), // package~=1.0
 }
 
 var goModReplaceLatest = regexp.MustCompile(`(?i)replace\s+.*\s+=>\s+.*\blatest\b`)
@@ -196,8 +196,8 @@ type missingProvenanceCheck struct{}
 
 func (c *missingProvenanceCheck) ID() string       { return "missing-provenance" }
 func (c *missingProvenanceCheck) Name() string     { return "Missing Build Provenance" }
-func (c *missingProvenanceCheck) Article() string   { return "SLSA Level 2" }
-func (c *missingProvenanceCheck) Severity() string  { return "info" }
+func (c *missingProvenanceCheck) Article() string  { return "SLSA Level 2" }
+func (c *missingProvenanceCheck) Severity() string { return "info" }
 
 var provenancePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\bslsa[_\-]?github[_\-]?generator\b`),
@@ -264,8 +264,8 @@ type unsignedCommitsCheck struct{}
 
 func (c *unsignedCommitsCheck) ID() string       { return "unsigned-commits" }
 func (c *unsignedCommitsCheck) Name() string     { return "Unsigned Commits Policy" }
-func (c *unsignedCommitsCheck) Article() string   { return "SLSA Level 2" }
-func (c *unsignedCommitsCheck) Severity() string  { return "info" }
+func (c *unsignedCommitsCheck) Article() string  { return "SLSA Level 2" }
+func (c *unsignedCommitsCheck) Severity() string { return "info" }
 
 var commitSigningPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)commit\.gpgsign`),

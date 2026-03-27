@@ -16,8 +16,8 @@ type noRetentionPolicyCheck struct{}
 
 func (c *noRetentionPolicyCheck) ID() string       { return "no-retention-policy" }
 func (c *noRetentionPolicyCheck) Name() string     { return "Missing Data Retention Policy" }
-func (c *noRetentionPolicyCheck) Article() string   { return "Art. 5(1)(e) GDPR" }
-func (c *noRetentionPolicyCheck) Severity() string  { return "warning" }
+func (c *noRetentionPolicyCheck) Article() string  { return "Art. 5(1)(e) GDPR" }
+func (c *noRetentionPolicyCheck) Severity() string { return "warning" }
 
 func (c *noRetentionPolicyCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	piiScanner := compliance.NewPIIScanner(scope.Config.PIIFieldPatterns)
@@ -83,8 +83,8 @@ type noDeletionEndpointCheck struct{}
 
 func (c *noDeletionEndpointCheck) ID() string       { return "no-deletion-endpoint" }
 func (c *noDeletionEndpointCheck) Name() string     { return "Missing Right to Erasure" }
-func (c *noDeletionEndpointCheck) Article() string   { return "Art. 17 GDPR" }
-func (c *noDeletionEndpointCheck) Severity() string  { return "warning" }
+func (c *noDeletionEndpointCheck) Article() string  { return "Art. 17 GDPR" }
+func (c *noDeletionEndpointCheck) Severity() string { return "warning" }
 
 func (c *noDeletionEndpointCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	// Check if the codebase has deletion/erasure patterns
@@ -175,8 +175,8 @@ type missingConsentCheck struct{}
 
 func (c *missingConsentCheck) ID() string       { return "missing-consent" }
 func (c *missingConsentCheck) Name() string     { return "Missing Consent Verification" }
-func (c *missingConsentCheck) Article() string   { return "Art. 6, 7 GDPR" }
-func (c *missingConsentCheck) Severity() string  { return "warning" }
+func (c *missingConsentCheck) Article() string  { return "Art. 6, 7 GDPR" }
+func (c *missingConsentCheck) Severity() string { return "warning" }
 
 func (c *missingConsentCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	consentPatterns := []string{
@@ -234,8 +234,8 @@ type excessiveCollectionCheck struct{}
 
 func (c *excessiveCollectionCheck) ID() string       { return "excessive-collection" }
 func (c *excessiveCollectionCheck) Name() string     { return "Excessive Data Collection" }
-func (c *excessiveCollectionCheck) Article() string   { return "Art. 25 GDPR" }
-func (c *excessiveCollectionCheck) Severity() string  { return "warning" }
+func (c *excessiveCollectionCheck) Article() string  { return "Art. 25 GDPR" }
+func (c *excessiveCollectionCheck) Severity() string { return "warning" }
 
 func (c *excessiveCollectionCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	var findings []compliance.Finding
@@ -285,8 +285,8 @@ type unencryptedTransportCheck struct{}
 
 func (c *unencryptedTransportCheck) ID() string       { return "unencrypted-transport" }
 func (c *unencryptedTransportCheck) Name() string     { return "Unencrypted PII Transport" }
-func (c *unencryptedTransportCheck) Article() string   { return "Art. 32 GDPR" }
-func (c *unencryptedTransportCheck) Severity() string  { return "error" }
+func (c *unencryptedTransportCheck) Article() string  { return "Art. 32 GDPR" }
+func (c *unencryptedTransportCheck) Severity() string { return "error" }
 
 func (c *unencryptedTransportCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	var findings []compliance.Finding
@@ -344,8 +344,8 @@ type missingAccessLoggingCheck struct{}
 
 func (c *missingAccessLoggingCheck) ID() string       { return "missing-access-logging" }
 func (c *missingAccessLoggingCheck) Name() string     { return "Missing Data Access Logging" }
-func (c *missingAccessLoggingCheck) Article() string   { return "Art. 30 GDPR" }
-func (c *missingAccessLoggingCheck) Severity() string  { return "warning" }
+func (c *missingAccessLoggingCheck) Article() string  { return "Art. 30 GDPR" }
+func (c *missingAccessLoggingCheck) Severity() string { return "warning" }
 
 func (c *missingAccessLoggingCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	auditPatterns := []string{

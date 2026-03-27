@@ -13,8 +13,10 @@ type framework struct{}
 func NewFramework() compliance.Framework { return &framework{} }
 
 func (f *framework) ID() compliance.FrameworkID { return compliance.FrameworkHIPAA }
-func (f *framework) Name() string               { return "HIPAA (Health Insurance Portability and Accountability Act)" }
-func (f *framework) Version() string             { return "Security Rule" }
+func (f *framework) Name() string {
+	return "HIPAA (Health Insurance Portability and Accountability Act)"
+}
+func (f *framework) Version() string { return "Security Rule" }
 
 func (f *framework) Checks() []compliance.Check {
 	return []compliance.Check{

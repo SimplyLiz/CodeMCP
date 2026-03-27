@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/SimplyLiz/CodeMCP/internal/compliance"
@@ -18,16 +17,8 @@ type uncheckedErrorCheck struct{}
 
 func (c *uncheckedErrorCheck) ID() string       { return "unchecked-error" }
 func (c *uncheckedErrorCheck) Name() string     { return "Unchecked Error Returns" }
-func (c *uncheckedErrorCheck) Article() string   { return "Table A.3 IEC 61508-3" }
-func (c *uncheckedErrorCheck) Severity() string  { return "error" }
-
-// Patterns for Go: common error-returning calls where error is discarded
-var uncheckedErrorPatterns = []*regexp.Regexp{
-	// Go: assigning to _ for error
-	regexp.MustCompile(`\b\w+,\s*_\s*:?=\s*\w+\.\w+\(`),
-	// Go: single return value ignored
-	regexp.MustCompile(`^\s+\w+\.\w+\([^)]*\)\s*$`),
-}
+func (c *uncheckedErrorCheck) Article() string  { return "Table A.3 IEC 61508-3" }
+func (c *uncheckedErrorCheck) Severity() string { return "error" }
 
 func (c *uncheckedErrorCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	var findings []compliance.Finding
@@ -96,8 +87,8 @@ type complexityExceededCheck struct{}
 
 func (c *complexityExceededCheck) ID() string       { return "complexity-exceeded" }
 func (c *complexityExceededCheck) Name() string     { return "Complexity Limit Exceeded" }
-func (c *complexityExceededCheck) Article() string   { return "Table B.9 IEC 61508-3" }
-func (c *complexityExceededCheck) Severity() string  { return "error" }
+func (c *complexityExceededCheck) Article() string  { return "Table B.9 IEC 61508-3" }
+func (c *complexityExceededCheck) Severity() string { return "error" }
 
 // SIL level -> max cyclomatic complexity per function
 var silComplexityLimits = map[int]int{

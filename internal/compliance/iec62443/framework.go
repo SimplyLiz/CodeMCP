@@ -14,7 +14,7 @@ func NewFramework() compliance.Framework { return &framework{} }
 
 func (f *framework) ID() compliance.FrameworkID { return compliance.FrameworkIEC62443 }
 func (f *framework) Name() string               { return "IEC 62443 (Industrial Automation Security)" }
-func (f *framework) Version() string             { return "4-2:2019" }
+func (f *framework) Version() string            { return "4-2:2019" }
 
 func (f *framework) Checks() []compliance.Check {
 	return []compliance.Check{

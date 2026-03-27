@@ -13,7 +13,7 @@ func NewFramework() compliance.Framework { return &framework{} }
 
 func (f *framework) ID() compliance.FrameworkID { return compliance.FrameworkCCPA }
 func (f *framework) Name() string               { return "CCPA/CPRA (California Privacy Rights Act)" }
-func (f *framework) Version() string             { return "2023" }
+func (f *framework) Version() string            { return "2023" }
 
 func (f *framework) Checks() []compliance.Check {
 	return []compliance.Check{

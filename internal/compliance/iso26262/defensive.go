@@ -18,8 +18,8 @@ type missingNullCheckCheck struct{}
 
 func (c *missingNullCheckCheck) ID() string       { return "missing-null-check" }
 func (c *missingNullCheckCheck) Name() string     { return "Missing Null Check Before Dereference" }
-func (c *missingNullCheckCheck) Article() string   { return "Part 6, 8.4.4 ISO 26262" }
-func (c *missingNullCheckCheck) Severity() string  { return "warning" }
+func (c *missingNullCheckCheck) Article() string  { return "Part 6, 8.4.4 ISO 26262" }
+func (c *missingNullCheckCheck) Severity() string { return "warning" }
 
 // Detect pointer dereferences: *ptr or ptr->member
 var derefPattern = regexp.MustCompile(`(\*\w+[\.\[]|(\w+)->)`)
@@ -107,8 +107,8 @@ type uncheckedReturnCheck struct{}
 
 func (c *uncheckedReturnCheck) ID() string       { return "unchecked-return" }
 func (c *uncheckedReturnCheck) Name() string     { return "Unchecked Return Value" }
-func (c *uncheckedReturnCheck) Article() string   { return "Part 6, 8.4.4 ISO 26262" }
-func (c *uncheckedReturnCheck) Severity() string  { return "error" }
+func (c *uncheckedReturnCheck) Article() string  { return "Part 6, 8.4.4 ISO 26262" }
+func (c *uncheckedReturnCheck) Severity() string { return "error" }
 
 func (c *uncheckedReturnCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	var findings []compliance.Finding

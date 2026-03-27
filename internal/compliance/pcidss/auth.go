@@ -17,8 +17,8 @@ type weakPasswordPolicyCheck struct{}
 
 func (c *weakPasswordPolicyCheck) ID() string       { return "weak-password-policy" }
 func (c *weakPasswordPolicyCheck) Name() string     { return "Weak Password Policy" }
-func (c *weakPasswordPolicyCheck) Article() string   { return "Req 8.3.6 PCI DSS 4.0" }
-func (c *weakPasswordPolicyCheck) Severity() string  { return "warning" }
+func (c *weakPasswordPolicyCheck) Article() string  { return "Req 8.3.6 PCI DSS 4.0" }
+func (c *weakPasswordPolicyCheck) Severity() string { return "warning" }
 
 var weakPasswordPatterns = []*regexp.Regexp{
 	// Password min length constants or checks < 12
@@ -89,8 +89,8 @@ type hardcodedCredentialsCheck struct{}
 
 func (c *hardcodedCredentialsCheck) ID() string       { return "hardcoded-credentials" }
 func (c *hardcodedCredentialsCheck) Name() string     { return "Hardcoded Credentials" }
-func (c *hardcodedCredentialsCheck) Article() string   { return "Req 8.6.2 PCI DSS 4.0" }
-func (c *hardcodedCredentialsCheck) Severity() string  { return "error" }
+func (c *hardcodedCredentialsCheck) Article() string  { return "Req 8.6.2 PCI DSS 4.0" }
+func (c *hardcodedCredentialsCheck) Severity() string { return "error" }
 
 var pciSecretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)(api[_-]?key|apikey)\s*[:=]\s*["'][\w\-]{16,}`),

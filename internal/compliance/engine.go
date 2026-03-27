@@ -98,14 +98,14 @@ func RunAudit(ctx context.Context, opts AuditOptions, logger *slog.Logger) (*Com
 
 	// Run checks in parallel
 	type checkResult struct {
-		framework   FrameworkID
-		checkID     string
-		checkName   string
-		article     string
-		severity    string
-		findings    []Finding
-		err         error
-		durationMs  int64
+		framework  FrameworkID
+		checkID    string
+		checkName  string
+		article    string
+		severity   string
+		findings   []Finding
+		err        error
+		durationMs int64
 	}
 
 	results := make([]checkResult, len(allChecks))
@@ -390,7 +390,7 @@ func findSourceFiles(repoRoot, scope string) ([]string, error) {
 
 		relPath, err := filepath.Rel(repoRoot, path)
 		if err != nil {
-			return nil
+			return err
 		}
 
 		// Apply scope filter

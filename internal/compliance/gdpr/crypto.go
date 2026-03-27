@@ -18,8 +18,8 @@ type weakPIICryptoCheck struct{}
 
 func (c *weakPIICryptoCheck) ID() string       { return "weak-pii-crypto" }
 func (c *weakPIICryptoCheck) Name() string     { return "Weak Cryptography on PII" }
-func (c *weakPIICryptoCheck) Article() string   { return "Art. 32 GDPR" }
-func (c *weakPIICryptoCheck) Severity() string  { return "error" }
+func (c *weakPIICryptoCheck) Article() string  { return "Art. 32 GDPR" }
+func (c *weakPIICryptoCheck) Severity() string { return "error" }
 
 // weakCryptoPatterns detects use of deprecated/insecure algorithms.
 var weakCryptoPatterns = []*regexp.Regexp{
@@ -98,8 +98,8 @@ type plaintextPIICheck struct{}
 
 func (c *plaintextPIICheck) ID() string       { return "plaintext-pii" }
 func (c *plaintextPIICheck) Name() string     { return "Plaintext PII Storage" }
-func (c *plaintextPIICheck) Article() string   { return "Art. 32 GDPR" }
-func (c *plaintextPIICheck) Severity() string  { return "warning" }
+func (c *plaintextPIICheck) Article() string  { return "Art. 32 GDPR" }
+func (c *plaintextPIICheck) Severity() string { return "warning" }
 
 // dbStoragePatterns detects database write patterns.
 var dbStoragePatterns = []*regexp.Regexp{

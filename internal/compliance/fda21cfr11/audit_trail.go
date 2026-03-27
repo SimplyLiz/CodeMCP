@@ -16,8 +16,8 @@ type missingAuditTrailCheck struct{}
 
 func (c *missingAuditTrailCheck) ID() string       { return "missing-audit-trail" }
 func (c *missingAuditTrailCheck) Name() string     { return "Missing Audit Trail" }
-func (c *missingAuditTrailCheck) Article() string   { return "§11.10(e) 21 CFR Part 11" }
-func (c *missingAuditTrailCheck) Severity() string  { return "error" }
+func (c *missingAuditTrailCheck) Article() string  { return "§11.10(e) 21 CFR Part 11" }
+func (c *missingAuditTrailCheck) Severity() string { return "error" }
 
 var dataModificationPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\b(INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM)\b`),
@@ -90,8 +90,8 @@ type mutableAuditRecordsCheck struct{}
 
 func (c *mutableAuditRecordsCheck) ID() string       { return "mutable-audit-records" }
 func (c *mutableAuditRecordsCheck) Name() string     { return "Mutable Audit Records" }
-func (c *mutableAuditRecordsCheck) Article() string   { return "§11.10(e) 21 CFR Part 11" }
-func (c *mutableAuditRecordsCheck) Severity() string  { return "warning" }
+func (c *mutableAuditRecordsCheck) Article() string  { return "§11.10(e) 21 CFR Part 11" }
+func (c *mutableAuditRecordsCheck) Severity() string { return "warning" }
 
 // Detect UPDATE/DELETE on audit/log tables
 var auditTableMutationPattern = regexp.MustCompile(`(?i)(UPDATE|DELETE\s+FROM)\s+\S*(audit|_log|_history|audit_trail)\b`)

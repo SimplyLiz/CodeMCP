@@ -15,8 +15,8 @@ type noPurposeLoggingCheck struct{}
 
 func (c *noPurposeLoggingCheck) ID() string       { return "no-purpose-logging" }
 func (c *noPurposeLoggingCheck) Name() string     { return "Missing Purpose Logging" }
-func (c *noPurposeLoggingCheck) Article() string   { return "A.7.2.1 ISO 27701" }
-func (c *noPurposeLoggingCheck) Severity() string  { return "warning" }
+func (c *noPurposeLoggingCheck) Article() string  { return "A.7.2.1 ISO 27701" }
+func (c *noPurposeLoggingCheck) Severity() string { return "warning" }
 
 func (c *noPurposeLoggingCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	purposePatterns := []string{

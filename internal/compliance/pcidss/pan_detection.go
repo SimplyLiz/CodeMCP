@@ -17,8 +17,8 @@ type panInSourceCheck struct{}
 
 func (c *panInSourceCheck) ID() string       { return "pan-in-source" }
 func (c *panInSourceCheck) Name() string     { return "PAN in Source Code" }
-func (c *panInSourceCheck) Article() string   { return "Req 3.4 PCI DSS 4.0" }
-func (c *panInSourceCheck) Severity() string  { return "error" }
+func (c *panInSourceCheck) Article() string  { return "Req 3.4 PCI DSS 4.0" }
+func (c *panInSourceCheck) Severity() string { return "error" }
 
 var panPattern = regexp.MustCompile(`\b[0-9]{13,19}\b`)
 
@@ -133,8 +133,8 @@ type panInLogsCheck struct{}
 
 func (c *panInLogsCheck) ID() string       { return "pan-in-logs" }
 func (c *panInLogsCheck) Name() string     { return "Card Data in Logs" }
-func (c *panInLogsCheck) Article() string   { return "Req 3.3.1 PCI DSS 4.0" }
-func (c *panInLogsCheck) Severity() string  { return "error" }
+func (c *panInLogsCheck) Article() string  { return "Req 3.3.1 PCI DSS 4.0" }
+func (c *panInLogsCheck) Severity() string { return "error" }
 
 var cardFieldPatterns = regexp.MustCompile(`(?i)(card_?number|card_?num|pan[^a-z]|credit_?card|ccn|card_?holder|cvv|cvc|expir(y|ation)_?date|track_?data|magnetic_?stripe)`)
 

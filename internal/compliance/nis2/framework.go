@@ -13,7 +13,7 @@ func NewFramework() compliance.Framework { return &framework{} }
 
 func (f *framework) ID() compliance.FrameworkID { return compliance.FrameworkNIS2 }
 func (f *framework) Name() string               { return "NIS2 Directive (EU 2022/2555)" }
-func (f *framework) Version() string             { return "2022/2555" }
+func (f *framework) Version() string            { return "2022/2555" }
 
 func (f *framework) Checks() []compliance.Check {
 	return []compliance.Check{

@@ -23,8 +23,8 @@ type phiDetectionCheck struct{}
 
 func (c *phiDetectionCheck) ID() string       { return "phi-detection" }
 func (c *phiDetectionCheck) Name() string     { return "PHI Field Detection" }
-func (c *phiDetectionCheck) Article() string   { return "§164.514(b) HIPAA" }
-func (c *phiDetectionCheck) Severity() string  { return "info" }
+func (c *phiDetectionCheck) Article() string  { return "§164.514(b) HIPAA" }
+func (c *phiDetectionCheck) Severity() string { return "info" }
 
 func (c *phiDetectionCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	extraPatterns := append(scope.Config.PIIFieldPatterns, phiExtraPatterns...)
@@ -76,8 +76,8 @@ type phiInLogsCheck struct{}
 
 func (c *phiInLogsCheck) ID() string       { return "phi-in-logs" }
 func (c *phiInLogsCheck) Name() string     { return "PHI in Log Statements" }
-func (c *phiInLogsCheck) Article() string   { return "§164.312(b) HIPAA" }
-func (c *phiInLogsCheck) Severity() string  { return "error" }
+func (c *phiInLogsCheck) Article() string  { return "§164.312(b) HIPAA" }
+func (c *phiInLogsCheck) Severity() string { return "error" }
 
 func (c *phiInLogsCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	extraPatterns := append(scope.Config.PIIFieldPatterns, phiExtraPatterns...)

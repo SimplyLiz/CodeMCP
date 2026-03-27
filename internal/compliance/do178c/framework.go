@@ -14,7 +14,7 @@ func NewFramework() compliance.Framework { return &framework{} }
 
 func (f *framework) ID() compliance.FrameworkID { return compliance.FrameworkDO178C }
 func (f *framework) Name() string               { return "DO-178C (Software Considerations in Airborne Systems)" }
-func (f *framework) Version() string             { return "2011" }
+func (f *framework) Version() string            { return "2011" }
 
 func (f *framework) Checks() []compliance.Check {
 	return []compliance.Check{

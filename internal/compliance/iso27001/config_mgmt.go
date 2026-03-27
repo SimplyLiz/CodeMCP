@@ -17,8 +17,8 @@ type hardcodedConfigCheck struct{}
 
 func (c *hardcodedConfigCheck) ID() string       { return "hardcoded-config" }
 func (c *hardcodedConfigCheck) Name() string     { return "Hardcoded Configuration" }
-func (c *hardcodedConfigCheck) Article() string   { return "A.8.9 ISO 27001:2022" }
-func (c *hardcodedConfigCheck) Severity() string  { return "warning" }
+func (c *hardcodedConfigCheck) Article() string  { return "A.8.9 ISO 27001:2022" }
+func (c *hardcodedConfigCheck) Severity() string { return "warning" }
 
 var hardcodedConfigPatterns = []*regexp.Regexp{
 	// Hardcoded hostnames/IPs (not localhost)
@@ -118,12 +118,8 @@ type missingTLSCheck struct{}
 
 func (c *missingTLSCheck) ID() string       { return "missing-tls" }
 func (c *missingTLSCheck) Name() string     { return "Missing TLS Encryption" }
-func (c *missingTLSCheck) Article() string   { return "A.8.20 ISO 27001:2022" }
-func (c *missingTLSCheck) Severity() string  { return "error" }
-
-var httpPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`http://[^/\s"']+`),
-}
+func (c *missingTLSCheck) Article() string  { return "A.8.20 ISO 27001:2022" }
+func (c *missingTLSCheck) Severity() string { return "error" }
 
 func (c *missingTLSCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	var findings []compliance.Finding
@@ -200,8 +196,8 @@ type corsWildcardCheck struct{}
 
 func (c *corsWildcardCheck) ID() string       { return "cors-wildcard" }
 func (c *corsWildcardCheck) Name() string     { return "CORS Wildcard Origin" }
-func (c *corsWildcardCheck) Article() string   { return "A.8.27 ISO 27001:2022" }
-func (c *corsWildcardCheck) Severity() string  { return "warning" }
+func (c *corsWildcardCheck) Article() string  { return "A.8.27 ISO 27001:2022" }
+func (c *corsWildcardCheck) Severity() string { return "warning" }
 
 var corsWildcardPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)Access-Control-Allow-Origin.*\*`),

@@ -18,8 +18,8 @@ type defaultCredentialsCheck struct{}
 
 func (c *defaultCredentialsCheck) ID() string       { return "default-credentials" }
 func (c *defaultCredentialsCheck) Name() string     { return "Default/Hardcoded Credentials" }
-func (c *defaultCredentialsCheck) Article() string   { return "CR 1.1 IEC 62443-4-2" }
-func (c *defaultCredentialsCheck) Severity() string  { return "error" }
+func (c *defaultCredentialsCheck) Article() string  { return "CR 1.1 IEC 62443-4-2" }
+func (c *defaultCredentialsCheck) Severity() string { return "error" }
 
 var credentialPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)(password|passwd|pwd)\s*[:=]\s*["'][\w!@#$%^&*]+["']`),
@@ -94,8 +94,8 @@ type missingAuthCheck struct{}
 
 func (c *missingAuthCheck) ID() string       { return "missing-auth" }
 func (c *missingAuthCheck) Name() string     { return "Missing Authentication on Control Functions" }
-func (c *missingAuthCheck) Article() string   { return "CR 1.2 IEC 62443-4-2" }
-func (c *missingAuthCheck) Severity() string  { return "error" }
+func (c *missingAuthCheck) Article() string  { return "CR 1.2 IEC 62443-4-2" }
+func (c *missingAuthCheck) Severity() string { return "error" }
 
 // Control/command function name patterns
 var controlFuncPattern = regexp.MustCompile(`(?i)func\s+.*\b(\w*_control|control_\w*|\w*_command|command_\w*|set_\w*|write_\w*|actuate_\w*)\s*\(`)

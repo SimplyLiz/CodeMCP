@@ -17,8 +17,8 @@ type sensitivePIExposureCheck struct{}
 
 func (c *sensitivePIExposureCheck) ID() string       { return "sensitive-pi-exposure" }
 func (c *sensitivePIExposureCheck) Name() string     { return "Sensitive Personal Information Exposure" }
-func (c *sensitivePIExposureCheck) Article() string   { return "§1798.121 CCPA" }
-func (c *sensitivePIExposureCheck) Severity() string  { return "warning" }
+func (c *sensitivePIExposureCheck) Article() string  { return "§1798.121 CCPA" }
+func (c *sensitivePIExposureCheck) Severity() string { return "warning" }
 
 // CCPA-defined sensitive personal information categories
 var sensitivePIPatterns = []struct {
@@ -71,14 +71,6 @@ var sensitivePIPatterns = []struct {
 	// Sexual orientation
 	{regexp.MustCompile(`(?i)\bsexual[_\-]?orientation\b`), "Sexual Orientation"},
 	{regexp.MustCompile(`(?i)\bgender[_\-]?identity\b`), "Sexual Orientation/Gender Identity"},
-}
-
-var useLimitationPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?i)use[_\-]?limit`),
-	regexp.MustCompile(`(?i)purpose[_\-]?limit`),
-	regexp.MustCompile(`(?i)sensitive[_\-]?data[_\-]?policy`),
-	regexp.MustCompile(`(?i)data[_\-]?classification`),
-	regexp.MustCompile(`(?i)access[_\-]?control.*sensitive`),
 }
 
 func (c *sensitivePIExposureCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {

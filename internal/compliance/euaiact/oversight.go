@@ -15,8 +15,8 @@ type noHumanOverrideCheck struct{}
 
 func (c *noHumanOverrideCheck) ID() string       { return "no-human-override" }
 func (c *noHumanOverrideCheck) Name() string     { return "Missing Human Override" }
-func (c *noHumanOverrideCheck) Article() string   { return "Art. 14 EU AI Act" }
-func (c *noHumanOverrideCheck) Severity() string  { return "error" }
+func (c *noHumanOverrideCheck) Article() string  { return "Art. 14 EU AI Act" }
+func (c *noHumanOverrideCheck) Severity() string { return "error" }
 
 func (c *noHumanOverrideCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	overridePatterns := []string{
@@ -77,8 +77,8 @@ type noKillSwitchCheck struct{}
 
 func (c *noKillSwitchCheck) ID() string       { return "no-kill-switch" }
 func (c *noKillSwitchCheck) Name() string     { return "Missing Kill Switch" }
-func (c *noKillSwitchCheck) Article() string   { return "Art. 14 EU AI Act" }
-func (c *noKillSwitchCheck) Severity() string  { return "error" }
+func (c *noKillSwitchCheck) Article() string  { return "Art. 14 EU AI Act" }
+func (c *noKillSwitchCheck) Severity() string { return "error" }
 
 func (c *noKillSwitchCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	killPatterns := []string{
@@ -139,8 +139,8 @@ type missingBiasTestingCheck struct{}
 
 func (c *missingBiasTestingCheck) ID() string       { return "missing-bias-testing" }
 func (c *missingBiasTestingCheck) Name() string     { return "Missing Bias Testing" }
-func (c *missingBiasTestingCheck) Article() string   { return "Art. 10 EU AI Act" }
-func (c *missingBiasTestingCheck) Severity() string  { return "warning" }
+func (c *missingBiasTestingCheck) Article() string  { return "Art. 10 EU AI Act" }
+func (c *missingBiasTestingCheck) Severity() string { return "warning" }
 
 func (c *missingBiasTestingCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	biasPatterns := []string{
@@ -201,8 +201,8 @@ type noDataProvenanceCheck struct{}
 
 func (c *noDataProvenanceCheck) ID() string       { return "no-data-provenance" }
 func (c *noDataProvenanceCheck) Name() string     { return "Missing Data Provenance" }
-func (c *noDataProvenanceCheck) Article() string   { return "Art. 10 EU AI Act" }
-func (c *noDataProvenanceCheck) Severity() string  { return "warning" }
+func (c *noDataProvenanceCheck) Article() string  { return "Art. 10 EU AI Act" }
+func (c *noDataProvenanceCheck) Severity() string { return "warning" }
 
 func (c *noDataProvenanceCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	provenancePatterns := []string{
@@ -262,8 +262,8 @@ type missingVersionTrackingCheck struct{}
 
 func (c *missingVersionTrackingCheck) ID() string       { return "missing-version-tracking" }
 func (c *missingVersionTrackingCheck) Name() string     { return "Missing Model Version Tracking" }
-func (c *missingVersionTrackingCheck) Article() string   { return "Art. 12 EU AI Act" }
-func (c *missingVersionTrackingCheck) Severity() string  { return "warning" }
+func (c *missingVersionTrackingCheck) Article() string  { return "Art. 12 EU AI Act" }
+func (c *missingVersionTrackingCheck) Severity() string { return "warning" }
 
 func (c *missingVersionTrackingCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	versionPatterns := []string{

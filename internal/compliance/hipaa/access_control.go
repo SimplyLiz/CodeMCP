@@ -18,8 +18,8 @@ type missingAuditTrailCheck struct{}
 
 func (c *missingAuditTrailCheck) ID() string       { return "missing-audit-trail" }
 func (c *missingAuditTrailCheck) Name() string     { return "Missing HIPAA Audit Trail" }
-func (c *missingAuditTrailCheck) Article() string   { return "§164.312(b) HIPAA" }
-func (c *missingAuditTrailCheck) Severity() string  { return "warning" }
+func (c *missingAuditTrailCheck) Article() string  { return "§164.312(b) HIPAA" }
+func (c *missingAuditTrailCheck) Severity() string { return "warning" }
 
 func (c *missingAuditTrailCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	// First check if codebase has PHI
@@ -93,8 +93,8 @@ type phiUnencryptedCheck struct{}
 
 func (c *phiUnencryptedCheck) ID() string       { return "phi-unencrypted" }
 func (c *phiUnencryptedCheck) Name() string     { return "Unencrypted PHI Storage" }
-func (c *phiUnencryptedCheck) Article() string   { return "§164.312(a)(2)(iv) HIPAA" }
-func (c *phiUnencryptedCheck) Severity() string  { return "error" }
+func (c *phiUnencryptedCheck) Article() string  { return "§164.312(a)(2)(iv) HIPAA" }
+func (c *phiUnencryptedCheck) Severity() string { return "error" }
 
 var dbOperationPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)INSERT\s+INTO`),
@@ -194,8 +194,8 @@ type minimumNecessaryCheck struct{}
 
 func (c *minimumNecessaryCheck) ID() string       { return "minimum-necessary" }
 func (c *minimumNecessaryCheck) Name() string     { return "Minimum Necessary Violation" }
-func (c *minimumNecessaryCheck) Article() string   { return "§164.502(b) HIPAA" }
-func (c *minimumNecessaryCheck) Severity() string  { return "warning" }
+func (c *minimumNecessaryCheck) Article() string  { return "§164.502(b) HIPAA" }
+func (c *minimumNecessaryCheck) Severity() string { return "warning" }
 
 var selectStarPattern = regexp.MustCompile(`(?i)SELECT\s+\*\s+FROM\s+(\w+)`)
 

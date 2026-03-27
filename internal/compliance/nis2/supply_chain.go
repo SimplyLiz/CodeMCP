@@ -17,8 +17,8 @@ type unverifiedDependenciesCheck struct{}
 
 func (c *unverifiedDependenciesCheck) ID() string       { return "unverified-dependencies" }
 func (c *unverifiedDependenciesCheck) Name() string     { return "Unverified Dependencies" }
-func (c *unverifiedDependenciesCheck) Article() string   { return "Art. 21(2)(d) NIS2" }
-func (c *unverifiedDependenciesCheck) Severity() string  { return "warning" }
+func (c *unverifiedDependenciesCheck) Article() string  { return "Art. 21(2)(d) NIS2" }
+func (c *unverifiedDependenciesCheck) Severity() string { return "warning" }
 
 type lockFileMapping struct {
 	manifest string
@@ -28,19 +28,19 @@ type lockFileMapping struct {
 var lockFileMappings = []lockFileMapping{
 	{"go.mod", "go.sum"},
 	{"package.json", "package-lock.json"},
-	{"yarn.lock", "yarn.lock"},                 // yarn uses yarn.lock as manifest marker too
+	{"yarn.lock", "yarn.lock"}, // yarn uses yarn.lock as manifest marker too
 	{"Pipfile", "Pipfile.lock"},
 	{"Cargo.toml", "Cargo.lock"},
 	{"Gemfile", "Gemfile.lock"},
 	{"pnpm-lock.yaml", "pnpm-lock.yaml"},
-	{"requirements.txt", "requirements.txt"},   // pip has no lock file, just pinning
+	{"requirements.txt", "requirements.txt"}, // pip has no lock file, just pinning
 	{"pyproject.toml", "poetry.lock"},
 }
 
 var wildcardVersionPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`"[^"]*":\s*"\*"`),                          // package.json: "dep": "*"
-	regexp.MustCompile(`"[^"]*":\s*"latest"`),                      // package.json: "dep": "latest"
-	regexp.MustCompile(`>=\s*\d+\.\d+\.\d+,?\s*$`),                // open-ended ranges
+	regexp.MustCompile(`"[^"]*":\s*"\*"`),          // package.json: "dep": "*"
+	regexp.MustCompile(`"[^"]*":\s*"latest"`),      // package.json: "dep": "latest"
+	regexp.MustCompile(`>=\s*\d+\.\d+\.\d+,?\s*$`), // open-ended ranges
 }
 
 func (c *unverifiedDependenciesCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
@@ -137,16 +137,16 @@ type missingIntegrityCheckCheck struct{}
 
 func (c *missingIntegrityCheckCheck) ID() string       { return "missing-integrity-check" }
 func (c *missingIntegrityCheckCheck) Name() string     { return "Missing Integrity Verification" }
-func (c *missingIntegrityCheckCheck) Article() string   { return "Art. 21(2)(d) NIS2" }
-func (c *missingIntegrityCheckCheck) Severity() string  { return "warning" }
+func (c *missingIntegrityCheckCheck) Article() string  { return "Art. 21(2)(d) NIS2" }
+func (c *missingIntegrityCheckCheck) Severity() string { return "warning" }
 
 var downloadPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\bcurl\b.*https?://`),
 	regexp.MustCompile(`(?i)\bwget\b.*https?://`),
 	regexp.MustCompile(`(?i)\bInvoke-WebRequest\b`),
-	regexp.MustCompile(`(?i)ADD\s+https?://`),      // Dockerfile ADD
-	regexp.MustCompile(`(?i)RUN\s+.*curl\b`),       // Dockerfile RUN curl
-	regexp.MustCompile(`(?i)RUN\s+.*wget\b`),       // Dockerfile RUN wget
+	regexp.MustCompile(`(?i)ADD\s+https?://`), // Dockerfile ADD
+	regexp.MustCompile(`(?i)RUN\s+.*curl\b`),  // Dockerfile RUN curl
+	regexp.MustCompile(`(?i)RUN\s+.*wget\b`),  // Dockerfile RUN wget
 }
 
 var integrityPatterns = []*regexp.Regexp{

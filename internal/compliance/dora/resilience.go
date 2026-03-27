@@ -17,8 +17,8 @@ type missingCircuitBreakerCheck struct{}
 
 func (c *missingCircuitBreakerCheck) ID() string       { return "missing-circuit-breaker" }
 func (c *missingCircuitBreakerCheck) Name() string     { return "Missing Circuit Breaker Pattern" }
-func (c *missingCircuitBreakerCheck) Article() string   { return "Art. 9 DORA" }
-func (c *missingCircuitBreakerCheck) Severity() string  { return "warning" }
+func (c *missingCircuitBreakerCheck) Article() string  { return "Art. 9 DORA" }
+func (c *missingCircuitBreakerCheck) Severity() string { return "warning" }
 
 var circuitBreakerPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)circuit[_\-]?breaker`),
@@ -115,8 +115,8 @@ type missingTimeoutCheck struct{}
 
 func (c *missingTimeoutCheck) ID() string       { return "missing-timeout" }
 func (c *missingTimeoutCheck) Name() string     { return "Missing Timeout on HTTP Client" }
-func (c *missingTimeoutCheck) Article() string   { return "Art. 9 DORA" }
-func (c *missingTimeoutCheck) Severity() string  { return "warning" }
+func (c *missingTimeoutCheck) Article() string  { return "Art. 9 DORA" }
+func (c *missingTimeoutCheck) Severity() string { return "warning" }
 
 var noTimeoutPatterns = []struct {
 	pattern *regexp.Regexp
@@ -206,8 +206,8 @@ type missingRetryLogicCheck struct{}
 
 func (c *missingRetryLogicCheck) ID() string       { return "missing-retry-logic" }
 func (c *missingRetryLogicCheck) Name() string     { return "Missing Retry/Backoff Logic" }
-func (c *missingRetryLogicCheck) Article() string   { return "Art. 9 DORA" }
-func (c *missingRetryLogicCheck) Severity() string  { return "info" }
+func (c *missingRetryLogicCheck) Article() string  { return "Art. 9 DORA" }
+func (c *missingRetryLogicCheck) Severity() string { return "info" }
 
 var retryPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\bretry\b`),

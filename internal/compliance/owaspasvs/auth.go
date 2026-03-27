@@ -17,8 +17,8 @@ type weakPasswordHashCheck struct{}
 
 func (c *weakPasswordHashCheck) ID() string       { return "weak-password-hash" }
 func (c *weakPasswordHashCheck) Name() string     { return "Weak Password Hashing Algorithm" }
-func (c *weakPasswordHashCheck) Article() string   { return "V2.4.1 ASVS" }
-func (c *weakPasswordHashCheck) Severity() string  { return "error" }
+func (c *weakPasswordHashCheck) Article() string  { return "V2.4.1 ASVS" }
+func (c *weakPasswordHashCheck) Severity() string { return "error" }
 
 var passwordContextPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)password`),
@@ -141,8 +141,8 @@ type hardcodedCredentialsCheck struct{}
 
 func (c *hardcodedCredentialsCheck) ID() string       { return "hardcoded-credentials" }
 func (c *hardcodedCredentialsCheck) Name() string     { return "Hardcoded Credentials" }
-func (c *hardcodedCredentialsCheck) Article() string   { return "V2.10.4 ASVS" }
-func (c *hardcodedCredentialsCheck) Severity() string  { return "error" }
+func (c *hardcodedCredentialsCheck) Article() string  { return "V2.10.4 ASVS" }
+func (c *hardcodedCredentialsCheck) Severity() string { return "error" }
 
 var asvsSecretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)(api[_-]?key|apikey)\s*[:=]\s*["'][\w\-]{16,}`),

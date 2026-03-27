@@ -14,7 +14,7 @@ func NewFramework() compliance.Framework { return &framework{} }
 
 func (f *framework) ID() compliance.FrameworkID { return compliance.FrameworkISO27701 }
 func (f *framework) Name() string               { return "ISO 27701 (Privacy Extension)" }
-func (f *framework) Version() string             { return "2019" }
+func (f *framework) Version() string            { return "2019" }
 
 func (f *framework) Checks() []compliance.Check {
 	return []compliance.Check{

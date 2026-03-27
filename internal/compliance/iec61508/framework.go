@@ -14,7 +14,7 @@ func NewFramework() compliance.Framework { return &framework{} }
 
 func (f *framework) ID() compliance.FrameworkID { return compliance.FrameworkIEC61508 }
 func (f *framework) Name() string               { return "IEC 61508 / SIL (Safety Integrity)" }
-func (f *framework) Version() string             { return "2010" }
+func (f *framework) Version() string            { return "2010" }
 
 func (f *framework) Checks() []compliance.Check {
 	return []compliance.Check{

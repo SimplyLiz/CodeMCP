@@ -17,8 +17,8 @@ type missingInputValidationCheck struct{}
 
 func (c *missingInputValidationCheck) ID() string       { return "missing-input-validation" }
 func (c *missingInputValidationCheck) Name() string     { return "Missing Input Validation" }
-func (c *missingInputValidationCheck) Article() string   { return "§11.10(a) 21 CFR Part 11" }
-func (c *missingInputValidationCheck) Severity() string  { return "warning" }
+func (c *missingInputValidationCheck) Article() string  { return "§11.10(a) 21 CFR Part 11" }
+func (c *missingInputValidationCheck) Severity() string { return "warning" }
 
 // Patterns for form/API input handling
 var inputPatterns = []*regexp.Regexp{

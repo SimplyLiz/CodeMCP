@@ -17,8 +17,8 @@ type missingInputValidationCheck struct{}
 
 func (c *missingInputValidationCheck) ID() string       { return "missing-input-validation" }
 func (c *missingInputValidationCheck) Name() string     { return "Missing Input Validation" }
-func (c *missingInputValidationCheck) Article() string   { return "SI-10 NIST 800-53" }
-func (c *missingInputValidationCheck) Severity() string  { return "warning" }
+func (c *missingInputValidationCheck) Article() string  { return "SI-10 NIST 800-53" }
+func (c *missingInputValidationCheck) Severity() string { return "warning" }
 
 var inputReadPatterns = []*regexp.Regexp{
 	// Go

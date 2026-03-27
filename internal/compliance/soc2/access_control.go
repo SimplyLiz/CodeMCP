@@ -17,8 +17,8 @@ type missingAuthMiddlewareCheck struct{}
 
 func (c *missingAuthMiddlewareCheck) ID() string       { return "missing-auth-middleware" }
 func (c *missingAuthMiddlewareCheck) Name() string     { return "Missing Authentication Middleware" }
-func (c *missingAuthMiddlewareCheck) Article() string   { return "CC6.1 SOC 2" }
-func (c *missingAuthMiddlewareCheck) Severity() string  { return "error" }
+func (c *missingAuthMiddlewareCheck) Article() string  { return "CC6.1 SOC 2" }
+func (c *missingAuthMiddlewareCheck) Severity() string { return "error" }
 
 var routeRegistrationPatterns = []*regexp.Regexp{
 	// Go
@@ -150,8 +150,8 @@ type insecureTLSConfigCheck struct{}
 
 func (c *insecureTLSConfigCheck) ID() string       { return "insecure-tls-config" }
 func (c *insecureTLSConfigCheck) Name() string     { return "Insecure TLS Configuration" }
-func (c *insecureTLSConfigCheck) Article() string   { return "CC6.7 SOC 2" }
-func (c *insecureTLSConfigCheck) Severity() string  { return "error" }
+func (c *insecureTLSConfigCheck) Article() string  { return "CC6.7 SOC 2" }
+func (c *insecureTLSConfigCheck) Severity() string { return "error" }
 
 var insecureTLSPatterns = []*regexp.Regexp{
 	// Go

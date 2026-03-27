@@ -18,8 +18,8 @@ type dynamicAllocationCheck struct{}
 
 func (c *dynamicAllocationCheck) ID() string       { return "dynamic-allocation" }
 func (c *dynamicAllocationCheck) Name() string     { return "Dynamic Memory Allocation" }
-func (c *dynamicAllocationCheck) Article() string   { return "Rule 21.3 MISRA C" }
-func (c *dynamicAllocationCheck) Severity() string  { return "warning" }
+func (c *dynamicAllocationCheck) Article() string  { return "Rule 21.3 MISRA C" }
+func (c *dynamicAllocationCheck) Severity() string { return "warning" }
 
 var dynamicAllocPattern = regexp.MustCompile(`\b(malloc|calloc|realloc|free|new\s+\w|delete\s+|delete\[)\b`)
 
@@ -78,8 +78,8 @@ type unsafeStringFunctionsCheck struct{}
 
 func (c *unsafeStringFunctionsCheck) ID() string       { return "unsafe-string-functions" }
 func (c *unsafeStringFunctionsCheck) Name() string     { return "Unsafe String Functions" }
-func (c *unsafeStringFunctionsCheck) Article() string   { return "Rule 21.14 MISRA C" }
-func (c *unsafeStringFunctionsCheck) Severity() string  { return "error" }
+func (c *unsafeStringFunctionsCheck) Article() string  { return "Rule 21.14 MISRA C" }
+func (c *unsafeStringFunctionsCheck) Severity() string { return "error" }
 
 var unsafeFuncReplacements = map[string]string{
 	"gets":    "fgets",

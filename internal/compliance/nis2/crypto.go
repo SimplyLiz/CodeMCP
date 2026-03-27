@@ -18,8 +18,8 @@ type deprecatedCryptoCheck struct{}
 
 func (c *deprecatedCryptoCheck) ID() string       { return "deprecated-crypto" }
 func (c *deprecatedCryptoCheck) Name() string     { return "Deprecated Cryptographic Algorithm" }
-func (c *deprecatedCryptoCheck) Article() string   { return "Art. 21(2)(j) NIS2" }
-func (c *deprecatedCryptoCheck) Severity() string  { return "error" }
+func (c *deprecatedCryptoCheck) Article() string  { return "Art. 21(2)(j) NIS2" }
+func (c *deprecatedCryptoCheck) Severity() string { return "error" }
 
 var nis2WeakAlgorithms = []struct {
 	pattern *regexp.Regexp
@@ -100,8 +100,8 @@ type hardcodedSecretsCheck struct{}
 
 func (c *hardcodedSecretsCheck) ID() string       { return "hardcoded-secrets" }
 func (c *hardcodedSecretsCheck) Name() string     { return "Hardcoded Secrets/Credentials" }
-func (c *hardcodedSecretsCheck) Article() string   { return "Art. 21(2)(g) NIS2" }
-func (c *hardcodedSecretsCheck) Severity() string  { return "error" }
+func (c *hardcodedSecretsCheck) Article() string  { return "Art. 21(2)(g) NIS2" }
+func (c *hardcodedSecretsCheck) Severity() string { return "error" }
 
 var nis2SecretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)(api[_-]?key|apikey)\s*[:=]\s*["'][\w\-]{16,}`),

@@ -17,8 +17,8 @@ type swallowedErrorsCheck struct{}
 
 func (c *swallowedErrorsCheck) ID() string       { return "swallowed-errors" }
 func (c *swallowedErrorsCheck) Name() string     { return "Swallowed Errors" }
-func (c *swallowedErrorsCheck) Article() string   { return "CC7.2 SOC 2" }
-func (c *swallowedErrorsCheck) Severity() string  { return "warning" }
+func (c *swallowedErrorsCheck) Article() string  { return "CC7.2 SOC 2" }
+func (c *swallowedErrorsCheck) Severity() string { return "warning" }
 
 var swallowedErrorPatterns = []*regexp.Regexp{
 	// JavaScript/TypeScript: empty catch
@@ -112,8 +112,8 @@ type missingSecurityLoggingCheck struct{}
 
 func (c *missingSecurityLoggingCheck) ID() string       { return "missing-security-logging" }
 func (c *missingSecurityLoggingCheck) Name() string     { return "Missing Security Event Logging" }
-func (c *missingSecurityLoggingCheck) Article() string   { return "CC7.2 SOC 2" }
-func (c *missingSecurityLoggingCheck) Severity() string  { return "warning" }
+func (c *missingSecurityLoggingCheck) Article() string  { return "CC7.2 SOC 2" }
+func (c *missingSecurityLoggingCheck) Severity() string { return "warning" }
 
 var securityEventPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)(login|log_in|sign_in|signin|authenticate)\s*\(`),

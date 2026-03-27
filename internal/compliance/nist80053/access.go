@@ -17,8 +17,8 @@ type missingAccessEnforcementCheck struct{}
 
 func (c *missingAccessEnforcementCheck) ID() string       { return "missing-access-enforcement" }
 func (c *missingAccessEnforcementCheck) Name() string     { return "Missing Access Enforcement" }
-func (c *missingAccessEnforcementCheck) Article() string   { return "AC-3 NIST 800-53" }
-func (c *missingAccessEnforcementCheck) Severity() string  { return "error" }
+func (c *missingAccessEnforcementCheck) Article() string  { return "AC-3 NIST 800-53" }
+func (c *missingAccessEnforcementCheck) Severity() string { return "error" }
 
 var modifyingHandlerPatterns = []*regexp.Regexp{
 	// Go
@@ -142,8 +142,8 @@ type defaultCredentialsCheck struct{}
 
 func (c *defaultCredentialsCheck) ID() string       { return "default-credentials" }
 func (c *defaultCredentialsCheck) Name() string     { return "Default Credentials" }
-func (c *defaultCredentialsCheck) Article() string   { return "IA-5(1) NIST 800-53" }
-func (c *defaultCredentialsCheck) Severity() string  { return "error" }
+func (c *defaultCredentialsCheck) Article() string  { return "IA-5(1) NIST 800-53" }
+func (c *defaultCredentialsCheck) Severity() string { return "error" }
 
 var defaultCredentialPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)(password|passwd|pwd)\s*[:=]\s*["'](admin|password|root|default|123456|changeme|letmein|welcome|qwerty)["']`),

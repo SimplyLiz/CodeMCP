@@ -17,8 +17,8 @@ type unvalidatedInputCheck struct{}
 
 func (c *unvalidatedInputCheck) ID() string       { return "unvalidated-input" }
 func (c *unvalidatedInputCheck) Name() string     { return "Unvalidated Network Input" }
-func (c *unvalidatedInputCheck) Article() string   { return "CR 3.5 IEC 62443-4-2" }
-func (c *unvalidatedInputCheck) Severity() string  { return "error" }
+func (c *unvalidatedInputCheck) Article() string  { return "CR 3.5 IEC 62443-4-2" }
+func (c *unvalidatedInputCheck) Severity() string { return "error" }
 
 // Binary protocol parsing patterns
 var binaryInputPatterns = []*regexp.Regexp{
@@ -129,8 +129,8 @@ type missingMessageAuthCheck struct{}
 
 func (c *missingMessageAuthCheck) ID() string       { return "missing-message-auth" }
 func (c *missingMessageAuthCheck) Name() string     { return "Missing Message Authentication" }
-func (c *missingMessageAuthCheck) Article() string   { return "CR 3.1 IEC 62443-4-2" }
-func (c *missingMessageAuthCheck) Severity() string  { return "warning" }
+func (c *missingMessageAuthCheck) Article() string  { return "CR 3.1 IEC 62443-4-2" }
+func (c *missingMessageAuthCheck) Severity() string { return "warning" }
 
 // Network communication patterns
 var networkCommPatterns = []*regexp.Regexp{

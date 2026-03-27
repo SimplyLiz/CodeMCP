@@ -13,7 +13,7 @@ func NewFramework() compliance.Framework { return &framework{} }
 
 func (f *framework) ID() compliance.FrameworkID { return compliance.FrameworkSOC2 }
 func (f *framework) Name() string               { return "SOC 2 (Trust Service Criteria)" }
-func (f *framework) Version() string             { return "2017" }
+func (f *framework) Version() string            { return "2017" }
 
 func (f *framework) Checks() []compliance.Check {
 	return []compliance.Check{

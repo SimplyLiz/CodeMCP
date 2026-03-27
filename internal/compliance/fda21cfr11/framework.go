@@ -14,7 +14,7 @@ func NewFramework() compliance.Framework { return &framework{} }
 
 func (f *framework) ID() compliance.FrameworkID { return compliance.FrameworkFDAPart11 }
 func (f *framework) Name() string               { return "FDA 21 CFR Part 11 (Electronic Records)" }
-func (f *framework) Version() string             { return "2003" }
+func (f *framework) Version() string            { return "2003" }
 
 func (f *framework) Checks() []compliance.Check {
 	return []compliance.Check{

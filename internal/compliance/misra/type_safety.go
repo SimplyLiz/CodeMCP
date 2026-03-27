@@ -17,8 +17,8 @@ type implicitConversionCheck struct{}
 
 func (c *implicitConversionCheck) ID() string       { return "implicit-conversion" }
 func (c *implicitConversionCheck) Name() string     { return "Implicit Type Conversion" }
-func (c *implicitConversionCheck) Article() string   { return "Rule 10.1 MISRA C" }
-func (c *implicitConversionCheck) Severity() string  { return "warning" }
+func (c *implicitConversionCheck) Article() string  { return "Rule 10.1 MISRA C" }
+func (c *implicitConversionCheck) Severity() string { return "warning" }
 
 // Patterns detecting signed/unsigned mixing and narrowing conversions
 var implicitConversionPatterns = []*regexp.Regexp{

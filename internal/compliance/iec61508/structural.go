@@ -18,8 +18,8 @@ type gotoUsageCheck struct{}
 
 func (c *gotoUsageCheck) ID() string       { return "goto-usage" }
 func (c *gotoUsageCheck) Name() string     { return "Goto Statement Usage" }
-func (c *gotoUsageCheck) Article() string   { return "Table B.1 IEC 61508-3" }
-func (c *gotoUsageCheck) Severity() string  { return "warning" }
+func (c *gotoUsageCheck) Article() string  { return "Table B.1 IEC 61508-3" }
+func (c *gotoUsageCheck) Severity() string { return "warning" }
 
 var gotoPattern = regexp.MustCompile(`(?m)^\s*goto\s+\w+`)
 
@@ -77,8 +77,8 @@ type recursionCheck struct{}
 
 func (c *recursionCheck) ID() string       { return "recursion" }
 func (c *recursionCheck) Name() string     { return "Recursive Function Calls" }
-func (c *recursionCheck) Article() string   { return "Table B.9 IEC 61508-3" }
-func (c *recursionCheck) Severity() string  { return "warning" }
+func (c *recursionCheck) Article() string  { return "Table B.9 IEC 61508-3" }
+func (c *recursionCheck) Severity() string { return "warning" }
 
 func (c *recursionCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	var findings []compliance.Finding
@@ -148,8 +148,8 @@ type deepNestingCheck struct{}
 
 func (c *deepNestingCheck) ID() string       { return "deep-nesting" }
 func (c *deepNestingCheck) Name() string     { return "Deep Nesting" }
-func (c *deepNestingCheck) Article() string   { return "Table B.1 IEC 61508-3" }
-func (c *deepNestingCheck) Severity() string  { return "warning" }
+func (c *deepNestingCheck) Article() string  { return "Table B.1 IEC 61508-3" }
+func (c *deepNestingCheck) Severity() string { return "warning" }
 
 func (c *deepNestingCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	var findings []compliance.Finding
@@ -220,8 +220,8 @@ type largeFunctionCheck struct{}
 
 func (c *largeFunctionCheck) ID() string       { return "large-function" }
 func (c *largeFunctionCheck) Name() string     { return "Large Function" }
-func (c *largeFunctionCheck) Article() string   { return "Table B.9 IEC 61508-3" }
-func (c *largeFunctionCheck) Severity() string  { return "warning" }
+func (c *largeFunctionCheck) Article() string  { return "Table B.9 IEC 61508-3" }
+func (c *largeFunctionCheck) Severity() string { return "warning" }
 
 func (c *largeFunctionCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	var findings []compliance.Finding
@@ -291,12 +291,12 @@ type globalStateCheck struct{}
 
 func (c *globalStateCheck) ID() string       { return "global-state" }
 func (c *globalStateCheck) Name() string     { return "Global Mutable State" }
-func (c *globalStateCheck) Article() string   { return "Table B.9 IEC 61508-3" }
-func (c *globalStateCheck) Severity() string  { return "warning" }
+func (c *globalStateCheck) Article() string  { return "Table B.9 IEC 61508-3" }
+func (c *globalStateCheck) Severity() string { return "warning" }
 
 var globalMutablePatterns = []*regexp.Regexp{
-	regexp.MustCompile(`^var\s+\w+\s+(?:=|[^(])`),       // Go: var x = ... (not var block)
-	regexp.MustCompile(`^let\s+\w+\s*=`),                  // JS: let x = (global scope)
+	regexp.MustCompile(`^var\s+\w+\s+(?:=|[^(])`),            // Go: var x = ... (not var block)
+	regexp.MustCompile(`^let\s+\w+\s*=`),                     // JS: let x = (global scope)
 	regexp.MustCompile(`^(?:static\s+)?(?:mut\s+)?static\s`), // Rust: static mut
 }
 

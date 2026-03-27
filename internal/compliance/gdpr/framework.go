@@ -14,7 +14,7 @@ func NewFramework() compliance.Framework { return &framework{} }
 
 func (f *framework) ID() compliance.FrameworkID { return compliance.FrameworkGDPR }
 func (f *framework) Name() string               { return "GDPR (Regulation (EU) 2016/679)" }
-func (f *framework) Version() string             { return "2016/679" }
+func (f *framework) Version() string            { return "2016/679" }
 
 func (f *framework) Checks() []compliance.Check {
 	return []compliance.Check{

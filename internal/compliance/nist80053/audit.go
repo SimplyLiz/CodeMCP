@@ -16,8 +16,8 @@ type insufficientAuditContentCheck struct{}
 
 func (c *insufficientAuditContentCheck) ID() string       { return "insufficient-audit-content" }
 func (c *insufficientAuditContentCheck) Name() string     { return "Insufficient Audit Record Content" }
-func (c *insufficientAuditContentCheck) Article() string   { return "AU-3 NIST 800-53" }
-func (c *insufficientAuditContentCheck) Severity() string  { return "warning" }
+func (c *insufficientAuditContentCheck) Article() string  { return "AU-3 NIST 800-53" }
+func (c *insufficientAuditContentCheck) Severity() string { return "warning" }
 
 // Required audit fields per NIST AU-3.
 var auditRequiredFields = map[string][]string{
@@ -126,8 +126,8 @@ type missingAuditEventsCheck struct{}
 
 func (c *missingAuditEventsCheck) ID() string       { return "missing-audit-events" }
 func (c *missingAuditEventsCheck) Name() string     { return "Missing Auditable Events" }
-func (c *missingAuditEventsCheck) Article() string   { return "AU-2 NIST 800-53" }
-func (c *missingAuditEventsCheck) Severity() string  { return "warning" }
+func (c *missingAuditEventsCheck) Article() string  { return "AU-2 NIST 800-53" }
+func (c *missingAuditEventsCheck) Severity() string { return "warning" }
 
 var authOperationPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)(login|log_in|sign_in|signin|authenticate)\s*\(`),

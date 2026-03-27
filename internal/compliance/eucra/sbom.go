@@ -15,8 +15,8 @@ type missingSBOMCheck struct{}
 
 func (c *missingSBOMCheck) ID() string       { return "missing-sbom" }
 func (c *missingSBOMCheck) Name() string     { return "Missing SBOM Generation" }
-func (c *missingSBOMCheck) Article() string   { return "Art. 13(6) EU CRA" }
-func (c *missingSBOMCheck) Severity() string  { return "warning" }
+func (c *missingSBOMCheck) Article() string  { return "Art. 13(6) EU CRA" }
+func (c *missingSBOMCheck) Severity() string { return "warning" }
 
 var sbomIndicators = []string{
 	"cyclonedx", "spdx", "syft", "sbom",
@@ -96,8 +96,8 @@ type missingUpdateMechanismCheck struct{}
 
 func (c *missingUpdateMechanismCheck) ID() string       { return "missing-update-mechanism" }
 func (c *missingUpdateMechanismCheck) Name() string     { return "Missing Update Mechanism" }
-func (c *missingUpdateMechanismCheck) Article() string   { return "Annex I, Part I(3) EU CRA" }
-func (c *missingUpdateMechanismCheck) Severity() string  { return "info" }
+func (c *missingUpdateMechanismCheck) Article() string  { return "Annex I, Part I(3) EU CRA" }
+func (c *missingUpdateMechanismCheck) Severity() string { return "info" }
 
 var updateMechanismIndicators = []string{
 	"auto_update", "autoupdate", "self_update", "selfupdate",

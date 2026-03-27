@@ -76,10 +76,10 @@ type Framework interface {
 
 // Check is a single compliance check within a framework.
 type Check interface {
-	ID() string          // e.g., "pii-in-logs"
-	Name() string        // Human-readable: "PII in Log Statements"
-	Article() string     // e.g., "Art. 25(1) GDPR" or "A.8.12 ISO 27001:2022"
-	Severity() string    // "error", "warning", "info"
+	ID() string       // e.g., "pii-in-logs"
+	Name() string     // Human-readable: "PII in Log Statements"
+	Article() string  // e.g., "Art. 25(1) GDPR" or "A.8.12 ISO 27001:2022"
+	Severity() string // "error", "warning", "info"
 	Run(ctx context.Context, scope *ScanScope) ([]Finding, error)
 }
 
@@ -87,8 +87,8 @@ type Check interface {
 type Finding struct {
 	CheckID    string      `json:"checkId"`
 	Framework  FrameworkID `json:"framework"`
-	Article    string      `json:"article"`    // Specific regulation clause
-	Severity   string      `json:"severity"`   // "error", "warning", "info"
+	Article    string      `json:"article"`  // Specific regulation clause
+	Severity   string      `json:"severity"` // "error", "warning", "info"
 	File       string      `json:"file"`
 	StartLine  int         `json:"startLine,omitempty"`
 	EndLine    int         `json:"endLine,omitempty"`
@@ -162,15 +162,15 @@ type AuditOptions struct {
 
 // ComplianceReport is the top-level audit result.
 type ComplianceReport struct {
-	Repo       string              `json:"repo"`
-	AnalyzedAt time.Time           `json:"analyzedAt"`
-	Frameworks []FrameworkID       `json:"frameworks"`
-	Verdict    string              `json:"verdict"` // "pass", "warn", "fail"
-	Score      int                 `json:"score"`   // 0-100
-	Checks     []query.ReviewCheck `json:"checks"`
+	Repo       string                `json:"repo"`
+	AnalyzedAt time.Time             `json:"analyzedAt"`
+	Frameworks []FrameworkID         `json:"frameworks"`
+	Verdict    string                `json:"verdict"` // "pass", "warn", "fail"
+	Score      int                   `json:"score"`   // 0-100
+	Checks     []query.ReviewCheck   `json:"checks"`
 	Findings   []query.ReviewFinding `json:"findings"`
-	Coverage   []FrameworkCoverage `json:"coverage"`
-	Summary    ComplianceSummary   `json:"summary"`
+	Coverage   []FrameworkCoverage   `json:"coverage"`
+	Summary    ComplianceSummary     `json:"summary"`
 }
 
 // FrameworkCoverage tracks per-framework check results.

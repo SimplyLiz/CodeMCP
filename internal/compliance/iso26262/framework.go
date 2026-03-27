@@ -14,7 +14,7 @@ func NewFramework() compliance.Framework { return &framework{} }
 
 func (f *framework) ID() compliance.FrameworkID { return compliance.FrameworkISO26262 }
 func (f *framework) Name() string               { return "ISO 26262 (Automotive Functional Safety)" }
-func (f *framework) Version() string             { return "2018" }
+func (f *framework) Version() string            { return "2018" }
 
 func (f *framework) Checks() []compliance.Check {
 	return []compliance.Check{

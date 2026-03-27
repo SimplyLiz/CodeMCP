@@ -17,8 +17,8 @@ type missingSBOMGenerationCheck struct{}
 
 func (c *missingSBOMGenerationCheck) ID() string       { return "missing-sbom-generation" }
 func (c *missingSBOMGenerationCheck) Name() string     { return "Missing SBOM Generation" }
-func (c *missingSBOMGenerationCheck) Article() string   { return "EO 14028 §4(e)" }
-func (c *missingSBOMGenerationCheck) Severity() string  { return "warning" }
+func (c *missingSBOMGenerationCheck) Article() string  { return "EO 14028 §4(e)" }
+func (c *missingSBOMGenerationCheck) Severity() string { return "warning" }
 
 var sbomToolPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\bcyclonedx\b`),
@@ -36,16 +36,6 @@ var sbomFilePatterns = []string{
 	"sbom.json", "sbom.xml",
 	".spdx", ".spdx.json",
 	"cyclonedx.json", "cyclonedx.xml",
-}
-
-var sbomCIFiles = []string{
-	".github/workflows",
-	".gitlab-ci",
-	"Jenkinsfile",
-	".circleci",
-	"Makefile",
-	"makefile",
-	"Taskfile",
 }
 
 func (c *missingSBOMGenerationCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
@@ -164,8 +154,8 @@ type missingLockFileCheck struct{}
 
 func (c *missingLockFileCheck) ID() string       { return "missing-lock-file" }
 func (c *missingLockFileCheck) Name() string     { return "Missing Dependency Lock File" }
-func (c *missingLockFileCheck) Article() string   { return "SLSA Level 1" }
-func (c *missingLockFileCheck) Severity() string  { return "warning" }
+func (c *missingLockFileCheck) Article() string  { return "SLSA Level 1" }
+func (c *missingLockFileCheck) Severity() string { return "warning" }
 
 type manifestLockPair struct {
 	manifest string

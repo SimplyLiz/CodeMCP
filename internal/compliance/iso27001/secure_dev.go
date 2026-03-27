@@ -17,8 +17,8 @@ type sqlInjectionCheck struct{}
 
 func (c *sqlInjectionCheck) ID() string       { return "sql-injection" }
 func (c *sqlInjectionCheck) Name() string     { return "SQL Injection Risk" }
-func (c *sqlInjectionCheck) Article() string   { return "A.8.28 ISO 27001:2022" }
-func (c *sqlInjectionCheck) Severity() string  { return "error" }
+func (c *sqlInjectionCheck) Article() string  { return "A.8.28 ISO 27001:2022" }
+func (c *sqlInjectionCheck) Severity() string { return "error" }
 
 var sqlInjectionPatterns = []*regexp.Regexp{
 	// Require SQL DML keywords in plausible query context:
@@ -194,8 +194,8 @@ type pathTraversalCheck struct{}
 
 func (c *pathTraversalCheck) ID() string       { return "path-traversal" }
 func (c *pathTraversalCheck) Name() string     { return "Path Traversal Risk" }
-func (c *pathTraversalCheck) Article() string   { return "A.8.28 ISO 27001:2022" }
-func (c *pathTraversalCheck) Severity() string  { return "error" }
+func (c *pathTraversalCheck) Article() string  { return "A.8.28 ISO 27001:2022" }
+func (c *pathTraversalCheck) Severity() string { return "error" }
 
 var pathTraversalPatterns = []*regexp.Regexp{
 	// Require word boundaries around variable names to avoid matching "requirements" as "req"
@@ -294,20 +294,20 @@ type unsafeDeserializationCheck struct{}
 
 func (c *unsafeDeserializationCheck) ID() string       { return "unsafe-deserialization" }
 func (c *unsafeDeserializationCheck) Name() string     { return "Unsafe Deserialization" }
-func (c *unsafeDeserializationCheck) Article() string   { return "A.8.7 ISO 27001:2022" }
-func (c *unsafeDeserializationCheck) Severity() string  { return "error" }
+func (c *unsafeDeserializationCheck) Article() string  { return "A.8.7 ISO 27001:2022" }
+func (c *unsafeDeserializationCheck) Severity() string { return "error" }
 
 var unsafeDeserPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\bpickle\.load\b`),
 	regexp.MustCompile(`(?i)\bpickle\.loads\b`),
-	regexp.MustCompile(`(?i)\byaml\.load\(`),               // Python yaml.load without Loader=SafeLoader
+	regexp.MustCompile(`(?i)\byaml\.load\(`), // Python yaml.load without Loader=SafeLoader
 	// Note: yaml.Unmarshal (Go) is typed deserialization and generally safe — not flagged.
 	regexp.MustCompile(`(?i)\beval\(\s*(?:request|req\b|params|user|input)`),
 	regexp.MustCompile(`(?i)\bdeserialize\(`),
-	regexp.MustCompile(`(?i)\bObjectInputStream\b`),        // Java
+	regexp.MustCompile(`(?i)\bObjectInputStream\b`),          // Java
 	regexp.MustCompile(`(?i)\bBinaryFormatter\.Deserialize`), // C#
-	regexp.MustCompile(`(?i)\bMarshal\.load\b`),            // Ruby
-	regexp.MustCompile(`(?i)\bunserialize\(`),              // PHP
+	regexp.MustCompile(`(?i)\bMarshal\.load\b`),              // Ruby
+	regexp.MustCompile(`(?i)\bunserialize\(`),                // PHP
 }
 
 func (c *unsafeDeserializationCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {

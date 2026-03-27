@@ -16,8 +16,8 @@ type missingRequirementTagCheck struct{}
 
 func (c *missingRequirementTagCheck) ID() string       { return "missing-requirement-tag" }
 func (c *missingRequirementTagCheck) Name() string     { return "Missing Requirement Traceability Tag" }
-func (c *missingRequirementTagCheck) Article() string   { return "§6.3.1 DO-178C" }
-func (c *missingRequirementTagCheck) Severity() string  { return "warning" }
+func (c *missingRequirementTagCheck) Article() string  { return "§6.3.1 DO-178C" }
+func (c *missingRequirementTagCheck) Severity() string { return "warning" }
 
 var requirementTagPattern = regexp.MustCompile(`(?i)(@req|@requirement|REQ-|SRS-|HLR-|LLR-)`)
 

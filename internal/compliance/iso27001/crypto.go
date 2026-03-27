@@ -18,8 +18,8 @@ type weakCryptoCheck struct{}
 
 func (c *weakCryptoCheck) ID() string       { return "weak-crypto" }
 func (c *weakCryptoCheck) Name() string     { return "Weak Cryptographic Algorithms" }
-func (c *weakCryptoCheck) Article() string   { return "A.8.24 ISO 27001:2022" }
-func (c *weakCryptoCheck) Severity() string  { return "error" }
+func (c *weakCryptoCheck) Article() string  { return "A.8.24 ISO 27001:2022" }
+func (c *weakCryptoCheck) Severity() string { return "error" }
 
 var weakAlgorithms = []struct {
 	pattern *regexp.Regexp
@@ -119,18 +119,18 @@ type insecureRandomCheck struct{}
 
 func (c *insecureRandomCheck) ID() string       { return "insecure-random" }
 func (c *insecureRandomCheck) Name() string     { return "Insecure Random Number Generator" }
-func (c *insecureRandomCheck) Article() string   { return "A.8.24 ISO 27001:2022" }
-func (c *insecureRandomCheck) Severity() string  { return "error" }
+func (c *insecureRandomCheck) Article() string  { return "A.8.24 ISO 27001:2022" }
+func (c *insecureRandomCheck) Severity() string { return "error" }
 
 var insecureRandomPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`\bmath/rand\b`),                                     // Go: math/rand import
-	regexp.MustCompile(`\brand\.New\b`),                                     // Go: rand.New
-	regexp.MustCompile(`\brand\.(Int|Intn|Float|Read)\b`),                   // Go: rand.Int etc.
-	regexp.MustCompile(`\bMath\.random\(\)`),                                // JavaScript
-	regexp.MustCompile(`\brandom\.random\(\)`),                              // Python
-	regexp.MustCompile(`\brandom\.randint\(`),                               // Python
-	regexp.MustCompile(`\bjava\.util\.Random\b`),                            // Java
-	regexp.MustCompile(`\bnew Random\(\)`),                                  // Java
+	regexp.MustCompile(`\bmath/rand\b`),                   // Go: math/rand import
+	regexp.MustCompile(`\brand\.New\b`),                   // Go: rand.New
+	regexp.MustCompile(`\brand\.(Int|Intn|Float|Read)\b`), // Go: rand.Int etc.
+	regexp.MustCompile(`\bMath\.random\(\)`),              // JavaScript
+	regexp.MustCompile(`\brandom\.random\(\)`),            // Python
+	regexp.MustCompile(`\brandom\.randint\(`),             // Python
+	regexp.MustCompile(`\bjava\.util\.Random\b`),          // Java
+	regexp.MustCompile(`\bnew Random\(\)`),                // Java
 }
 
 func (c *insecureRandomCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {

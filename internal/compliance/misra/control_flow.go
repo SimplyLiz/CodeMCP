@@ -27,8 +27,8 @@ type gotoUsageCheck struct{}
 
 func (c *gotoUsageCheck) ID() string       { return "goto-usage" }
 func (c *gotoUsageCheck) Name() string     { return "Goto Statement Usage" }
-func (c *gotoUsageCheck) Article() string   { return "Rule 15.1 MISRA C" }
-func (c *gotoUsageCheck) Severity() string  { return "error" }
+func (c *gotoUsageCheck) Article() string  { return "Rule 15.1 MISRA C" }
+func (c *gotoUsageCheck) Severity() string { return "error" }
 
 var misraGotoPattern = regexp.MustCompile(`(?m)^\s*goto\s+\w+`)
 
@@ -82,8 +82,8 @@ type unreachableCodeCheck struct{}
 
 func (c *unreachableCodeCheck) ID() string       { return "unreachable-code" }
 func (c *unreachableCodeCheck) Name() string     { return "Unreachable Code" }
-func (c *unreachableCodeCheck) Article() string   { return "Rule 2.1 MISRA C" }
-func (c *unreachableCodeCheck) Severity() string  { return "warning" }
+func (c *unreachableCodeCheck) Article() string  { return "Rule 2.1 MISRA C" }
+func (c *unreachableCodeCheck) Severity() string { return "warning" }
 
 var terminatorPattern = regexp.MustCompile(`^\s*(return\b|break\s*;|continue\s*;|goto\s+\w+)`)
 
@@ -141,7 +141,6 @@ func (c *unreachableCodeCheck) Run(ctx context.Context, scope *compliance.ScanSc
 							})
 						}
 					}
-					afterTerminator = false
 				}
 
 				if terminatorPattern.MatchString(line) {
@@ -162,8 +161,8 @@ type missingSwitchDefaultCheck struct{}
 
 func (c *missingSwitchDefaultCheck) ID() string       { return "missing-switch-default" }
 func (c *missingSwitchDefaultCheck) Name() string     { return "Missing Switch Default Case" }
-func (c *missingSwitchDefaultCheck) Article() string   { return "Rule 16.4 MISRA C" }
-func (c *missingSwitchDefaultCheck) Severity() string  { return "warning" }
+func (c *missingSwitchDefaultCheck) Article() string  { return "Rule 16.4 MISRA C" }
+func (c *missingSwitchDefaultCheck) Severity() string { return "warning" }
 
 var switchPattern = regexp.MustCompile(`\bswitch\s*\(`)
 

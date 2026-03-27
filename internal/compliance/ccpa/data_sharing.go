@@ -17,8 +17,8 @@ type missingDoNotSellCheck struct{}
 
 func (c *missingDoNotSellCheck) ID() string       { return "missing-do-not-sell" }
 func (c *missingDoNotSellCheck) Name() string     { return "Missing Do Not Sell/Share Opt-Out" }
-func (c *missingDoNotSellCheck) Article() string   { return "§1798.120 CCPA" }
-func (c *missingDoNotSellCheck) Severity() string  { return "warning" }
+func (c *missingDoNotSellCheck) Article() string  { return "§1798.120 CCPA" }
+func (c *missingDoNotSellCheck) Severity() string { return "warning" }
 
 var optOutPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)do[_\-\s]?not[_\-\s]?sell`),
@@ -117,8 +117,8 @@ type thirdPartySharingCheck struct{}
 
 func (c *thirdPartySharingCheck) ID() string       { return "third-party-sharing" }
 func (c *thirdPartySharingCheck) Name() string     { return "Third-Party Data Sharing Detection" }
-func (c *thirdPartySharingCheck) Article() string   { return "§1798.100 CCPA" }
-func (c *thirdPartySharingCheck) Severity() string  { return "info" }
+func (c *thirdPartySharingCheck) Article() string  { return "§1798.100 CCPA" }
+func (c *thirdPartySharingCheck) Severity() string { return "info" }
 
 func (c *thirdPartySharingCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	var findings []compliance.Finding

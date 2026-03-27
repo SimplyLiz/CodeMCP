@@ -29,8 +29,8 @@ type complexityExceededCheck struct{}
 
 func (c *complexityExceededCheck) ID() string       { return "complexity-exceeded" }
 func (c *complexityExceededCheck) Name() string     { return "Complexity Limit Exceeded" }
-func (c *complexityExceededCheck) Article() string   { return "Part 6, Table 3 ISO 26262" }
-func (c *complexityExceededCheck) Severity() string  { return "error" }
+func (c *complexityExceededCheck) Article() string  { return "Part 6, Table 3 ISO 26262" }
+func (c *complexityExceededCheck) Severity() string { return "error" }
 
 // ASIL level -> max cyclomatic complexity per function
 var asilComplexityLimits = map[int]int{
@@ -94,8 +94,8 @@ type recursionCheck struct{}
 
 func (c *recursionCheck) ID() string       { return "recursion" }
 func (c *recursionCheck) Name() string     { return "Recursive Function Calls" }
-func (c *recursionCheck) Article() string   { return "Part 6, Table 3 ISO 26262" }
-func (c *recursionCheck) Severity() string  { return "warning" }
+func (c *recursionCheck) Article() string  { return "Part 6, Table 3 ISO 26262" }
+func (c *recursionCheck) Severity() string { return "warning" }
 
 func (c *recursionCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	var findings []compliance.Finding
@@ -173,8 +173,8 @@ type dynamicMemoryCheck struct{}
 
 func (c *dynamicMemoryCheck) ID() string       { return "dynamic-memory" }
 func (c *dynamicMemoryCheck) Name() string     { return "Dynamic Memory Allocation" }
-func (c *dynamicMemoryCheck) Article() string   { return "Part 6, Table 3 ISO 26262" }
-func (c *dynamicMemoryCheck) Severity() string  { return "warning" }
+func (c *dynamicMemoryCheck) Article() string  { return "Part 6, Table 3 ISO 26262" }
+func (c *dynamicMemoryCheck) Severity() string { return "warning" }
 
 var dynamicMemPattern = regexp.MustCompile(`\b(malloc|calloc|realloc|new\s+\w|make\s*\()\b`)
 

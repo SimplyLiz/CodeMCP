@@ -13,8 +13,8 @@ type piiDetectionCheck struct{}
 
 func (c *piiDetectionCheck) ID() string       { return "pii-detection" }
 func (c *piiDetectionCheck) Name() string     { return "PII Field Detection" }
-func (c *piiDetectionCheck) Article() string   { return "Art. 4(1) GDPR" }
-func (c *piiDetectionCheck) Severity() string  { return "info" }
+func (c *piiDetectionCheck) Article() string  { return "Art. 4(1) GDPR" }
+func (c *piiDetectionCheck) Severity() string { return "info" }
 
 func (c *piiDetectionCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	scanner := compliance.NewPIIScanner(scope.Config.PIIFieldPatterns)
@@ -50,8 +50,8 @@ type piiInLogsCheck struct{}
 
 func (c *piiInLogsCheck) ID() string       { return "pii-in-logs" }
 func (c *piiInLogsCheck) Name() string     { return "PII in Log Statements" }
-func (c *piiInLogsCheck) Article() string   { return "Art. 25, 32 GDPR" }
-func (c *piiInLogsCheck) Severity() string  { return "error" }
+func (c *piiInLogsCheck) Article() string  { return "Art. 25, 32 GDPR" }
+func (c *piiInLogsCheck) Severity() string { return "error" }
 
 func (c *piiInLogsCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	scanner := compliance.NewPIIScanner(scope.Config.PIIFieldPatterns)
@@ -75,8 +75,8 @@ type piiInErrorsCheck struct{}
 
 func (c *piiInErrorsCheck) ID() string       { return "pii-in-errors" }
 func (c *piiInErrorsCheck) Name() string     { return "PII in Error Messages" }
-func (c *piiInErrorsCheck) Article() string   { return "Art. 25 GDPR" }
-func (c *piiInErrorsCheck) Severity() string  { return "error" }
+func (c *piiInErrorsCheck) Article() string  { return "Art. 25 GDPR" }
+func (c *piiInErrorsCheck) Severity() string { return "error" }
 
 func (c *piiInErrorsCheck) Run(ctx context.Context, scope *compliance.ScanScope) ([]compliance.Finding, error) {
 	scanner := compliance.NewPIIScanner(scope.Config.PIIFieldPatterns)

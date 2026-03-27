@@ -17,8 +17,8 @@ type sqlInjectionCheck struct{}
 
 func (c *sqlInjectionCheck) ID() string       { return "sql-injection" }
 func (c *sqlInjectionCheck) Name() string     { return "SQL Injection Risk" }
-func (c *sqlInjectionCheck) Article() string   { return "Req 6.2.4 PCI DSS 4.0" }
-func (c *sqlInjectionCheck) Severity() string  { return "error" }
+func (c *sqlInjectionCheck) Article() string  { return "Req 6.2.4 PCI DSS 4.0" }
+func (c *sqlInjectionCheck) Severity() string { return "error" }
 
 var pciSQLInjectionPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)(SELECT|INSERT|UPDATE|DELETE|WHERE).*\+\s*[\w]+`),
@@ -108,8 +108,8 @@ type xssPreventionCheck struct{}
 
 func (c *xssPreventionCheck) ID() string       { return "xss-prevention" }
 func (c *xssPreventionCheck) Name() string     { return "Cross-Site Scripting (XSS) Risk" }
-func (c *xssPreventionCheck) Article() string   { return "Req 6.2.4 PCI DSS 4.0" }
-func (c *xssPreventionCheck) Severity() string  { return "error" }
+func (c *xssPreventionCheck) Article() string  { return "Req 6.2.4 PCI DSS 4.0" }
+func (c *xssPreventionCheck) Severity() string { return "error" }
 
 var xssPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\.innerHTML\s*=`),

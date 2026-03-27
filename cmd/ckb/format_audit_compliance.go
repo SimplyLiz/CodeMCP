@@ -148,7 +148,6 @@ func formatComplianceMarkdown(report *compliance.ComplianceReport) string {
 				f := report.Findings[idx]
 				loc := ""
 				if f.File != "" {
-					loc = f.File
 					if f.StartLine > 0 {
 						loc = fmt.Sprintf("`%s:%d`", f.File, f.StartLine)
 					} else {
