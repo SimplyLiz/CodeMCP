@@ -63,7 +63,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		{
 			Name:        "expandToolset",
 			Description: "Switch to a larger toolset for a specific workflow. Call this when you need tools not in the current set. Presets (each includes all core tools plus):\n" +
-				"• review (39 tools): reviewPR, auditCompliance, scanSecrets, summarizeDiff, summarizePr, compareAPI, getAffectedTests, analyzeTestGaps, findDeadCode, auditRisk, getOwnership — use for PR reviews, compliance audits, security analysis\n" +
+				"• review (39 tools): reviewPR, auditCompliance, scanSecrets, analyzeTestGaps, getAffectedTests, compareAPI, findDeadCode, auditRisk, getOwnership — use for PR reviews, test coverage analysis, compliance audits, security\n" +
 				"• refactor (32 tools): analyzeCoupling, findCycles, suggestRefactorings, findDeadCode, compareAPI, explainOrigin — use for refactoring, dependency analysis, dead code removal\n" +
 				"• federation (36 tools): federationSearch*, listContracts, analyzeContractImpact — use for multi-repo queries, cross-repo analysis\n" +
 				"• docs (27 tools): indexDocs, getDocsForSymbol, checkDocStaleness, getDecisions, recordDecision — use for documentation, ADRs\n" +

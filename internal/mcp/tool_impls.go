@@ -121,8 +121,8 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 	if preset == PresetCore {
 		hints = append(hints,
 			"Current preset: core (24 tools). Use 'expandToolset' to unlock more:",
-			"→ 'review' for PR review, compliance audit, secrets scan, test gaps",
-			"→ 'refactor' for coupling analysis, dead code, dependency cycles",
+			"→ 'review' for PR review, test coverage (analyzeTestGaps, getAffectedTests), compliance audit, secrets scan",
+			"→ 'refactor' for coupling analysis, dead code, dependency cycles, refactoring suggestions",
 			"→ 'docs' for documentation coverage, ADRs, symbol-doc linking",
 		)
 	} else {
