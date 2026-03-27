@@ -228,6 +228,8 @@ func isCouplingNoiseFile(path string) bool {
 		"testdata/",
 		"fixtures/",
 		"__tests__/",
+		"l10n/",       // Flutter/i18n localization generated files
+		"generated/",  // Common generated code directory
 	}
 	for _, prefix := range noisePrefixes {
 		if strings.HasPrefix(path, prefix) {
@@ -244,6 +246,8 @@ func isCouplingNoiseFile(path string) bool {
 		".gen.go",
 		".min.js",
 		".min.css",
+		".arb",  // Flutter/ICU localization resource files
+		".g.dart", // Dart generated files (build_runner, json_serializable)
 	}
 	for _, suffix := range noiseSuffixes {
 		if strings.HasSuffix(path, suffix) {
