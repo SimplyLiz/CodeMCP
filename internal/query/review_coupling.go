@@ -228,8 +228,11 @@ func isCouplingNoiseFile(path string) bool {
 		"testdata/",
 		"fixtures/",
 		"__tests__/",
-		"l10n/",       // Flutter/i18n localization generated files
-		"generated/",  // Common generated code directory
+		"l10n/",           // Flutter/i18n localization generated files
+		"generated/",      // Common generated code directory
+		"__generated__/",  // GraphQL/Relay generated
+		".dart_tool/",     // Dart tooling
+		"__pycache__/",    // Python bytecode cache
 	}
 	for _, prefix := range noisePrefixes {
 		if strings.HasPrefix(path, prefix) {
@@ -238,16 +241,20 @@ func isCouplingNoiseFile(path string) bool {
 	}
 
 	noiseSuffixes := []string{
-		".yml",
-		".yaml",
-		".lock",
-		".sum",
-		".generated.go",
-		".gen.go",
-		".min.js",
-		".min.css",
-		".arb",  // Flutter/ICU localization resource files
-		".g.dart", // Dart generated files (build_runner, json_serializable)
+		// Config/metadata
+		".yml", ".yaml", ".lock", ".sum",
+		// Go generated
+		".generated.go", ".gen.go", "_string.go", "_enumer.go",
+		"wire_gen.go", "_mock.go",
+		// Protobuf/gRPC generated
+		".pb.go", ".pb.h", ".pb.cc", ".pb.ts", ".pb.js",
+		"_grpc.pb.go", "_pb2.py", "_pb2_grpc.py",
+		// Dart/Flutter generated
+		".g.dart", ".freezed.dart", ".mocks.dart", ".arb",
+		// JS/TS generated/bundled
+		".min.js", ".min.css", ".bundle.js", ".chunk.js",
+		// Other generated
+		".d.ts",
 	}
 	for _, suffix := range noiseSuffixes {
 		if strings.HasSuffix(path, suffix) {
