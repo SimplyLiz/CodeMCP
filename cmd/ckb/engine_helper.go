@@ -31,12 +31,14 @@ func getEngine(repoRoot string, logger *slog.Logger) (*query.Engine, error) {
 			cfg = config.DefaultConfig()
 		}
 
-		// Open storage
+		// Open storage — db is passed to the engine and lives for the process lifetime.
+		// Intentionally not deferred: the engine needs the DB for every subsequent call.
 		db, err := storage.Open(repoRoot, logger)
 		if err != nil {
 			engineErr = fmt.Errorf("failed to open database: %w", err)
 			return
 		}
+		// db.Close() is called at process exit (OS reclaims resources)
 
 		// Create engine
 		engine, err := query.NewEngine(repoRoot, db, logger, cfg)
@@ -54,9 +56,9 @@ func getEngine(repoRoot string, logger *slog.Logger) (*query.Engine, error) {
 		engine.SetTierMode(tierMode)
 
 		// Validate that the tier requirements can be satisfied
-		if err := engine.ValidateTierMode(); err != nil {
+		if validErr := engine.ValidateTierMode(); validErr != nil {
 			// Log warning but don't fail - fall back to available tier
-			logger.Warn("Requested tier not available", "error", err.Error())
+			logger.Warn("Requested tier not available", "error", validErr.Error())
 		}
 
 		sharedEngine = engine
@@ -119,9 +121,10 @@ func newLogger(format string) *slog.Logger {
 	if os.Getenv("CKB_DEBUG") == "1" {
 		level = slog.LevelDebug
 	}
-	// In human format, suppress warnings (stale SCIP, etc.) — they clutter
-	// the review output. Errors still surface.
-	if format == "human" && level < slog.LevelError {
+	// Suppress warnings (stale SCIP, etc.) for all output formats unless
+	// verbose mode is explicitly enabled. Warnings on stderr corrupt
+	// machine-readable output (JSON, markdown) when stderr is redirected.
+	if level < slog.LevelError {
 		level = slog.LevelError
 	}
 	return slogutil.NewLogger(os.Stderr, level)

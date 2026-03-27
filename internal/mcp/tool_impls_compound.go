@@ -213,9 +213,15 @@ func (s *MCPServer) toolBatchGet(params map[string]interface{}) (*envelope.Respo
 		return nil, err
 	}
 
+	includeCounts := false
+	if v, ok := params["includeCounts"].(bool); ok {
+		includeCounts = v
+	}
+
 	ctx := context.Background()
 	result, err := engine.BatchGet(ctx, query.BatchGetOptions{
-		SymbolIds: ids,
+		SymbolIds:     ids,
+		IncludeCounts: includeCounts,
 	})
 	if err != nil {
 		return nil, err

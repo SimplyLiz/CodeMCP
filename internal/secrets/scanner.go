@@ -284,6 +284,10 @@ func (s *Scanner) scanFile(path string, minEntropy float64) ([]SecretFinding, er
 		relPath = path
 	}
 
+	// Documentation files need higher entropy — prose words match secret patterns
+	// but have low entropy compared to real secrets
+	isDocFile := isDocumentationFile(relPath)
+
 	var findings []SecretFinding
 	scanner := bufio.NewScanner(file)
 	lineNum := 0
@@ -316,8 +320,15 @@ func (s *Scanner) scanFile(path string, minEntropy float64) ([]SecretFinding, er
 
 				// Check entropy for patterns that require it
 				if pattern.MinEntropy > 0 {
+					requiredEntropy := pattern.MinEntropy
+					// Documentation files need higher entropy to avoid flagging prose
+					if isDocFile && (pattern.Type == SecretTypeGenericSecret || pattern.Type == SecretTypeGenericAPIKey) {
+						if requiredEntropy < 4.0 {
+							requiredEntropy = 4.0
+						}
+					}
 					entropy := ShannonEntropy(secret)
-					if entropy < pattern.MinEntropy {
+					if entropy < requiredEntropy {
 						continue
 					}
 				}
@@ -397,6 +408,27 @@ var goStructDeclRe = regexp.MustCompile(`(?i)\b(secret|token|password|passwd|pwd
 //	"new_token":  rawToken,
 var configKeyVarRe = regexp.MustCompile(`(?i)["'](?:secret|token|password|passwd|pwd|new_token)["']\s*:\s*[a-zA-Z]\w*[,\s})]`)
 
+// varRefRe matches when the captured "secret" is actually a variable or
+// attribute reference rather than a literal value.  Examples:
+//
+//	api_key=self._settings.openai_api_key   (Python attribute chain)
+//	apiKey: config.apiKey                    (JS/TS property access)
+//	api_key=os.environ["KEY"]               (env lookup)
+//	token = process.env.TOKEN               (Node env)
+//	key := viper.GetString("api_key")       (Go config)
+//
+// varRefRe matches variable/attribute references. The first branch (dotted
+// chain anchored with $) covers fully-qualified references like config.apiKey.
+// Branches 2-4 handle partial captures where the scanner only grabs a prefix
+// (e.g., "os.environ" from os.environ["KEY"]) — the $ anchor on branch 1
+// would reject those because of trailing brackets/parens.
+var varRefRe = regexp.MustCompile(
+	`^[a-zA-Z_][\w]*(?:\.[\w]+)+$` + // dotted attr chain: self._settings.openai_api_key
+		`|^os\.(?:environ|getenv)` + // Python os.environ / os.getenv (partial capture)
+		`|^process\.env` + // Node process.env (partial capture)
+		`|^(?:viper|config|cfg|settings|conf)\.`, // common config accessors (partial capture)
+)
+
 // isLikelyFalsePositive checks for common false positive patterns.
 func isLikelyFalsePositive(line, secret string) bool {
 	lineLower := strings.ToLower(line)
@@ -406,6 +438,11 @@ func isLikelyFalsePositive(line, secret string) bool {
 		return true
 	}
 	if configKeyVarRe.MatchString(line) {
+		return true
+	}
+
+	// The captured "secret" is a variable/attribute reference, not a literal
+	if varRefRe.MatchString(strings.TrimSpace(secret)) {
 		return true
 	}
 
@@ -438,6 +475,15 @@ func isLikelyFalsePositive(line, secret string) bool {
 		if strings.Contains(lineLower, indicator) {
 			return true
 		}
+	}
+
+	// Shell/template variable interpolation — not a literal secret
+	// Covers ${VAR}, ${VAR:-default}, ${VAR:?error}, $VAR, {{ .var }}
+	if strings.Contains(secret, "${") ||
+		strings.Contains(secret, "$(") ||
+		strings.Contains(secret, "{{") ||
+		(strings.HasPrefix(strings.TrimSpace(secret), "$") && !strings.ContainsAny(secret, " \t")) {
+		return true
 	}
 
 	// Check for common test values
@@ -481,6 +527,19 @@ func redactLine(line string, start, end int) string {
 	}
 
 	return result
+}
+
+// isDocumentationFile checks if a file is documentation (markdown, text, rst).
+func isDocumentationFile(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".md", ".markdown", ".txt", ".rst", ".adoc", ".textile":
+		return true
+	}
+	// Also check for common doc file names
+	base := strings.ToLower(filepath.Base(path))
+	return base == "readme" || base == "changelog" || base == "contributing" ||
+		base == "license" || base == "authors"
 }
 
 // isBinaryFile checks if a file is likely binary.

@@ -4,8 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/SimplyLiz/CodeMCP/internal/federation"
+	"github.com/SimplyLiz/CodeMCP/internal/repos"
+	"github.com/SimplyLiz/CodeMCP/internal/scheduler"
 	"github.com/SimplyLiz/CodeMCP/internal/version"
 )
 
@@ -139,10 +143,20 @@ func (d *Daemon) handleScheduleList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Implement when scheduler is added
-	d.writeJSON(w, http.StatusOK, map[string]interface{}{
-		"schedules": []interface{}{},
-	})
+	if d.scheduler == nil {
+		d.writeJSON(w, http.StatusOK, map[string]interface{}{
+			"schedules":  []interface{}{},
+			"totalCount": 0,
+		})
+		return
+	}
+
+	result, err := d.scheduler.ListSchedules(scheduler.ListSchedulesOptions{})
+	if err != nil {
+		d.writeError(w, http.StatusInternalServerError, "scheduler_error", err.Error())
+		return
+	}
+	d.writeJSON(w, http.StatusOK, result)
 }
 
 // handleJobsList handles GET /api/v1/daemon/jobs
@@ -152,16 +166,68 @@ func (d *Daemon) handleJobsList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Implement when job queue is added
+	if d.scheduler == nil {
+		d.writeJSON(w, http.StatusOK, map[string]interface{}{
+			"jobs":       []interface{}{},
+			"totalCount": 0,
+		})
+		return
+	}
+
+	// List all schedules — the scheduler tracks last run status per schedule
+	result, err := d.scheduler.ListSchedules(scheduler.ListSchedulesOptions{})
+	if err != nil {
+		d.writeError(w, http.StatusInternalServerError, "scheduler_error", err.Error())
+		return
+	}
 	d.writeJSON(w, http.StatusOK, map[string]interface{}{
-		"jobs": []interface{}{},
+		"jobs":       result.Schedules,
+		"totalCount": result.TotalCount,
 	})
 }
 
 // handleJobsRoute handles /api/v1/daemon/jobs/:jobId routes
 func (d *Daemon) handleJobsRoute(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement job detail and cancel routes
-	http.NotFound(w, r)
+	// Extract job/schedule ID from path: /api/v1/daemon/jobs/{id}
+	id := strings.TrimPrefix(r.URL.Path, "/api/v1/daemon/jobs/")
+	if id == "" {
+		d.writeError(w, http.StatusBadRequest, "missing_id", "Job ID is required")
+		return
+	}
+
+	if d.scheduler == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		schedule, err := d.scheduler.GetSchedule(id)
+		if err != nil {
+			d.writeError(w, http.StatusInternalServerError, "scheduler_error", err.Error())
+			return
+		}
+		if schedule == nil {
+			d.writeError(w, http.StatusNotFound, "not_found", fmt.Sprintf("Job %q not found", id))
+			return
+		}
+		d.writeJSON(w, http.StatusOK, schedule)
+
+	case http.MethodDelete:
+		err := d.scheduler.DisableSchedule(id)
+		if err != nil {
+			if strings.Contains(err.Error(), "not found") {
+				d.writeError(w, http.StatusNotFound, "not_found", fmt.Sprintf("Job %q not found", id))
+				return
+			}
+			d.writeError(w, http.StatusInternalServerError, "cancel_error", err.Error())
+			return
+		}
+		d.writeJSON(w, http.StatusOK, map[string]string{"status": "cancelled"})
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
 }
 
 // handleReposList handles GET /api/v1/repos
@@ -171,16 +237,49 @@ func (d *Daemon) handleReposList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Implement repo listing
+	registry, err := repos.LoadRegistry()
+	if err != nil {
+		d.writeError(w, http.StatusInternalServerError, "registry_error", err.Error())
+		return
+	}
+
+	entries := registry.List()
 	d.writeJSON(w, http.StatusOK, map[string]interface{}{
-		"repos": []interface{}{},
+		"repos":      entries,
+		"totalCount": len(entries),
 	})
 }
 
 // handleReposRoute handles /api/v1/repos/:repoId/* routes
 func (d *Daemon) handleReposRoute(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement repo operations
-	http.NotFound(w, r)
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract repo name from path: /api/v1/repos/{name}
+	name := strings.TrimPrefix(r.URL.Path, "/api/v1/repos/")
+	if name == "" {
+		d.writeError(w, http.StatusBadRequest, "missing_id", "Repo name is required")
+		return
+	}
+
+	registry, err := repos.LoadRegistry()
+	if err != nil {
+		d.writeError(w, http.StatusInternalServerError, "registry_error", err.Error())
+		return
+	}
+
+	entry, state, err := registry.Get(name)
+	if err != nil {
+		d.writeError(w, http.StatusNotFound, "not_found", err.Error())
+		return
+	}
+
+	d.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"repo":  entry,
+		"state": state,
+	})
 }
 
 // handleFederationsList handles GET /api/v1/federations
@@ -190,16 +289,51 @@ func (d *Daemon) handleFederationsList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Implement federation listing
+	names, err := federation.List()
+	if err != nil {
+		d.writeError(w, http.StatusInternalServerError, "federation_error", err.Error())
+		return
+	}
+
 	d.writeJSON(w, http.StatusOK, map[string]interface{}{
-		"federations": []interface{}{},
+		"federations": names,
+		"totalCount":  len(names),
 	})
 }
 
 // handleFederationsRoute handles /api/v1/federations/:name/* routes
 func (d *Daemon) handleFederationsRoute(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement federation operations
-	http.NotFound(w, r)
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract federation name from path: /api/v1/federations/{name}
+	name := strings.TrimPrefix(r.URL.Path, "/api/v1/federations/")
+	if name == "" {
+		d.writeError(w, http.StatusBadRequest, "missing_name", "Federation name is required")
+		return
+	}
+
+	exists, err := federation.Exists(name)
+	if err != nil {
+		d.writeError(w, http.StatusInternalServerError, "federation_error", err.Error())
+		return
+	}
+	if !exists {
+		d.writeError(w, http.StatusNotFound, "not_found", fmt.Sprintf("Federation %q not found", name))
+		return
+	}
+
+	cfg, err := federation.LoadConfig(name)
+	if err != nil {
+		d.writeError(w, http.StatusInternalServerError, "federation_error", err.Error())
+		return
+	}
+
+	d.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"federation": cfg,
+	})
 }
 
 // writeJSON writes a JSON response

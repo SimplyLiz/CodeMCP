@@ -94,6 +94,13 @@ func (a *Analyzer) Analyze(ctx context.Context, opts AnalyzeOptions) (*TestGapRe
 	testedFunctions := 0
 
 	for _, file := range files {
+		// Skip barrel/re-export files — they contain no logic worth testing
+		absFile := filepath.Join(a.repoRoot, file)
+		ext := filepath.Ext(file)
+		if (ext == ".ts" || ext == ".tsx" || ext == ".js" || ext == ".jsx") && isBarrelFile(absFile) {
+			continue
+		}
+
 		functions, err := a.extractFunctions(ctx, file)
 		if err != nil {
 			a.logger.Debug("Failed to extract functions", "file", file, "error", err.Error())
@@ -254,6 +261,11 @@ func (a *Analyzer) checkTestedViaHeuristic(file string, fn complexity.Complexity
 	// Find corresponding test files
 	testFiles := a.findTestFiles(file)
 	if len(testFiles) == 0 {
+		// Check for module-level mock coverage — test files that mock this source
+		// module via vi.mock/jest.mock cover all its exports indirectly.
+		if a.isModuleMocked(file) {
+			return true, ""
+		}
 		return false, "no-test-file"
 	}
 
@@ -272,22 +284,51 @@ func (a *Analyzer) checkTestedViaHeuristic(file string, fn complexity.Complexity
 		}
 	}
 
+	// Even without a direct name match, a module-level mock covers all exports
+	if a.isModuleMocked(file) {
+		return true, ""
+	}
+
 	return false, "no-name-match"
 }
 
 // findTestFiles locates test files for a given source file.
+//
+// Checks suffix patterns ({base}_test.ext, {base}.test.ext, {base}.spec.ext)
+// and the Python/pytest prefix pattern (test_{base}.ext) in the same directory
+// and in a sibling tests/ directory.
 func (a *Analyzer) findTestFiles(file string) []string {
 	ext := filepath.Ext(file)
 	base := strings.TrimSuffix(file, ext)
+	dir := filepath.Dir(file)
+	name := filepath.Base(base) // filename without dir or extension
 
+	// Suffix patterns (Go, JS/TS convention)
 	candidates := []string{
 		base + "_test" + ext,
 		base + ".test" + ext,
 		base + ".spec" + ext,
 	}
 
+	// Prefix pattern (Python/pytest convention): test_{name}.ext
+	// Check same directory
+	candidates = append(candidates, filepath.Join(dir, "test_"+name+ext))
+
+	// Also check a sibling tests/ directory (common in Python projects)
+	// e.g., src/pkg/foo.py → tests/test_foo.py
+	testsDir := filepath.Join(filepath.Dir(dir), "tests")
+	candidates = append(candidates, filepath.Join(testsDir, "test_"+name+ext))
+
+	// Also check a top-level tests/ directory
+	candidates = append(candidates, filepath.Join("tests", "test_"+name+ext))
+
 	var found []string
+	seen := map[string]bool{}
 	for _, c := range candidates {
+		if seen[c] {
+			continue
+		}
+		seen[c] = true
 		absPath := filepath.Join(a.repoRoot, c)
 		if _, err := os.Stat(absPath); err == nil {
 			found = append(found, c)
@@ -312,4 +353,112 @@ func isAnalyzableSource(ext string) bool {
 		return true
 	}
 	return false
+}
+
+// isModuleMocked checks whether any test file mocks this source module via
+// vi.mock(...) or jest.mock(...). Module-level mocks provide factory replacements
+// for all exports, so every exported function is covered indirectly.
+func (a *Analyzer) isModuleMocked(file string) bool {
+	ext := filepath.Ext(file)
+	// Only relevant for JS/TS ecosystems
+	if ext != ".ts" && ext != ".tsx" && ext != ".js" && ext != ".jsx" {
+		return false
+	}
+
+	// Build relative import paths that test files would use to reference this module
+	dir := filepath.Dir(file)
+	base := strings.TrimSuffix(filepath.Base(file), ext)
+	// An index file can be imported as the directory itself
+	isIndex := base == "index"
+
+	// Walk test files in the same directory and parent directories looking for mocks
+	testExts := []string{".test.ts", ".test.tsx", ".test.js", ".test.jsx", ".spec.ts", ".spec.tsx", ".spec.js", ".spec.jsx"}
+	var testPaths []string
+
+	// Check same directory and parent
+	for _, d := range []string{dir, filepath.Dir(dir)} {
+		absDir := filepath.Join(a.repoRoot, d)
+		entries, err := os.ReadDir(absDir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			name := e.Name()
+			for _, te := range testExts {
+				if strings.HasSuffix(name, te) {
+					testPaths = append(testPaths, filepath.Join(d, name))
+				}
+			}
+		}
+	}
+
+	// Also check __tests__ subdirectory
+	testsDir := filepath.Join(dir, "__tests__")
+	absTestsDir := filepath.Join(a.repoRoot, testsDir)
+	if entries, err := os.ReadDir(absTestsDir); err == nil {
+		for _, e := range entries {
+			name := e.Name()
+			for _, te := range testExts {
+				if strings.HasSuffix(name, te) {
+					testPaths = append(testPaths, filepath.Join(testsDir, name))
+				}
+			}
+		}
+	}
+
+	for _, tp := range testPaths {
+		absPath := filepath.Join(a.repoRoot, tp)
+		content, err := os.ReadFile(absPath)
+		if err != nil {
+			continue
+		}
+		text := string(content)
+
+		// Look for vi.mock('.../<module>') or jest.mock('.../<module>')
+		// The mock path can reference the file by name or the directory (for index files)
+		if strings.Contains(text, "vi.mock(") || strings.Contains(text, "jest.mock(") {
+			// Check if the mock path references this file
+			if strings.Contains(text, "/"+base+"'") || strings.Contains(text, "/"+base+"\"") || strings.Contains(text, "/"+base+"`") {
+				return true
+			}
+			// For index files, mock can reference the directory
+			if isIndex {
+				dirName := filepath.Base(dir)
+				if strings.Contains(text, "/"+dirName+"'") || strings.Contains(text, "/"+dirName+"\"") || strings.Contains(text, "/"+dirName+"`") {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// isBarrelFile returns true if the file consists only of re-exports with no
+// real logic. Barrel files (e.g., index.ts that just re-exports from siblings)
+// should not be flagged for missing tests.
+func isBarrelFile(absPath string) bool {
+	content, err := os.ReadFile(absPath)
+	if err != nil {
+		return false
+	}
+
+	lines := strings.Split(string(content), "\n")
+	hasExport := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
+			continue
+		}
+		// Valid barrel lines: export { ... } from '...', export * from '...', export type { ... } from '...'
+		if strings.HasPrefix(trimmed, "export ") && strings.Contains(trimmed, " from ") {
+			hasExport = true
+			continue
+		}
+		// Any other non-trivial line means this is not a pure barrel file
+		return false
+	}
+	return hasExport
 }

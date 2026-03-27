@@ -2,9 +2,11 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/exec"
 	"time"
@@ -134,7 +136,7 @@ func init() {
 	daemonScheduleListCmd.Flags().StringVar(&scheduleFormat, "format", "human", "Output format (human, json)")
 
 	// Start flags
-	daemonStartCmd.Flags().IntVar(&daemonPort, "port", 9120, "HTTP port")
+	daemonStartCmd.Flags().IntVar(&daemonPort, "port", config.DefaultDaemonPort, "HTTP port")
 	daemonStartCmd.Flags().StringVar(&daemonBind, "bind", "localhost", "Bind address")
 	daemonStartCmd.Flags().BoolVar(&daemonForeground, "foreground", false, "Run in foreground")
 
@@ -203,7 +205,7 @@ func runDaemonBackground() error {
 
 	// Build command to run daemon in foreground
 	args := []string{"daemon", "start", "--foreground"}
-	if daemonPort != 9120 {
+	if daemonPort != config.DefaultDaemonPort {
 		args = append(args, fmt.Sprintf("--port=%d", daemonPort))
 	}
 	if daemonBind != "localhost" {
@@ -297,8 +299,36 @@ func runDaemonStatus(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Status: running\n")
 	fmt.Printf("PID: %d\n", pid)
 
-	// Try to get more info from the HTTP API
-	// TODO: Add HTTP client to query /health endpoint
+	// Query HTTP health endpoint for additional info
+	port := config.DefaultDaemonPort
+	url := fmt.Sprintf("http://localhost:%d/health", port)
+
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(url) // #nosec G107 -- URL is constructed from constant port
+	if err != nil {
+		fmt.Printf("Health: unreachable (%v)\n", err)
+		return nil
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	var health struct {
+		Status  string            `json:"status"`
+		Version string            `json:"version"`
+		Uptime  string            `json:"uptime"`
+		Checks  map[string]string `json:"checks"`
+	}
+
+	if decErr := json.NewDecoder(resp.Body).Decode(&health); decErr != nil {
+		fmt.Printf("Health: could not parse response\n")
+		return nil
+	}
+
+	fmt.Printf("Version: %s\n", health.Version)
+	fmt.Printf("Uptime: %s\n", health.Uptime)
+	fmt.Printf("Health: %s\n", health.Status)
+	for check, status := range health.Checks {
+		fmt.Printf("  %s: %s\n", check, status)
+	}
 
 	return nil
 }

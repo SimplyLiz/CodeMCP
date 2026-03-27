@@ -1433,8 +1433,7 @@ func (e *Engine) GetAffectedTests(ctx context.Context, opts GetAffectedTestsOpti
 		}
 	}
 
-	// 3. TODO: Use coverage data if available and requested
-	// This would require parsing coverage files and mapping to tests
+	// Note: coverage-based test mapping not implemented yet (requires parsing coverage files)
 
 	// Convert map to slice
 	tests := make([]AffectedTest, 0, len(testFileMap))

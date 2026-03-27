@@ -540,12 +540,12 @@ func getDaemonStatus() *DaemonStatusCLI {
 	status := &DaemonStatusCLI{
 		Running: true,
 		PID:     pid,
-		Port:    9120, // default port
+		Port:    config.DefaultDaemonPort,
 	}
 
 	// Try to get more info from the daemon's health endpoint
 	client := &http.Client{Timeout: 500 * time.Millisecond}
-	resp, err := client.Get("http://localhost:9120/health")
+	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/health", config.DefaultDaemonPort))
 	if err != nil {
 		return status
 	}

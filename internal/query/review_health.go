@@ -51,8 +51,8 @@ type CodeHealthReport struct {
 // Coverage was removed because no coverage data source is available yet.
 // When coverage is added, reduce churn and cyclomatic by 0.05 each.
 const (
-	weightCyclomatic = 0.25
-	weightCognitive  = 0.15
+	weightCyclomatic = 0.15
+	weightCognitive  = 0.25
 	weightFileSize   = 0.10
 	weightChurn      = 0.15
 	weightCoupling   = 0.10
@@ -468,7 +468,7 @@ func (e *Engine) calculateFileHealth(ctx context.Context, file string, rm repoMe
 	confidence := 1.0
 	parseable := true
 
-	// Cyclomatic complexity (25%) + Cognitive complexity (15%)
+	// Cyclomatic complexity (15%) + Cognitive complexity (25%)
 	complexityApplied := false
 	if analyzer != nil {
 		result, err := analyzer.AnalyzeFile(ctx, absPath)

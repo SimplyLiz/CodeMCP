@@ -3,7 +3,7 @@
     {
       "file": "src/pkg/model.ts",
       "kind": "class",
-      "line": 0,
+      "line": 8,
       "moduleId": "src/pkg",
       "name": "Config"
     },
@@ -17,7 +17,7 @@
     {
       "file": "src/pkg/model.ts",
       "kind": "class",
-      "line": 0,
+      "line": 29,
       "moduleId": "src/pkg",
       "name": "Model"
     },
@@ -66,14 +66,14 @@
     {
       "file": "src/pkg/model.ts",
       "kind": "function",
-      "line": 0,
+      "line": 44,
       "moduleId": "src/pkg",
       "name": "Model#clone"
     },
     {
       "file": "src/pkg/model.ts",
       "kind": "function",
-      "line": 0,
+      "line": 54,
       "moduleId": "src/pkg",
       "name": "Model#setConfig"
     },
@@ -87,14 +87,14 @@
     {
       "file": "src/pkg/model.ts",
       "kind": "function",
-      "line": 0,
+      "line": 62,
       "moduleId": "src/pkg",
       "name": "Model#transform"
     },
     {
       "file": "src/pkg/service.ts",
       "kind": "function",
-      "line": 0,
+      "line": 53,
       "moduleId": "src/pkg",
       "name": "newDefaultService"
     },
@@ -108,7 +108,7 @@
     {
       "file": "src/pkg/model.ts",
       "kind": "function",
-      "line": 0,
+      "line": 79,
       "moduleId": "src/pkg",
       "name": "newModel"
     },

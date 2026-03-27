@@ -140,6 +140,8 @@ func convertSearchResponse(queryStr string, resp *query.SearchSymbolsResponse) *
 				Path:        s.Location.FileId,
 				StartLine:   s.Location.StartLine,
 				StartColumn: s.Location.StartColumn,
+				EndLine:     s.Location.EndLine,
+				EndColumn:   s.Location.EndColumn,
 			}
 		}
 

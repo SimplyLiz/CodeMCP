@@ -61,15 +61,21 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		// Meta-tool for dynamic preset expansion
 		{
-			Name:        "expandToolset",
-			Description: "Add more tools for a specific workflow. Available presets: review, refactor, federation, docs, ops, full.",
+			Name: "expandToolset",
+			Description: "Switch to a larger toolset for a specific workflow. Call this when you need tools not in the current set. Presets (each includes all core tools plus):\n" +
+				"• review (39 tools): reviewPR, auditCompliance, scanSecrets, analyzeTestGaps, getAffectedTests, compareAPI, findDeadCode, auditRisk, getOwnership — use for PR reviews, test coverage analysis, compliance audits, security\n" +
+				"• refactor (32 tools): analyzeCoupling, findCycles, suggestRefactorings, findDeadCode, compareAPI, explainOrigin — use for refactoring, dependency analysis, dead code removal\n" +
+				"• federation (36 tools): federationSearch*, listContracts, analyzeContractImpact — use for multi-repo queries, cross-repo analysis\n" +
+				"• docs (27 tools): indexDocs, getDocsForSymbol, checkDocStaleness, getDecisions, recordDecision — use for documentation, ADRs\n" +
+				"• ops (33 tools): doctor, reindex, daemonStatus, listJobs, webhooks, telemetry — use for diagnostics, daemon management\n" +
+				"• full (94 tools): everything — use when you need tools from multiple presets",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"preset": map[string]interface{}{
 						"type":        "string",
 						"enum":        []string{"review", "refactor", "federation", "docs", "ops", "full"},
-						"description": "The preset to expand to",
+						"description": "The preset to expand to. Pick the smallest preset that has the tools you need.",
 					},
 					"reason": map[string]interface{}{
 						"type":        "string",
@@ -111,7 +117,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 					},
 					"scope": map[string]interface{}{
 						"type":        "string",
-						"description": "Optional module ID to limit search scope",
+						"description": "Path prefix or module ID to limit search scope (e.g., 'src/services/', 'internal/query')",
 					},
 					"kinds": map[string]interface{}{
 						"type": "array",
@@ -125,8 +131,86 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 						"default":     20,
 						"description": "Maximum number of results to return",
 					},
+					"minLines": map[string]interface{}{
+						"type":        "number",
+						"description": "Minimum body line count (filters trivial getters). Applied after tree-sitter enrichment.",
+					},
+					"minComplexity": map[string]interface{}{
+						"type":        "number",
+						"description": "Minimum cyclomatic complexity. Applied after tree-sitter enrichment.",
+					},
+					"excludePatterns": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "Exclude symbols whose name contains any pattern (e.g., '#' for struct fields, '<anonymous>')",
+					},
 				},
 				"required": []string{"query"},
+			},
+		},
+		{
+			Name:        "listSymbols",
+			Description: "Bulk list symbols in a scope without search query. Returns functions, types, and classes with body ranges and complexity metrics (lines, endLine, cyclomatic, cognitive). Use for complete symbol inventory — no search query needed.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"scope": map[string]interface{}{
+						"type":        "string",
+						"description": "Path prefix to list symbols from (e.g., 'src/services/', 'internal/query/')",
+					},
+					"kinds": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "Symbol kinds: 'function', 'method', 'class', 'type', 'interface' (default: function, method)",
+					},
+					"minLines": map[string]interface{}{
+						"type":        "number",
+						"default":     3,
+						"description": "Minimum body line count (filters trivial getters/setters)",
+					},
+					"minComplexity": map[string]interface{}{
+						"type":        "number",
+						"default":     0,
+						"description": "Minimum cyclomatic complexity to include",
+					},
+					"sortBy": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"complexity", "lines", "name"},
+						"default":     "complexity",
+						"description": "Sort order",
+					},
+					"limit": map[string]interface{}{
+						"type":        "number",
+						"default":     50,
+						"description": "Max results (default 50, max 200)",
+					},
+				},
+			},
+		},
+		{
+			Name:        "getSymbolGraph",
+			Description: "Batch call graph for multiple symbols. Returns nodes and edges for all requested symbols in one call, replacing N serial getCallGraph calls with 1 batch call.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"symbolIds": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "Symbol IDs to get call graph for (max 30)",
+					},
+					"depth": map[string]interface{}{
+						"type":        "number",
+						"default":     1,
+						"description": "Call graph depth per symbol (1-3)",
+					},
+					"direction": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"callers", "callees", "both"},
+						"default":     "both",
+						"description": "Direction to traverse",
+					},
+				},
+				"required": []string{"symbolIds"},
 			},
 		},
 		{
@@ -141,7 +225,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 					},
 					"scope": map[string]interface{}{
 						"type":        "string",
-						"description": "Optional module ID to limit search scope",
+						"description": "Path prefix or module ID to limit search scope (e.g., 'src/services/', 'internal/query')",
 					},
 					"merge": map[string]interface{}{
 						"type":        "string",
@@ -204,7 +288,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "analyzeImpact",
-			Description: "Analyze the impact of changing a symbol. Returns callers, affected modules, and risk score—answers 'what breaks if I change X?'. For comprehensive pre-change analysis, use prepareChange instead.",
+			Description: "Use this to check 'what breaks if I change X?' — returns callers, affected modules, and risk score for a single symbol. For full pre-change analysis with tests and coupling, use prepareChange instead. For analyzing a git diff of changes already made, use analyzeChange.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -234,7 +318,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "analyzeChange",
-			Description: "Analyze the impact of a set of code changes from git diff. Answers: What might break? Which tests should run? Who needs to review?",
+			Description: "Use this AFTER changes are made to analyze a git diff — answers: what might break? which tests should run? who needs to review? For pre-change planning (before writing code), use prepareChange instead. For full PR review with quality gates, use reviewPR.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -398,7 +482,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "summarizeDiff",
-			Description: "Compress diffs into 'what changed, what might break'. Supports commit ranges, single commits, or time windows. Default: last 30 days.",
+			Description: "Use this for a quick summary of what changed — compresses diffs into 'what changed, what might break'. Supports commit ranges, single commits, or time windows. For a full PR review with quality gates and scoring, use reviewPR instead. For branch-vs-branch comparison, use summarizePr.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -799,7 +883,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		// v6.1 CI/CD tools
 		{
 			Name:        "summarizePr",
-			Description: "Analyze changes between branches and provide a PR summary with risk assessment, affected modules, hotspots touched, and suggested reviewers.",
+			Description: "Use this for a PR summary with risk assessment — compares branches and returns affected modules, hotspots, and suggested reviewers. Lighter than reviewPR (no quality gates or scoring). For full review with 15 checks, use reviewPR. For commit-level diffs, use summarizeDiff.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -1550,7 +1634,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		// v7.6 Static Dead Code Detection (SCIP-based, no telemetry required)
 		{
 			Name:        "findDeadCode",
-			Description: "Find dead code using static analysis of the SCIP index. Detects: symbols with zero references, self-only references, test-only references, and over-exported symbols. Works without telemetry.",
+			Description: "Use this to find dead code — detects symbols with zero references, self-only references, test-only references, and over-exported symbols. Uses SCIP index for precision. For runtime-based dead code detection (what's actually called), use findDeadCodeCandidates with telemetry data.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -1594,7 +1678,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		// v7.6 Affected Tests Tool
 		{
 			Name:        "getAffectedTests",
-			Description: "Find tests affected by current code changes. Uses SCIP symbol analysis and heuristics to trace from changed code to test files. Useful for targeted test runs in CI or local development.",
+			Description: "Use this to find which tests to run after code changes — traces from changed symbols to test files using SCIP analysis. Returns test files ranked by relevance. For finding untested code (gaps), use analyzeTestGaps instead.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -1624,7 +1708,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		// v7.6 Breaking Change Detection Tool
 		{
 			Name:        "compareAPI",
-			Description: "Compare API surfaces between two git refs to detect breaking changes. Finds removed symbols, signature changes, visibility changes, and renames. Useful for release planning and API compatibility checks.",
+			Description: "Use this to detect breaking API changes between git refs — finds removed symbols, signature changes, visibility changes, and renames. Essential for release planning and backwards compatibility. For general change impact (not API-specific), use analyzeChange.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -1759,7 +1843,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "auditRisk",
-			Description: "Find risky code based on multiple signals: complexity, test coverage, bus factor, staleness, security sensitivity, error rate, coupling, and churn.",
+			Description: "Use this to find risky code areas — scores files/symbols using 8 weighted signals: complexity, test coverage, bus factor, staleness, security sensitivity, error rate, coupling, and churn. Returns risk scores with top contributing factors. For regulatory compliance risk, use auditCompliance instead.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -1789,7 +1873,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		// v8.0 Secret Detection
 		{
 			Name:        "scanSecrets",
-			Description: "Scan for exposed secrets (API keys, tokens, passwords) in the codebase. Uses builtin patterns and optionally external tools (gitleaks, trufflehog).",
+			Description: "Use this to find exposed secrets (API keys, tokens, passwords) in specific files or paths. For a broader security/compliance check across regulations, use auditCompliance with iso27001 or owasp-asvs. Returns findings with redacted context, entropy scores, and confidence levels.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -1847,10 +1931,51 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		// v8.3 Compliance Audit
+		{
+			Name:        "auditCompliance",
+			Description: "Audit codebase against 20 regulatory compliance frameworks (131 checks). Use this when asked about compliance, regulations, or security posture. Specify frameworks by domain: privacy (gdpr, ccpa), security (iso27001, owasp-asvs, nist-800-53), payments (pci-dss), healthcare (hipaa), EU (dora, nis2, eu-cra, eu-ai-act), safety (iec61508, iso26262, misra), or 'all'. Returns verdict (pass/warn/fail), per-framework scores, findings mapped to specific regulation articles (e.g., 'Art. 32 GDPR', 'Req 6.2.4 PCI DSS 4.0') with CWE references and confidence scores. Cross-framework mapping means one finding shows all applicable regulations. Use --scope to limit scan to specific directories.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"frameworks": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "Framework IDs to audit: gdpr, ccpa, iso27701, eu-ai-act, iso27001, nist-800-53, owasp-asvs, soc2, pci-dss, hipaa, dora, nis2, fda-21cfr11, eu-cra, sbom-slsa, iec61508, iso26262, do-178c, misra, iec62443, or 'all'",
+					},
+					"scope": map[string]interface{}{
+						"type":        "string",
+						"description": "Path prefix to limit scan scope (e.g., 'internal/auth/')",
+					},
+					"minConfidence": map[string]interface{}{
+						"type":        "number",
+						"default":     0.5,
+						"description": "Minimum confidence threshold (0.0-1.0) to include findings",
+					},
+					"silLevel": map[string]interface{}{
+						"type":        "number",
+						"default":     2,
+						"description": "SIL level for IEC 61508 checks (1-4)",
+					},
+					"checks": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "Filter to specific check IDs",
+					},
+					"failOn": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"error", "warning", "none"},
+						"default":     "error",
+						"description": "Severity threshold for verdict failure",
+					},
+				},
+				"required": []string{"frameworks"},
+			},
+		},
 		// v8.2 Unified PR Review
 		{
 			Name:        "reviewPR",
-			Description: "Run a comprehensive PR review with 20 quality gates. Orchestrates checks (breaking, secrets, tests, complexity, health, coupling, hotspots, risk, critical-path, traceability, independence, generated, classify, split, dead-code, test-gaps, blast-radius, comment-drift, format-consistency, bug-patterns) concurrently. Returns verdict (pass/warn/fail), score, findings with file:line locations, health report, split suggestion, and suggested reviewers. Use this FIRST when reviewing a PR — it gives you structural context (what changed, what's risky, what's untested) so you can focus your review on what matters. MCP mode is preferred for interactive review: the SCIP index stays loaded between calls, so follow-up tools (findReferences, analyzeImpact, explainSymbol, explainFile) execute instantly against the in-memory index without reloading.",
+			Description: "Run a comprehensive PR review with 15 quality checks. Use this FIRST when reviewing a PR — it gives you structural context so you can focus on what matters. Checks: breaking changes, secrets, test coverage, complexity, health, coupling, hotspots, risk, dead code, test gaps, blast radius, comment drift, format consistency, bug patterns, split suggestions. Returns verdict (pass/warn/fail), score (0-100), findings with file:line, health report, review effort estimate, PR tier, and suggested reviewers. Follow up with findReferences, analyzeImpact, or explainSymbol to drill into specific findings — the SCIP index stays loaded between calls.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -2041,7 +2166,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		// v8.0 Compound Tools - aggregate multiple queries to reduce tool calls
 		{
 			Name:        "explore",
-			Description: "Comprehensive area exploration returning structure, key symbols, and change hotspots in one call. Best starting point for file/directory/module questions. Aggregates: explainFile → searchSymbols → getCallGraph → getHotspots.",
+			Description: "Use this FIRST when asked about a file, directory, or module — returns structure, key symbols, and change hotspots in one call. Best starting point for 'what is this?' or 'what's in this directory?' questions. For questions about a specific symbol, use understand instead.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -2067,7 +2192,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "understand",
-			Description: "Comprehensive symbol deep-dive returning full context in one call. Ideal for 'what does X do?' or 'how does X work?' questions. Aggregates: searchSymbols → getSymbol → explainSymbol → findReferences → getCallGraph.",
+			Description: "Use this when asked about a specific symbol — returns full context (definition, references, call graph, explanation) in one call. Ideal for 'what does X do?' or 'how is X used?' questions. For file/directory-level questions, use explore instead.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -2096,7 +2221,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "prepareChange",
-			Description: "Pre-change impact analysis showing blast radius, affected tests, coupled files, and risk score. Essential before modifying, renaming, deleting, or moving code to prevent breaking changes.",
+			Description: "Use this BEFORE making a code change — returns blast radius, affected tests, coupled files, and risk score. Essential before modifying, renaming, deleting, or moving code. More comprehensive than analyzeImpact (includes tests + coupling). For analyzing changes already made, use analyzeChange instead.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -2128,7 +2253,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "batchGet",
-			Description: "Retrieve multiple symbols by ID in a single call. Max 50 symbols.",
+			Description: "Retrieve multiple symbols by ID in a single call. Max 50 symbols. With includeCounts, also returns referenceCount, callerCount, calleeCount per symbol.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -2138,6 +2263,11 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 							"type": "string",
 						},
 						"description": "Array of symbol IDs to retrieve (max 50)",
+					},
+					"includeCounts": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Include referenceCount, callerCount, calleeCount per symbol (adds SCIP lookups per symbol)",
 					},
 				},
 				"required": []string{"symbolIds"},
@@ -2183,7 +2313,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		// v8.1 Test Gap Analysis
 		{
 			Name:        "analyzeTestGaps",
-			Description: "Find functions that lack test coverage. Returns untested functions sorted by complexity (highest-risk untested code first). Uses SCIP references when available, falls back to heuristic name matching.",
+			Description: "Use this to find untested functions — returns functions without test coverage, sorted by complexity (highest-risk first). For finding which existing tests cover specific changes, use getAffectedTests instead.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -2300,6 +2430,8 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["expandToolset"] = s.toolExpandToolset
 	s.tools["getSymbol"] = s.toolGetSymbol
 	s.tools["searchSymbols"] = s.toolSearchSymbols
+	s.tools["listSymbols"] = s.toolListSymbols
+	s.tools["getSymbolGraph"] = s.toolGetSymbolGraph
 	s.tools["findReferences"] = s.toolFindReferences
 	s.tools["getArchitecture"] = s.toolGetArchitecture
 	s.tools["analyzeImpact"] = s.toolAnalyzeImpact
@@ -2380,6 +2512,8 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["auditRisk"] = s.toolAuditRisk
 	// v8.0 Secret Detection
 	s.tools["scanSecrets"] = s.toolScanSecrets
+	// v8.3 Compliance Audit
+	s.tools["auditCompliance"] = s.toolAuditCompliance
 	// v8.2 Unified Review
 	s.tools["reviewPR"] = s.toolReviewPR
 	// v7.3 Doc-Symbol Linking tools

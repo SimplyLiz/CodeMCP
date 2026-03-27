@@ -3,14 +3,14 @@
     {
       "file": "pkg/model.go",
       "kind": "class",
-      "line": 0,
+      "line": 13,
       "moduleId": "pkg",
       "name": "Config"
     },
     {
       "file": "pkg/service.go",
       "kind": "class",
-      "line": 0,
+      "line": 13,
       "moduleId": "pkg",
       "name": "DefaultService"
     },
@@ -24,14 +24,14 @@
     {
       "file": "pkg/model.go",
       "kind": "class",
-      "line": 0,
+      "line": 7,
       "moduleId": "pkg",
       "name": "Model"
     },
     {
       "file": "pkg/model.go",
       "kind": "class",
-      "line": 0,
+      "line": 13,
       "moduleId": "pkg",
       "name": "Model#Config"
     },
@@ -45,35 +45,35 @@
     {
       "file": "pkg/service.go",
       "kind": "function",
-      "line": 0,
+      "line": 26,
       "moduleId": "pkg",
       "name": "DefaultService#Process"
     },
     {
       "file": "pkg/model.go",
       "kind": "function",
-      "line": 0,
+      "line": 49,
       "moduleId": "pkg",
       "name": "Model#Clone"
     },
     {
       "file": "pkg/model.go",
       "kind": "function",
-      "line": 0,
+      "line": 44,
       "moduleId": "pkg",
       "name": "Model#SetConfig"
     },
     {
       "file": "pkg/model.go",
       "kind": "function",
-      "line": 0,
+      "line": 35,
       "moduleId": "pkg",
       "name": "Model#Transform"
     },
     {
       "file": "pkg/model.go",
       "kind": "function",
-      "line": 0,
+      "line": 27,
       "moduleId": "pkg",
       "name": "NewModel"
     }

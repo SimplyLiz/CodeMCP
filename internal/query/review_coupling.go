@@ -3,12 +3,61 @@ package query
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/SimplyLiz/CodeMCP/internal/backends/git"
 	"github.com/SimplyLiz/CodeMCP/internal/coupling"
 )
+
+const maxCouplingAge = 180 * 24 * time.Hour
+
+// batchFileLastModified returns the last git modification time for each file
+// in a single git-log invocation, avoiding O(n) subprocess spawns.
+func (e *Engine) batchFileLastModified(ctx context.Context, files []string) map[string]time.Time {
+	result := make(map[string]time.Time, len(files))
+	if len(files) == 0 {
+		return result
+	}
+
+	// git log --format="<file>\t<date>" with --name-only and --diff-filter
+	// won't work cleanly for this. Instead, one call per unique file but
+	// batched: ask git for dates of all files at once via
+	// "git log --format=%aI --name-only -1 -- file1 file2 ..."
+	// Unfortunately git log -1 with multiple paths returns only one result.
+	// Use a single git log with --stdin-paths is not supported either.
+	// Pragmatic: batch via a single shell invocation using a for-loop.
+	// This runs one process instead of N.
+	var script strings.Builder
+	for _, f := range files {
+		// Shell-safe: files are repo-relative paths, no user input
+		fmt.Fprintf(&script, "echo \"$(git log -1 --format=%%aI -- %q)\t%s\"\n", f, f)
+	}
+
+	// Use env -i to prevent the user's shell profile (.zshrc, .bashrc) from
+	// being sourced — profile side-effects (e.g. ~/.secrets/api-keys.env errors)
+	// would leak into our stdout and corrupt the output.
+	cmd := exec.CommandContext(ctx, "env", "-i", "PATH="+os.Getenv("PATH"), "HOME="+os.Getenv("HOME"), "sh", "-c", script.String())
+	cmd.Dir = e.repoRoot
+	out, err := cmd.Output()
+	if err != nil {
+		return result
+	}
+
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) != 2 || parts[0] == "" {
+			continue
+		}
+		t, err := time.Parse(time.RFC3339, strings.TrimSpace(parts[0]))
+		if err == nil {
+			result[parts[1]] = t
+		}
+	}
+	return result
+}
 
 // CouplingGap represents a missing co-changed file.
 type CouplingGap struct {
@@ -56,6 +105,15 @@ func (e *Engine) checkCouplingGaps(ctx context.Context, changedFiles []string, d
 		}
 	}
 
+	// First pass: collect candidate gaps (before date filtering).
+	type candidateGap struct {
+		changedFile  string
+		missingFile  string
+		coChangeRate float64
+	}
+	var candidates []candidateGap
+	missingFiles := make(map[string]bool)
+
 	for _, file := range filesToCheck {
 		if ctx.Err() != nil {
 			break
@@ -76,13 +134,39 @@ func (e *Engine) checkCouplingGaps(ctx context.Context, changedFiles []string, d
 				missing = corr.File
 			}
 			if corr.Correlation >= minCorrelation && !changedSet[missing] && !isCouplingNoiseFile(missing) {
-				gaps = append(gaps, CouplingGap{
-					ChangedFile:  file,
-					MissingFile:  missing,
-					CoChangeRate: corr.Correlation,
+				candidates = append(candidates, candidateGap{
+					changedFile:  file,
+					missingFile:  missing,
+					coChangeRate: corr.Correlation,
 				})
+				missingFiles[missing] = true
 			}
 		}
+	}
+
+	// Batch-lookup last modification dates in a single shell invocation.
+	filesToLookup := make([]string, 0, len(missingFiles))
+	for f := range missingFiles {
+		filesToLookup = append(filesToLookup, f)
+	}
+	lastModDates := e.batchFileLastModified(ctx, filesToLookup)
+
+	// Second pass: filter stale couplings.
+	for _, c := range candidates {
+		lastMod := lastModDates[c.missingFile]
+		if !lastMod.IsZero() && time.Since(lastMod) > maxCouplingAge {
+			continue
+		}
+		var lastCoChange string
+		if !lastMod.IsZero() {
+			lastCoChange = lastMod.Format(time.RFC3339)
+		}
+		gaps = append(gaps, CouplingGap{
+			ChangedFile:  c.changedFile,
+			MissingFile:  c.missingFile,
+			CoChangeRate: c.coChangeRate,
+			LastCoChange: lastCoChange,
+		})
 	}
 
 	var findings []ReviewFinding
@@ -125,7 +209,8 @@ func (e *Engine) checkCouplingGaps(ctx context.Context, changedFiles []string, d
 }
 
 // isCouplingNoiseFile returns true for paths where co-change analysis produces
-// noise rather than signal (CI workflows, config dirs, generated files).
+// noise rather than signal (CI workflows, config dirs, generated files, tests,
+// dependency manifests, and documentation).
 func isCouplingNoiseFile(path string) bool {
 	noisePrefixes := []string{
 		".github/",
@@ -133,22 +218,91 @@ func isCouplingNoiseFile(path string) bool {
 		"ci/",
 		".circleci/",
 		".buildkite/",
+		"dist/",
+		"build/",
+		"out/",
+		"target/",
+		".next/",
+		"vendor/",
+		"node_modules/",
+		"testdata/",
+		"fixtures/",
+		"__tests__/",
+		"l10n/",          // Flutter/i18n localization generated files
+		"generated/",     // Common generated code directory
+		"__generated__/", // GraphQL/Relay generated
+		".dart_tool/",    // Dart tooling
+		"__pycache__/",   // Python bytecode cache
 	}
 	for _, prefix := range noisePrefixes {
 		if strings.HasPrefix(path, prefix) {
 			return true
 		}
 	}
+
 	noiseSuffixes := []string{
-		".yml",
-		".yaml",
-		".lock",
-		".sum",
+		// Config/metadata
+		".yml", ".yaml", ".lock", ".sum",
+		// Go generated
+		".generated.go", ".gen.go", "_string.go", "_enumer.go",
+		"wire_gen.go", "_mock.go",
+		// Protobuf/gRPC generated
+		".pb.go", ".pb.h", ".pb.cc", ".pb.ts", ".pb.js",
+		"_grpc.pb.go", "_pb2.py", "_pb2_grpc.py",
+		// Dart/Flutter generated
+		".g.dart", ".freezed.dart", ".mocks.dart", ".arb",
+		// JS/TS generated/bundled
+		".min.js", ".min.css", ".bundle.js", ".chunk.js",
+		// Other generated
+		".d.ts",
 	}
 	for _, suffix := range noiseSuffixes {
 		if strings.HasSuffix(path, suffix) {
 			return true
 		}
 	}
-	return false
+
+	// Test files — co-change with source is expected, not actionable
+	if strings.HasSuffix(path, "_test.go") ||
+		strings.HasSuffix(path, ".test.ts") ||
+		strings.HasSuffix(path, ".test.js") ||
+		strings.HasSuffix(path, ".test.tsx") ||
+		strings.HasSuffix(path, ".spec.ts") ||
+		strings.HasSuffix(path, ".spec.js") ||
+		strings.HasSuffix(path, "_test.py") ||
+		strings.HasSuffix(path, "_test.rs") ||
+		strings.Contains(path, "/test/") ||
+		strings.Contains(path, "/tests/") {
+		return true
+	}
+
+	// Exact-match noise files that change with everything
+	noiseExact := map[string]bool{
+		"go.mod":            true,
+		"go.sum":            true,
+		"package.json":      true,
+		"package-lock.json": true,
+		"yarn.lock":         true,
+		"pnpm-lock.yaml":    true,
+		"Cargo.lock":        true,
+		"Cargo.toml":        true,
+		"requirements.txt":  true,
+		"pyproject.toml":    true,
+		"pom.xml":           true,
+		"build.gradle":      true,
+		"README.md":         true,
+		"CHANGELOG.md":      true,
+		"HISTORY.md":        true,
+		".gitignore":        true,
+		".editorconfig":     true,
+		"Dockerfile":        true,
+		"Makefile":          true,
+	}
+
+	// Check basename for exact matches
+	base := path
+	if idx := strings.LastIndex(path, "/"); idx >= 0 {
+		base = path[idx+1:]
+	}
+	return noiseExact[base]
 }

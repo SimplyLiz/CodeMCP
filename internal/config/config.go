@@ -11,6 +11,9 @@ import (
 	"github.com/spf13/viper"
 )
 
+// DefaultDaemonPort is the default port the CKB daemon listens on.
+const DefaultDaemonPort = 9120
+
 // EnvOverride records an environment variable override that was applied
 type EnvOverride struct {
 	EnvVar    string      // e.g., "CKB_BUDGET_MAX_MODULES"
@@ -62,6 +65,18 @@ type Config struct {
 
 	// v8.2 LLM integration
 	LLM LLMConfig `json:"llm" mapstructure:"llm"`
+
+	// v8.3 Compliance auditing
+	Compliance ComplianceConfig `json:"compliance" mapstructure:"compliance"`
+}
+
+// ComplianceConfig configures compliance audit behavior (v8.3)
+type ComplianceConfig struct {
+	PIIFieldPatterns     []string `json:"piiFieldPatterns,omitempty" mapstructure:"piiFieldPatterns"`
+	AIComponentPaths     []string `json:"aiComponentPaths,omitempty" mapstructure:"aiComponentPaths"`
+	SILLevel             int      `json:"silLevel,omitempty" mapstructure:"silLevel"`
+	SpecialCategoryPaths []string `json:"specialCategoryPaths,omitempty" mapstructure:"specialCategoryPaths"`
+	DefaultFrameworks    []string `json:"defaultFrameworks,omitempty" mapstructure:"defaultFrameworks"`
 }
 
 // CoverageConfig contains coverage file configuration (v8.1)
@@ -413,7 +428,7 @@ func DefaultConfig() *Config {
 			Level:  "info",
 		},
 		Daemon: DaemonConfig{
-			Port:     9120,
+			Port:     DefaultDaemonPort,
 			Bind:     "localhost",
 			LogLevel: "info",
 			LogFile:  "", // Default: ~/.ckb/daemon/daemon.log

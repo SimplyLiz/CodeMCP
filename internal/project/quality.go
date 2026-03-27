@@ -225,10 +225,8 @@ func (qa *QualityAssessor) AssessLanguage(ctx context.Context, lang Language) (*
 
 	// Try to get metrics from database
 	if _, err := os.Stat(qa.dbPath); err == nil {
-		if err := qa.loadMetrics(ctx, quality); err != nil {
-			// Log but continue - we can still return tier info
-			_ = err
-		}
+		// Non-critical: metrics loading is best-effort — tier info is still valid without it
+		_ = qa.loadMetrics(ctx, quality)
 	}
 
 	// Assess overall quality based on metrics

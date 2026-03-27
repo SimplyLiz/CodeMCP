@@ -117,6 +117,18 @@ func (s *MCPServer) toolGetStatus(params map[string]interface{}) (*envelope.Resp
 		"Use 'searchSymbols' instead of grep for semantic code search",
 	}
 
+	// Preset-aware hints: tell the LLM what's available and what needs expansion
+	if preset == PresetCore {
+		hints = append(hints,
+			"Current preset: core (24 tools). Use 'expandToolset' to unlock more:",
+			"→ 'review' for PR review, test coverage (analyzeTestGaps, getAffectedTests), compliance audit, secrets scan",
+			"→ 'refactor' for coupling analysis, dead code, dependency cycles, refactoring suggestions",
+			"→ 'docs' for documentation coverage, ADRs, symbol-doc linking",
+		)
+	} else {
+		hints = append(hints, fmt.Sprintf("Current preset: %s (%d tools)", preset, exposedCount))
+	}
+
 	// v8.0: Add repo-awareness hints based on resolution
 	resolved, _ := repos.ResolveActiveRepo("")
 	if resolved != nil {
@@ -467,12 +479,32 @@ func (s *MCPServer) toolSearchSymbols(params map[string]interface{}) (*envelope.
 		"limit", limit,
 	)
 
+	minLines := 0
+	if v, ok := params["minLines"].(float64); ok {
+		minLines = int(v)
+	}
+	minComplexity := 0
+	if v, ok := params["minComplexity"].(float64); ok {
+		minComplexity = int(v)
+	}
+	var excludePatterns []string
+	if v, ok := params["excludePatterns"].([]interface{}); ok {
+		for _, p := range v {
+			if ps, ok := p.(string); ok {
+				excludePatterns = append(excludePatterns, ps)
+			}
+		}
+	}
+
 	ctx := context.Background()
 	opts := query.SearchSymbolsOptions{
-		Query: queryStr,
-		Scope: scope,
-		Kinds: kinds,
-		Limit: limit,
+		Query:           queryStr,
+		Scope:           scope,
+		Kinds:           kinds,
+		Limit:           limit,
+		MinLines:        minLines,
+		MinComplexity:   minComplexity,
+		ExcludePatterns: excludePatterns,
 	}
 
 	searchResp, err := s.engine().SearchSymbols(ctx, opts)
@@ -501,11 +533,27 @@ func (s *MCPServer) toolSearchSymbols(params map[string]interface{}) (*envelope.
 		}
 
 		if sym.Location != nil {
-			symbolInfo["location"] = map[string]interface{}{
+			loc := map[string]interface{}{
 				"fileId":      sym.Location.FileId,
 				"startLine":   sym.Location.StartLine,
 				"startColumn": sym.Location.StartColumn,
 			}
+			if sym.Location.EndLine > 0 {
+				loc["endLine"] = sym.Location.EndLine
+			}
+			if sym.Location.EndColumn > 0 {
+				loc["endColumn"] = sym.Location.EndColumn
+			}
+			symbolInfo["location"] = loc
+		}
+
+		// Body metrics from tree-sitter enrichment
+		if sym.Lines > 0 {
+			symbolInfo["lines"] = sym.Lines
+		}
+		if sym.Cyclomatic > 0 {
+			symbolInfo["cyclomatic"] = sym.Cyclomatic
+			symbolInfo["cognitive"] = sym.Cognitive
 		}
 
 		// Add v5.2 ranking signals

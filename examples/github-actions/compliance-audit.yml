@@ -1,0 +1,171 @@
+# CKB Compliance Audit Workflow
+# Audits PRs against regulatory frameworks (GDPR, PCI DSS, HIPAA, SOC 2, etc.)
+# Posts a compliance report as a PR comment and uploads SARIF to Code Scanning.
+#
+# Available frameworks (20 total):
+#   gdpr, ccpa, iso27701, eu-ai-act, iso27001, nist-800-53, owasp-asvs, soc2,
+#   pci-dss, hipaa, dora, nis2, fda-21cfr11, eu-cra, sbom-slsa, iec61508,
+#   iso26262, do-178c, misra, iec62443
+#
+# Usage: Copy to .github/workflows/compliance-audit.yml
+#        Edit FRAMEWORKS to match your regulatory requirements.
+
+name: CKB Compliance Audit
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+
+env:
+  # ---- Customize these for your organization ----
+  FRAMEWORKS: "gdpr,iso27001,owasp-asvs"     # Comma-separated framework IDs
+  MIN_CONFIDENCE: "0.7"                        # Filter low-confidence findings (0.0-1.0)
+  FAIL_ON: "error"                             # Severity gate: error, warning, none
+  SIL_LEVEL: "2"                               # Safety integrity level (1-4), for IEC 61508/ISO 26262/DO-178C
+
+jobs:
+  compliance:
+    name: Compliance Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install CKB
+        run: npm install -g @tastehub/ckb
+
+      - name: Restore CKB cache
+        uses: actions/cache@v4
+        with:
+          path: .ckb/
+          key: ckb-${{ runner.os }}-${{ hashFiles('**/*.go', '**/*.ts', '**/*.py') }}
+          restore-keys: |
+            ckb-${{ runner.os }}-
+
+      - name: Initialize and index
+        run: |
+          ckb init
+          ckb index 2>/dev/null || echo "Indexing skipped (no supported indexer)"
+
+      - name: Run compliance audit (JSON)
+        id: audit
+        run: |
+          set +e
+          ckb audit compliance \
+            --framework="${FRAMEWORKS}" \
+            --min-confidence="${MIN_CONFIDENCE}" \
+            --sil-level="${SIL_LEVEL}" \
+            --ci \
+            --fail-on="${FAIL_ON}" \
+            --format=json > compliance.json 2>&1
+          EXIT_CODE=$?
+          set -e
+
+          echo "verdict=$(jq -r '.verdict // "unknown"' compliance.json)" >> "$GITHUB_OUTPUT"
+          echo "score=$(jq -r '.score // 0' compliance.json)" >> "$GITHUB_OUTPUT"
+          echo "findings=$(jq -r '.summary.totalFindings // 0' compliance.json)" >> "$GITHUB_OUTPUT"
+          echo "errors=$(jq -r '.summary.bySeverity.error // 0' compliance.json)" >> "$GITHUB_OUTPUT"
+          echo "warnings=$(jq -r '.summary.bySeverity.warning // 0' compliance.json)" >> "$GITHUB_OUTPUT"
+          echo "exit_code=${EXIT_CODE}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate markdown report
+        run: |
+          ckb audit compliance \
+            --framework="${FRAMEWORKS}" \
+            --min-confidence="${MIN_CONFIDENCE}" \
+            --sil-level="${SIL_LEVEL}" \
+            --format=markdown > compliance-report.md 2>/dev/null || true
+
+      - name: Post PR comment
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          MARKDOWN=$(cat compliance-report.md 2>/dev/null || echo "Compliance audit failed to generate output.")
+          MARKER="<!-- ckb-compliance-marker -->"
+          BODY="${MARKER}
+          ${MARKDOWN}"
+
+          # Upsert: update existing comment or create new one
+          COMMENT_ID=$(gh api \
+            "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" \
+            --jq ".[] | select(.body | contains(\"${MARKER}\")) | .id" \
+            2>/dev/null | head -1)
+
+          if [ -n "${COMMENT_ID}" ]; then
+            gh api \
+              "repos/${GH_REPO}/issues/comments/${COMMENT_ID}" \
+              -X PATCH \
+              -f body="${BODY}"
+          else
+            gh api \
+              "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" \
+              -f body="${BODY}"
+          fi
+
+      - name: Upload SARIF
+        if: always()
+        continue-on-error: true
+        run: |
+          ckb audit compliance \
+            --framework="${FRAMEWORKS}" \
+            --min-confidence="${MIN_CONFIDENCE}" \
+            --format=sarif > compliance.sarif 2>/dev/null
+
+      - name: Upload SARIF to GitHub Code Scanning
+        if: always() && hashFiles('compliance.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: compliance.sarif
+          category: ckb-compliance
+
+      - name: Summary
+        env:
+          VERDICT: ${{ steps.audit.outputs.verdict }}
+          SCORE: ${{ steps.audit.outputs.score }}
+          FINDINGS: ${{ steps.audit.outputs.findings }}
+          ERRORS: ${{ steps.audit.outputs.errors }}
+          WARNINGS: ${{ steps.audit.outputs.warnings }}
+        run: |
+          echo "### CKB Compliance Audit" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Verdict | ${VERDICT} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Score | ${SCORE}/100 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Findings | ${FINDINGS} (${ERRORS} errors, ${WARNINGS} warnings) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Frameworks | ${FRAMEWORKS} |" >> "$GITHUB_STEP_SUMMARY"
+
+          # Framework coverage table
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "#### Framework Coverage" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Framework | Checks | Passed | Score |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----------|--------|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          jq -r '.coverage[] | "| \(.name) | \(.totalChecks) | \(.passed) | \(.score)% |"' compliance.json >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+
+      - name: Fail on compliance verdict
+        env:
+          AUDIT_EXIT_CODE: ${{ steps.audit.outputs.exit_code }}
+        run: |
+          if [ "${AUDIT_EXIT_CODE}" != "0" ]; then
+            echo "::error::Compliance audit failed (exit code ${AUDIT_EXIT_CODE})"
+            exit "${AUDIT_EXIT_CODE}"
+          fi

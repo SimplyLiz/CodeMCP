@@ -192,6 +192,15 @@ func TestIsLikelyFalsePositive(t *testing.T) {
 		{"// TODO: replace this placeholder", "placeholder", true},
 		{"password = 'changeme'", "changeme", true},
 		{"api_key = 'sk_live_realkey123'", "sk_live_realkey123", false},
+		// Variable/attribute references are not secrets
+		{"api_key=self._settings.openai_api_key", "self._settings.openai_api_key", true},
+		{"apiKey: config.apiKey,", "config.apiKey", true},
+		{"token = os.environ['TOKEN']", "os.environ", true},
+		{"secret = process.env.SECRET", "process.env.SECRET", true},
+		{"key := viper.GetString(\"api_key\")", "viper.GetString", true},
+		{"api_key=settings.api_key", "settings.api_key", true},
+		// Real secrets should still be caught
+		{"api_key = 'sk_live_abc123def456ghi789'", "sk_live_abc123def456ghi789", false},
 	}
 
 	for _, tc := range testCases {
@@ -202,6 +211,70 @@ func TestIsLikelyFalsePositive(t *testing.T) {
 					tc.line, tc.secret, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestVarRefRegex(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		// Dotted attribute chains
+		{"self._settings.openai_api_key", true},
+		{"config.apiKey", true},
+		{"app.config.secret", true},
+		// Python os.environ / os.getenv
+		{"os.environ", true},
+		{"os.getenv", true},
+		// Node process.env
+		{"process.env.SECRET", true},
+		{"process.env.API_KEY", true},
+		// Common config accessors
+		{"viper.GetString", true},
+		{"config.Get", true},
+		{"cfg.Secret", true},
+		{"settings.api_key", true},
+		{"conf.token", true},
+		// Not variable references (actual secrets)
+		{"sk_live_abc123def456", false},
+		{"ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", false},
+		{"AKIAIOSFODNN7EXAMPLE", false},
+		{"just_a_plain_string", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := varRefRe.MatchString(tt.input)
+			if got != tt.want {
+				t.Errorf("varRefRe.MatchString(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestScanFile_DocFileHigherEntropy(t *testing.T) {
+	// Create a temp repo with a markdown file containing a low-entropy "secret"
+	dir := t.TempDir()
+	docFile := filepath.Join(dir, "README.md")
+	// This has a generic_api_key-style pattern but low entropy (repeated chars)
+	// Should NOT be flagged in a doc file due to higher entropy threshold
+	content := "api_key = aabbccddaabbccddaabb\n"
+	if err := os.WriteFile(docFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	s := NewScanner(dir, slog.Default())
+	result, err := s.Scan(context.Background(), ScanOptions{
+		Scope: ScopeWorkdir,
+		Paths: []string{"README.md"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Low-entropy value in a doc file should produce no findings
+	if len(result.Findings) > 0 {
+		t.Errorf("expected no findings for low-entropy value in doc file, got %d: %+v",
+			len(result.Findings), result.Findings)
 	}
 }
 
@@ -934,6 +1007,41 @@ func main() {
 	}
 }
 
+func TestScannerShellInterpolationNotFlagged(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "secrets-interp-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Docker Compose style env-var interpolation — should NOT be flagged
+	compose := filepath.Join(tmpDir, "docker-compose.yml")
+	content := `services:
+  db:
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ancs}:${DB_PASSWORD:?must be set}@postgres:5432/mydb
+      REDIS_URL: redis://:${REDIS_PASS}@redis:6379/0
+      MONGO_URL: mongodb://admin:${MONGO_PASSWORD:-changeme}@mongo:27017/app
+`
+	if err := os.WriteFile(compose, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to write file: %v", err)
+	}
+
+	scanner := NewScanner(tmpDir, slog.Default())
+	result, err := scanner.Scan(context.Background(), ScanOptions{
+		RepoRoot:       tmpDir,
+		Scope:          ScopeWorkdir,
+		ApplyAllowlist: false,
+	})
+	if err != nil {
+		t.Fatalf("Scan failed: %v", err)
+	}
+
+	for _, f := range result.Findings {
+		t.Errorf("Unexpected finding: %s at %s:%d — captured: %s", f.Rule, f.File, f.Line, f.Match)
+	}
+}
+
 func TestScannerWithPathFilter(t *testing.T) {
 	// Create temp directory
 	tmpDir, err := os.MkdirTemp("", "secrets-test-*")
@@ -1248,5 +1356,67 @@ func TestGenerateHash(t *testing.T) {
 	hash3 := GenerateHash(finding2)
 	if hash == hash3 {
 		t.Error("Different findings should produce different hashes")
+	}
+}
+
+func TestScanFile_MarkdownProseNotFlagged(t *testing.T) {
+	// Create a temp markdown file with prose that contains trigger words
+	tmpDir := t.TempDir()
+	mdFile := filepath.Join(tmpDir, "README.md")
+	content := `# Project
+
+## Features
+
+- User authentication (Magic Links, GitHub OAuth)
+- Token tracking with Row-Level Security
+- Usage metering for Cloud tier billing
+
+## Configuration
+
+Set your secret configuration in the dashboard.
+The password policy requires 12+ characters.
+`
+	if err := os.WriteFile(mdFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	scanner := NewScanner(tmpDir, slog.Default())
+	findings, err := scanner.scanFile(mdFile, 3.0)
+	if err != nil {
+		t.Fatalf("scanFile failed: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for markdown prose, got %d:", len(findings))
+		for _, f := range findings {
+			t.Logf("  line %d: %s (%s)", f.Line, f.Rule, f.RawMatch)
+		}
+	}
+}
+
+func TestIsDocumentationFile(t *testing.T) {
+	testCases := []struct {
+		path string
+		want bool
+	}{
+		{"README.md", true},
+		{"docs/guide.markdown", true},
+		{"CHANGELOG", true},
+		{"notes.txt", true},
+		{"docs/api.rst", true},
+		{"docs/guide.adoc", true},
+		{"main.go", false},
+		{"config.json", false},
+		{"LICENSE", true},
+		{"CONTRIBUTING", true},
+		{"AUTHORS", true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.path, func(t *testing.T) {
+			got := isDocumentationFile(tc.path)
+			if got != tc.want {
+				t.Errorf("isDocumentationFile(%q) = %v, want %v", tc.path, got, tc.want)
+			}
+		})
 	}
 }
