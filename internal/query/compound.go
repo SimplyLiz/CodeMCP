@@ -1936,23 +1936,32 @@ func (e *Engine) BatchGet(ctx context.Context, opts BatchGetOptions) (*BatchGetR
 
 	wg.Wait()
 
-	// Populate reference/caller/callee counts if requested
+	// Populate reference/caller/callee counts if requested (parallel)
 	if opts.IncludeCounts && e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
+		var countWg sync.WaitGroup
+		countSem := make(chan struct{}, 10)
 		for symId, info := range results {
-			if refs, err := e.FindReferences(ctx, FindReferencesOptions{SymbolId: symId, Limit: 500}); err == nil {
-				info.ReferenceCount = refs.TotalCount
-			}
-			if cg, err := e.GetCallGraph(ctx, CallGraphOptions{SymbolId: symId, Direction: "both", Depth: 1}); err == nil {
-				for _, n := range cg.Nodes {
-					switch n.Role {
-					case "caller":
-						info.CallerCount++
-					case "callee":
-						info.CalleeCount++
+			countWg.Add(1)
+			go func(id string, si *SymbolInfo) {
+				defer countWg.Done()
+				countSem <- struct{}{}
+				defer func() { <-countSem }()
+				if refs, err := e.FindReferences(ctx, FindReferencesOptions{SymbolId: id, Limit: 500}); err == nil {
+					si.ReferenceCount = refs.TotalCount
+				}
+				if cg, err := e.GetCallGraph(ctx, CallGraphOptions{SymbolId: id, Direction: "both", Depth: 1}); err == nil {
+					for _, n := range cg.Nodes {
+						switch n.Role {
+						case "caller":
+							si.CallerCount++
+						case "callee":
+							si.CalleeCount++
+						}
 					}
 				}
-			}
+			}(symId, info)
 		}
+		countWg.Wait()
 	}
 
 	// Build provenance

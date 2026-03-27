@@ -284,9 +284,9 @@ func (s *MCPServer) toolGetSymbolGraph(params map[string]interface{}) (*envelope
 		}
 	}
 
-	// Enrich nodes with complexity from tree-sitter
+	// Enrich nodes with complexity from tree-sitter (reuse single analyzer)
 	if complexity.IsAvailable() {
-		analyzer := complexity.NewAnalyzer()
+		analyzer := complexity.NewAnalyzer() // Single instance for all files in this call
 		// Group nodes by file
 		fileNodes := make(map[string][]int)
 		for i, n := range allNodes {

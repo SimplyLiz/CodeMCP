@@ -2,6 +2,134 @@
 
 All notable changes to CKB will be documented in this file.
 
+## [8.3.0] - 2026-03-27
+
+### Added
+
+#### Compliance Audit (`ckb audit compliance`)
+Full regulatory compliance auditing with 131 checks across 20 frameworks:
+
+```bash
+ckb audit compliance --framework=gdpr,iso27001    # Specific frameworks
+ckb audit compliance --framework=all              # All 20 frameworks
+ckb audit compliance --recommend                  # Auto-detect applicable frameworks
+ckb audit compliance --framework=gdpr --ci        # CI mode with exit codes
+```
+
+**20 frameworks:** GDPR, CCPA, ISO 27701, EU AI Act, ISO 27001, NIST 800-53, OWASP ASVS, SOC 2, PCI DSS, HIPAA, DORA, NIS2, FDA 21 CFR Part 11, EU CRA, SBOM/SLSA, DO-178C, IEC 61508, ISO 26262, MISRA C, IEC 62443.
+
+**Cross-framework mapping:** A single finding (e.g., hardcoded credential) automatically surfaces all applicable regulations with specific clause references and CWE IDs.
+
+**Framework recommendation (`--recommend`):** Scans codebase for indicators (HTTP handlers, PII fields, database imports, payment SDKs) and recommends applicable frameworks with confidence scores.
+
+**Output formats:** human, json, markdown, sarif.
+
+**MCP tool:** `auditCompliance` — runs compliance audit via MCP using the persistent SCIP index.
+
+#### MCP Tools: `listSymbols` and `getSymbolGraph`
+
+**`listSymbols`** — Bulk symbol listing without search query:
+```
+listSymbols(scope: "src/services/", kinds: ["function"], minLines: 30, sortBy: "complexity")
+```
+Returns complete symbol inventory with body ranges (`lines`, `endLine`) and complexity metrics (`cyclomatic`, `cognitive`). Replaces exploring 40 files one-by-one.
+
+**`getSymbolGraph`** — Batch call graph for multiple symbols:
+```
+getSymbolGraph(symbolIds: [...30], depth: 1, direction: "callers")
+```
+Returns deduplicated nodes and edges with complexity per node. One call replaces 30 serial `getCallGraph` calls.
+
+#### `searchSymbols` Enhancements
+
+- **Complexity metrics:** Results now include `lines`, `cyclomatic`, `cognitive` per symbol via tree-sitter enrichment
+- **Server-side filtering:** `minLines`, `minComplexity`, `excludePatterns` params — filter 80% of noise server-side instead of client-side
+- **`batchGet` with `includeCounts`:** Returns `referenceCount`, `callerCount`, `calleeCount` per symbol (parallel SCIP lookups)
+
+#### Symbol Body Ranges (`startLine`, `endLine`, `lines`)
+
+`searchSymbols`, `explore` keySymbols, and `getSymbolGraph` now return full body ranges via tree-sitter enrichment. Consumers no longer need to read source files for brace-matching.
+
+#### Explore keySymbols Improvements
+
+- Functions rank above struct fields (behavioral analysis priority)
+- Tree-sitter supplement fills in functions when SCIP returns only types
+- Per-symbol `cyclomatic` and `cognitive` complexity
+
+#### `getFileComplexity` in Refactor Preset
+
+Previously only available in `full` preset (96 tools). Now in `refactor` (39 tools).
+
+### Fixed
+
+#### Bug-Pattern False Positives (42 → 0)
+- **defer-in-loop:** Recognize `func(){}()` closure pattern as correct (defer fires per iteration)
+- **discarded-error:** Skip closure bodies in IIFE patterns; add `singleReturnNew` allowlist (NewScanner, NewReader, etc.); add `noErrorMethods` (Scan, WriteHeader, WriteJSON, WriteError, BadRequest, NotFound, InternalError)
+- **missing-defer-close:** Remove NewReader/NewWriter from resource-opening functions (bufio wrappers don't need Close)
+- **nil-after-deref:** 30-line gap threshold filters cross-scope false matches
+- **shadowed-err:** Only flag when outer `err` is standalone function-body-level `:=`; treat if/for/switch initializer `:=` as scoped
+
+All fixes use `FindNodesSkipping` — scope-aware tree-sitter node search that stops recursion at `func_literal` boundaries.
+
+#### Secrets Scanner
+- Shell variable interpolation (`${VAR:-default}`, `${VAR:?error}`) in Docker Compose URLs no longer flagged as password_in_url
+- Shell environment leak: `env -i` wrapper prevents user profile (.zshrc) from corrupting subprocess output
+
+#### Test-Gap Detection
+- `vi.mock`/`jest.mock` module-level mocking recognized — functions covered by module mocks no longer flagged
+- Barrel/re-export files (`export * from '...'`) skipped — pure re-exports have no logic to test
+
+#### Coupling Check
+- Expanded noise filter: test files, dependency manifests (go.mod, package.json), documentation, generated directories (dist/, build/, l10n/, __generated__/)
+- Generated file suffixes: .pb.go, .pb.h, .pb.cc, .pb.ts, _grpc.pb.go, _pb2.py, .g.dart, .freezed.dart, .mocks.dart, _string.go, wire_gen.go, _mock.go, .bundle.js, .arb, .d.ts
+- Flutter l10n false positive fixed (#185): .arb files excluded from coupling analysis
+
+#### Compliance Audit FP Reduction (11,356 → ~50 findings)
+- Deep-nesting: threshold 4→6, reset at function boundaries, 3-per-file cap
+- Dead-code: skip Go files (handled by AST-based bug-patterns)
+- Dynamic-memory: skip garbage-collected languages
+- Global-state: exclude regexp.MustCompile, errors.New, sync primitives
+- Swallowed-errors: remove overly broad `_ = obj.Method()` pattern
+- Eval-injection: skip Go and .github/ directories
+- Insecure-random: inline import scanning for crypto/rand vs math/rand; skip import lines
+- Path-traversal: skip filepath.Join, HasPrefix comparisons, testdata/
+- Non-FIPS-crypto: skip strings.Contains pattern matching
+- SQL injection (PCI DSS): add parameterized query detection, #nosec support
+- TODO detection: case-sensitive TEMP, skip "Stub:/Placeholder:/Note:" comments, require comment context
+
+#### FTS Empty Query Bug
+`FTS.Search("")` returned empty results (early return for empty query). Added `listAll()` method that queries `symbols_fts_content` directly. Fixes `listSymbols` and `searchSymbols("")` returning 0 on MCP.
+
+#### MCP Server Warmup
+Changed warmup from `SearchSymbols("", 1)` (cached empty results before SCIP loaded) to `RefreshFTS()` (populates FTS from SCIP without caching search results).
+
+#### IEC 61508 Tree-Sitter Crash
+`complexityExceededCheck` bypassed thread-safe `AnalyzeFileComplexity()` wrapper, calling `ComplexityAnalyzer.AnalyzeFile()` directly — SIGABRT when concurrent checks hit CGO.
+
+#### Daemon API Endpoints (7 stubs → implementations)
+- Schedule list/detail/cancel via scheduler.ListSchedules()
+- Repo list/detail via repos.LoadRegistry()
+- Federation list/detail via federation.List()/LoadConfig()
+- CLI daemon status: HTTP health query with version/uptime display
+
+#### Query Engine Stubs (4 → implementations)
+- Ownership refresh: CODEOWNERS parsing + git-blame analysis
+- Hotspot refresh: git churn data with 90-day window
+- Responsibility refresh: module responsibility extraction
+- Ownership history: storage table query
+
+### Changed
+- Score calculation: floor is 0 (not 20), per-rule deduction cap of 10 documented
+- `LikelyReturnsError`: removed "Scan" from error patterns, added `singleReturnNew` and `noErrorMethods` maps
+- Generated file detection: 20+ new patterns (protobuf, Go generators, Dart/Flutter, GraphQL, bundlers)
+- Per-check findings cap (50 max) in compliance engine
+- Compliance config: `DefaultDaemonPort` constant replaces hardcoded 9120
+
+### Performance
+- `batchGet` with `includeCounts`: parallel reference/caller/callee lookups (10-concurrent semaphore)
+- FTS multiplier: 2x → 10x when filters active (handles SCIP struct field flooding)
+- MCP index warmup: background `RefreshFTS()` on engine init
+
 ## [8.2.0] - 2026-03-21
 
 ### Added
