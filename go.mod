@@ -6,7 +6,7 @@ require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/google/uuid v1.6.0
 	github.com/klauspost/compress v1.18.2
-	github.com/pelletier/go-toml/v2 v2.2.4
+	github.com/pelletier/go-toml/v2 v2.3.0
 	github.com/smacker/go-tree-sitter v0.0.0-20240827094217-dd81d9e9be82
 	github.com/sourcegraph/go-diff v0.7.0
 	github.com/sourcegraph/scip v0.6.1
@@ -15,7 +15,7 @@ require (
 	golang.org/x/crypto v0.49.0
 	google.golang.org/protobuf v1.36.10
 	gopkg.in/yaml.v3 v3.0.1
-	modernc.org/sqlite v1.46.2
+	modernc.org/sqlite v1.48.0
 )
 
 require (
