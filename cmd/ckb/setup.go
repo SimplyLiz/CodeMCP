@@ -844,7 +844,7 @@ and intent. Every source line you read costs tokens — read only what CKB says 
 CKB runs 15 deterministic checks with AST rules, SCIP index, and git history.
 It is structurally sound but semantically blind:
 
-- **Logic errors**: wrong conditions, off-by-one, incorrect algorithm
+- **Logic errors**: wrong conditions (` + "`" + `>` + "`" + ` vs ` + "`" + `>=` + "`" + `), off-by-one, incorrect algorithm
 - **Business logic**: domain-specific mistakes CKB has no context for
 - **Design fitness**: wrong abstraction, leaky interface, coupling that metrics miss
 - **Input validation**: missing bounds checks, nil guards outside AST patterns
@@ -860,18 +860,18 @@ so pre-existing issues interacting with new code won't surface.
 ## Phase 1: Structural scan (~1k tokens into context)
 
 ` + "```" + `bash
-ckb review --base=main --format=json 2>/dev/null
+ckb review --base=main --format=json --compact 2>/dev/null
 ` + "```" + `
 
 If a PR number was given:
 ` + "```" + `bash
 BASE=$(gh pr view $ARGUMENTS --json baseRefName -q .baseRefName)
-ckb review --base=$BASE --format=json 2>/dev/null
+ckb review --base=$BASE --format=json --compact 2>/dev/null
 ` + "```" + `
 
 If "staged" was given:
 ` + "```" + `bash
-ckb review --staged --format=json 2>/dev/null
+ckb review --staged --format=json --compact 2>/dev/null
 ` + "```" + `
 
 Parse the JSON output to extract:
@@ -886,10 +886,10 @@ Parse the JSON output to extract:
 - ` + "`" + `reviewers[]` + "`" + ` — suggested reviewers with expertise areas
 - ` + "`" + `healthReport` + "`" + ` — degraded/improved file counts
 
-From checks, build three lists:
+From the output, build three lists:
 - **SKIP**: passed checks — don't touch these files or topics
 - **INVESTIGATE**: warned/failed checks — these are your review scope
-- **READ**: files with warn/fail findings — the only files you'll read
+- **READ**: hotspot files + files with warn/fail findings — the only files you'll read
 
 **Early exit**: Skip LLM ONLY when ALL conditions are met:
 1. Score >= 90 (not 80 — per-check caps hide warnings at 80)
@@ -917,7 +917,7 @@ Read only the changed hunks via ` + "`" + `git diff main...HEAD -- <file>` + "`"
 **For each file you read, look for exactly:**
 - Logic errors (wrong condition, off-by-one, nil deref, race condition)
 - Resource leaks (file handles, connections, goroutines not closed on error paths)
-- Security issues (injection, auth bypass, secrets CKB's patterns missed)
+- Security issues (injection, auth bypass, secrets CKB's 26 patterns missed)
 - Design problems (wrong abstraction, leaky interface, coupling metrics don't catch)
 - Missing edge cases the tests don't cover
 - Incomplete refactoring (callers that should have changed but didn't)
