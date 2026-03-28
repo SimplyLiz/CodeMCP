@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"bufio"
+	"context"
 	stderrors "errors"
 	"fmt"
 	"io"
@@ -95,6 +96,18 @@ func NewMCPServer(version string, engine *query.Engine, logger *slog.Logger) *MC
 	// Wire up metrics persistence if database is available
 	if engine != nil && engine.DB() != nil {
 		SetMetricsDB(engine.DB())
+	}
+
+	// Warm up the FTS index in the background. This populates FTS from SCIP
+	// if needed, so the first searchSymbols/listSymbols call doesn't hit empty FTS.
+	// We call RefreshFTS instead of SearchSymbols to avoid caching empty results
+	// that would mask SCIP data loaded after warmup.
+	if engine != nil {
+		go func() {
+			warmCtx, warmCancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer warmCancel()
+			_ = engine.RefreshFTS(warmCtx)
+		}()
 	}
 
 	// Store initial engine in cache for auto-resolution

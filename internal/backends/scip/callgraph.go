@@ -255,7 +255,8 @@ func buildFunctionRanges(doc *Document) map[string]lineRange {
 //   - "scip-go go ckb/internal/query Engine#" → type (no "()")
 //   - "scip-go go ckb/internal/query Engine#logger." → field (no "()")
 //
-// TODO: Switch to using sym.Kind when scip-go is updated to populate it correctly.
+// Note: We infer function-ness from the symbol ID because scip-go does not
+// reliably populate sym.Kind for all symbol types.
 func isFunctionSymbol(symbolId string) bool {
 	return strings.Contains(symbolId, "().")
 }

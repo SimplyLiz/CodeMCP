@@ -49,7 +49,9 @@ func (e *Engine) checkBugPatterns(ctx context.Context, files []string, opts Revi
 			goFiles = append(goFiles, f)
 		}
 	}
+	skippedFiles := 0
 	if len(goFiles) > 20 {
+		skippedFiles = len(goFiles) - 20
 		goFiles = goFiles[:20]
 	}
 
@@ -106,12 +108,39 @@ func (e *Engine) checkBugPatterns(ctx context.Context, files []string, opts Revi
 		status = "warn"
 		summary = fmt.Sprintf("%d bug pattern(s) detected", len(findings))
 	}
+	if skippedFiles > 0 {
+		summary += fmt.Sprintf(" (%d file(s) over cap, not scanned)", skippedFiles)
+	}
+
+	// Build per-rule summary for Details
+	ruleCounts := make(map[string]int)
+	for _, f := range findings {
+		ruleCounts[f.RuleID]++
+	}
+	type bugPatternSummary struct {
+		RuleID string `json:"ruleId"`
+		Count  int    `json:"count"`
+	}
+	var ruleSummaries []bugPatternSummary
+	for rule, count := range ruleCounts {
+		ruleSummaries = append(ruleSummaries, bugPatternSummary{RuleID: rule, Count: count})
+	}
+
+	details := map[string]interface{}{
+		"filesScanned": len(goFiles),
+		"filesSkipped": skippedFiles,
+		"findings":     findings,
+	}
+	if len(ruleSummaries) > 0 {
+		details["byRule"] = ruleSummaries
+	}
 
 	return ReviewCheck{
 		Name:     "bug-patterns",
 		Status:   status,
 		Severity: "warning",
 		Summary:  summary,
+		Details:  details,
 		Duration: time.Since(start).Milliseconds(),
 	}, findings
 }
@@ -123,7 +152,9 @@ func checkDeferInLoop(root *sitter.Node, source []byte, file string) []ReviewFin
 	var findings []ReviewFinding
 	forNodes := complexity.FindNodes(root, []string{"for_statement", "for_range_statement"})
 	for _, forNode := range forNodes {
-		defers := complexity.FindNodes(forNode, []string{"defer_statement"})
+		// Skip func_literal children — a defer inside func(){...}() within a
+		// loop is the correct pattern (defer fires at closure return, once per iteration).
+		defers := complexity.FindNodesSkipping(forNode, []string{"defer_statement"}, []string{"func_literal"})
 		for _, d := range defers {
 			findings = append(findings, ReviewFinding{
 				Check:      "bug-patterns",
@@ -363,9 +394,17 @@ func checkNilAfterDeref(root *sitter.Node, source []byte, file string) []ReviewF
 		}
 		walk(body)
 
-		// Report cases where deref comes before nil check
+		// Report cases where deref comes before nil check.
+		// Skip cases where both the deref and nil check involve re-declared
+		// variables (separate := in different scopes — flat name tracking
+		// can't distinguish them).
 		for varName, derefLine := range derefLines {
 			if nilLine, ok := nilCheckLines[varName]; ok && derefLine < nilLine {
+				// Skip if the gap is large (>30 lines) — likely different scopes
+				// with re-declared variables that our flat walk conflates.
+				if nilLine-derefLine > 30 {
+					continue
+				}
 				findings = append(findings, ReviewFinding{
 					Check:      "bug-patterns",
 					Severity:   "warning",
@@ -446,9 +485,19 @@ func checkShadowedErr(root *sitter.Node, source []byte, file string) []ReviewFin
 					// Check if any of the declared vars is "err"
 					for _, part := range strings.Split(leftText, ",") {
 						if strings.TrimSpace(part) == "err" {
+							// If the := is inside an if/for/switch initializer,
+							// its scope is limited to that statement — treat it as
+							// depth+1 so it won't trigger on inner re-declarations.
+							d := depth
+							if node.Parent() != nil {
+								pt := node.Parent().Type()
+								if pt == "if_statement" || pt == "for_statement" || pt == "switch_statement" {
+									d++
+								}
+							}
 							errDecls = append(errDecls, errDecl{
 								line:  int(node.StartPoint().Row) + 1,
-								depth: depth,
+								depth: d,
 							})
 							break
 						}
@@ -461,10 +510,13 @@ func checkShadowedErr(root *sitter.Node, source []byte, file string) []ReviewFin
 		}
 		walk(body, 0)
 
-		// Report inner declarations that shadow outer ones
+		// Report inner declarations that shadow outer ones.
+		// Only flag when the outer declaration is at depth 0 (function body level).
+		// Inner err := inside nested if-blocks is idiomatic Go (if err := f(); err != nil {})
+		// and doesn't cause real shadowing bugs.
 		for i, inner := range errDecls {
 			for j, outer := range errDecls {
-				if i != j && inner.depth > outer.depth && inner.line > outer.line {
+				if i != j && inner.depth > outer.depth && inner.line > outer.line && outer.depth == 0 {
 					findings = append(findings, ReviewFinding{
 						Check:      "bug-patterns",
 						Severity:   "info",
@@ -506,10 +558,22 @@ func checkDiscardedError(root *sitter.Node, source []byte, file string) []Review
 		}
 
 		// Find discarded calls in this function body.
-		exprStmts := complexity.FindNodes(body, []string{"expression_statement"})
+		// Skip func_literal children — closures are processed as separate funcBodies above,
+		// so we must not recurse into them here (their internal calls are properly handled).
+		exprStmts := complexity.FindNodesSkipping(body, []string{"expression_statement"}, []string{"func_literal"})
 		for _, stmt := range exprStmts {
-			calls := complexity.FindNodes(stmt, []string{"call_expression"})
+			// Also skip func_literals when finding calls — an IIFE like func(){...}()
+			// is a call_expression containing a func_literal; we must not recurse into
+			// the closure body and flag its internal (properly handled) calls.
+			calls := complexity.FindNodesSkipping(stmt, []string{"call_expression"}, []string{"func_literal"})
 			for _, call := range calls {
+				// Skip nested calls whose return value IS consumed (e.g., Register(NewFramework()))
+				// A call is "discarded" only if its parent is the expression_statement itself,
+				// not if it's inside an argument_list of another call.
+				if call.Parent() != nil && call.Parent().Type() == "argument_list" {
+					continue
+				}
+
 				fnNode := call.ChildByFieldName("function")
 				if fnNode == nil {
 					continue
@@ -521,6 +585,13 @@ func checkDiscardedError(root *sitter.Node, source []byte, file string) []Review
 				if fnNode.Type() == "selector_expression" {
 					receiver, method := splitSelector(fullName)
 					if isInfallibleCall(receiver, method, varTypes) {
+						continue
+					}
+					// Suppress standalone .Close() calls — discarding Close() errors on
+					// read-only file handles is standard Go convention (e.g., f.Close()
+					// after os.Open for reading). Write-path Close errors are caught by
+					// the missing-defer-close rule instead.
+					if method == "Close" {
 						continue
 					}
 				}
@@ -679,8 +750,11 @@ func checkMissingDeferClose(root *sitter.Node, source []byte, file string) []Rev
 	// Resource-opening function names
 	openFuncs := map[string]bool{
 		"Open": true, "OpenFile": true, "Create": true,
-		"Dial": true, "DialContext": true, "NewReader": true,
-		"NewWriter": true, "NewScanner": true, "NewFile": true,
+		"Dial": true, "DialContext": true,
+		"NewFile": true,
+		// Note: NewReader/NewWriter (bufio) wrap existing readers and don't implement io.Closer.
+		// NewScanner (bufio.Scanner) also doesn't implement io.Closer.
+		// Only flag resource-owning constructors that allocate OS handles.
 	}
 
 	funcBodies := complexity.FindNodes(root, []string{"function_declaration", "method_declaration", "func_literal"})
@@ -690,8 +764,9 @@ func checkMissingDeferClose(root *sitter.Node, source []byte, file string) []Rev
 			continue
 		}
 
-		// Find short_var_declarations with resource-opening calls
-		shortDecls := complexity.FindNodes(body, []string{"short_var_declaration"})
+		// Find short_var_declarations with resource-opening calls.
+		// Skip func_literal children — closures are processed separately as funcBodies.
+		shortDecls := complexity.FindNodesSkipping(body, []string{"short_var_declaration"}, []string{"func_literal"})
 		for _, decl := range shortDecls {
 			right := decl.ChildByFieldName("right")
 			if right == nil {
@@ -727,7 +802,8 @@ func checkMissingDeferClose(root *sitter.Node, source []byte, file string) []Rev
 				// Check if there's a defer <varName>.Close() in the same function body
 				bodyText := string(source[body.StartByte():body.EndByte()])
 				hasClose := strings.Contains(bodyText, "defer "+varName+".Close()") ||
-					strings.Contains(bodyText, "defer func() {") // common pattern with anon func
+					strings.Contains(bodyText, "defer func() {") || // common pattern with anon func
+					strings.Contains(bodyText, varName+".Close()") // inline close at end of loop/block
 				if !hasClose {
 					findings = append(findings, ReviewFinding{
 						Check:      "bug-patterns",

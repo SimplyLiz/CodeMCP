@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -35,7 +36,10 @@ func (e *Engine) batchFileLastModified(ctx context.Context, files []string) map[
 		fmt.Fprintf(&script, "echo \"$(git log -1 --format=%%aI -- %q)\t%s\"\n", f, f)
 	}
 
-	cmd := exec.CommandContext(ctx, "sh", "-c", script.String())
+	// Use env -i to prevent the user's shell profile (.zshrc, .bashrc) from
+	// being sourced — profile side-effects (e.g. ~/.secrets/api-keys.env errors)
+	// would leak into our stdout and corrupt the output.
+	cmd := exec.CommandContext(ctx, "env", "-i", "PATH="+os.Getenv("PATH"), "HOME="+os.Getenv("HOME"), "sh", "-c", script.String())
 	cmd.Dir = e.repoRoot
 	out, err := cmd.Output()
 	if err != nil {
@@ -205,7 +209,8 @@ func (e *Engine) checkCouplingGaps(ctx context.Context, changedFiles []string, d
 }
 
 // isCouplingNoiseFile returns true for paths where co-change analysis produces
-// noise rather than signal (CI workflows, config dirs, generated files).
+// noise rather than signal (CI workflows, config dirs, generated files, tests,
+// dependency manifests, and documentation).
 func isCouplingNoiseFile(path string) bool {
 	noisePrefixes := []string{
 		".github/",
@@ -213,22 +218,91 @@ func isCouplingNoiseFile(path string) bool {
 		"ci/",
 		".circleci/",
 		".buildkite/",
+		"dist/",
+		"build/",
+		"out/",
+		"target/",
+		".next/",
+		"vendor/",
+		"node_modules/",
+		"testdata/",
+		"fixtures/",
+		"__tests__/",
+		"l10n/",          // Flutter/i18n localization generated files
+		"generated/",     // Common generated code directory
+		"__generated__/", // GraphQL/Relay generated
+		".dart_tool/",    // Dart tooling
+		"__pycache__/",   // Python bytecode cache
 	}
 	for _, prefix := range noisePrefixes {
 		if strings.HasPrefix(path, prefix) {
 			return true
 		}
 	}
+
 	noiseSuffixes := []string{
-		".yml",
-		".yaml",
-		".lock",
-		".sum",
+		// Config/metadata
+		".yml", ".yaml", ".lock", ".sum",
+		// Go generated
+		".generated.go", ".gen.go", "_string.go", "_enumer.go",
+		"wire_gen.go", "_mock.go",
+		// Protobuf/gRPC generated
+		".pb.go", ".pb.h", ".pb.cc", ".pb.ts", ".pb.js",
+		"_grpc.pb.go", "_pb2.py", "_pb2_grpc.py",
+		// Dart/Flutter generated
+		".g.dart", ".freezed.dart", ".mocks.dart", ".arb",
+		// JS/TS generated/bundled
+		".min.js", ".min.css", ".bundle.js", ".chunk.js",
+		// Other generated
+		".d.ts",
 	}
 	for _, suffix := range noiseSuffixes {
 		if strings.HasSuffix(path, suffix) {
 			return true
 		}
 	}
-	return false
+
+	// Test files — co-change with source is expected, not actionable
+	if strings.HasSuffix(path, "_test.go") ||
+		strings.HasSuffix(path, ".test.ts") ||
+		strings.HasSuffix(path, ".test.js") ||
+		strings.HasSuffix(path, ".test.tsx") ||
+		strings.HasSuffix(path, ".spec.ts") ||
+		strings.HasSuffix(path, ".spec.js") ||
+		strings.HasSuffix(path, "_test.py") ||
+		strings.HasSuffix(path, "_test.rs") ||
+		strings.Contains(path, "/test/") ||
+		strings.Contains(path, "/tests/") {
+		return true
+	}
+
+	// Exact-match noise files that change with everything
+	noiseExact := map[string]bool{
+		"go.mod":            true,
+		"go.sum":            true,
+		"package.json":      true,
+		"package-lock.json": true,
+		"yarn.lock":         true,
+		"pnpm-lock.yaml":    true,
+		"Cargo.lock":        true,
+		"Cargo.toml":        true,
+		"requirements.txt":  true,
+		"pyproject.toml":    true,
+		"pom.xml":           true,
+		"build.gradle":      true,
+		"README.md":         true,
+		"CHANGELOG.md":      true,
+		"HISTORY.md":        true,
+		".gitignore":        true,
+		".editorconfig":     true,
+		"Dockerfile":        true,
+		"Makefile":          true,
+	}
+
+	// Check basename for exact matches
+	base := path
+	if idx := strings.LastIndex(path, "/"); idx >= 0 {
+		base = path[idx+1:]
+	}
+	return noiseExact[base]
 }

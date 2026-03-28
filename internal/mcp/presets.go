@@ -26,7 +26,7 @@ const DefaultPreset = PresetCore
 // Core must enable one complete workflow without expansion.
 // Default workflow: "Investigate & Assess Impact"
 var Presets = map[string][]string{
-	// Core: 19 tools - enables "Investigate & Assess Impact" workflow completely
+	// Core: 24 tools - enables "Investigate & Assess Impact" workflow completely
 	// v8.0: Added compound tools (explore, understand, prepareChange, batchGet, batchSearch)
 	// to reduce tool calls by 60-70% for common workflows
 	PresetCore: {
@@ -44,6 +44,7 @@ var Presets = map[string][]string{
 		// Navigation & Understanding (granular fallback)
 		"explainSymbol",
 		"explainFile",
+		"explainPath",
 		"findReferences",
 		"getCallGraph",
 		"traceUsage", // Enables debug workflow
@@ -51,11 +52,15 @@ var Presets = map[string][]string{
 		// Architecture & Orientation
 		"getArchitecture",
 		"getModuleOverview",
+		"getModuleResponsibilities",
 		"listKeyConcepts", // Enables architecture exploration
 
 		// Impact & Risk (granular fallback)
 		"analyzeImpact",
 		"getHotspots",
+
+		// LLM Integration
+		"exportForLLM",
 
 		// System
 		"getStatus",
@@ -70,32 +75,41 @@ var Presets = map[string][]string{
 
 	// Review: core + code review tools
 	PresetReview: {
-		// Core tools (v8.0: includes compound tools)
+		// Core tools
 		"explore", "understand", "prepareChange", "batchGet", "batchSearch",
-		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
+		"searchSymbols", "getSymbol", "explainSymbol", "explainFile", "explainPath",
 		"findReferences", "getCallGraph", "traceUsage",
-		"getArchitecture", "getModuleOverview", "listKeyConcepts",
-		"analyzeImpact", "getHotspots", "getStatus", "switchProject",
-		"planRefactor", // v8.1
-		"expandToolset",
+		"getArchitecture", "getModuleOverview", "getModuleResponsibilities", "listKeyConcepts",
+		"analyzeImpact", "getHotspots", "exportForLLM",
+		"getStatus", "switchProject", "planRefactor", "expandToolset",
 		// Review-specific
 		"summarizeDiff",
 		"summarizePr",
 		"getOwnership",
 		"getOwnershipDrift",
 		"recentlyRelevant",
-		"scanSecrets", // v8.0: Secret detection for PR reviews
-		"reviewPR",    // v8.2: Unified PR review with quality gates
+		"scanSecrets",       // Secret detection for PR reviews
+		"reviewPR",          // Unified PR review with quality gates
+		"getAffectedTests",  // Tests covering changed code
+		"analyzeTestGaps",   // Untested functions in changed files
+		"compareAPI",        // Breaking API changes
+		"findDeadCode",      // Dead code in changes
+		"auditRisk",         // Multi-factor risk scoring
+		"analyzeChange",     // Change analysis
+		"getFileComplexity", // File complexity for review
+		"listEntrypoints",   // Key entry points in changed code
+		"auditCompliance",   // Regulatory compliance audit
 	},
 
 	// Refactor: core + refactoring analysis tools
 	PresetRefactor: {
-		// Core tools (v8.0: includes compound tools)
+		// Core tools
 		"explore", "understand", "prepareChange", "batchGet", "batchSearch",
-		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
+		"searchSymbols", "getSymbol", "explainSymbol", "explainFile", "explainPath",
 		"findReferences", "getCallGraph", "traceUsage",
-		"getArchitecture", "getModuleOverview", "listKeyConcepts",
-		"analyzeImpact", "getHotspots", "getStatus", "switchProject", "expandToolset",
+		"getArchitecture", "getModuleOverview", "getModuleResponsibilities", "listKeyConcepts",
+		"analyzeImpact", "getHotspots", "exportForLLM",
+		"getStatus", "switchProject", "expandToolset",
 		// Refactor-specific
 		"justifySymbol",
 		"analyzeCoupling",
@@ -110,24 +124,27 @@ var Presets = map[string][]string{
 		"planRefactor",        // v8.1: Unified refactor planning
 		"findCycles",          // v8.1: Dependency cycle detection
 		"suggestRefactorings", // v8.1: Proactive refactoring suggestions
+		"getFileComplexity",   // v8.3: File complexity for health pipeline
+		"listSymbols",         // v8.3: Bulk symbol listing with complexity
+		"getSymbolGraph",      // v8.3: Batch call graph
 	},
 
-	// Federation: core + federation tools
+	// Federation: core + federation + contract tools
 	PresetFederation: {
-		// Core tools (v8.0: includes compound tools)
+		// Core tools
 		"explore", "understand", "prepareChange", "batchGet", "batchSearch",
-		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
+		"searchSymbols", "getSymbol", "explainSymbol", "explainFile", "explainPath",
 		"findReferences", "getCallGraph", "traceUsage",
-		"getArchitecture", "getModuleOverview", "listKeyConcepts",
-		"analyzeImpact", "getHotspots", "getStatus", "switchProject",
-		"planRefactor", // v8.1
-		"expandToolset",
+		"getArchitecture", "getModuleOverview", "getModuleResponsibilities", "listKeyConcepts",
+		"analyzeImpact", "getHotspots", "exportForLLM",
+		"getStatus", "switchProject", "planRefactor", "expandToolset",
 		// Federation-specific
 		"listFederations",
 		"federationStatus",
 		"federationRepos",
 		"federationSearchModules",
 		"federationSearchOwnership",
+		"federationSearchDecisions",
 		"federationGetHotspots",
 		"federationSync",
 		"federationAddRemote",
@@ -137,18 +154,24 @@ var Presets = map[string][]string{
 		"federationStatusRemote",
 		"federationSearchSymbolsHybrid",
 		"federationListAllRepos",
+		// Contracts
+		"listContracts",
+		"analyzeContractImpact",
+		"getContractDependencies",
+		"getContractStats",
+		"suppressContractEdge",
+		"verifyContractEdge",
 	},
 
-	// Docs: core + doc-symbol linking tools
+	// Docs: core + doc-symbol linking + decision tools
 	PresetDocs: {
-		// Core tools (v8.0: includes compound tools)
+		// Core tools
 		"explore", "understand", "prepareChange", "batchGet", "batchSearch",
-		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
+		"searchSymbols", "getSymbol", "explainSymbol", "explainFile", "explainPath",
 		"findReferences", "getCallGraph", "traceUsage",
-		"getArchitecture", "getModuleOverview", "listKeyConcepts",
-		"analyzeImpact", "getHotspots", "getStatus", "switchProject",
-		"planRefactor", // v8.1
-		"expandToolset",
+		"getArchitecture", "getModuleOverview", "getModuleResponsibilities", "listKeyConcepts",
+		"analyzeImpact", "getHotspots", "exportForLLM",
+		"getStatus", "switchProject", "planRefactor", "expandToolset",
 		// Docs-specific
 		"indexDocs",
 		"getDocsForSymbol",
@@ -156,21 +179,25 @@ var Presets = map[string][]string{
 		"getDocsForModule",
 		"checkDocStaleness",
 		"getDocCoverage",
+		// Decisions (ADRs)
+		"getDecisions",
+		"recordDecision",
+		"annotateModule",
 	},
 
-	// Ops: core + operational tools
+	// Ops: core + operational + telemetry tools
 	PresetOps: {
-		// Core tools (v8.0: includes compound tools)
+		// Core tools
 		"explore", "understand", "prepareChange", "batchGet", "batchSearch",
-		"searchSymbols", "getSymbol", "explainSymbol", "explainFile",
+		"searchSymbols", "getSymbol", "explainSymbol", "explainFile", "explainPath",
 		"findReferences", "getCallGraph", "traceUsage",
-		"getArchitecture", "getModuleOverview", "listKeyConcepts",
-		"analyzeImpact", "getHotspots", "getStatus", "switchProject",
-		"planRefactor", // v8.1
-		"expandToolset",
+		"getArchitecture", "getModuleOverview", "getModuleResponsibilities", "listKeyConcepts",
+		"analyzeImpact", "getHotspots", "exportForLLM",
+		"getStatus", "switchProject", "planRefactor", "expandToolset",
 		// Ops-specific
 		"doctor",
 		"reindex",
+		"refreshArchitecture",
 		"daemonStatus",
 		"listJobs",
 		"getJobStatus",
@@ -181,6 +208,13 @@ var Presets = map[string][]string{
 		"testWebhook",
 		"webhookDeliveries",
 		"getWideResultMetrics",
+		// Telemetry
+		"getTelemetryStatus",
+		"getObservedUsage",
+		// Multi-repo
+		"getActiveRepo",
+		"listRepos",
+		"switchRepo",
 	},
 
 	// Full: all tools (wildcard)
@@ -229,17 +263,20 @@ var coreToolOrder = []string{
 	"getSymbol",
 	"explainSymbol",
 	"explainFile",
+	"explainPath",
 	"findReferences",
 	"getCallGraph",
 	"traceUsage",
 	"getArchitecture",
 	"getModuleOverview",
+	"getModuleResponsibilities",
 	"listKeyConcepts",
 	"analyzeImpact",
 	"getHotspots",
+	"exportForLLM",
 	"getStatus",
 	"switchProject",
-	"planRefactor", // v8.1
+	"planRefactor",
 	"expandToolset",
 }
 

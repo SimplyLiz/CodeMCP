@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/SimplyLiz/CodeMCP/internal/backends"
+	"github.com/SimplyLiz/CodeMCP/internal/complexity"
 	"github.com/SimplyLiz/CodeMCP/internal/compression"
 	"github.com/SimplyLiz/CodeMCP/internal/errors"
 	"github.com/SimplyLiz/CodeMCP/internal/output"
@@ -49,6 +50,10 @@ type SymbolInfo struct {
 	Location            *LocationInfo   `json:"location"`
 	LocationFreshness   string          `json:"locationFreshness"`
 	Documentation       string          `json:"documentation,omitempty"`
+	// Lightweight counts (populated by BatchGet when includeCounts is true)
+	ReferenceCount int `json:"referenceCount,omitempty"`
+	CallerCount    int `json:"callerCount,omitempty"`
+	CalleeCount    int `json:"calleeCount,omitempty"`
 }
 
 // VisibilityInfo describes symbol visibility.
@@ -262,10 +267,13 @@ func (e *Engine) getLocationFreshness(repoState *RepoState) string {
 
 // SearchSymbolsOptions contains options for searchSymbols.
 type SearchSymbolsOptions struct {
-	Query string
-	Scope string
-	Kinds []string
-	Limit int
+	Query           string
+	Scope           string
+	Kinds           []string
+	Limit           int
+	MinLines        int      // Filter: minimum body line count (post-enrichment)
+	MinComplexity   int      // Filter: minimum cyclomatic complexity (post-enrichment)
+	ExcludePatterns []string // Filter: exclude symbols whose name contains any pattern (e.g., "#", ".()")
 }
 
 // SearchSymbolsResponse is the response for searchSymbols.
@@ -305,6 +313,10 @@ type SearchResultItem struct {
 	Visibility *VisibilityInfo `json:"visibility,omitempty"`
 	Score      float64         `json:"score"`
 	Ranking    *RankingV52     `json:"ranking,omitempty"`
+	// Body metrics (enriched via tree-sitter when available)
+	Lines      int `json:"lines,omitempty"`      // body line count
+	Cyclomatic int `json:"cyclomatic,omitempty"` // cyclomatic complexity
+	Cognitive  int `json:"cognitive,omitempty"`  // cognitive complexity
 }
 
 // generateCacheKey creates a deterministic cache key for search options.
@@ -370,8 +382,13 @@ func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (
 	var backendContribs []BackendContribution
 	var completeness CompletenessInfo
 
-	// Try FTS5 first for fast symbol search
-	ftsResults, ftsErr := e.SearchSymbolsFTS(ctx, opts.Query, opts.Limit*2)
+	// Try FTS5 first for fast symbol search.
+	// Request more results when filters are set, since most will be excluded.
+	ftsMultiplier := 2
+	if len(opts.ExcludePatterns) > 0 || opts.MinLines > 0 || opts.MinComplexity > 0 {
+		ftsMultiplier = 10
+	}
+	ftsResults, ftsErr := e.SearchSymbolsFTS(ctx, opts.Query, opts.Limit*ftsMultiplier)
 	if ftsErr == nil && len(ftsResults) > 0 {
 		for _, r := range ftsResults {
 			// Filter by kinds if specified
@@ -494,6 +511,34 @@ func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (
 			Truncated:  false,
 			Provenance: e.buildProvenance(repoState, "head", startTime, backendContribs, completeness),
 		}, nil
+	}
+
+	// Enrich results with body ranges and complexity from tree-sitter.
+	e.enrichWithBodyRanges(ctx, results)
+
+	// Apply post-enrichment filters (minLines, minComplexity, excludePatterns)
+	if opts.MinLines > 0 || opts.MinComplexity > 0 || len(opts.ExcludePatterns) > 0 {
+		filtered := results[:0]
+		for _, r := range results {
+			if opts.MinLines > 0 && r.Lines > 0 && r.Lines < opts.MinLines {
+				continue
+			}
+			if opts.MinComplexity > 0 && r.Cyclomatic < opts.MinComplexity {
+				continue
+			}
+			excluded := false
+			for _, p := range opts.ExcludePatterns {
+				if strings.Contains(r.Name, p) {
+					excluded = true
+					break
+				}
+			}
+			if excluded {
+				continue
+			}
+			filtered = append(filtered, r)
+		}
+		results = filtered
 	}
 
 	// Apply ranking
@@ -815,6 +860,129 @@ func sortReferences(refs []ReferenceInfo) {
 		}
 		return refs[i].Location.StartColumn < refs[j].Location.StartColumn
 	})
+}
+
+// enrichWithBodyRanges upgrades search results with full body ranges and
+// per-symbol complexity from tree-sitter. SCIP stores the range of the symbol
+// name token (EndLine == StartLine), and FTS stores no line info at all
+// (StartLine == 0). Tree-sitter gives us real scope ranges, and the complexity
+// analyzer gives us cyclomatic/cognitive metrics per function.
+func (e *Engine) enrichWithBodyRanges(ctx context.Context, results []SearchResultItem) {
+	if e.treesitterExtractor == nil {
+		return
+	}
+
+	// Collect files that need enrichment (no endLine or no complexity)
+	needsEnrich := make(map[string][]int) // fileId → indices into results
+	for i, r := range results {
+		if r.Location == nil || r.Location.FileId == "" {
+			continue
+		}
+		if r.Location.EndLine <= r.Location.StartLine || r.Cyclomatic == 0 {
+			needsEnrich[r.Location.FileId] = append(needsEnrich[r.Location.FileId], i)
+		}
+	}
+	if len(needsEnrich) == 0 {
+		return
+	}
+
+	// Extract symbols and complexity per file
+	for fileId, indices := range needsEnrich {
+		absPath := filepath.Join(e.repoRoot, fileId)
+
+		// Get body ranges from symbol extractor
+		e.tsMu.Lock()
+		syms, err := e.treesitterExtractor.ExtractFile(ctx, absPath)
+		e.tsMu.Unlock()
+
+		// Get complexity from complexity analyzer
+		var cxFuncs []complexity.ComplexityResult
+		if e.complexityAnalyzer != nil {
+			if fc, cxErr := e.complexityAnalyzer.GetFileComplexityFull(ctx, absPath); cxErr == nil && fc != nil {
+				cxFuncs = fc.Functions
+			}
+		}
+
+		if (err != nil || len(syms) == 0) && len(cxFuncs) == 0 {
+			continue
+		}
+
+		// Build lookups for body ranges
+		type lineKey struct {
+			name string
+			line int
+		}
+		type symbolMetrics struct {
+			startLine  int
+			endLine    int
+			lines      int
+			cyclomatic int
+			cognitive  int
+		}
+		byNameLine := make(map[lineKey]*symbolMetrics)
+		byName := make(map[string]*symbolMetrics)
+
+		// Populate from symbol extractor (body ranges)
+		for _, sym := range syms {
+			if sym.EndLine > sym.Line {
+				m := &symbolMetrics{
+					startLine: sym.Line,
+					endLine:   sym.EndLine,
+					lines:     sym.EndLine - sym.Line + 1,
+				}
+				byNameLine[lineKey{sym.Name, sym.Line}] = m
+				if _, exists := byName[sym.Name]; !exists {
+					byName[sym.Name] = m
+				}
+			}
+		}
+
+		// Merge complexity data
+		for _, fn := range cxFuncs {
+			key := lineKey{fn.Name, fn.StartLine}
+			if m, ok := byNameLine[key]; ok {
+				m.cyclomatic = fn.Cyclomatic
+				m.cognitive = fn.Cognitive
+			} else if m, ok := byName[fn.Name]; ok && m.startLine == fn.StartLine {
+				m.cyclomatic = fn.Cyclomatic
+				m.cognitive = fn.Cognitive
+			}
+		}
+
+		// Apply to results
+		for _, idx := range indices {
+			r := &results[idx]
+			matchName := r.Name
+			if hashIdx := strings.LastIndex(matchName, "#"); hashIdx >= 0 {
+				matchName = matchName[hashIdx+1:]
+			}
+
+			var m *symbolMetrics
+			if r.Location.StartLine > 0 {
+				m = byNameLine[lineKey{matchName, r.Location.StartLine}]
+			}
+			if m == nil {
+				m = byName[matchName]
+			}
+			if m == nil {
+				continue
+			}
+
+			if r.Location.EndLine <= r.Location.StartLine {
+				if r.Location.StartLine == 0 {
+					r.Location.StartLine = m.startLine
+				}
+				r.Location.EndLine = m.endLine
+			}
+			if m.lines > 0 {
+				r.Lines = m.lines
+			}
+			if m.cyclomatic > 0 {
+				r.Cyclomatic = m.cyclomatic
+				r.Cognitive = m.cognitive
+			}
+		}
+	}
 }
 
 // searchWithTreesitter performs symbol search using tree-sitter as fallback.

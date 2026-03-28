@@ -19,6 +19,7 @@ It is structurally sound but semantically blind:
 - **Design fitness**: wrong abstraction, leaky interface, coupling that metrics miss
 - **Input validation**: missing bounds checks, nil guards outside AST patterns
 - **Race conditions**: concurrency issues, mutex ordering, shared state
+- **Resource leaks**: file handles, goroutines, connections not closed on all paths
 - **Incomplete refactoring**: callers missed across module boundaries
 - **Domain edge cases**: error paths, boundary conditions tests don't cover
 
@@ -38,6 +39,23 @@ BASE=$(gh pr view $ARGUMENTS --json baseRefName -q .baseRefName)
 ckb review --base=$BASE --format=json --compact 2>/dev/null
 ```
 
+If "staged" was given:
+```bash
+ckb review --staged --format=json --compact 2>/dev/null
+```
+
+Parse the JSON output to extract:
+- `score`, `verdict` — overall quality
+- `checks[]` — status + summary per check (15 checks: breaking, secrets, tests, complexity,
+  coupling, hotspots, risk, health, dead-code, test-gaps, blast-radius, comment-drift,
+  format-consistency, bug-patterns, split)
+- `findings[]` — severity + file + message + ruleId (top-level, separate from check details)
+- `narrative` — CKB AI-generated summary (if available)
+- `prTier` — small/medium/large
+- `reviewEffort` — estimated hours + complexity
+- `reviewers[]` — suggested reviewers with expertise areas
+- `healthReport` — degraded/improved file counts
+
 From the output, build three lists:
 - **SKIP**: passed checks — don't touch these files or topics
 - **INVESTIGATE**: warned/failed checks — these are your review scope
@@ -56,13 +74,19 @@ the code is semantically correct.
 
 Do NOT read the full diff. Do NOT read every changed file.
 
-Read ONLY:
-1. Files that appear in INVESTIGATE findings (just the changed hunks via `git diff main...HEAD -- <file>`)
-2. New files (CKB has no history for these) — but only if <500 lines each
-3. Skip generated files, test files for existing tests, and config/CI files
+**For files CKB flagged (INVESTIGATE list):**
+Read only the changed hunks via `git diff main...HEAD -- <file>`.
 
-For each file you read, look for exactly:
+**For new files** (CKB has no history — these are your biggest blind spot):
+- If it's a new package/module: read the entry point and types/interfaces first,
+  then follow references to understand the architecture before reading individual files
+- If < 500 lines: read the file
+- If > 500 lines: read the first 100 lines (types/imports) + functions CKB flagged
+- Skip generated files, test files for existing tests, and config/CI/docs files
+
+**For each file you read, look for exactly:**
 - Logic errors (wrong condition, off-by-one, nil deref, race condition)
+- Resource leaks (file handles, connections, goroutines not closed on error paths)
 - Security issues (injection, auth bypass, secrets CKB's 26 patterns missed)
 - Design problems (wrong abstraction, leaky interface, coupling metrics don't catch)
 - Missing edge cases the tests don't cover
@@ -78,6 +102,11 @@ CKB already checked these structurally.
 
 [One sentence: what the PR does]
 
+[If CKB provided narrative, include it here]
+
+**PR tier:** [small/medium/large] | **Review effort:** [N]h ([complexity])
+**Health:** [N] degraded, [N] improved
+
 ### Issues
 1. **[must-fix|should-fix]** `file:line` — [issue in one sentence]
 2. ...
@@ -87,6 +116,9 @@ CKB already checked these structurally.
 
 ### CKB flagged (verified above)
 [for each warn/fail finding: confirmed/false-positive + one-line reason]
+
+### Suggested reviewers
+[reviewer — expertise area]
 ```
 
 If no issues found: just the header line + CKB passed list. Nothing else.
@@ -95,10 +127,12 @@ If no issues found: just the header line + CKB passed list. Nothing else.
 
 - Reading files CKB marked as pass → waste
 - Reading generated files → waste
-- Summarizing what the PR does in detail → waste (git log exists)
+- Summarizing what the PR does in detail → waste (git log exists, CKB has narrative)
 - Explaining why passed checks passed → waste
 - Running MCP drill-down tools when CLI already gave enough signal → waste
 - Reading test files to "verify test quality" → waste unless CKB flagged test-gaps
 - Reading hotspot-only files with no findings → high churn ≠ needs review right now
 - Trusting score >= 80 as "safe to skip" → dangerous (per-check caps hide warnings)
 - Skipping new files because CKB didn't flag them → CKB has no SCIP data for new files
+- Reading every new file in a large new package → read entry point + types first, then follow refs
+- Ignoring reviewEffort/prTier → these tell you how thorough to be

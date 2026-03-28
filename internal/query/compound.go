@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SimplyLiz/CodeMCP/internal/complexity"
 	"github.com/SimplyLiz/CodeMCP/internal/coupling"
 	"github.com/SimplyLiz/CodeMCP/internal/errors"
 	"github.com/SimplyLiz/CodeMCP/internal/output"
@@ -74,8 +75,12 @@ type ExploreSymbol struct {
 	StableId   string  `json:"stableId"`
 	Name       string  `json:"name"`
 	Kind       string  `json:"kind"`
-	Line       int     `json:"line,omitempty"`
 	File       string  `json:"file,omitempty"`
+	Line       int     `json:"line,omitempty"`
+	EndLine    int     `json:"endLine,omitempty"`
+	Lines      int     `json:"lines,omitempty"`      // body line count (endLine - line + 1)
+	Cyclomatic int     `json:"cyclomatic,omitempty"` // cyclomatic complexity
+	Cognitive  int     `json:"cognitive,omitempty"`  // cognitive complexity
 	Visibility string  `json:"visibility"`
 	Importance float64 `json:"importance"`       // ranking score
 	Reason     string  `json:"reason,omitempty"` // why it's important
@@ -410,6 +415,57 @@ func (e *Engine) getExploreSymbols(ctx context.Context, targetType, absPath, rel
 		return nil, err
 	}
 
+	// Supplement with tree-sitter functions when SCIP/FTS returns none.
+	// FTS returns only type/field definitions for empty-query file-scoped
+	// searches; tree-sitter reliably extracts function declarations.
+	hasFunctions := false
+	for _, sym := range searchResp.Symbols {
+		if sym.Kind == "function" || sym.Kind == "method" {
+			hasFunctions = true
+			break
+		}
+	}
+	if !hasFunctions && e.treesitterExtractor != nil {
+		var tsSyms []SearchResultItem
+		if targetType == "file" {
+			// ExtractFile for single-file targets (searchWithTreesitter uses
+			// ExtractDirectory which fails on file paths)
+			e.tsMu.Lock()
+			rawSyms, tsErr := e.treesitterExtractor.ExtractFile(ctx, absPath)
+			e.tsMu.Unlock()
+			if tsErr == nil {
+				relFile, _ := filepath.Rel(e.repoRoot, absPath)
+				for _, sym := range rawSyms {
+					if sym.Kind != "function" && sym.Kind != "method" {
+						continue
+					}
+					tsSyms = append(tsSyms, SearchResultItem{
+						Name: sym.Name,
+						Kind: sym.Kind,
+						Location: &LocationInfo{
+							FileId:    relFile,
+							StartLine: sym.Line,
+							EndLine:   sym.EndLine,
+						},
+						Visibility: &VisibilityInfo{
+							Visibility: inferVisibility(sym.Name, sym.Kind),
+							Confidence: 0.5,
+							Source:     "treesitter",
+						},
+					})
+				}
+			}
+		} else {
+			tsSyms, _ = e.searchWithTreesitter(ctx, SearchSymbolsOptions{
+				Query: "",
+				Scope: relTarget,
+				Kinds: []string{"function", "method"},
+				Limit: limit * 2,
+			})
+		}
+		searchResp.Symbols = append(searchResp.Symbols, tsSyms...)
+	}
+
 	// Convert and rank symbols
 	symbols := make([]ExploreSymbol, 0, len(searchResp.Symbols))
 	for _, sym := range searchResp.Symbols {
@@ -418,9 +474,11 @@ func (e *Engine) getExploreSymbols(ctx context.Context, targetType, absPath, rel
 
 		file := ""
 		line := 0
+		endLine := 0
 		if sym.Location != nil {
 			file = sym.Location.FileId
 			line = sym.Location.StartLine
+			endLine = sym.Location.EndLine
 		}
 
 		visibility := "internal"
@@ -428,12 +486,19 @@ func (e *Engine) getExploreSymbols(ctx context.Context, targetType, absPath, rel
 			visibility = sym.Visibility.Visibility
 		}
 
+		lines := 0
+		if endLine > 0 && line > 0 && endLine >= line {
+			lines = endLine - line + 1
+		}
+
 		symbols = append(symbols, ExploreSymbol{
 			StableId:   sym.StableId,
 			Name:       sym.Name,
 			Kind:       sym.Kind,
-			Line:       line,
 			File:       file,
+			Line:       line,
+			EndLine:    endLine,
+			Lines:      lines,
 			Visibility: visibility,
 			Importance: importance,
 			Reason:     reason,
@@ -450,12 +515,69 @@ func (e *Engine) getExploreSymbols(ctx context.Context, targetType, absPath, rel
 		symbols = symbols[:limit]
 	}
 
+	// Enrich with per-symbol complexity from tree-sitter
+	e.enrichSymbolComplexity(ctx, symbols)
+
 	return symbols, nil
 }
 
+// enrichSymbolComplexity adds cyclomatic/cognitive complexity to ExploreSymbols
+// by running tree-sitter analysis on their source files.
+func (e *Engine) enrichSymbolComplexity(ctx context.Context, symbols []ExploreSymbol) {
+	if e.complexityAnalyzer == nil {
+		return
+	}
+
+	// Group symbols by file
+	byFile := make(map[string][]int) // file → indices
+	for i, s := range symbols {
+		if s.File != "" && s.Line > 0 {
+			byFile[s.File] = append(byFile[s.File], i)
+		}
+	}
+
+	for file, indices := range byFile {
+		absPath := filepath.Join(e.repoRoot, file)
+		fc, err := e.complexityAnalyzer.GetFileComplexityFull(ctx, absPath)
+		if err != nil || fc == nil {
+			continue
+		}
+
+		// Build lookup by (name, startLine)
+		type key struct {
+			name string
+			line int
+		}
+		cxMap := make(map[key]complexity.ComplexityResult)
+		for _, fn := range fc.Functions {
+			cxMap[key{fn.Name, fn.StartLine}] = fn
+		}
+
+		for _, idx := range indices {
+			s := &symbols[idx]
+			// Strip Container# prefix for matching
+			matchName := s.Name
+			if hashIdx := strings.LastIndex(matchName, "#"); hashIdx >= 0 {
+				matchName = matchName[hashIdx+1:]
+			}
+			if cr, ok := cxMap[key{matchName, s.Line}]; ok {
+				s.Cyclomatic = cr.Cyclomatic
+				s.Cognitive = cr.Cognitive
+			}
+		}
+	}
+}
+
 // calculateSymbolImportance computes importance score for ranking.
+// Prioritizes functions/methods and top-level types over struct fields,
+// since consumers use keySymbols for understanding behavior (SRP, complexity)
+// not data shape (which they can get from getSymbol).
 func calculateSymbolImportance(sym SearchResultItem) float64 {
 	score := 0.0
+
+	// Struct fields (Container#Field) are implementation details, not key symbols.
+	// SCIP labels them as kind=class, but they should rank below functions.
+	isStructField := strings.Contains(sym.Name, "#")
 
 	// Visibility weight
 	if sym.Visibility != nil {
@@ -469,21 +591,27 @@ func calculateSymbolImportance(sym SearchResultItem) float64 {
 		}
 	}
 
-	// Kind weight
-	switch sym.Kind {
-	case "class", "interface", "struct":
-		score += 30
-	case "function", "method":
-		score += 25
-	case "type":
-		score += 20
-	case "constant", "variable":
-		score += 10
+	// Kind weight — functions/methods rank highest for behavioral analysis
+	if isStructField {
+		score += 5 // Minimal: fields are discoverable via getSymbol on the type
+	} else {
+		switch sym.Kind {
+		case "function", "method":
+			score += 35
+		case "class", "interface", "struct", "type":
+			score += 25
+		case "constant", "variable":
+			score += 15
+		}
 	}
 
-	// Add existing ranking score if available
+	// Add existing ranking score if available (SCIP results have this,
+	// tree-sitter results don't — functions from tree-sitter get a flat
+	// bonus to compensate, keeping them competitive with SCIP types).
 	if sym.Ranking != nil {
-		score += sym.Ranking.Score * 0.3
+		score += sym.Ranking.Score * 0.2
+	} else if sym.Kind == "function" || sym.Kind == "method" {
+		score += 15 // Compensate for missing ranking data
 	}
 
 	return score
@@ -491,17 +619,24 @@ func calculateSymbolImportance(sym SearchResultItem) float64 {
 
 // inferImportanceReason explains why a symbol is important.
 func inferImportanceReason(sym SearchResultItem, importance float64) string {
-	if sym.Visibility != nil && sym.Visibility.Visibility == "public" {
-		return "exported API"
+	isStructField := strings.Contains(sym.Name, "#")
+	if isStructField {
+		return "field"
 	}
 	switch sym.Kind {
-	case "class", "interface", "struct":
-		return "key type"
 	case "function", "method":
-		if importance > 50 {
-			return "high-visibility function"
+		if sym.Visibility != nil && sym.Visibility.Visibility == "public" {
+			return "exported function"
 		}
 		return "function"
+	case "class", "interface", "struct", "type":
+		if sym.Visibility != nil && sym.Visibility.Visibility == "public" {
+			return "exported type"
+		}
+		return "key type"
+	}
+	if sym.Visibility != nil && sym.Visibility.Visibility == "public" {
+		return "exported"
 	}
 	return ""
 }
@@ -1745,7 +1880,8 @@ func (e *Engine) calculatePrepareRisk(
 
 // BatchGetOptions controls batchGet behavior.
 type BatchGetOptions struct {
-	SymbolIds []string // max 50
+	SymbolIds     []string // max 50
+	IncludeCounts bool     // populate referenceCount, callerCount, calleeCount
 }
 
 // BatchGetResponse returns multiple symbols by ID.
@@ -1799,6 +1935,34 @@ func (e *Engine) BatchGet(ctx context.Context, opts BatchGetOptions) (*BatchGetR
 	}
 
 	wg.Wait()
+
+	// Populate reference/caller/callee counts if requested (parallel)
+	if opts.IncludeCounts && e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
+		var countWg sync.WaitGroup
+		countSem := make(chan struct{}, 10)
+		for symId, info := range results {
+			countWg.Add(1)
+			go func(id string, si *SymbolInfo) {
+				defer countWg.Done()
+				countSem <- struct{}{}
+				defer func() { <-countSem }()
+				if refs, err := e.FindReferences(ctx, FindReferencesOptions{SymbolId: id, Limit: 500}); err == nil {
+					si.ReferenceCount = refs.TotalCount
+				}
+				if cg, err := e.GetCallGraph(ctx, CallGraphOptions{SymbolId: id, Direction: "both", Depth: 1}); err == nil {
+					for _, n := range cg.Nodes {
+						switch n.Role {
+						case "caller":
+							si.CallerCount++
+						case "callee":
+							si.CalleeCount++
+						}
+					}
+				}
+			}(symId, info)
+		}
+		countWg.Wait()
+	}
 
 	// Build provenance
 	var backendContribs []BackendContribution

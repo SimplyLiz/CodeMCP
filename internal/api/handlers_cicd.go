@@ -200,14 +200,14 @@ func (s *Server) handleCouplingCheck(w http.ResponseWriter, r *http.Request) {
 
 	// For each changed file, check if highly-coupled files are also changed
 	for _, file := range changedFiles {
-		result, err := analyzer.Analyze(ctx, coupling.AnalyzeOptions{
+		result, errAnalyze := analyzer.Analyze(ctx, coupling.AnalyzeOptions{
 			RepoRoot:       repoRoot,
 			Target:         file,
 			MinCorrelation: 0.7, // Only high coupling
 			WindowDays:     365,
 			Limit:          10,
 		})
-		if err != nil {
+		if errAnalyze != nil {
 			continue
 		}
 

@@ -372,7 +372,7 @@ func runIndex(cmd *cobra.Command, args []string) {
 	}
 
 	// Capture git state if available
-	if rs, err := repostate.ComputeRepoState(repoRoot); err == nil {
+	if rs, rsErr := repostate.ComputeRepoState(repoRoot); rsErr == nil {
 		meta.CommitHash = rs.HeadCommit
 		meta.RepoStateID = rs.RepoStateID
 	}
@@ -850,8 +850,8 @@ func populateIncrementalTracking(repoRoot string, lang project.Language) {
 	indexer := incremental.NewIncrementalIndexer(repoRoot, db, incConfig, logger)
 
 	// Populate tracking tables from the full index
-	if err := indexer.PopulateAfterFullIndex(); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: Could not populate incremental tracking: %v\n", err)
+	if popErr := indexer.PopulateAfterFullIndex(); popErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Could not populate incremental tracking: %v\n", popErr)
 		return
 	}
 

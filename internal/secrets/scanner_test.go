@@ -1007,6 +1007,41 @@ func main() {
 	}
 }
 
+func TestScannerShellInterpolationNotFlagged(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "secrets-interp-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Docker Compose style env-var interpolation — should NOT be flagged
+	compose := filepath.Join(tmpDir, "docker-compose.yml")
+	content := `services:
+  db:
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ancs}:${DB_PASSWORD:?must be set}@postgres:5432/mydb
+      REDIS_URL: redis://:${REDIS_PASS}@redis:6379/0
+      MONGO_URL: mongodb://admin:${MONGO_PASSWORD:-changeme}@mongo:27017/app
+`
+	if err := os.WriteFile(compose, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to write file: %v", err)
+	}
+
+	scanner := NewScanner(tmpDir, slog.Default())
+	result, err := scanner.Scan(context.Background(), ScanOptions{
+		RepoRoot:       tmpDir,
+		Scope:          ScopeWorkdir,
+		ApplyAllowlist: false,
+	})
+	if err != nil {
+		t.Fatalf("Scan failed: %v", err)
+	}
+
+	for _, f := range result.Findings {
+		t.Errorf("Unexpected finding: %s at %s:%d — captured: %s", f.Rule, f.File, f.Line, f.Match)
+	}
+}
+
 func TestScannerWithPathFilter(t *testing.T) {
 	// Create temp directory
 	tmpDir, err := os.MkdirTemp("", "secrets-test-*")

@@ -235,7 +235,8 @@ func (m *FTSManager) Search(ctx context.Context, query string, limit int) ([]FTS
 	// Normalize query
 	query = strings.TrimSpace(query)
 	if query == "" {
-		return results, nil
+		// Empty query: list all symbols (used by listSymbols/explore)
+		return m.listAll(ctx, limit)
 	}
 
 	// Try exact match first (highest ranking)
@@ -279,6 +280,34 @@ func (m *FTSManager) Search(ctx context.Context, query string, limit int) ([]FTS
 		}
 	}
 
+	return results, nil
+}
+
+// listAll returns all symbols from the FTS content table (for empty queries).
+func (m *FTSManager) listAll(ctx context.Context, limit int) ([]FTSSearchResult, error) {
+	rows, err := m.db.QueryContext(ctx, `
+		SELECT id, name, kind, documentation, signature, file_path, language, 0.0 as rank
+		FROM symbols_fts_content
+		ORDER BY name
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var results []FTSSearchResult
+	for rows.Next() {
+		var r FTSSearchResult
+		var doc, sig, filePath, language sql.NullString
+		if err := rows.Scan(&r.ID, &r.Name, &r.Kind, &doc, &sig, &filePath, &language, &r.Rank); err != nil {
+			return nil, err
+		}
+		r.FilePath = filePath.String
+		r.Language = language.String
+		r.MatchType = "list"
+		results = append(results, r)
+	}
 	return results, nil
 }
 

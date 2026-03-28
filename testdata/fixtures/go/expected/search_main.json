@@ -3,21 +3,21 @@
     {
       "file": "pkg/handler.go",
       "kind": "class",
-      "line": 0,
+      "line": 7,
       "moduleId": "pkg",
       "name": "Handler"
     },
     {
       "file": "pkg/server.go",
       "kind": "function",
-      "line": 0,
+      "line": 22,
       "moduleId": "pkg",
       "name": "Server#RunServer"
     },
     {
       "file": "main.go",
       "kind": "function",
-      "line": 0,
+      "line": 12,
       "moduleId": ".",
       "name": "main"
     },

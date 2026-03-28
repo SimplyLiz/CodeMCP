@@ -249,6 +249,36 @@ func FindNodes(root *sitter.Node, types []string) []*sitter.Node {
 	return result
 }
 
+// FindNodesSkipping finds all nodes of the given types but does not recurse
+// into nodes whose type is in skipTypes. This is useful for scope-aware
+// searches, e.g. finding defer_statements inside a for loop without
+// descending into nested func_literals (closures).
+func FindNodesSkipping(root *sitter.Node, types []string, skipTypes []string) []*sitter.Node {
+	var result []*sitter.Node
+
+	var walk func(*sitter.Node)
+	walk = func(node *sitter.Node) {
+		if node == nil {
+			return
+		}
+
+		if contains(types, node.Type()) {
+			result = append(result, node)
+		}
+
+		for i := uint32(0); i < node.ChildCount(); i++ {
+			child := node.Child(int(i))
+			if child != nil && contains(skipTypes, child.Type()) {
+				continue
+			}
+			walk(child)
+		}
+	}
+
+	walk(root)
+	return result
+}
+
 // contains checks if a slice contains a string.
 func contains(slice []string, item string) bool {
 	for _, s := range slice {

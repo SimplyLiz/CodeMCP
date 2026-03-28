@@ -416,6 +416,7 @@ var configKeyVarRe = regexp.MustCompile(`(?i)["'](?:secret|token|password|passwd
 //	api_key=os.environ["KEY"]               (env lookup)
 //	token = process.env.TOKEN               (Node env)
 //	key := viper.GetString("api_key")       (Go config)
+//
 // varRefRe matches variable/attribute references. The first branch (dotted
 // chain anchored with $) covers fully-qualified references like config.apiKey.
 // Branches 2-4 handle partial captures where the scanner only grabs a prefix
@@ -474,6 +475,15 @@ func isLikelyFalsePositive(line, secret string) bool {
 		if strings.Contains(lineLower, indicator) {
 			return true
 		}
+	}
+
+	// Shell/template variable interpolation — not a literal secret
+	// Covers ${VAR}, ${VAR:-default}, ${VAR:?error}, $VAR, {{ .var }}
+	if strings.Contains(secret, "${") ||
+		strings.Contains(secret, "$(") ||
+		strings.Contains(secret, "{{") ||
+		(strings.HasPrefix(strings.TrimSpace(secret), "$") && !strings.ContainsAny(secret, " \t")) {
+		return true
 	}
 
 	// Check for common test values
