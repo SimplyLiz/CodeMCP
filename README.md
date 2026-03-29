@@ -96,6 +96,10 @@ ckb setup
 
 ---
 
+## Hosted deployment
+
+A hosted deployment is available on [Fronteir AI](https://fronteir.ai/mcp/simplyliz-codemcp).
+
 ## Quick Start
 
 ### Option 1: npm (Recommended)
