@@ -168,7 +168,7 @@ func runA2A(cmd *cobra.Command, args []string) error {
 	}()
 
 	select {
-	case err := <-serverErr:
+	case err = <-serverErr:
 		if err != nil {
 			logger.Error("A2A server error", "error", err.Error())
 			return err
@@ -177,7 +177,7 @@ func runA2A(cmd *cobra.Command, args []string) error {
 		logger.Info("Received shutdown signal", "signal", sig.String())
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if err := server.Shutdown(ctx); err != nil {
+		if err = server.Shutdown(ctx); err != nil {
 			logger.Error("Error during shutdown", "error", err.Error())
 			return err
 		}

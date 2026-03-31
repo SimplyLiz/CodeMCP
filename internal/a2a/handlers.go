@@ -221,7 +221,7 @@ func (s *Server) doCancelTask(req CancelTaskRequest) (*Task, *A2AError) {
 		Role:      RoleAgent,
 		Parts:     []Part{{Text: "task canceled by client", MediaType: "text/plain"}},
 	}
-	if err := s.store.UpdateTaskState(req.TaskID, TaskStateCanceled, &cancelMsg); err != nil {
+	if err = s.store.UpdateTaskState(req.TaskID, TaskStateCanceled, &cancelMsg); err != nil {
 		return nil, NewInternalError(fmt.Sprintf("cancel task: %v", err))
 	}
 
@@ -419,7 +419,7 @@ func decodeBody(r *http.Request, v any) error {
 	if err != nil {
 		return fmt.Errorf("read body: %w", err)
 	}
-	if err := json.Unmarshal(body, v); err != nil {
+	if err = json.Unmarshal(body, v); err != nil {
 		return fmt.Errorf("invalid JSON: %w", err)
 	}
 	return nil

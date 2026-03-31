@@ -89,7 +89,11 @@ func (s *Server) doStreamingSend(w http.ResponseWriter, r *http.Request, req Sen
 		},
 	})
 
-	// Execute skill in a goroutine for heartbeat support
+	// Execute skill in a goroutine for heartbeat support.
+	// Note: MCP tool handlers don't accept context, so we can't cancel the
+	// underlying operation. But we stop waiting and mark the task canceled
+	// so the client isn't left hanging, and the goroutine drains into a
+	// buffered channel (no leak).
 	type toolResult struct {
 		resp *envelope.Response
 		err  error
@@ -100,7 +104,6 @@ func (s *Server) doStreamingSend(w http.ResponseWriter, r *http.Request, req Sen
 		resultCh <- toolResult{resp: result, err: toolErr}
 	}()
 
-	// Wait for result with heartbeats
 	heartbeat := time.NewTicker(sseHeartbeatInterval)
 	defer heartbeat.Stop()
 
@@ -109,7 +112,23 @@ func (s *Server) doStreamingSend(w http.ResponseWriter, r *http.Request, req Sen
 	for waiting {
 		select {
 		case <-r.Context().Done():
-			_ = s.store.UpdateTaskState(task.ID, TaskStateCanceled, nil)
+			// Client disconnected — cancel the task and stop streaming.
+			// The goroutine will complete in the background and write to the
+			// buffered channel (no leak), but we don't wait for it.
+			cancelMsg := Message{
+				MessageID: uuid.New().String(),
+				Role:      RoleAgent,
+				Parts:     []Part{{Text: "client disconnected", MediaType: "text/plain"}},
+			}
+			_ = s.store.AddMessage(task.ID, cancelMsg)
+			_ = s.store.UpdateTaskState(task.ID, TaskStateCanceled, &cancelMsg)
+			s.notify(task.ID, StreamResponse{
+				StatusUpdate: &TaskStatusUpdateEvent{
+					TaskID:    task.ID,
+					ContextID: task.ContextID,
+					Status:    TaskStatus{State: TaskStateCanceled, Timestamp: nowISO(), Message: &cancelMsg},
+				},
+			})
 			return
 		case <-heartbeat.C:
 			sendSSEComment(w, flusher, "heartbeat")

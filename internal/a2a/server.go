@@ -128,17 +128,24 @@ func (s *Server) unsubscribe(taskID string, ch chan StreamResponse) {
 }
 
 // notify fans out an event to all subscribers of a task.
+// Copies the subscriber slice under the lock to avoid send-on-closed-channel
+// if a concurrent unsubscribe closes a channel during iteration.
 func (s *Server) notify(taskID string, event StreamResponse) {
 	s.subsMu.RLock()
-	subs := s.subs[taskID]
+	subs := make([]chan StreamResponse, len(s.subs[taskID]))
+	copy(subs, s.subs[taskID])
 	s.subsMu.RUnlock()
 
 	for _, ch := range subs {
-		select {
-		case ch <- event:
-		default:
-			// Subscriber too slow, skip
-		}
+		// Recover from send-on-closed-channel if Shutdown closes a channel
+		// between our copy and the send.
+		func() {
+			defer func() { recover() }()
+			select {
+			case ch <- event:
+			default:
+			}
+		}()
 	}
 }
 

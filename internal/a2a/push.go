@@ -53,13 +53,15 @@ func (p *PushManager) deliver(cfg PushNotificationConfig, event StreamResponse) 
 	}
 
 	backoff := pushInitialBackoff
+	var req *http.Request
+	var resp *http.Response
 	for attempt := 0; attempt <= pushMaxRetries; attempt++ {
 		if attempt > 0 {
 			time.Sleep(backoff)
 			backoff *= 2
 		}
 
-		req, err := http.NewRequest("POST", cfg.URL, bytes.NewReader(body))
+		req, err = http.NewRequest("POST", cfg.URL, bytes.NewReader(body))
 		if err != nil {
 			p.logger.Error("Failed to create push request", "configId", cfg.ID, "error", err.Error())
 			return
@@ -75,7 +77,7 @@ func (p *PushManager) deliver(cfg PushNotificationConfig, event StreamResponse) 
 			req.Header.Set("Authorization", fmt.Sprintf("%s %s", scheme, cfg.Authentication.Token))
 		}
 
-		resp, err := p.client.Do(req)
+		resp, err = p.client.Do(req)
 		if err != nil {
 			p.logger.Warn("Push notification delivery failed",
 				"configId", cfg.ID,

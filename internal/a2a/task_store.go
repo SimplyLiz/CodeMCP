@@ -42,14 +42,14 @@ func OpenTaskStore(ckbDir string, logger *slog.Logger) (*TaskStore, error) {
 		"PRAGMA cache_size=-16000",
 	}
 	for _, p := range pragmas {
-		if _, err := conn.Exec(p); err != nil {
+		if _, err = conn.Exec(p); err != nil {
 			_ = conn.Close()
 			return nil, fmt.Errorf("failed to set pragma: %w", err)
 		}
 	}
 
 	store := &TaskStore{conn: conn, logger: logger, dbPath: dbPath}
-	if err := store.initSchema(); err != nil {
+	if err = store.initSchema(); err != nil {
 		_ = conn.Close()
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
@@ -213,7 +213,8 @@ func (s *TaskStore) GetTask(taskID string, historyLength *int) (*Task, error) {
 
 	// Load history
 	if historyLength == nil || *historyLength != 0 {
-		messages, err := s.getMessages(taskID, historyLength)
+		var messages []Message
+		messages, err = s.getMessages(taskID, historyLength)
 		if err != nil {
 			return nil, err
 		}
@@ -221,7 +222,8 @@ func (s *TaskStore) GetTask(taskID string, historyLength *int) (*Task, error) {
 	}
 
 	// Load artifacts
-	artifacts, err := s.getArtifacts(taskID)
+	var artifacts []Artifact
+	artifacts, err = s.getArtifacts(taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -230,21 +232,16 @@ func (s *TaskStore) GetTask(taskID string, historyLength *int) (*Task, error) {
 	return task, nil
 }
 
-// UpdateTaskState transitions a task to a new state.
+// UpdateTaskState atomically transitions a task to a new state.
+// Uses a conditional UPDATE to prevent TOCTOU races — the UPDATE only succeeds
+// if the current state is one that allows the requested transition.
 func (s *TaskStore) UpdateTaskState(taskID string, newState TaskState, statusMsg *Message) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 
-	var currentState string
-	err := s.conn.QueryRow(`SELECT state FROM tasks WHERE id = ?`, taskID).Scan(&currentState)
-	if err == sql.ErrNoRows {
-		return NewTaskNotFoundError(taskID)
-	}
-	if err != nil {
-		return fmt.Errorf("query task state: %w", err)
-	}
-
-	if !ValidTransition(TaskState(currentState), newState) {
-		return fmt.Errorf("invalid state transition: %s -> %s", currentState, string(newState))
+	// Build the list of states that can transition to newState
+	validFrom := validSourceStates(newState)
+	if len(validFrom) == 0 {
+		return fmt.Errorf("no valid source states for target state: %s", newState)
 	}
 
 	var statusMsgJSON sql.NullString
@@ -256,15 +253,35 @@ func (s *TaskStore) UpdateTaskState(taskID string, newState TaskState, statusMsg
 		statusMsgJSON = sql.NullString{String: string(b), Valid: true}
 	}
 
-	_, err = s.conn.Exec(
-		`UPDATE tasks SET state = ?, status_message = ?, updated_at = ? WHERE id = ?`,
-		string(newState), statusMsgJSON, now, taskID,
+	// Atomic conditional update: only succeeds if current state allows this transition
+	placeholders := make([]string, len(validFrom))
+	args := []any{string(newState), statusMsgJSON, now, taskID}
+	for i, s := range validFrom {
+		placeholders[i] = "?"
+		args = append(args, string(s))
+	}
+
+	query := fmt.Sprintf(
+		`UPDATE tasks SET state = ?, status_message = ?, updated_at = ? WHERE id = ? AND state IN (%s)`,
+		joinComma(placeholders),
 	)
+	result, err := s.conn.Exec(query, args...)
 	if err != nil {
 		return fmt.Errorf("update task state: %w", err)
 	}
 
-	// Record state transition
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		// Distinguish "not found" from "invalid transition"
+		var currentState string
+		scanErr := s.conn.QueryRow(`SELECT state FROM tasks WHERE id = ?`, taskID).Scan(&currentState)
+		if scanErr == sql.ErrNoRows {
+			return NewTaskNotFoundError(taskID)
+		}
+		return fmt.Errorf("invalid state transition: %s -> %s", currentState, string(newState))
+	}
+
+	// Record state transition in history
 	var historyMsg sql.NullString
 	if statusMsg != nil {
 		historyMsg = statusMsgJSON
@@ -288,7 +305,8 @@ func (s *TaskStore) AddMessage(taskID string, msg Message) error {
 
 	var metaJSON sql.NullString
 	if msg.Metadata != nil {
-		b, err := json.Marshal(msg.Metadata)
+		var b []byte
+		b, err = json.Marshal(msg.Metadata)
 		if err != nil {
 			return fmt.Errorf("marshal metadata: %w", err)
 		}
@@ -321,7 +339,8 @@ func (s *TaskStore) AddArtifact(taskID string, artifact Artifact) error {
 
 	var metaJSON sql.NullString
 	if artifact.Metadata != nil {
-		b, err := json.Marshal(artifact.Metadata)
+		var b []byte
+		b, err = json.Marshal(artifact.Metadata)
 		if err != nil {
 			return fmt.Errorf("marshal metadata: %w", err)
 		}
@@ -395,10 +414,11 @@ func (s *TaskStore) ListTasks(req ListTasksRequest) (*ListTasksResponse, error) 
 	var tasks []Task
 	for rows.Next() {
 		var taskID string
-		if err := rows.Scan(&taskID); err != nil {
+		if err = rows.Scan(&taskID); err != nil {
 			continue
 		}
-		task, err := s.GetTask(taskID, req.HistoryLength)
+		var task *Task
+		task, err = s.GetTask(taskID, req.HistoryLength)
 		if err != nil || task == nil {
 			continue
 		}
@@ -507,7 +527,7 @@ func (s *TaskStore) ListPushConfigs(taskID string) ([]PushNotificationConfig, er
 			authSchemes sql.NullString
 			authToken   string
 		)
-		if err := rows.Scan(&id, &url, &authSchemes, &authToken); err != nil {
+		if err = rows.Scan(&id, &url, &authSchemes, &authToken); err != nil {
 			continue
 		}
 		cfg := PushNotificationConfig{ID: id, URL: url, TaskID: taskID}
@@ -572,7 +592,7 @@ func (s *TaskStore) getMessages(taskID string, limit *int) ([]Message, error) {
 			partsJSON string
 			metaJSON  sql.NullString
 		)
-		if err := rows.Scan(&msgID, &role, &partsJSON, &metaJSON); err != nil {
+		if err = rows.Scan(&msgID, &role, &partsJSON, &metaJSON); err != nil {
 			continue
 		}
 		msg := Message{MessageID: msgID, Role: Role(role)}
@@ -612,7 +632,7 @@ func (s *TaskStore) getArtifacts(taskID string) ([]Artifact, error) {
 			partsJSON   string
 			metaJSON    sql.NullString
 		)
-		if err := rows.Scan(&artID, &name, &description, &partsJSON, &metaJSON); err != nil {
+		if err = rows.Scan(&artID, &name, &description, &partsJSON, &metaJSON); err != nil {
 			continue
 		}
 		art := Artifact{ArtifactID: artID, Name: name}
@@ -632,4 +652,26 @@ func joinAnd(clauses []string) string {
 		result += " AND " + clauses[i]
 	}
 	return result
+}
+
+func joinComma(parts []string) string {
+	result := parts[0]
+	for i := 1; i < len(parts); i++ {
+		result += ", " + parts[i]
+	}
+	return result
+}
+
+// validSourceStates returns all states that can transition to the given target state.
+func validSourceStates(target TaskState) []TaskState {
+	var sources []TaskState
+	for from, tos := range validTransitions {
+		for _, to := range tos {
+			if to == target {
+				sources = append(sources, from)
+				break
+			}
+		}
+	}
+	return sources
 }
