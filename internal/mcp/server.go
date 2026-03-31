@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/envelope"
 	"github.com/SimplyLiz/CodeMCP/internal/errors"
 	"github.com/SimplyLiz/CodeMCP/internal/query"
 	"github.com/SimplyLiz/CodeMCP/internal/repos"
@@ -455,6 +456,16 @@ func (s *MCPServer) MarkExpanded() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.expanded = true
+}
+
+// CallTool invokes an MCP tool handler by name and returns its envelope response.
+// This is the public bridge used by the A2A server to execute CKB tools.
+func (s *MCPServer) CallTool(name string, params map[string]interface{}) (*envelope.Response, error) {
+	handler, exists := s.tools[name]
+	if !exists {
+		return nil, fmt.Errorf("tool not found: %s", name)
+	}
+	return handler(params)
 }
 
 // GetRoots returns the current MCP roots from the client (v8.0)
