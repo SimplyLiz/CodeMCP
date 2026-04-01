@@ -294,6 +294,19 @@ func (s *TaskStore) UpdateTaskState(taskID string, newState TaskState, statusMsg
 	return nil
 }
 
+// UpdateTaskMetadata updates the metadata JSON on a task.
+func (s *TaskStore) UpdateTaskMetadata(taskID string, metadata map[string]any) error {
+	b, err := json.Marshal(metadata)
+	if err != nil {
+		return fmt.Errorf("marshal metadata: %w", err)
+	}
+	_, err = s.conn.Exec(
+		`UPDATE tasks SET metadata = ? WHERE id = ?`,
+		string(b), taskID,
+	)
+	return err
+}
+
 // AddMessage adds a message to a task's history.
 func (s *TaskStore) AddMessage(taskID string, msg Message) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)

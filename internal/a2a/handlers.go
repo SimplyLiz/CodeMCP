@@ -115,6 +115,9 @@ func (s *Server) doSendMessage(req SendMessageRequest) (*Task, *A2AError) {
 		},
 	})
 
+	// Attach index freshness warnings to task metadata
+	s.attachIndexWarnings(task.ID)
+
 	// Return final task
 	finalTask, getErr := s.store.GetTask(task.ID, nil)
 	if getErr != nil {
@@ -439,4 +442,48 @@ func (s *Server) getTaskOrError(taskID string) (*Task, *A2AError) {
 		return nil, NewTaskNotFoundError(taskID)
 	}
 	return task, nil
+}
+
+// attachIndexWarnings checks index freshness and adds warnings to task metadata.
+// This surfaces reindex hints to consuming agents so they know results may be stale.
+func (s *Server) attachIndexWarnings(taskID string) {
+	indexStatus := s.getIndexStatus()
+
+	initialized, _ := indexStatus["initialized"].(bool)
+	fresh, _ := indexStatus["fresh"].(bool)
+
+	if initialized && fresh {
+		return
+	}
+
+	var warnings []string
+	if !initialized {
+		warnings = append(warnings, "CKB index not initialized — results are limited to git-based features. Run 'ckb init && ckb index' or use the 'reindex' skill.")
+	} else if !fresh {
+		if commitsBehind, ok := indexStatus["commitsBehind"].(int); ok && commitsBehind > 0 {
+			warnings = append(warnings, fmt.Sprintf("CKB index is %d commit(s) behind — results may be stale. Use the 'reindex' skill to refresh.", commitsBehind))
+		} else {
+			warnings = append(warnings, "CKB index may be stale. Use the 'reindex' skill to refresh.")
+		}
+	}
+
+	if len(warnings) == 0 {
+		return
+	}
+
+	// Store warnings as task metadata
+	task, err := s.store.GetTask(taskID, nil)
+	if err != nil || task == nil {
+		return
+	}
+
+	meta := task.Metadata
+	if meta == nil {
+		meta = make(map[string]any)
+	}
+	meta["indexWarnings"] = warnings
+	meta["indexStatus"] = indexStatus
+
+	// Update metadata in the store
+	s.store.UpdateTaskMetadata(taskID, meta)
 }
