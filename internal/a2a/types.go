@@ -42,12 +42,13 @@ const (
 
 // Task is the core stateful object in A2A.
 type Task struct {
-	ID        string                 `json:"id"`
-	ContextID string                 `json:"contextId,omitempty"`
-	Status    TaskStatus             `json:"status"`
-	History   []Message              `json:"history,omitempty"`
-	Artifacts []Artifact             `json:"artifacts,omitempty"`
-	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+	ID            string                 `json:"id"`
+	ContextID     string                 `json:"contextId,omitempty"`
+	Status        TaskStatus             `json:"status"`
+	History       []Message              `json:"history,omitempty"`
+	Artifacts     []Artifact             `json:"artifacts,omitempty"`
+	Metadata      map[string]interface{} `json:"metadata,omitempty"`
+	StatusHistory []TaskStatus           `json:"statusHistory,omitempty"`
 }
 
 // TaskStatus represents the current state of a task.

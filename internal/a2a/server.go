@@ -32,6 +32,7 @@ type Server struct {
 	config    ServerConfig
 	store     *TaskStore
 	skills    *SkillRegistry
+	push      *PushManager
 
 	// SSE subscriptions: taskID -> list of subscriber channels
 	subs   map[string][]chan StreamResponse
@@ -53,6 +54,7 @@ func NewServer(engine *query.Engine, mcpServer *mcp.MCPServer, logger *slog.Logg
 		config:    config,
 		store:     store,
 		skills:    NewSkillRegistry(mcpServer),
+		push:      NewPushManager(store, logger),
 		subs:      make(map[string][]chan StreamResponse),
 	}
 
@@ -127,18 +129,15 @@ func (s *Server) unsubscribe(taskID string, ch chan StreamResponse) {
 	}
 }
 
-// notify fans out an event to all subscribers of a task.
-// Copies the subscriber slice under the lock to avoid send-on-closed-channel
-// if a concurrent unsubscribe closes a channel during iteration.
+// notify fans out an event to all SSE subscribers and push notification webhooks.
 func (s *Server) notify(taskID string, event StreamResponse) {
+	// Fan out to in-memory SSE subscribers
 	s.subsMu.RLock()
 	subs := make([]chan StreamResponse, len(s.subs[taskID]))
 	copy(subs, s.subs[taskID])
 	s.subsMu.RUnlock()
 
 	for _, ch := range subs {
-		// Recover from send-on-closed-channel if Shutdown closes a channel
-		// between our copy and the send.
 		func() {
 			defer func() { _ = recover() }()
 			select {
@@ -146,6 +145,11 @@ func (s *Server) notify(taskID string, event StreamResponse) {
 			default:
 			}
 		}()
+	}
+
+	// Deliver to push notification webhooks (async, non-blocking)
+	if s.push != nil {
+		s.push.Notify(taskID, event)
 	}
 }
 
