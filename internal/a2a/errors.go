@@ -7,15 +7,15 @@ import (
 
 // A2A-specific JSON-RPC error codes.
 const (
-	ErrCodeTaskNotFound              = -32001
-	ErrCodeTaskNotCancelable         = -32002
+	ErrCodeTaskNotFound                 = -32001
+	ErrCodeTaskNotCancelable            = -32002
 	ErrCodePushNotificationNotSupported = -32003
-	ErrCodeUnsupportedOperation      = -32004
-	ErrCodeContentTypeNotSupported   = -32005
-	ErrCodeInvalidAgentResponse      = -32006
-	ErrCodeExtendedCardNotConfigured = -32007
-	ErrCodeExtensionSupportRequired  = -32008
-	ErrCodeVersionNotSupported       = -32009
+	ErrCodeUnsupportedOperation         = -32004
+	ErrCodeContentTypeNotSupported      = -32005
+	ErrCodeInvalidAgentResponse         = -32006
+	ErrCodeExtendedCardNotConfigured    = -32007
+	ErrCodeExtensionSupportRequired     = -32008
+	ErrCodeVersionNotSupported          = -32009
 
 	// Standard JSON-RPC error codes.
 	ErrCodeParseError     = -32700
@@ -48,20 +48,20 @@ func (e *A2AError) ToJSONRPC() *JSONRPCError {
 
 // httpStatusForCode maps A2A error codes to HTTP status codes.
 var httpStatusForCode = map[int]int{
-	ErrCodeTaskNotFound:              http.StatusNotFound,
-	ErrCodeTaskNotCancelable:         http.StatusConflict,
+	ErrCodeTaskNotFound:                 http.StatusNotFound,
+	ErrCodeTaskNotCancelable:            http.StatusConflict,
 	ErrCodePushNotificationNotSupported: http.StatusBadRequest,
-	ErrCodeUnsupportedOperation:      http.StatusBadRequest,
-	ErrCodeContentTypeNotSupported:   http.StatusUnsupportedMediaType,
-	ErrCodeInvalidAgentResponse:      http.StatusBadGateway,
-	ErrCodeExtendedCardNotConfigured: http.StatusBadRequest,
-	ErrCodeExtensionSupportRequired:  http.StatusBadRequest,
-	ErrCodeVersionNotSupported:       http.StatusBadRequest,
-	ErrCodeParseError:                http.StatusBadRequest,
-	ErrCodeInvalidRequest:            http.StatusBadRequest,
-	ErrCodeMethodNotFound:            http.StatusNotFound,
-	ErrCodeInvalidParams:             http.StatusBadRequest,
-	ErrCodeInternalError:             http.StatusInternalServerError,
+	ErrCodeUnsupportedOperation:         http.StatusBadRequest,
+	ErrCodeContentTypeNotSupported:      http.StatusUnsupportedMediaType,
+	ErrCodeInvalidAgentResponse:         http.StatusBadGateway,
+	ErrCodeExtendedCardNotConfigured:    http.StatusBadRequest,
+	ErrCodeExtensionSupportRequired:     http.StatusBadRequest,
+	ErrCodeVersionNotSupported:          http.StatusBadRequest,
+	ErrCodeParseError:                   http.StatusBadRequest,
+	ErrCodeInvalidRequest:               http.StatusBadRequest,
+	ErrCodeMethodNotFound:               http.StatusNotFound,
+	ErrCodeInvalidParams:                http.StatusBadRequest,
+	ErrCodeInternalError:                http.StatusInternalServerError,
 }
 
 // --- Error Constructors ---

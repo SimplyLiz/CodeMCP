@@ -140,7 +140,7 @@ func (s *Server) notify(taskID string, event StreamResponse) {
 		// Recover from send-on-closed-channel if Shutdown closes a channel
 		// between our copy and the send.
 		func() {
-			defer func() { recover() }()
+			defer func() { _ = recover() }()
 			select {
 			case ch <- event:
 			default:

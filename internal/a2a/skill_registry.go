@@ -150,4 +150,3 @@ func examplesForTool(toolName string) []string {
 		return []string{fmt.Sprintf(`{"skill": "%s", "params": {}}`, toolName)}
 	}
 }
-

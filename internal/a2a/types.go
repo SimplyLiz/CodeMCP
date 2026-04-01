@@ -92,20 +92,20 @@ type Artifact struct {
 
 // AgentCard describes an A2A agent's capabilities and endpoint.
 type AgentCard struct {
-	Name               string                       `json:"name"`
-	Description        string                       `json:"description,omitempty"`
-	Version            string                       `json:"version,omitempty"`
-	Provider           *Provider                    `json:"provider,omitempty"`
-	IconURL            string                       `json:"iconUrl,omitempty"`
-	DocumentationURL   string                       `json:"documentationUrl,omitempty"`
-	SupportedInterfaces []SupportedInterface         `json:"supportedInterfaces"`
-	Capabilities       *Capabilities                `json:"capabilities,omitempty"`
-	SecuritySchemes    map[string]SecurityScheme     `json:"securitySchemes,omitempty"`
-	Security           []map[string][]string         `json:"security,omitempty"`
-	DefaultInputModes  []string                     `json:"defaultInputModes,omitempty"`
-	DefaultOutputModes []string                     `json:"defaultOutputModes,omitempty"`
-	Skills             []Skill                      `json:"skills"`
-	Signatures         []json.RawMessage            `json:"signatures,omitempty"`
+	Name                string                    `json:"name"`
+	Description         string                    `json:"description,omitempty"`
+	Version             string                    `json:"version,omitempty"`
+	Provider            *Provider                 `json:"provider,omitempty"`
+	IconURL             string                    `json:"iconUrl,omitempty"`
+	DocumentationURL    string                    `json:"documentationUrl,omitempty"`
+	SupportedInterfaces []SupportedInterface      `json:"supportedInterfaces"`
+	Capabilities        *Capabilities             `json:"capabilities,omitempty"`
+	SecuritySchemes     map[string]SecurityScheme `json:"securitySchemes,omitempty"`
+	Security            []map[string][]string     `json:"security,omitempty"`
+	DefaultInputModes   []string                  `json:"defaultInputModes,omitempty"`
+	DefaultOutputModes  []string                  `json:"defaultOutputModes,omitempty"`
+	Skills              []Skill                   `json:"skills"`
+	Signatures          []json.RawMessage         `json:"signatures,omitempty"`
 }
 
 // Provider describes the organization behind an agent.
@@ -123,11 +123,11 @@ type SupportedInterface struct {
 
 // Capabilities declares optional features the agent supports.
 type Capabilities struct {
-	Streaming              bool                 `json:"streaming,omitempty"`
-	PushNotifications      bool                 `json:"pushNotifications,omitempty"`
-	ExtendedAgentCard      bool                 `json:"extendedAgentCard,omitempty"`
-	StateTransitionHistory bool                 `json:"stateTransitionHistory,omitempty"`
-	Extensions             []ExtensionDecl      `json:"extensions,omitempty"`
+	Streaming              bool            `json:"streaming,omitempty"`
+	PushNotifications      bool            `json:"pushNotifications,omitempty"`
+	ExtendedAgentCard      bool            `json:"extendedAgentCard,omitempty"`
+	StateTransitionHistory bool            `json:"stateTransitionHistory,omitempty"`
+	Extensions             []ExtensionDecl `json:"extensions,omitempty"`
 }
 
 // ExtensionDecl declares an extension the agent supports.
@@ -139,14 +139,14 @@ type ExtensionDecl struct {
 
 // SecurityScheme describes an authentication mechanism.
 type SecurityScheme struct {
-	Type             string                 `json:"type"` // apiKey, http, oauth2, openIdConnect, mutualTLS
-	Description      string                 `json:"description,omitempty"`
-	Name             string                 `json:"name,omitempty"`             // apiKey: header/query/cookie name
-	In               string                 `json:"in,omitempty"`              // apiKey: header, query, cookie
-	Scheme           string                 `json:"scheme,omitempty"`          // http: bearer, basic
-	BearerFormat     string                 `json:"bearerFormat,omitempty"`    // http: JWT, etc.
-	Flows            *OAuthFlows            `json:"flows,omitempty"`           // oauth2
-	OpenIDConnectURL string                 `json:"openIdConnectUrl,omitempty"`
+	Type             string      `json:"type"` // apiKey, http, oauth2, openIdConnect, mutualTLS
+	Description      string      `json:"description,omitempty"`
+	Name             string      `json:"name,omitempty"`         // apiKey: header/query/cookie name
+	In               string      `json:"in,omitempty"`           // apiKey: header, query, cookie
+	Scheme           string      `json:"scheme,omitempty"`       // http: bearer, basic
+	BearerFormat     string      `json:"bearerFormat,omitempty"` // http: JWT, etc.
+	Flows            *OAuthFlows `json:"flows,omitempty"`        // oauth2
+	OpenIDConnectURL string      `json:"openIdConnectUrl,omitempty"`
 }
 
 // OAuthFlows describes OAuth 2.0 flows.
@@ -179,14 +179,14 @@ type Skill struct {
 
 // SendMessageRequest is the request body for message/send.
 type SendMessageRequest struct {
-	Message       Message                    `json:"message"`
-	Configuration *SendMessageConfiguration  `json:"configuration,omitempty"`
-	Metadata      map[string]interface{}     `json:"metadata,omitempty"`
+	Message       Message                   `json:"message"`
+	Configuration *SendMessageConfiguration `json:"configuration,omitempty"`
+	Metadata      map[string]interface{}    `json:"metadata,omitempty"`
 }
 
 // SendMessageConfiguration controls send behavior.
 type SendMessageConfiguration struct {
-	ReturnImmediately    bool                     `json:"returnImmediately,omitempty"`
+	ReturnImmediately      bool                    `json:"returnImmediately,omitempty"`
 	PushNotificationConfig *PushNotificationConfig `json:"pushNotificationConfig,omitempty"`
 }
 
@@ -290,10 +290,10 @@ type JSONRPCRequest struct {
 
 // JSONRPCResponse represents a JSON-RPC 2.0 response.
 type JSONRPCResponse struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      interface{}     `json:"id,omitempty"`
-	Result  interface{}     `json:"result,omitempty"`
-	Error   *JSONRPCError   `json:"error,omitempty"`
+	JSONRPC string        `json:"jsonrpc"`
+	ID      interface{}   `json:"id,omitempty"`
+	Result  interface{}   `json:"result,omitempty"`
+	Error   *JSONRPCError `json:"error,omitempty"`
 }
 
 // JSONRPCError represents a JSON-RPC 2.0 error object.
