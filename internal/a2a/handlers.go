@@ -484,6 +484,6 @@ func (s *Server) attachIndexWarnings(taskID string) {
 	meta["indexWarnings"] = warnings
 	meta["indexStatus"] = indexStatus
 
-	// Update metadata in the store
-	s.store.UpdateTaskMetadata(taskID, meta)
+	// Update metadata in the store (best-effort, non-critical)
+	_ = s.store.UpdateTaskMetadata(taskID, meta)
 }
