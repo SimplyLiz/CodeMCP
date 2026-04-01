@@ -229,6 +229,15 @@ func (s *TaskStore) GetTask(taskID string, historyLength *int) (*Task, error) {
 	}
 	task.Artifacts = artifacts
 
+	// Load state transition history
+	statusHistory, err := s.getStatusHistory(taskID)
+	if err != nil {
+		return nil, err
+	}
+	if len(statusHistory) > 0 {
+		task.StatusHistory = statusHistory
+	}
+
 	return task, nil
 }
 
@@ -657,6 +666,41 @@ func (s *TaskStore) getArtifacts(taskID string) ([]Artifact, error) {
 	}
 
 	return artifacts, nil
+}
+
+func (s *TaskStore) getStatusHistory(taskID string) ([]TaskStatus, error) {
+	rows, err := s.conn.Query(
+		`SELECT state, message, timestamp FROM task_status_history WHERE task_id = ? ORDER BY id ASC`,
+		taskID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query status history: %w", err)
+	}
+	defer rows.Close()
+
+	var history []TaskStatus
+	for rows.Next() {
+		var (
+			state     string
+			msgJSON   sql.NullString
+			timestamp string
+		)
+		if err = rows.Scan(&state, &msgJSON, &timestamp); err != nil {
+			continue
+		}
+		status := TaskStatus{
+			State:     TaskState(state),
+			Timestamp: timestamp,
+		}
+		if msgJSON.Valid {
+			var msg Message
+			if json.Unmarshal([]byte(msgJSON.String), &msg) == nil {
+				status.Message = &msg
+			}
+		}
+		history = append(history, status)
+	}
+	return history, nil
 }
 
 func joinAnd(clauses []string) string {
