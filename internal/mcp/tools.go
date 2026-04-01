@@ -63,8 +63,8 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		{
 			Name: "expandToolset",
 			Description: "Switch to a larger toolset for a specific workflow. Call this when you need tools not in the current set. Presets (each includes all core tools plus):\n" +
-				"• review (39 tools): reviewPR, auditCompliance, scanSecrets, analyzeTestGaps, getAffectedTests, compareAPI, findDeadCode, auditRisk, getOwnership — use for PR reviews, test coverage analysis, compliance audits, security\n" +
-				"• refactor (32 tools): analyzeCoupling, findCycles, suggestRefactorings, findDeadCode, compareAPI, explainOrigin — use for refactoring, dependency analysis, dead code removal\n" +
+				"• review (40 tools): reviewPR, auditCompliance, scanSecrets, analyzeTestGaps, getAffectedTests, compareAPI, findDeadCode, findUnwiredModules, auditRisk, getOwnership — use for PR reviews, test coverage analysis, compliance audits, security\n" +
+				"• refactor (33 tools): analyzeCoupling, findCycles, suggestRefactorings, findDeadCode, findUnwiredModules, compareAPI, explainOrigin — use for refactoring, dependency analysis, dead code removal\n" +
 				"• federation (36 tools): federationSearch*, listContracts, analyzeContractImpact — use for multi-repo queries, cross-repo analysis\n" +
 				"• docs (27 tools): indexDocs, getDocsForSymbol, checkDocStaleness, getDecisions, recordDecision — use for documentation, ADRs\n" +
 				"• ops (33 tools): doctor, reindex, daemonStatus, listJobs, webhooks, telemetry — use for diagnostics, daemon management\n" +
@@ -1675,6 +1675,50 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		// Unwired Module Detection
+		{
+			Name:        "findUnwiredModules",
+			Description: "Find exported symbols that are never transitively reachable from application entrypoints (main, server, CLI). Detects the 'built but never plugged in' pattern where modules exist and are tested but aren't wired into the execution pipeline. Complements findDeadCode which only checks reference counts.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"scope": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Limit analysis to specific packages/paths",
+					},
+					"minConfidence": map[string]interface{}{
+						"type":        "number",
+						"default":     0.80,
+						"description": "Minimum confidence threshold (0-1)",
+					},
+					"includeTypes": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Include type definitions (higher false positive rate)",
+					},
+					"excludePatterns": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Glob patterns to exclude",
+					},
+					"maxNodes": map[string]interface{}{
+						"type":        "integer",
+						"default":     10000,
+						"description": "Max symbols in reachable set (budget for BFS traversal)",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"default":     100,
+						"description": "Maximum results to return",
+					},
+				},
+			},
+		},
 		// v7.6 Affected Tests Tool
 		{
 			Name:        "getAffectedTests",
@@ -2501,6 +2545,7 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["findDeadCodeCandidates"] = s.toolFindDeadCodeCandidates
 	// v7.6 Static Dead Code Detection
 	s.tools["findDeadCode"] = s.toolFindDeadCode
+	s.tools["findUnwiredModules"] = s.toolFindUnwiredModules
 	// v7.6 Affected Tests
 	s.tools["getAffectedTests"] = s.toolGetAffectedTests
 	// v7.6 Breaking Change Detection

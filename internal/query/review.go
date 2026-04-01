@@ -468,6 +468,17 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 		}()
 	}
 
+	// Check: Unwired Modules (SCIP-only, parallel safe)
+	if checkEnabled("unwired") {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, ff := e.checkUnwiredModules(ctx, changedFiles, opts)
+			addCheck(c)
+			addFindings(ff)
+		}()
+	}
+
 	// Check: Blast Radius (SCIP-only, parallel safe)
 	if checkEnabled("blast-radius") {
 		wg.Add(1)
