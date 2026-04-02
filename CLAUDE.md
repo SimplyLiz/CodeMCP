@@ -51,7 +51,12 @@ golangci-lint run
 # Start A2A protocol server (for agent-to-agent communication)
 ./ckb a2a --port 8081
 
-# Run PR review (20 quality checks)
+# Find exported symbols not reachable from entrypoints
+./ckb unwired
+./ckb unwired --scope internal/cost,internal/multisampling
+./ckb unwired --format json
+
+# Run PR review (21 quality checks)
 ./ckb review
 ./ckb review --base=develop --format=markdown
 ./ckb review --checks=breaking,secrets,health --ci
@@ -124,7 +129,7 @@ claude mcp add ckb -- npx @tastehub/ckb mcp
 
 **Intelligence (v6.5):** `explainOrigin`, `analyzeCoupling`, `exportForLLM`, `auditRisk`
 
-**Code Analysis (v7.6):** `findDeadCode` (static dead code detection), `getAffectedTests`, `compareAPI`
+**Code Analysis (v7.6):** `findDeadCode` (static dead code detection), `findUnwiredModules` (entrypoint reachability — detects "built but never plugged in" modules), `getAffectedTests`, `compareAPI`
 
 **Compound Operations (v8.0):** `explore`, `understand`, `prepareChange`, `batchGet`, `batchSearch`
 
@@ -132,7 +137,7 @@ claude mcp add ckb -- npx @tastehub/ckb mcp
 
 **Index Management (v8.0):** `reindex` (trigger index refresh), enhanced `getStatus` with health tiers
 
-**PR Review (v8.2):** `reviewPR` — unified review with 20 quality checks (breaking, secrets, tests, complexity, health, coupling, hotspots, risk, critical-path, traceability, independence, generated, classify, split, dead-code, test-gaps, blast-radius, comment-drift, format-consistency, bug-patterns); optional `--llm` flag for Claude-powered narrative
+**PR Review (v8.2):** `reviewPR` — unified review with 21 quality checks (breaking, secrets, tests, complexity, health, coupling, hotspots, risk, critical-path, traceability, independence, generated, classify, split, dead-code, unwired, test-gaps, blast-radius, comment-drift, format-consistency, bug-patterns); optional `--llm` flag for Claude-powered narrative
 
 ## A2A Integration
 

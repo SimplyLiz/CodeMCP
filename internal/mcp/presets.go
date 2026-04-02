@@ -88,17 +88,18 @@ var Presets = map[string][]string{
 		"getOwnership",
 		"getOwnershipDrift",
 		"recentlyRelevant",
-		"scanSecrets",       // Secret detection for PR reviews
-		"reviewPR",          // Unified PR review with quality gates
-		"getAffectedTests",  // Tests covering changed code
-		"analyzeTestGaps",   // Untested functions in changed files
-		"compareAPI",        // Breaking API changes
-		"findDeadCode",      // Dead code in changes
-		"auditRisk",         // Multi-factor risk scoring
-		"analyzeChange",     // Change analysis
-		"getFileComplexity", // File complexity for review
-		"listEntrypoints",   // Key entry points in changed code
-		"auditCompliance",   // Regulatory compliance audit
+		"scanSecrets",        // Secret detection for PR reviews
+		"reviewPR",           // Unified PR review with quality gates
+		"getAffectedTests",   // Tests covering changed code
+		"analyzeTestGaps",    // Untested functions in changed files
+		"compareAPI",         // Breaking API changes
+		"findDeadCode",       // Dead code in changes
+		"findUnwiredModules", // Exported symbols not reachable from entrypoints
+		"auditRisk",          // Multi-factor risk scoring
+		"analyzeChange",      // Change analysis
+		"getFileComplexity",  // File complexity for review
+		"listEntrypoints",    // Key entry points in changed code
+		"auditCompliance",    // Regulatory compliance audit
 	},
 
 	// Refactor: core + refactoring analysis tools
@@ -114,9 +115,10 @@ var Presets = map[string][]string{
 		"justifySymbol",
 		"analyzeCoupling",
 		"findDeadCodeCandidates",
-		"findDeadCode",     // v7.6: Static dead code detection (no telemetry needed)
-		"getAffectedTests", // v7.6: Find tests affected by changes
-		"compareAPI",       // v7.6: Breaking change detection
+		"findDeadCode",       // v7.6: Static dead code detection (no telemetry needed)
+		"findUnwiredModules", // Exported symbols not reachable from entrypoints
+		"getAffectedTests",   // v7.6: Find tests affected by changes
+		"compareAPI",         // v7.6: Breaking change detection
 		"auditRisk",
 		"explainOrigin",
 		"scanSecrets",         // v8.0: Secret detection for security audits

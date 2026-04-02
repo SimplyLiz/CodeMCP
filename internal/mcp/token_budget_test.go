@@ -34,8 +34,8 @@ func TestToolsListTokenBudget(t *testing.T) {
 		maxTools int
 	}{
 		{PresetCore, maxCorePresetBytes, 20, 24},     // v8.3: 24 tools (+explainPath, responsibilities, exportForLLM)
-		{PresetReview, maxReviewPresetBytes, 30, 40}, // v8.3: 40 tools (+auditCompliance)
-		{PresetFull, maxFullPresetBytes, 80, 96},     // v8.3: 96 tools (+listSymbols, getSymbolGraph)
+		{PresetReview, maxReviewPresetBytes, 30, 41}, // v8.4: 41 tools (+findUnwiredModules)
+		{PresetFull, maxFullPresetBytes, 80, 97},     // v8.4: 97 tools (+findUnwiredModules)
 	}
 
 	for _, tt := range tests {

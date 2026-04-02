@@ -42,9 +42,9 @@ func TestPresetFiltering(t *testing.T) {
 		t.Fatalf("failed to set full preset: %v", err)
 	}
 	fullTools := server.GetFilteredTools()
-	// v8.3: Full now includes auditCompliance, listSymbols, getSymbolGraph (96)
-	if len(fullTools) != 96 {
-		t.Errorf("expected 96 full tools (v8.3), got %d", len(fullTools))
+	// v8.4: Full now includes findUnwiredModules (97)
+	if len(fullTools) != 97 {
+		t.Errorf("expected 97 full tools, got %d", len(fullTools))
 	}
 
 	// Full preset should still have core tools first
