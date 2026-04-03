@@ -54,7 +54,7 @@
     "@tastehub/ckb-darwin-x64": "8.2.0",
     "@tastehub/ckb-linux-x64": "8.2.0",
     "@tastehub/ckb-linux-arm64": "8.3.0",
-    "@tastehub/ckb-win32-x64": "8.2.0"
+    "@tastehub/ckb-win32-x64": "8.3.0"
   },
   "engines": {
     "node": ">=16"
