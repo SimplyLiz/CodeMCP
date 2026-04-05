@@ -249,7 +249,7 @@ CREATE TABLE IF NOT EXISTS remote_repos (
     repo_id TEXT NOT NULL,
     name TEXT,
     description TEXT,
-    commit TEXT,
+    commit_hash TEXT,
     languages TEXT,                    -- JSON array
     symbol_count INTEGER,
     file_count INTEGER,
@@ -379,7 +379,7 @@ func (idx *Index) migrate(fromVersion int) error {
 			repo_id TEXT NOT NULL,
 			name TEXT,
 			description TEXT,
-			commit TEXT,
+			commit_hash TEXT,
 			languages TEXT,
 			symbol_count INTEGER,
 			file_count INTEGER,
@@ -667,7 +667,7 @@ type CachedRemoteRepo struct {
 func (idx *Index) UpsertRemoteRepo(repo *CachedRemoteRepo) error {
 	_, err := idx.db.Exec(`
 		INSERT OR REPLACE INTO remote_repos
-		(server_name, repo_id, name, description, commit, languages, symbol_count, file_count, sync_seq, index_version, cached_at)
+		(server_name, repo_id, name, description, commit_hash, languages, symbol_count, file_count, sync_seq, index_version, cached_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, repo.ServerName, repo.RepoID, repo.Name, repo.Description, repo.Commit,
 		repo.Languages, repo.SymbolCount, repo.FileCount, repo.SyncSeq, repo.IndexVersion,
@@ -678,7 +678,7 @@ func (idx *Index) UpsertRemoteRepo(repo *CachedRemoteRepo) error {
 // GetRemoteRepos returns all cached repos for a server
 func (idx *Index) GetRemoteRepos(serverName string) ([]*CachedRemoteRepo, error) {
 	rows, err := idx.db.Query(`
-		SELECT server_name, repo_id, name, description, commit, languages,
+		SELECT server_name, repo_id, name, description, commit_hash, languages,
 			   symbol_count, file_count, sync_seq, index_version, cached_at
 		FROM remote_repos WHERE server_name = ? ORDER BY repo_id
 	`, serverName)
@@ -709,7 +709,7 @@ func (idx *Index) GetRemoteRepos(serverName string) ([]*CachedRemoteRepo, error)
 // GetAllRemoteRepos returns all cached repos from all servers
 func (idx *Index) GetAllRemoteRepos() ([]*CachedRemoteRepo, error) {
 	rows, err := idx.db.Query(`
-		SELECT server_name, repo_id, name, description, commit, languages,
+		SELECT server_name, repo_id, name, description, commit_hash, languages,
 			   symbol_count, file_count, sync_seq, index_version, cached_at
 		FROM remote_repos ORDER BY server_name, repo_id
 	`)
