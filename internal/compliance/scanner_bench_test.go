@@ -79,14 +79,14 @@ func BenchmarkNormalizeIdentifier_Long(b *testing.B) {
 // BenchmarkExtractIdentifiers measures per-line identifier extraction (regex + dedup).
 func BenchmarkExtractIdentifiers(b *testing.B) {
 	lines := []string{
-		"\tfirstName string `json:\"first_name\"`",                  // Go struct field
-		"\tprivate String userEmailAddress;",                        // Java field
-		"\temail_address: Optional[str] = None",                     // Python
-		"export interface UserProfile { dateOfBirth: string }",     // TypeScript
-		"func (u *User) GetFullName() string { return u.FullName }", // Go method
+		"\tfirstName string `json:\"first_name\"`",                   // Go struct field
+		"\tprivate String userEmailAddress;",                         // Java field
+		"\temail_address: Optional[str] = None",                      // Python
+		"export interface UserProfile { dateOfBirth: string }",       // TypeScript
+		"func (u *User) GetFullName() string { return u.FullName }",  // Go method
 		"// This is a comment with identifiers: email phone address", // comment (should skip)
-		"",                                          // empty line
-		"const MAX_RETRY_COUNT = 3",                 // constant
+		"",                          // empty line
+		"const MAX_RETRY_COUNT = 3", // constant
 	}
 
 	b.ResetTimer()
@@ -99,14 +99,14 @@ func BenchmarkExtractIdentifiers(b *testing.B) {
 // BenchmarkExtractContainer measures per-line container detection (7 compiled regexes).
 func BenchmarkExtractContainer(b *testing.B) {
 	lines := []string{
-		`type UserProfile struct {`,                    // Go struct
+		`type UserProfile struct {`,                   // Go struct
 		`class UserService extends BaseService {`,     // Java/Python/TS class
 		`interface PaymentProvider {`,                 // TypeScript interface
 		`export type UserRecord = {`,                  // TypeScript type alias
 		`data class UserData(val name: String) {`,     // Kotlin data class
 		`pub struct ConnectionPool {`,                 // Rust struct
 		`func processPayment(amount float64) error {`, // non-container (no match)
-		`	return nil`,                               // non-container (no match)
+		`	return nil`, // non-container (no match)
 	}
 
 	b.ResetTimer()
@@ -119,14 +119,14 @@ func BenchmarkExtractContainer(b *testing.B) {
 // BenchmarkIsNonPIIIdentifier measures the filter function for false-positive suppression.
 func BenchmarkIsNonPIIIdentifier(b *testing.B) {
 	identifiers := []string{
-		"fingerprint",        // filtered: non-biometric
-		"display_name",       // filtered: UI label
-		"file_name",          // filtered: code entity
-		"function_name",      // filtered: code entity
-		"email",              // NOT filtered: real PII
-		"first_name",         // NOT filtered: real PII
-		"host_name",          // filtered: infra
-		"user_fingerprint",   // NOT filtered: biometric context
+		"fingerprint",      // filtered: non-biometric
+		"display_name",     // filtered: UI label
+		"file_name",        // filtered: code entity
+		"function_name",    // filtered: code entity
+		"email",            // NOT filtered: real PII
+		"first_name",       // NOT filtered: real PII
+		"host_name",        // filtered: infra
+		"user_fingerprint", // NOT filtered: biometric context
 	}
 
 	b.ResetTimer()
@@ -142,14 +142,14 @@ func BenchmarkMatchPII(b *testing.B) {
 	scanner := NewPIIScanner(nil)
 
 	identifiers := []string{
-		"email",            // exact match (hit)
-		"first_name",       // exact match (hit)
-		"user_email",       // suffix match (hit)
-		"customer_phone",   // suffix match (hit)
-		"fingerprint",      // non-PII filter (filtered before lookup)
-		"engine_name",      // non-PII filter (filtered before lookup)
-		"query_result",     // no match (miss)
-		"backend_ladder",   // no match (miss)
+		"email",          // exact match (hit)
+		"first_name",     // exact match (hit)
+		"user_email",     // suffix match (hit)
+		"customer_phone", // suffix match (hit)
+		"fingerprint",    // non-PII filter (filtered before lookup)
+		"engine_name",    // non-PII filter (filtered before lookup)
+		"query_result",   // no match (miss)
+		"backend_ladder", // no match (miss)
 	}
 
 	b.ResetTimer()
