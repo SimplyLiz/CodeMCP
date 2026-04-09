@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -108,6 +109,12 @@ func (s *SCIPAdapter) Priority() int {
 	return 1 // SCIP has highest priority
 }
 
+// derivedCachePath returns the path for the derived-index cache file.
+// It lives alongside the .ckb database in <repoRoot>/.ckb/.
+func (s *SCIPAdapter) derivedCachePath() string {
+	return filepath.Join(s.repoRoot, ".ckb", "scip_derived.gob")
+}
+
 // LoadIndex loads or reloads the SCIP index
 func (s *SCIPAdapter) LoadIndex() error {
 	s.mu.Lock()
@@ -117,7 +124,7 @@ func (s *SCIPAdapter) LoadIndex() error {
 		"path", s.indexPath,
 	)
 
-	index, err := LoadSCIPIndex(s.indexPath)
+	index, err := loadSCIPIndexInternal(s.indexPath, s.derivedCachePath())
 	if err != nil {
 		return err
 	}
