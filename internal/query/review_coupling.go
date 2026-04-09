@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/SimplyLiz/CodeMCP/internal/backends/git"
+	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
 	"github.com/SimplyLiz/CodeMCP/internal/coupling"
 )
 
@@ -189,6 +190,52 @@ func (e *Engine) checkCouplingGaps(ctx context.Context, changedFiles []string, d
 			Category:   "coupling",
 			RuleID:     "ckb/coupling/missing-cochange",
 		})
+	}
+
+	// Augment with Cartographer hidden coupling: co-change pairs with NO import edge.
+	// These represent implicit dependencies invisible in the static dependency graph.
+	if cartographer.Available() {
+		hidden, err := cartographer.HiddenCoupling(e.repoRoot, 0, 3)
+		if err == nil {
+			existing := make(map[string]bool, len(gaps)*2)
+			for _, g := range gaps {
+				existing[g.ChangedFile+"\x00"+g.MissingFile] = true
+				existing[g.MissingFile+"\x00"+g.ChangedFile] = true
+			}
+			for _, pair := range hidden {
+				srcChanged := changedSet[pair.FileA]
+				tgtChanged := changedSet[pair.FileB]
+				if !srcChanged && !tgtChanged {
+					continue
+				}
+				changedFile, missingFile := pair.FileA, pair.FileB
+				if tgtChanged && !srcChanged {
+					changedFile, missingFile = pair.FileB, pair.FileA
+				}
+				if changedSet[missingFile] || isCouplingNoiseFile(missingFile) {
+					continue
+				}
+				key := changedFile + "\x00" + missingFile
+				if existing[key] {
+					continue
+				}
+				existing[key] = true
+				gaps = append(gaps, CouplingGap{
+					ChangedFile:  changedFile,
+					MissingFile:  missingFile,
+					CoChangeRate: pair.CouplingScore,
+				})
+				findings = append(findings, ReviewFinding{
+					Check:      "coupling",
+					Severity:   "warning",
+					File:       changedFile,
+					Message:    fmt.Sprintf("Hidden coupling: %s co-changes with %s (%.0f%% score, no import link)", changedFile, missingFile, pair.CouplingScore*100),
+					Suggestion: fmt.Sprintf("Consider also changing %s — it co-changes with %s but has no direct import relationship", missingFile, changedFile),
+					Category:   "coupling",
+					RuleID:     "ckb/coupling/hidden",
+				})
+			}
+		}
 	}
 
 	status := "pass"

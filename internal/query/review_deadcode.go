@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
 )
 
 // constDeclRe matches Go const declarations like "ConstName = value" or "ConstName Type = value".
@@ -92,6 +94,35 @@ func (e *Engine) checkDeadCode(ctx context.Context, changedFiles []string, opts 
 	// Phase 2: Scan for unused constants using FindReferences
 	constFindings := e.findDeadConstants(ctx, changedFiles, reported)
 	findings = append(findings, constFindings...)
+
+	// Phase 3: Cartographer cross-project unreferenced exports.
+	// Catches public symbols with no callers anywhere in the project —
+	// stronger signal than SCIP's per-package analysis.
+	if cartographer.Available() {
+		unref, err := cartographer.UnreferencedSymbols(e.repoRoot)
+		if err == nil {
+			for _, f := range unref.Files {
+				if !changedSet[f.Path] {
+					continue
+				}
+				for _, sym := range f.Symbols {
+					key := fmt.Sprintf("%s:sym:%s", f.Path, sym)
+					if reported[key] {
+						continue
+					}
+					reported[key] = true
+					findings = append(findings, ReviewFinding{
+						Check:    "dead-code",
+						Severity: "warning",
+						File:     f.Path,
+						Message:  fmt.Sprintf("Unreferenced export: %s — no callers found project-wide", sym),
+						Category: "dead-code",
+						RuleID:   "ckb/dead-code/unreferenced-export",
+					})
+				}
+			}
+		}
+	}
 
 	status := "pass"
 	summary := "No dead code in changed files"
