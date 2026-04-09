@@ -1,0 +1,199 @@
+// Package cartographer provides CGo bindings to the Rust Cartographer library.
+package cartographer
+
+import "encoding/json"
+
+// ---------------------------------------------------------------------------
+// Public types (shared between real bridge and stub builds)
+// ---------------------------------------------------------------------------
+
+// ProjectGraph is the full dependency graph returned by MapProject.
+type ProjectGraph struct {
+	Nodes           []GraphNode      `json:"nodes"`
+	Edges           []GraphEdge      `json:"edges"`
+	Cycles          []CycleInfo      `json:"cycles"`
+	GodModules      []GodModuleInfo  `json:"godModules"`
+	LayerViolations []LayerViolation `json:"layerViolations"`
+	Metadata        GraphMetadata    `json:"metadata"`
+}
+
+// GraphNode represents a file/module in the dependency graph.
+type GraphNode struct {
+	ModuleID       string   `json:"moduleId"`
+	Path           string   `json:"path"`
+	Language       string   `json:"language"`
+	SignatureCount int      `json:"signatureCount"`
+	IsBridge       *bool    `json:"isBridge,omitempty"`
+	BridgeScore    *float64 `json:"bridgeScore,omitempty"`
+	Degree         *int     `json:"degree,omitempty"`
+	RiskLevel      *string  `json:"riskLevel,omitempty"`
+}
+
+// GraphEdge represents an import/dependency relationship.
+type GraphEdge struct {
+	Source   string `json:"source"`
+	Target   string `json:"target"`
+	EdgeType string `json:"edgeType"`
+}
+
+// GraphMetadata contains aggregate statistics.
+type GraphMetadata struct {
+	TotalFiles          int            `json:"totalFiles"`
+	TotalEdges          int            `json:"totalEdges"`
+	Languages           map[string]int `json:"languages"`
+	GeneratedAt         string         `json:"generatedAt"`
+	BridgeCount         *int           `json:"bridgeCount,omitempty"`
+	CycleCount          *int           `json:"cycleCount,omitempty"`
+	GodModuleCount      *int           `json:"godModuleCount,omitempty"`
+	HealthScore         *float64       `json:"healthScore,omitempty"`
+	LayerViolationCount *int           `json:"layerViolationCount,omitempty"`
+	ArchitecturalDrift  *float64       `json:"architecturalDrift,omitempty"`
+}
+
+// CycleInfo describes a circular dependency.
+type CycleInfo struct {
+	Nodes     []string `json:"nodes"`
+	PivotNode *string  `json:"pivotNode,omitempty"`
+	Severity  string   `json:"severity"`
+}
+
+// GodModuleInfo describes an overly connected module.
+type GodModuleInfo struct {
+	ModuleID      string  `json:"moduleId"`
+	Path          string  `json:"path"`
+	Degree        int     `json:"degree"`
+	CohesionScore float64 `json:"cohesionScore"`
+	Severity      string  `json:"severity"`
+}
+
+// LayerViolation describes an architectural boundary crossing.
+type LayerViolation struct {
+	SourcePath    string `json:"sourcePath"`
+	TargetPath    string `json:"targetPath"`
+	SourceLayer   string `json:"sourceLayer"`
+	TargetLayer   string `json:"targetLayer"`
+	ViolationType string `json:"violationType"`
+	Severity      string `json:"severity"`
+}
+
+// HealthReport contains the architectural health assessment.
+type HealthReport struct {
+	HealthScore         float64 `json:"healthScore"`
+	TotalFiles          int     `json:"totalFiles"`
+	TotalEdges          int     `json:"totalEdges"`
+	BridgeCount         int     `json:"bridgeCount"`
+	CycleCount          int     `json:"cycleCount"`
+	GodModuleCount      int     `json:"godModuleCount"`
+	LayerViolationCount int     `json:"layerViolationCount"`
+}
+
+// ImpactAnalysis is the predicted effect of a change.
+type ImpactAnalysis struct {
+	TargetModule    string          `json:"targetModule"`
+	PredictedImpact PredictedImpact `json:"predictedImpact"`
+}
+
+// PredictedImpact details the effects of a simulated change.
+type PredictedImpact struct {
+	AffectedModules []string         `json:"affectedModules"`
+	CallersCount    int              `json:"callersCount"`
+	CalleesCount    int              `json:"calleesCount"`
+	WillCreateCycle bool             `json:"willCreateCycle"`
+	LayerViolations []LayerViolation `json:"layerViolations"`
+	RiskLevel       string           `json:"riskLevel"`
+	HealthImpact    float64          `json:"healthImpact"`
+}
+
+// SkeletonResult is a token-optimized view of the codebase.
+type SkeletonResult struct {
+	Files           []SkeletonFile `json:"files"`
+	TotalFiles      int            `json:"totalFiles"`
+	TotalSignatures int            `json:"totalSignatures"`
+	EstimatedTokens int            `json:"estimatedTokens"`
+	DetailLevel     string         `json:"detailLevel"`
+}
+
+// SkeletonFile is a single file's skeleton (signatures only, no bodies).
+type SkeletonFile struct {
+	Path       string   `json:"path"`
+	Imports    []string `json:"imports"`
+	Signatures []string `json:"signatures"`
+}
+
+// ModuleContext provides a single module's skeleton with optional dependencies.
+type ModuleContext struct {
+	Module       SkeletonFile     `json:"module"`
+	Dependencies []DependencyInfo `json:"dependencies"`
+}
+
+// DependencyInfo describes a module dependency.
+type DependencyInfo struct {
+	ModuleID       string `json:"moduleId"`
+	Path           string `json:"path"`
+	SignatureCount int    `json:"signatureCount"`
+}
+
+// CoChangePair describes two files that frequently change together.
+type CoChangePair struct {
+	FileA         string  `json:"fileA"`
+	FileB         string  `json:"fileB"`
+	Count         int     `json:"count"`
+	CouplingScore float64 `json:"couplingScore"`
+}
+
+// RankedSkeletonResult contains project files ranked by relevance to a set of focus files,
+// pruned to a token budget via personalized PageRank.
+type RankedSkeletonResult struct {
+	Files []RankedSkeletonFile `json:"files"` // sorted by rank descending
+}
+
+// RankedSkeletonFile is one file in a ranked skeleton result.
+type RankedSkeletonFile struct {
+	Path            string   `json:"path"`
+	ModuleID        string   `json:"moduleId"`
+	Rank            float64  `json:"rank"`
+	SignatureCount  int      `json:"signatureCount"`
+	EstimatedTokens int      `json:"estimatedTokens"`
+	Role            *string  `json:"role,omitempty"`
+	Signatures      []string `json:"signatures"`
+}
+
+// UnreferencedSymbolsResult holds the unreferenced export analysis.
+type UnreferencedSymbolsResult struct {
+	TotalCount int                      `json:"totalCount"`
+	Files      []UnreferencedSymbolFile `json:"files"`
+}
+
+// UnreferencedSymbolFile lists unreferenced exports for one file.
+type UnreferencedSymbolFile struct {
+	Path    string   `json:"path"`
+	Symbols []string `json:"symbols"`
+}
+
+// SemidiffFile describes function-level changes in one file between two commits.
+type SemidiffFile struct {
+	Path    string   `json:"path"`
+	Status  string   `json:"status"` // "added", "modified", "deleted"
+	Added   []string `json:"added"`
+	Removed []string `json:"removed"`
+}
+
+// CartographerError is returned when a Cartographer FFI call fails.
+type CartographerError struct {
+	Message string
+}
+
+func (e *CartographerError) Error() string {
+	return "cartographer: " + e.Message
+}
+
+// ---------------------------------------------------------------------------
+// Internal: response envelope (used by real bridge only, but kept here so
+// bridge.go doesn't need its own import of encoding/json for this type)
+// ---------------------------------------------------------------------------
+
+type ffiResponse struct {
+	OK    bool            `json:"ok"`
+	Error string          `json:"error,omitempty"`
+	Data  json.RawMessage `json:"data,omitempty"`
+}
