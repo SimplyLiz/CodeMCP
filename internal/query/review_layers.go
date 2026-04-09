@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
@@ -24,7 +25,11 @@ func (e *Engine) checkLayerViolations(_ context.Context, files []string, _ Revie
 		}, nil
 	}
 
-	violations, err := cartographer.CheckLayers(e.repoRoot, "")
+	layersPath := ""
+	if candidate := filepath.Join(e.repoRoot, ".cartographer", "layers.toml"); fileExists(candidate) {
+		layersPath = candidate
+	}
+	violations, err := cartographer.CheckLayers(e.repoRoot, layersPath)
 	if err != nil {
 		return ReviewCheck{
 			Name:     "layers",

@@ -14,6 +14,7 @@ import (
 	"github.com/SimplyLiz/CodeMCP/internal/backends"
 	"github.com/SimplyLiz/CodeMCP/internal/backends/git"
 	"github.com/SimplyLiz/CodeMCP/internal/backends/scip"
+	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
 	"github.com/SimplyLiz/CodeMCP/internal/output"
 	"github.com/SimplyLiz/CodeMCP/internal/version"
 )
@@ -172,11 +173,14 @@ type ModuleOverviewOptions struct {
 // ModuleOverviewResponse returns coarse module facts.
 type ModuleOverviewResponse struct {
 	AINavigationMeta
-	Module           ModuleOverviewModule `json:"module"`
-	Size             ModuleSize           `json:"size"`
-	RecentCommits    []string             `json:"recentCommits,omitempty"`
-	Annotations      *ModuleAnnotations   `json:"annotations,omitempty"`      // v6.5: Declared module metadata
-	RelatedDecisions []RelatedDecision    `json:"relatedDecisions,omitempty"` // v6.5: ADRs affecting this module
+	Module           ModuleOverviewModule         `json:"module"`
+	Size             ModuleSize                   `json:"size"`
+	RecentCommits    []string                     `json:"recentCommits,omitempty"`
+	Annotations      *ModuleAnnotations           `json:"annotations,omitempty"`      // v6.5: Declared module metadata
+	RelatedDecisions []RelatedDecision            `json:"relatedDecisions,omitempty"` // v6.5: ADRs affecting this module
+	// Skeleton provides Cartographer's skeleton (signatures + imports + deps) for the module.
+	// Only populated when the binary is built with -tags cartographer.
+	Skeleton         *cartographer.ModuleContext  `json:"skeleton,omitempty"`
 }
 
 // ModuleOverviewModule contains module identity.
@@ -709,7 +713,7 @@ func (e *Engine) GetModuleOverview(ctx context.Context, opts ModuleOverviewOptio
 		responsibility = annotations.Responsibility
 	}
 
-	return &ModuleOverviewResponse{
+	resp := &ModuleOverviewResponse{
 		AINavigationMeta: AINavigationMeta{
 			CkbVersion:    version.Version,
 			SchemaVersion: 1,
@@ -729,7 +733,16 @@ func (e *Engine) GetModuleOverview(ctx context.Context, opts ModuleOverviewOptio
 		RecentCommits:    recentCommits,
 		Annotations:      annotations,
 		RelatedDecisions: relatedDecisions,
-	}, nil
+	}
+
+	// Augment with Cartographer skeleton: signatures + imports + direct dependencies.
+	if cartographer.Available() {
+		if skeleton, cerr := cartographer.GetModuleContext(e.repoRoot, modulePath, 1); cerr == nil {
+			resp.Skeleton = skeleton
+		}
+	}
+
+	return resp, nil
 }
 
 // topLevelModule extracts the top-level directory from a path.
@@ -1890,9 +1903,13 @@ type SummarizeDiffResponse struct {
 	SuggestedTests  []SuggestedTest       `json:"suggestedTests,omitempty"`
 	Summary         DiffSummaryText       `json:"summary"`
 	Commits         []DiffCommitInfo      `json:"commits,omitempty"`
-	Confidence      float64               `json:"confidence"`
-	ConfidenceBasis []ConfidenceBasisItem `json:"confidenceBasis"`
-	Limitations     []string              `json:"limitations,omitempty"`
+	// FunctionChanges provides function-level diff from Cartographer semidiff
+	// (added/removed function signatures per file). Only populated for commitRange
+	// selectors when the binary is built with -tags cartographer.
+	FunctionChanges []cartographer.SemidiffFile `json:"functionChanges,omitempty"`
+	Confidence      float64                     `json:"confidence"`
+	ConfidenceBasis []ConfidenceBasisItem        `json:"confidenceBasis"`
+	Limitations     []string                    `json:"limitations,omitempty"`
 }
 
 // DiffSelector records which selector was used.
@@ -2249,6 +2266,13 @@ func (e *Engine) SummarizeDiff(ctx context.Context, opts SummarizeDiffOptions) (
 		QueryDurationMs: time.Since(startTime).Milliseconds(),
 	}
 
+	// Augment with Cartographer function-level diff for commit range selectors.
+	if cartographer.Available() && base != "" {
+		if files, cerr := cartographer.Semidiff(e.repoRoot, base, head); cerr == nil && len(files) > 0 {
+			response.FunctionChanges = files
+		}
+	}
+
 	// Add drilldowns
 	response.Drilldowns = []output.Drilldown{
 		{
@@ -2461,6 +2485,9 @@ type HotspotV52 struct {
 	Recency    string             `json:"recency"`              // recent, moderate, stale
 	RiskLevel  string             `json:"riskLevel"`            // low, medium, high
 	Ranking    *RankingV52        `json:"ranking"`
+	// CochangePartners lists other files that frequently change together with this file
+	// (from Cartographer temporal coupling analysis). Only populated when built with -tags cartographer.
+	CochangePartners []string `json:"cochangePartners,omitempty"`
 }
 
 // HotspotChurn contains churn-related metrics.
@@ -2687,6 +2714,36 @@ func (e *Engine) GetHotspots(ctx context.Context, opts GetHotspotsOptions) (*Get
 		RepoStateId:     repoState.RepoStateId,
 		RepoStateDirty:  repoState.Dirty,
 		QueryDurationMs: time.Since(startTime).Milliseconds(),
+	}
+
+	// Augment hotspots with Cartographer co-change partners (temporal coupling).
+	// Surfaces files that frequently change together — captured from git history.
+	if cartographer.Available() && len(response.Hotspots) > 0 {
+		if pairs, cerr := cartographer.GitCochange(e.repoRoot, 0, 3); cerr == nil && len(pairs) > 0 {
+			hotspotSet := make(map[string]struct{}, len(response.Hotspots))
+			for _, h := range response.Hotspots {
+				hotspotSet[h.FilePath] = struct{}{}
+			}
+			// Build filePath → top partners map (limit to 3 per file).
+			partnerMap := make(map[string][]string)
+			for _, pair := range pairs {
+				if _, isHotspot := hotspotSet[pair.FileA]; isHotspot {
+					if len(partnerMap[pair.FileA]) < 3 {
+						partnerMap[pair.FileA] = append(partnerMap[pair.FileA], pair.FileB)
+					}
+				}
+				if _, isHotspot := hotspotSet[pair.FileB]; isHotspot {
+					if len(partnerMap[pair.FileB]) < 3 {
+						partnerMap[pair.FileB] = append(partnerMap[pair.FileB], pair.FileA)
+					}
+				}
+			}
+			for i := range response.Hotspots {
+				if partners, ok := partnerMap[response.Hotspots[i].FilePath]; ok {
+					response.Hotspots[i].CochangePartners = partners
+				}
+			}
+		}
 	}
 
 	// Add drilldowns
