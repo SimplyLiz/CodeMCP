@@ -65,3 +65,48 @@ type PerfScanResult struct {
 	HiddenCoupling []HiddenCouplingPair `json:"hiddenCoupling"`
 	Summary        PerfScanSummary      `json:"summary"`
 }
+
+// StructuralPerfOptions configures a structural performance scan.
+type StructuralPerfOptions struct {
+	// Scope limits analysis to these paths (relative to RepoRoot). Empty = whole repo.
+	Scope []string
+	// Limit caps the number of loop call sites returned. Default: 100.
+	Limit int
+	// WindowDays is the git history window to consider. Default: 90.
+	WindowDays int
+	// MinChurnCount is the minimum commit count for a file to be considered hot. Default: 3.
+	MinChurnCount int
+	// EntrypointFiles are repo-relative paths of known system entrypoints.
+	// Loop call sites in these files are marked NearEntrypoint and ranked higher.
+	EntrypointFiles []string
+}
+
+// LoopCallSite represents a function call expression found inside a loop body
+// in a high-churn file. These are the primary structural signal for O(n) or
+// O(n²) hidden costs that do not appear in profiling until production load.
+type LoopCallSite struct {
+	File           string `json:"file"`           // repo-relative path
+	Line           int    `json:"line"`            // 1-indexed line of the call expression
+	FunctionName   string `json:"functionName"`   // enclosing function/method name
+	CallText       string `json:"callText"`       // call expression text (truncated to 120 chars)
+	LoopType       string `json:"loopType"`       // "for", "range", "while", "do-while", "loop"
+	ChurnCount     int    `json:"churnCount"`     // commits touching this file in the window
+	NearEntrypoint bool   `json:"nearEntrypoint"` // true if file is a known system entrypoint
+	Severity       string `json:"severity"`       // "high", "medium", "low"
+	Explanation    string `json:"explanation"`    // human-readable description
+}
+
+// StructuralPerfSummary aggregates the structural scan results.
+type StructuralPerfSummary struct {
+	FilesScanned   int `json:"filesScanned"`
+	HotFilesFound  int `json:"hotFilesFound"`
+	CallSitesFound int `json:"callSitesFound"`
+}
+
+// StructuralPerfResult is the output of a structural performance scan.
+type StructuralPerfResult struct {
+	LoopCallSites []LoopCallSite        `json:"loopCallSites"`
+	Summary       StructuralPerfSummary `json:"summary"`
+	// NoCGO is true when tree-sitter analysis was unavailable (non-CGO build).
+	NoCGO bool `json:"noCGO,omitempty"`
+}
