@@ -26,3 +26,5 @@ func HiddenCoupling(_ string, _ uint32, _ uint32) ([]CoChangePair, error)  { ret
 func Semidiff(_, _, _ string) ([]SemidiffFile, error)                                         { return nil, ErrUnavailable }
 func RankedSkeleton(_ string, _ []string, _ uint32) (*RankedSkeletonResult, error)            { return nil, ErrUnavailable }
 func UnreferencedSymbols(_ string) (*UnreferencedSymbolsResult, error)                        { return nil, ErrUnavailable }
+func SearchContent(_, _ string, _ *SearchContentOptions) (*SearchResult, error)               { return nil, ErrUnavailable }
+func FindFiles(_, _ string, _ uint32) (*FindResult, error)                                    { return nil, ErrUnavailable }

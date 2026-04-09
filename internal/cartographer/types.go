@@ -178,6 +178,52 @@ type SemidiffFile struct {
 	Removed []string `json:"removed"`
 }
 
+// SearchContentOptions configures a content search request.
+type SearchContentOptions struct {
+	Literal       bool   `json:"literal,omitempty"`
+	CaseSensitive *bool  `json:"caseSensitive,omitempty"` // default true
+	ContextLines  int    `json:"contextLines,omitempty"`
+	MaxResults    int    `json:"maxResults,omitempty"`
+	FileGlob      string `json:"fileGlob,omitempty"`
+}
+
+// ContextLine is one line of before/after context around a search match.
+type ContextLine struct {
+	LineNumber int    `json:"lineNumber"`
+	Line       string `json:"line"`
+}
+
+// ContentMatch is one matching line with optional surrounding context.
+type ContentMatch struct {
+	Path          string        `json:"path"`
+	LineNumber    int           `json:"lineNumber"`
+	Line          string        `json:"line"`
+	BeforeContext []ContextLine `json:"beforeContext,omitempty"`
+	AfterContext  []ContextLine `json:"afterContext,omitempty"`
+}
+
+// SearchResult is returned by SearchContent.
+type SearchResult struct {
+	Matches      []ContentMatch `json:"matches"`
+	TotalMatches int            `json:"totalMatches"`
+	FilesSearched int           `json:"filesSearched"`
+	Truncated    bool           `json:"truncated"`
+}
+
+// FindFile is one file returned by FindFiles.
+type FindFile struct {
+	Path      string  `json:"path"`
+	Language  *string `json:"language,omitempty"`
+	SizeBytes uint64  `json:"sizeBytes"`
+}
+
+// FindResult is returned by FindFiles.
+type FindResult struct {
+	Files        []FindFile `json:"files"`
+	TotalMatches int        `json:"totalMatches"`
+	Truncated    bool       `json:"truncated"`
+}
+
 // CartographerError is returned when a Cartographer FFI call fails.
 type CartographerError struct {
 	Message string

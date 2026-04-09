@@ -321,6 +321,62 @@ func UnreferencedSymbols(path string) (*UnreferencedSymbolsResult, error) {
 	return &result, nil
 }
 
+// SearchContent searches for a regex or literal pattern across all non-noise project files.
+// opts may be nil to use defaults (case-sensitive, unlimited results, no glob filter).
+func SearchContent(path, pattern string, opts *SearchContentOptions) (*SearchResult, error) {
+	cPath := C.CString(path)
+	defer C.free(unsafe.Pointer(cPath))
+
+	cPattern := C.CString(pattern)
+	defer C.free(unsafe.Pointer(cPattern))
+
+	var cOpts *C.char
+	if opts != nil {
+		b, err := json.Marshal(opts)
+		if err != nil {
+			return nil, &CartographerError{err.Error()}
+		}
+		cOpts = C.CString(string(b))
+		defer C.free(unsafe.Pointer(cOpts))
+	}
+
+	resp, err := callFFI(func() *C.char {
+		return C.cartographer_search_content(cPath, cPattern, cOpts)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var result SearchResult
+	if err := json.Unmarshal(resp.Data, &result); err != nil {
+		return nil, &CartographerError{err.Error()}
+	}
+	return &result, nil
+}
+
+// FindFiles finds files whose repo-relative path matches a glob pattern.
+// limit=0 means unlimited.
+func FindFiles(path, pattern string, limit uint32) (*FindResult, error) {
+	cPath := C.CString(path)
+	defer C.free(unsafe.Pointer(cPath))
+
+	cPattern := C.CString(pattern)
+	defer C.free(unsafe.Pointer(cPattern))
+
+	resp, err := callFFI(func() *C.char {
+		return C.cartographer_find_files(cPath, cPattern, C.uint(limit))
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var result FindResult
+	if err := json.Unmarshal(resp.Data, &result); err != nil {
+		return nil, &CartographerError{err.Error()}
+	}
+	return &result, nil
+}
+
 // GetModuleContext returns a single module's skeleton with dependency info.
 func GetModuleContext(path, moduleID string, depth uint32) (*ModuleContext, error) {
 	cPath := C.CString(path)
