@@ -224,12 +224,16 @@ func (e *Engine) initializeBackends(cfg *config.Config) error {
 			if scipAdapter.IsAvailable() {
 				e.tierDetector.SetScipAvailable(true)
 
-				// Populate FTS index from SCIP symbols
-				ctx := context.Background()
-				if err := e.PopulateFTSFromSCIP(ctx); err != nil {
-					e.logger.Warn("Failed to populate FTS from SCIP", "error", err.Error())
-					// Don't fail initialization - FTS is optional optimization
-				}
+				// Populate FTS index from SCIP symbols in the background.
+				// FTS is an optional optimization; searches fall back to in-memory
+				// until FTS is ready. Running this synchronously blocks engine init
+				// for minutes on large repos.
+				go func() {
+					ctx := context.Background()
+					if err := e.PopulateFTSFromSCIP(ctx); err != nil {
+						e.logger.Warn("Failed to populate FTS from SCIP", "error", err.Error())
+					}
+				}()
 			}
 		}
 	}

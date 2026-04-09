@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sort"
+	"sync"
 	"time"
 
 	"github.com/SimplyLiz/CodeMCP/internal/errors"
@@ -26,6 +29,9 @@ type SCIPIndex struct {
 	// Documents are all indexed documents
 	Documents []*Document
 
+	// DocumentsByPath is an O(1) lookup map from relative path to document
+	DocumentsByPath map[string]*Document
+
 	// Symbols maps symbol IDs to symbol information
 	Symbols map[string]*SymbolInformation
 
@@ -44,9 +50,6 @@ type SCIPIndex struct {
 
 	// IndexedCommit is the git commit the index was built from
 	IndexedCommit string
-
-	// raw is the raw protobuf index
-	raw *scippb.Index
 }
 
 // LoadSCIPIndex loads a SCIP index from the specified path
@@ -93,93 +96,185 @@ func LoadSCIPIndex(path string) (*SCIPIndex, error) {
 		)
 	}
 
-	// Convert to internal representation
-	scipIndex := &SCIPIndex{
-		Metadata:         convertMetadata(index.Metadata),
-		Documents:        convertDocuments(index.Documents),
-		Symbols:          make(map[string]*SymbolInformation),
-		RefIndex:         make(map[string][]*OccurrenceRef),
-		ConvertedSymbols: make(map[string]*SCIPSymbol),
-		ContainerIndex:   make(map[string]string),
-		LoadedAt:         time.Now(),
-		raw:              &index,
+	// Convert to internal representation using parallel document processing.
+	nWorkers := runtime.GOMAXPROCS(0)
+
+	// Phase 1: convert documents and build per-doc indexes in parallel.
+	type docResult struct {
+		doc              *Document
+		symbols          map[string]*SymbolInformation
+		refEntries       map[string][]*OccurrenceRef
+		containerEntries map[string]string
 	}
 
-	// Build symbol map and reference index in a single pass
-	for _, doc := range scipIndex.Documents {
-		// Index symbols
-		for _, sym := range doc.Symbols {
-			scipIndex.Symbols[sym.Symbol] = sym
-		}
+	results := make([]docResult, len(index.Documents))
 
-		// Build inverted reference index for O(1) lookups
-		for _, occ := range doc.Occurrences {
-			if occ.Symbol != "" {
-				scipIndex.RefIndex[occ.Symbol] = append(
-					scipIndex.RefIndex[occ.Symbol],
-					&OccurrenceRef{Doc: doc, Occ: occ},
-				)
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, nWorkers)
+
+	for i, pbDoc := range index.Documents {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int, pbDoc *scippb.Document) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			doc := convertDocument(pbDoc)
+			r := docResult{
+				doc:              doc,
+				symbols:          make(map[string]*SymbolInformation, len(doc.Symbols)),
+				refEntries:       make(map[string][]*OccurrenceRef),
+				containerEntries: make(map[string]string),
 			}
-		}
 
-		// Build container index for O(1) containment lookup
-		// First collect all definition occurrences with enclosing ranges
-		type defScope struct {
-			symbol    string
-			startLine int32
-			endLine   int32
-		}
-		var defScopes []defScope
-		for _, occ := range doc.Occurrences {
-			if occ.SymbolRoles&SymbolRoleDefinition != 0 && len(occ.EnclosingRange) >= 3 {
-				startLine := occ.EnclosingRange[0]
-				var endLine int32
-				if len(occ.EnclosingRange) >= 4 {
-					endLine = occ.EnclosingRange[2]
-				} else {
-					endLine = startLine
+			// Index symbols
+			for _, sym := range doc.Symbols {
+				r.symbols[sym.Symbol] = sym
+			}
+
+			// Build inverted reference index for O(1) lookups
+			for _, occ := range doc.Occurrences {
+				if occ.Symbol != "" {
+					r.refEntries[occ.Symbol] = append(
+						r.refEntries[occ.Symbol],
+						&OccurrenceRef{Doc: doc, Occ: occ},
+					)
 				}
-				defScopes = append(defScopes, defScope{
-					symbol:    occ.Symbol,
-					startLine: startLine,
-					endLine:   endLine,
+			}
+
+			// Build container index.
+			// Collect definition occurrences that have enclosing ranges.
+			type defScope struct {
+				symbol    string
+				startLine int32
+				endLine   int32
+			}
+			var defScopes []defScope
+			for _, occ := range doc.Occurrences {
+				if occ.SymbolRoles&SymbolRoleDefinition != 0 && len(occ.EnclosingRange) >= 3 {
+					startLine := occ.EnclosingRange[0]
+					var endLine int32
+					if len(occ.EnclosingRange) >= 4 {
+						endLine = occ.EnclosingRange[2]
+					} else {
+						endLine = startLine
+					}
+					defScopes = append(defScopes, defScope{
+						symbol:    occ.Symbol,
+						startLine: startLine,
+						endLine:   endLine,
+					})
+				}
+			}
+
+			if len(defScopes) > 0 {
+				// Sort by scope size ascending so the first match is the innermost.
+				sort.Slice(defScopes, func(a, b int) bool {
+					return (defScopes[a].endLine - defScopes[a].startLine) <
+						(defScopes[b].endLine - defScopes[b].startLine)
 				})
-			}
-		}
 
-		// For each occurrence, find its innermost containing scope
-		for _, occ := range doc.Occurrences {
-			if len(occ.Range) < 2 {
-				continue
-			}
-			occLine := occ.Range[0]
-
-			// Find the smallest (innermost) scope containing this occurrence
-			var bestScope *defScope
-			var bestSize int32 = -1
-			for i := range defScopes {
-				ds := &defScopes[i]
-				if occLine >= ds.startLine && occLine <= ds.endLine {
-					size := ds.endLine - ds.startLine
-					if bestScope == nil || size < bestSize {
-						bestScope = ds
-						bestSize = size
+				for _, occ := range doc.Occurrences {
+					if len(occ.Range) < 2 {
+						continue
+					}
+					occLine := occ.Range[0]
+					for idx := range defScopes {
+						ds := &defScopes[idx]
+						if occLine >= ds.startLine && occLine <= ds.endLine {
+							key := fmt.Sprintf("%s:%d:%d", doc.RelativePath, occ.Range[0], occ.Range[1])
+							r.containerEntries[key] = ds.symbol
+							break // first match is innermost (sorted by size asc)
+						}
 					}
 				}
 			}
 
-			if bestScope != nil {
-				key := fmt.Sprintf("%s:%d:%d", doc.RelativePath, occ.Range[0], occ.Range[1])
-				scipIndex.ContainerIndex[key] = bestScope.symbol
-			}
+			results[i] = r
+		}(i, pbDoc)
+	}
+	wg.Wait()
+
+	// Merge per-doc results into the main index (serial, fast map assignment).
+	// Pre-size maps based on doc count to reduce rehashing.
+	totalSyms := 0
+	totalRefs := 0
+	totalContainer := 0
+	docs := make([]*Document, len(results))
+	for i, r := range results {
+		docs[i] = r.doc
+		totalSyms += len(r.symbols)
+		totalRefs += len(r.refEntries)
+		totalContainer += len(r.containerEntries)
+	}
+
+	scipIndex := &SCIPIndex{
+		Metadata:        convertMetadata(index.Metadata),
+		Documents:       docs,
+		DocumentsByPath: make(map[string]*Document, len(docs)),
+		Symbols:         make(map[string]*SymbolInformation, totalSyms),
+		RefIndex:        make(map[string][]*OccurrenceRef, totalRefs),
+		ConvertedSymbols: make(map[string]*SCIPSymbol, totalSyms),
+		ContainerIndex:  make(map[string]string, totalContainer),
+		LoadedAt:        time.Now(),
+	}
+
+	for _, doc := range docs {
+		scipIndex.DocumentsByPath[doc.RelativePath] = doc
+	}
+	for _, r := range results {
+		for k, v := range r.symbols {
+			scipIndex.Symbols[k] = v
+		}
+		for k, v := range r.refEntries {
+			scipIndex.RefIndex[k] = append(scipIndex.RefIndex[k], v...)
+		}
+		for k, v := range r.containerEntries {
+			scipIndex.ContainerIndex[k] = v
 		}
 	}
 
-	// Pre-convert all symbols to avoid repeated conversion during queries
-	for symbolId, symInfo := range scipIndex.Symbols {
-		if converted, err := convertToSCIPSymbol(symInfo, scipIndex); err == nil {
-			scipIndex.ConvertedSymbols[symbolId] = converted
+	// Phase 2: pre-convert all symbols in parallel.
+	// RefIndex and Symbols are fully built at this point (read-only from here).
+	type symResult struct {
+		id  string
+		sym *SCIPSymbol
+	}
+
+	symIDs := make([]string, 0, len(scipIndex.Symbols))
+	for id := range scipIndex.Symbols {
+		symIDs = append(symIDs, id)
+	}
+
+	symCh := make(chan symResult, len(symIDs))
+	batchSize := (len(symIDs) + nWorkers - 1) / nWorkers
+	if batchSize < 1 {
+		batchSize = 1
+	}
+
+	var wg2 sync.WaitGroup
+	for b := 0; b*batchSize < len(symIDs); b++ {
+		start := b * batchSize
+		end := start + batchSize
+		if end > len(symIDs) {
+			end = len(symIDs)
 		}
+		wg2.Add(1)
+		go func(ids []string) {
+			defer wg2.Done()
+			for _, id := range ids {
+				if converted, err := convertToSCIPSymbol(scipIndex.Symbols[id], scipIndex); err == nil {
+					symCh <- symResult{id: id, sym: converted}
+				}
+			}
+		}(symIDs[start:end])
+	}
+	go func() {
+		wg2.Wait()
+		close(symCh)
+	}()
+	for r := range symCh {
+		scipIndex.ConvertedSymbols[r.id] = r.sym
 	}
 
 	// Extract indexed commit from metadata if available
@@ -203,12 +298,7 @@ func (i *SCIPIndex) IsStale(headCommit string) bool {
 
 // GetDocument retrieves a document by its relative path
 func (i *SCIPIndex) GetDocument(relativePath string) *Document {
-	for _, doc := range i.Documents {
-		if doc.RelativePath == relativePath {
-			return doc
-		}
-	}
-	return nil
+	return i.DocumentsByPath[relativePath]
 }
 
 // GetSymbol retrieves symbol information by ID

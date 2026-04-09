@@ -84,19 +84,29 @@ func convertSymbolToFTSRecord(symInfo *scip.SymbolInformation, index *scip.SCIPI
 	// Get documentation
 	documentation := strings.Join(symInfo.Documentation, "\n")
 
-	// Get file path from definition location
+	// Get file path from definition location using RefIndex for O(1) lookup.
 	filePath := ""
 	language := ""
-	for _, doc := range index.Documents {
-		for _, occ := range doc.Occurrences {
-			if occ.Symbol == symInfo.Symbol && occ.SymbolRoles&scip.SymbolRoleDefinition != 0 {
-				filePath = doc.RelativePath
-				language = doc.Language
+	if index.RefIndex != nil {
+		for _, ref := range index.RefIndex[symInfo.Symbol] {
+			if ref.Occ.SymbolRoles&scip.SymbolRoleDefinition != 0 {
+				filePath = ref.Doc.RelativePath
+				language = ref.Doc.Language
 				break
 			}
 		}
-		if filePath != "" {
-			break
+	} else {
+		for _, doc := range index.Documents {
+			for _, occ := range doc.Occurrences {
+				if occ.Symbol == symInfo.Symbol && occ.SymbolRoles&scip.SymbolRoleDefinition != 0 {
+					filePath = doc.RelativePath
+					language = doc.Language
+					break
+				}
+			}
+			if filePath != "" {
+				break
+			}
 		}
 	}
 
