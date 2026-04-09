@@ -2429,6 +2429,43 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		// v8.4 Performance scan
+		{
+			Name:        "scanPerformance",
+			Description: "Scan for structural performance problems. Detects hidden coupling: file pairs that co-change frequently in git history but have no static import edge between them. Hidden coupling indicates implicit shared state or behavioral coupling that the dependency graph cannot see, and is the highest-signal structural risk for refactoring and maintenance cost.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"minCorrelation": map[string]interface{}{
+						"type":        "number",
+						"default":     0.3,
+						"description": "Minimum co-change correlation threshold (0–1). Higher values return only the most tightly coupled pairs.",
+					},
+					"minCoChanges": map[string]interface{}{
+						"type":        "number",
+						"default":     3,
+						"description": "Minimum number of shared commits. Filters out spurious pairs from low-activity files.",
+					},
+					"windowDays": map[string]interface{}{
+						"type":        "number",
+						"default":     365,
+						"description": "Git history window in days.",
+					},
+					"limit": map[string]interface{}{
+						"type":        "number",
+						"default":     50,
+						"description": "Maximum number of hidden-coupling pairs to return.",
+					},
+					"scope": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Limit analysis to these repo-relative paths. Empty means whole repo.",
+					},
+				},
+			},
+		},
 		// v8.1 Suggested Refactorings
 		{
 			Name:        "suggestRefactorings",
@@ -2588,6 +2625,8 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["findCycles"] = s.toolFindCycles
 	// v8.1 Suggested Refactorings
 	s.tools["suggestRefactorings"] = s.toolSuggestRefactorings
+	// v8.4 Performance scan
+	s.tools["scanPerformance"] = s.toolScanPerformance
 
 	// v8.0 Streaming support
 	s.RegisterStreamableTools()
