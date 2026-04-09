@@ -12,51 +12,68 @@ import (
 	"github.com/SimplyLiz/CodeMCP/internal/perf"
 )
 
-var (
-	perfMinCorrelation float64
-	perfMinCoChanges   int
-	perfWindowDays     int
-	perfLimit          int
-	perfScope          []string
-	perfFormat         string
-)
+// ─── parent ──────────────────────────────────────────────────────────────────
 
 var perfCmd = &cobra.Command{
 	Use:   "perf",
 	Short: "Scan for structural performance problems",
 	Long: `Scan the codebase for structural issues that indicate hidden complexity.
 
-Currently detects:
+Subcommands:
 
-  Hidden coupling — file pairs that co-change frequently in git history but
-  have no static import edge between them. This is the most actionable signal:
-  files that look unrelated in the dependency graph but are implicitly coupled
-  through shared state, side effects, or a third party.
+  coupling    Hidden coupling — file pairs that co-change frequently in git
+              but have no static import edge between them.
 
-Unlike the coupling command (which analyzes a single target file), perf scans
-the whole repo (or a scoped subset) and surfaces the highest-signal pairs.
+  structural  Loop call sites in hot files — call expressions inside loop
+              bodies in frequently-changed files (O(n)/O(n²) risk).
 
-Examples:
-  ckb perf
-  ckb perf --min-correlation=0.5
-  ckb perf --scope=internal/auth,internal/sessions
-  ckb perf --window=180 --format=json`,
-	Run: runPerf,
+Run 'ckb perf <subcommand> --help' for details.`,
 }
 
 func init() {
-	perfCmd.Flags().Float64Var(&perfMinCorrelation, "min-correlation", 0.3, "Minimum co-change correlation threshold (0–1)")
-	perfCmd.Flags().IntVar(&perfMinCoChanges, "min-co-changes", 3, "Minimum number of shared commits to consider a pair")
-	perfCmd.Flags().IntVar(&perfWindowDays, "window", 365, "Git history window in days")
-	perfCmd.Flags().IntVar(&perfLimit, "limit", 50, "Maximum hidden-coupling pairs to return")
-	perfCmd.Flags().StringSliceVar(&perfScope, "scope", nil, "Limit scan to these paths (comma-separated or repeated flag)")
-	perfCmd.Flags().StringVar(&perfFormat, "format", "human", "Output format: human or json")
 	rootCmd.AddCommand(perfCmd)
 }
 
-func runPerf(cmd *cobra.Command, args []string) {
+// ─── ckb perf coupling ────────────────────────────────────────────────────────
+
+var (
+	perfCouplingMinCorrelation float64
+	perfCouplingMinCoChanges   int
+	perfCouplingWindowDays     int
+	perfCouplingLimit          int
+	perfCouplingScope          []string
+	perfCouplingFormat         string
+)
+
+var perfCouplingCmd = &cobra.Command{
+	Use:   "coupling",
+	Short: "Find hidden coupling (co-change without import edge)",
+	Long: `Find file pairs that co-change frequently in git but have no static import
+edge between them. This is the primary hidden-complexity signal: files that
+look unrelated in the dependency graph but are implicitly coupled through
+shared state, side effects, or a third party.
+
+Examples:
+  ckb perf coupling
+  ckb perf coupling --min-correlation=0.5
+  ckb perf coupling --scope=internal/auth,internal/sessions
+  ckb perf coupling --window=180 --format=json`,
+	Run: runPerfCoupling,
+}
+
+func init() {
+	perfCouplingCmd.Flags().Float64Var(&perfCouplingMinCorrelation, "min-correlation", 0.3, "Minimum co-change correlation threshold (0–1)")
+	perfCouplingCmd.Flags().IntVar(&perfCouplingMinCoChanges, "min-co-changes", 3, "Minimum number of shared commits to consider a pair")
+	perfCouplingCmd.Flags().IntVar(&perfCouplingWindowDays, "window", 365, "Git history window in days")
+	perfCouplingCmd.Flags().IntVar(&perfCouplingLimit, "limit", 50, "Maximum hidden-coupling pairs to return")
+	perfCouplingCmd.Flags().StringSliceVar(&perfCouplingScope, "scope", nil, "Limit scan to these paths (comma-separated or repeated flag)")
+	perfCouplingCmd.Flags().StringVar(&perfCouplingFormat, "format", "human", "Output format: human or json")
+	perfCmd.AddCommand(perfCouplingCmd)
+}
+
+func runPerfCoupling(cmd *cobra.Command, args []string) {
 	start := time.Now()
-	logger := newLogger(perfFormat)
+	logger := newLogger(perfCouplingFormat)
 	repoRoot := mustGetRepoRoot()
 
 	analyzer := perf.NewAnalyzer(repoRoot, logger)
@@ -64,18 +81,18 @@ func runPerf(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
 	result, err := analyzer.Scan(ctx, perf.ScanOptions{
 		RepoRoot:       repoRoot,
-		Scope:          perfScope,
-		MinCorrelation: perfMinCorrelation,
-		MinCoChanges:   perfMinCoChanges,
-		WindowDays:     perfWindowDays,
-		Limit:          perfLimit,
+		Scope:          perfCouplingScope,
+		MinCorrelation: perfCouplingMinCorrelation,
+		MinCoChanges:   perfCouplingMinCoChanges,
+		WindowDays:     perfCouplingWindowDays,
+		Limit:          perfCouplingLimit,
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error running perf scan: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error running perf coupling scan: %v\n", err)
 		os.Exit(1)
 	}
 
-	if OutputFormat(perfFormat) == FormatJSON {
+	if OutputFormat(perfCouplingFormat) == FormatJSON {
 		output, err := FormatResponse(result, FormatJSON)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error formatting output: %v\n", err)
@@ -85,19 +102,18 @@ func runPerf(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	// Human-readable output.
-	printPerfResult(result)
+	printPerfCouplingResult(result)
 
-	logger.Debug("Perf scan completed",
+	logger.Debug("Perf coupling scan completed",
 		"hidden", len(result.HiddenCoupling),
 		"pairsChecked", result.Summary.PairsChecked,
 		"duration", time.Since(start).Milliseconds(),
 	)
 }
 
-func printPerfResult(result *perf.PerfScanResult) {
+func printPerfCouplingResult(result *perf.PerfScanResult) {
 	s := result.Summary
-	fmt.Printf("Perf scan: %d files, %d pairs checked, %d hidden coupling pairs found\n",
+	fmt.Printf("Hidden coupling scan: %d files, %d pairs checked, %d hidden pairs found\n",
 		s.FilesObserved, s.PairsChecked, s.HiddenPairsFound)
 	fmt.Printf("Window: %s – %s\n\n",
 		s.AnalysisFrom.Format("2006-01-02"), s.AnalysisTo.Format("2006-01-02"))
@@ -115,5 +131,113 @@ func printPerfResult(result *perf.PerfScanResult) {
 		fmt.Printf("  %s\n", p.FileA)
 		fmt.Printf("  %s\n", p.FileB)
 		fmt.Printf("  → %s\n\n", p.Explanation)
+	}
+}
+
+// ─── ckb perf structural ──────────────────────────────────────────────────────
+
+var (
+	perfStructuralWindowDays   int
+	perfStructuralMinChurn     int
+	perfStructuralLimit        int
+	perfStructuralScope        []string
+	perfStructuralFormat       string
+)
+
+var perfStructuralCmd = &cobra.Command{
+	Use:   "structural",
+	Short: "Find loop call sites in hot files (O(n)/O(n²) risk)",
+	Long: `Detect structural performance anti-patterns in high-churn files.
+
+Uses tree-sitter to find call expressions inside loop bodies in frequently-
+changed files. These are the primary signal for O(n) or O(n²) hidden costs
+that do not appear in profiling until production load.
+
+Requires a CGO-enabled build. Returns an empty result with noCGO=true otherwise.
+
+Examples:
+  ckb perf structural
+  ckb perf structural --min-churn=5
+  ckb perf structural --scope=internal/query --window=90
+  ckb perf structural --format=json`,
+	Run: runPerfStructural,
+}
+
+func init() {
+	perfStructuralCmd.Flags().IntVar(&perfStructuralWindowDays, "window", 90, "Git history window in days for identifying hot files")
+	perfStructuralCmd.Flags().IntVar(&perfStructuralMinChurn, "min-churn", 3, "Minimum commit count for a file to be considered hot")
+	perfStructuralCmd.Flags().IntVar(&perfStructuralLimit, "limit", 100, "Maximum number of loop call sites to return")
+	perfStructuralCmd.Flags().StringSliceVar(&perfStructuralScope, "scope", nil, "Limit scan to these paths (comma-separated or repeated flag)")
+	perfStructuralCmd.Flags().StringVar(&perfStructuralFormat, "format", "human", "Output format: human or json")
+	perfCmd.AddCommand(perfStructuralCmd)
+}
+
+func runPerfStructural(cmd *cobra.Command, args []string) {
+	start := time.Now()
+	logger := newLogger(perfStructuralFormat)
+	repoRoot := mustGetRepoRoot()
+
+	analyzer := perf.NewAnalyzer(repoRoot, logger)
+
+	ctx := context.Background()
+	result, err := analyzer.AnalyzeStructural(ctx, perf.StructuralPerfOptions{
+		Scope:         perfStructuralScope,
+		WindowDays:    perfStructuralWindowDays,
+		MinChurnCount: perfStructuralMinChurn,
+		Limit:         perfStructuralLimit,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error running structural perf scan: %v\n", err)
+		os.Exit(1)
+	}
+
+	if OutputFormat(perfStructuralFormat) == FormatJSON {
+		output, err := FormatResponse(result, FormatJSON)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error formatting output: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(output)
+		return
+	}
+
+	printPerfStructuralResult(result)
+
+	logger.Debug("Structural perf scan completed",
+		"callSites", len(result.LoopCallSites),
+		"filesScanned", result.Summary.FilesScanned,
+		"duration", time.Since(start).Milliseconds(),
+	)
+}
+
+func printPerfStructuralResult(result *perf.StructuralPerfResult) {
+	if result.NoCGO {
+		fmt.Println("Structural perf scan requires a CGO-enabled build (tree-sitter).")
+		fmt.Println("Rebuild with CGO_ENABLED=1 to enable loop call-site detection.")
+		return
+	}
+
+	s := result.Summary
+	fmt.Printf("Structural perf scan: %d files scanned (%d hot), %d loop call sites found\n\n",
+		s.FilesScanned, s.HotFilesFound, s.CallSitesFound)
+
+	if len(result.LoopCallSites) == 0 {
+		fmt.Println("No loop call sites found in hot files.")
+		return
+	}
+
+	fmt.Println("Loop call sites in hot files:")
+	fmt.Println(strings.Repeat("─", 70))
+
+	for _, cs := range result.LoopCallSites {
+		ep := ""
+		if cs.NearEntrypoint {
+			ep = " [entrypoint]"
+		}
+		fmt.Printf("[%s]%s  %s:%d  (%d commits)\n",
+			strings.ToUpper(cs.Severity), ep, cs.File, cs.Line, cs.ChurnCount)
+		fmt.Printf("  fn: %s  loop: %s\n", cs.FunctionName, cs.LoopType)
+		fmt.Printf("  call: %s\n", cs.CallText)
+		fmt.Printf("  → %s\n\n", cs.Explanation)
 	}
 }
