@@ -513,6 +513,7 @@ func (s *MCPServer) createEngineForRoot(repoRoot string) (*query.Engine, error) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create engine: %w", err)
 	}
+	engine.StartBgTasks()
 
 	return engine, nil
 }

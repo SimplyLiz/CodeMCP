@@ -279,6 +279,13 @@ func loadSCIPIndexInternal(path, cachePath string) (*SCIPIndex, error) {
 	// ------------------------------------------------------------------ //
 	// Phase 2: merge per-doc results into the main index.                 //
 	// ------------------------------------------------------------------ //
+
+	// Sort results by document path so RefIndex / DefinitionIndex construction
+	// is deterministic regardless of goroutine scheduling.
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].doc.RelativePath < results[j].doc.RelativePath
+	})
+
 	totalSyms := 0
 	totalRefs := 0
 	totalContainer := 0
@@ -383,12 +390,17 @@ func loadSCIPIndexInternal(path, cachePath string) (*SCIPIndex, error) {
 		}
 
 		// Build NameIndex: sorted (name, id) pairs for cache-friendly search.
+		// Sort by (Name, ID) to get a total order — equal names would otherwise
+		// produce non-deterministic output since the map iteration order is random.
 		nameIdx := make([]NameEntry, 0, len(scipIndex.ConvertedSymbols))
 		for id, sym := range scipIndex.ConvertedSymbols {
 			nameIdx = append(nameIdx, NameEntry{Name: sym.Name, ID: id})
 		}
 		sort.Slice(nameIdx, func(a, b int) bool {
-			return nameIdx[a].Name < nameIdx[b].Name
+			if nameIdx[a].Name != nameIdx[b].Name {
+				return nameIdx[a].Name < nameIdx[b].Name
+			}
+			return nameIdx[a].ID < nameIdx[b].ID
 		})
 		scipIndex.NameIndex = nameIdx
 

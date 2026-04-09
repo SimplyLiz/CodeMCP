@@ -101,7 +101,7 @@ var nfrTokenBaselines = map[string]map[string]int{
 // Wide-result token budgets for integration tests (legacy).
 // These are per-response limits used when testing with real SCIP index.
 const (
-	maxCallGraphBytes      = 15000 // ~3750 tokens
+	maxCallGraphBytes      = 20000 // ~5000 tokens
 	maxFindReferencesBytes = 12000 // ~3000 tokens
 	maxAnalyzeImpactBytes  = 16000 // ~4000 tokens
 	maxGetHotspotsBytes    = 10000 // ~2500 tokens

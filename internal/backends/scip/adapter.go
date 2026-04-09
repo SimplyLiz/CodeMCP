@@ -22,6 +22,7 @@ type SCIPAdapter struct {
 	logger       *slog.Logger
 	queryTimeout time.Duration
 	repoRoot     string
+	cacheRoot    string // optional override for the derived-cache directory
 	cfg          *config.Config
 
 	// Mutex for thread-safe access to index
@@ -112,7 +113,17 @@ func (s *SCIPAdapter) Priority() int {
 // derivedCachePath returns the path for the derived-index cache file.
 // It lives alongside the .ckb database in <repoRoot>/.ckb/.
 func (s *SCIPAdapter) derivedCachePath() string {
-	return filepath.Join(s.repoRoot, ".ckb", "scip_derived.gob")
+	root := s.repoRoot
+	if s.cacheRoot != "" {
+		root = s.cacheRoot
+	}
+	return filepath.Join(root, ".ckb", "scip_derived.gob")
+}
+
+// SetCacheRoot overrides the directory used for the derived-index cache.
+// Useful in tests to isolate cache state per test instead of sharing the fixture dir.
+func (s *SCIPAdapter) SetCacheRoot(dir string) {
+	s.cacheRoot = dir
 }
 
 // LoadIndex loads or reloads the SCIP index

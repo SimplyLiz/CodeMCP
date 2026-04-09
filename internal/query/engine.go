@@ -224,16 +224,9 @@ func (e *Engine) initializeBackends(cfg *config.Config) error {
 			if scipAdapter.IsAvailable() {
 				e.tierDetector.SetScipAvailable(true)
 
-				// Populate FTS index from SCIP symbols in the background.
-				// FTS is an optional optimization; searches fall back to in-memory
-				// until FTS is ready. Running this synchronously blocks engine init
-				// for minutes on large repos.
-				go func() {
-					ctx := context.Background()
-					if err := e.PopulateFTSFromSCIP(ctx); err != nil {
-						e.logger.Warn("Failed to populate FTS from SCIP", "error", err.Error())
-					}
-				}()
+				// Background FTS population is started via StartBgTasks(), which is
+				// called by production entry points after engine init. Tests skip
+				// it to avoid races with synchronous FTS population.
 			}
 		}
 	}
@@ -543,6 +536,24 @@ func (e *Engine) GetConfig() *config.Config {
 func (e *Engine) GetDB() *storage.DB {
 	return e.db
 }
+
+// StartBgTasks launches background maintenance goroutines (FTS population, etc.).
+// Call this after NewEngine() in production entry points. Tests that need
+// deterministic FTS state should call PopulateFTSFromSCIP synchronously instead.
+func (e *Engine) StartBgTasks() {
+	if e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
+		go func() {
+			ctx := context.Background()
+			if err := e.PopulateFTSFromSCIP(ctx); err != nil {
+				e.logger.Warn("Failed to populate FTS from SCIP", "error", err.Error())
+			}
+		}()
+	}
+}
+
+// DisableBgFTS is now a no-op kept for backward compatibility. Background tasks
+// are no longer started inside NewEngine; call StartBgTasks() explicitly.
+func (e *Engine) DisableBgFTS() {}
 
 // ClearAllCache clears all cache entries (query, view, and negative caches).
 func (e *Engine) ClearAllCache() error {

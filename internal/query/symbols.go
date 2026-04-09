@@ -391,6 +391,11 @@ func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (
 	ftsResults, ftsErr := e.SearchSymbolsFTS(ctx, opts.Query, opts.Limit*ftsMultiplier)
 	if ftsErr == nil && len(ftsResults) > 0 {
 		for _, r := range ftsResults {
+			// Skip symbols with no name — they can match via documentation/signature
+			// in FTS5 but are meaningless as search results.
+			if r.Name == "" {
+				continue
+			}
 			// Filter by kinds if specified
 			if len(opts.Kinds) > 0 {
 				matchKind := false
@@ -544,9 +549,14 @@ func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (
 	// Apply ranking
 	rankSearchResults(results, opts.Query)
 
-	// Sort by score
+	// Sort by score descending; break ties by StableId to get a total order
+	// across runs (sort.Slice is not stable, and equal-score results would
+	// otherwise appear in non-deterministic order between test runs).
 	sort.Slice(results, func(i, j int) bool {
-		return results[i].Score > results[j].Score
+		if results[i].Score != results[j].Score {
+			return results[i].Score > results[j].Score
+		}
+		return results[i].StableId < results[j].StableId
 	})
 
 	// Apply PPR re-ranking if SCIP graph is available

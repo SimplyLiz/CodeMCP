@@ -46,6 +46,7 @@ func getEngine(repoRoot string, logger *slog.Logger) (*query.Engine, error) {
 			engineErr = fmt.Errorf("failed to create engine: %w", err)
 			return
 		}
+		engine.StartBgTasks()
 
 		// Configure tier mode from CLI flag, env var, or config
 		tierMode, err := resolveTierMode(cfg)

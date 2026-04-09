@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"time"
 
@@ -26,11 +27,18 @@ func (e *Engine) PopulateFTSFromSCIP(ctx context.Context) error {
 		return nil
 	}
 
-	// Convert SCIP symbols to FTS records
+	// Convert SCIP symbols to FTS records in deterministic order.
+	// index.Symbols is a Go map — iteration order is random, which causes
+	// non-deterministic FTS5 BM25 scores and flaky golden tests.
+	symIDs := make([]string, 0, len(index.Symbols))
+	for id := range index.Symbols {
+		symIDs = append(symIDs, id)
+	}
+	sort.Strings(symIDs)
+
 	var records []storage.SymbolFTSRecord
-	for _, symInfo := range index.Symbols {
-		// Convert SymbolInformation to FTS record
-		record := convertSymbolToFTSRecord(symInfo, index)
+	for _, id := range symIDs {
+		record := convertSymbolToFTSRecord(index.Symbols[id], index)
 		records = append(records, record)
 	}
 
