@@ -2466,6 +2466,44 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		// v8.5 Structural performance scan (loop call sites in hot files)
+		{
+			Name: "analyzeStructuralPerf",
+			Description: "Detect structural performance anti-patterns in high-churn files. " +
+				"Uses tree-sitter to find call expressions inside loop bodies — the primary " +
+				"structural signal for O(n) and O(n²) hidden costs that do not appear in " +
+				"profiling until production load. Hot files (frequently changed in git history) " +
+				"are prioritized; loop call sites in system entrypoints are ranked higher. " +
+				"Complements scanPerformance (which detects hidden coupling) by targeting " +
+				"intra-file loop patterns rather than cross-file co-change.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"windowDays": map[string]interface{}{
+						"type":        "number",
+						"default":     90,
+						"description": "Git history window in days for identifying hot files.",
+					},
+					"minChurnCount": map[string]interface{}{
+						"type":        "number",
+						"default":     3,
+						"description": "Minimum number of commits for a file to be considered hot.",
+					},
+					"limit": map[string]interface{}{
+						"type":        "number",
+						"default":     100,
+						"description": "Maximum number of loop call sites to return.",
+					},
+					"scope": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Limit analysis to these repo-relative paths. Empty means whole repo.",
+					},
+				},
+			},
+		},
 		// v8.1 Suggested Refactorings
 		{
 			Name:        "suggestRefactorings",
@@ -2627,6 +2665,8 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["suggestRefactorings"] = s.toolSuggestRefactorings
 	// v8.4 Performance scan
 	s.tools["scanPerformance"] = s.toolScanPerformance
+	// v8.5 Structural performance scan (loop call sites)
+	s.tools["analyzeStructuralPerf"] = s.toolAnalyzeStructuralPerf
 
 	// v8.0 Streaming support
 	s.RegisterStreamableTools()

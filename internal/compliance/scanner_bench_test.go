@@ -36,13 +36,13 @@ import (
 // latency becomes a bottleneck on large repos.
 //
 // Use benchstat for before/after comparison:
-//   go test -bench=. ./internal/compliance/... -count=10 > before.txt
+//   go test -bench=. -benchmem -count=6 -run=^$ ./internal/compliance > before.txt
 //   # make changes
-//   go test -bench=. ./internal/compliance/... -count=10 > after.txt
+//   go test -bench=. -benchmem -count=6 -run=^$ ./internal/compliance > after.txt
 //   benchstat before.txt after.txt
 //
 // To update the stored baseline:
-//   go test -bench=. ./internal/compliance/... -count=10 > testdata/benchmarks/compliance_baseline.txt
+//   go test -bench=. -benchmem -count=6 -run=^$ ./internal/compliance > testdata/benchmarks/compliance_baseline.txt
 // =============================================================================
 
 // BenchmarkNormalizeIdentifier measures identifier normalization (camelCase → snake_case).

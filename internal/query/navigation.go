@@ -3265,49 +3265,81 @@ func (e *Engine) ListKeyConcepts(ctx context.Context, opts ListKeyConceptsOption
 		})
 		limitations = append(limitations, "SCIP index unavailable; concept extraction limited")
 
-		// Fallback: extract from file/directory names
-		_ = filepath.WalkDir(e.repoRoot, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return err // Return error to allow WalkDir to handle permission issues
-			}
-			if d.IsDir() {
-				// Skip hidden and vendor directories
-				if strings.HasPrefix(d.Name(), ".") || d.Name() == "vendor" || d.Name() == "node_modules" {
-					return filepath.SkipDir
-				}
-				return nil
-			}
+		usedCartographer := false
+		if cartographer.Available() {
+			// Cartographer has a pre-built, ignore-aware file index — faster than
+			// walking the FS and adds module-level grouping for richer concepts.
+			if graph, cerr := cartographer.MapProject(e.repoRoot); cerr == nil {
+				usedCartographer = true
+				for _, node := range graph.Nodes {
+					ext := filepath.Ext(node.Path)
+					name := strings.TrimSuffix(filepath.Base(node.Path), ext)
+					name = strings.TrimSuffix(name, "_test")
+					name = strings.TrimSuffix(name, ".test")
 
-			// Extract concept from file name
-			ext := filepath.Ext(path)
-			if ext != ".go" && ext != ".ts" && ext != ".js" && ext != ".py" {
-				return nil
-			}
+					if conceptName := extractConcept(name); conceptName != "" {
+						if _, exists := conceptCounts[conceptName]; !exists {
+							conceptCounts[conceptName] = &conceptData{files: make(map[string]bool)}
+						}
+						conceptCounts[conceptName].count++
+						conceptCounts[conceptName].files[node.Path] = true
+					}
 
-			name := strings.TrimSuffix(filepath.Base(path), ext)
-			name = strings.TrimSuffix(name, "_test")
-			name = strings.TrimSuffix(name, ".test")
-
-			conceptName := extractConcept(name)
-			if conceptName == "" {
-				return nil
-			}
-
-			relPath, _ := filepath.Rel(e.repoRoot, path)
-
-			if _, exists := conceptCounts[conceptName]; !exists {
-				conceptCounts[conceptName] = &conceptData{
-					files:   make(map[string]bool),
-					symbols: []string{},
+					// Module ID (directory) carries semantic grouping — contributes
+					// an extra signal toward concepts that span multiple files.
+					if node.ModuleID != "" {
+						if modConcept := extractConcept(filepath.Base(node.ModuleID)); modConcept != "" {
+							if _, exists := conceptCounts[modConcept]; !exists {
+								conceptCounts[modConcept] = &conceptData{files: make(map[string]bool)}
+							}
+							conceptCounts[modConcept].count++
+							conceptCounts[modConcept].files[node.Path] = true
+						}
+					}
 				}
 			}
+		}
 
-			cd := conceptCounts[conceptName]
-			cd.count++
-			cd.files[relPath] = true
+		if !usedCartographer {
+			// Last resort: extract from file/directory names via OS walk.
+			_ = filepath.WalkDir(e.repoRoot, func(path string, d os.DirEntry, err error) error {
+				if err != nil {
+					return err
+				}
+				if d.IsDir() {
+					if strings.HasPrefix(d.Name(), ".") || d.Name() == "vendor" || d.Name() == "node_modules" {
+						return filepath.SkipDir
+					}
+					return nil
+				}
 
-			return nil
-		})
+				ext := filepath.Ext(path)
+				if ext != ".go" && ext != ".ts" && ext != ".js" && ext != ".py" {
+					return nil
+				}
+
+				name := strings.TrimSuffix(filepath.Base(path), ext)
+				name = strings.TrimSuffix(name, "_test")
+				name = strings.TrimSuffix(name, ".test")
+
+				conceptName := extractConcept(name)
+				if conceptName == "" {
+					return nil
+				}
+
+				relPath, _ := filepath.Rel(e.repoRoot, path)
+
+				if _, exists := conceptCounts[conceptName]; !exists {
+					conceptCounts[conceptName] = &conceptData{
+						files:   make(map[string]bool),
+						symbols: []string{},
+					}
+				}
+				conceptCounts[conceptName].count++
+				conceptCounts[conceptName].files[relPath] = true
+				return nil
+			})
+		}
 	}
 
 	// Convert to concepts and rank

@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
 	"github.com/SimplyLiz/CodeMCP/internal/complexity"
 	"github.com/SimplyLiz/CodeMCP/internal/coupling"
 	"github.com/SimplyLiz/CodeMCP/internal/errors"
@@ -58,16 +59,17 @@ type ExploreResponse struct {
 
 // ExploreOverview provides high-level information about the target.
 type ExploreOverview struct {
-	TargetType     string `json:"targetType"` // file, directory, module
-	Path           string `json:"path"`
-	Name           string `json:"name"`
-	Description    string `json:"description,omitempty"`
-	FileCount      int    `json:"fileCount,omitempty"`
-	SymbolCount    int    `json:"symbolCount,omitempty"`
-	LineCount      int    `json:"lineCount,omitempty"`
-	Language       string `json:"language,omitempty"`
-	Role           string `json:"role,omitempty"` // core, glue, test, config
-	Responsibility string `json:"responsibility,omitempty"`
+	TargetType     string         `json:"targetType"` // file, directory, module
+	Path           string         `json:"path"`
+	Name           string         `json:"name"`
+	Description    string         `json:"description,omitempty"`
+	FileCount      int            `json:"fileCount,omitempty"`
+	SymbolCount    int            `json:"symbolCount,omitempty"`
+	LineCount      int            `json:"lineCount,omitempty"`
+	Language       string         `json:"language,omitempty"`
+	Languages      map[string]int `json:"languages,omitempty"` // file count per language; populated by Cartographer
+	Role           string         `json:"role,omitempty"`      // core, glue, test, config
+	Responsibility string         `json:"responsibility,omitempty"`
 }
 
 // ExploreSymbol represents a key symbol in the explored area.
@@ -370,23 +372,48 @@ func (e *Engine) buildExploreOverview(ctx context.Context, targetType, absPath, 
 		overview.LineCount = countFileLines(absPath)
 		overview.SymbolCount = 0 // Will be updated by symbol search
 	} else {
-		// Directory overview - skip large generated directories
-		fileCount := 0
-		//nolint:errcheck // intentionally ignore walk errors to count accessible files
-		_ = filepath.Walk(absPath, func(path string, info os.FileInfo, walkErr error) error {
-			if walkErr != nil {
-				return nil //nolint:nilerr // skip inaccessible files, continue walk
-			}
-			if info.IsDir() {
-				if skipExploreDirectory(info.Name()) {
-					return filepath.SkipDir
+		// Directory overview.
+		// Try Cartographer first — it has a pre-built, ignore-aware file list with
+		// language metadata. Fall back to an OS walk when it's not available.
+		cartographerUsed := false
+		if cartographer.Available() {
+			if graph, cerr := cartographer.MapProject(e.repoRoot); cerr == nil {
+				cartographerUsed = true
+				langs := make(map[string]int)
+				fileCount := 0
+				prefix := relTarget + "/"
+				for _, node := range graph.Nodes {
+					if strings.HasPrefix(node.Path, prefix) || node.Path == relTarget {
+						fileCount++
+						if node.Language != "" {
+							langs[node.Language]++
+						}
+					}
 				}
-				return nil
+				overview.FileCount = fileCount
+				if len(langs) > 0 {
+					overview.Languages = langs
+				}
 			}
-			fileCount++
-			return nil
-		})
-		overview.FileCount = fileCount
+		}
+		if !cartographerUsed {
+			fileCount := 0
+			//nolint:errcheck // intentionally ignore walk errors to count accessible files
+			_ = filepath.Walk(absPath, func(path string, info os.FileInfo, walkErr error) error {
+				if walkErr != nil {
+					return nil //nolint:nilerr // skip inaccessible files, continue walk
+				}
+				if info.IsDir() {
+					if skipExploreDirectory(info.Name()) {
+						return filepath.SkipDir
+					}
+					return nil
+				}
+				fileCount++
+				return nil
+			})
+			overview.FileCount = fileCount
+		}
 
 		// Get module overview if available
 		modResp, err := e.GetModuleOverview(ctx, ModuleOverviewOptions{Path: relTarget})

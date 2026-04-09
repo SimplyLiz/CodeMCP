@@ -406,20 +406,9 @@ func TestToolFindCycles_Registered(t *testing.T) {
 		"reason": "testing tool registration",
 	})
 
-	// Verify findCycles is in the tools list
-	resp := sendRequest(t, server, "tools/list", 1, nil)
-	if resp.Error != nil {
-		t.Fatalf("unexpected error listing tools: %v", resp.Error)
-	}
-
-	result, ok := resp.Result.(map[string]interface{})
-	if !ok {
-		t.Fatal("expected map result")
-	}
-	toolsList, ok := result["tools"].([]Tool)
-	if !ok {
-		t.Fatalf("expected []Tool, got %T", result["tools"])
-	}
+	// Use GetFilteredTools directly to avoid pagination truncation — the refactor
+	// preset may exceed DefaultPageSize so tools/list only returns the first page.
+	toolsList := server.GetFilteredTools()
 
 	found := false
 	for _, tool := range toolsList {
@@ -429,7 +418,7 @@ func TestToolFindCycles_Registered(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Error("findCycles not found in tools list after expanding refactor preset")
+		t.Errorf("findCycles not found in tools list after expanding refactor preset (total tools: %d)", len(toolsList))
 	}
 }
 
@@ -443,19 +432,9 @@ func TestToolSuggestRefactorings_Registered(t *testing.T) {
 		"reason": "testing tool registration",
 	})
 
-	resp := sendRequest(t, server, "tools/list", 1, nil)
-	if resp.Error != nil {
-		t.Fatalf("unexpected error listing tools: %v", resp.Error)
-	}
-
-	result, ok := resp.Result.(map[string]interface{})
-	if !ok {
-		t.Fatal("expected map result")
-	}
-	toolsList, ok := result["tools"].([]Tool)
-	if !ok {
-		t.Fatalf("expected []Tool, got %T", result["tools"])
-	}
+	// Use GetFilteredTools directly to avoid pagination truncation — the refactor
+	// preset may exceed DefaultPageSize so tools/list only returns the first page.
+	toolsList := server.GetFilteredTools()
 
 	found := false
 	for _, tool := range toolsList {
@@ -465,7 +444,7 @@ func TestToolSuggestRefactorings_Registered(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Error("suggestRefactorings not found in tools list after expanding refactor preset")
+		t.Errorf("suggestRefactorings not found in tools list after expanding refactor preset (total tools: %d)", len(toolsList))
 	}
 }
 

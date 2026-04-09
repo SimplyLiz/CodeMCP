@@ -127,8 +127,9 @@ var Presets = map[string][]string{
 		"findCycles",          // v8.1: Dependency cycle detection
 		"suggestRefactorings", // v8.1: Proactive refactoring suggestions
 		"getFileComplexity",   // v8.3: File complexity for health pipeline
-		"listSymbols",         // v8.3: Bulk symbol listing with complexity
-		"getSymbolGraph",      // v8.3: Batch call graph
+		"listSymbols",              // v8.3: Bulk symbol listing with complexity
+		"getSymbolGraph",           // v8.3: Batch call graph
+		"analyzeStructuralPerf",    // v8.5: Loop call sites in hot files
 	},
 
 	// Federation: core + federation + contract tools
