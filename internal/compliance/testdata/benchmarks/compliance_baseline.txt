@@ -1,0 +1,120 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/SimplyLiz/CodeMCP/internal/compliance
+cpu: Apple M4 Pro
+BenchmarkNormalizeIdentifier-14         	 8629200	       141.4 ns/op	     138 B/op	       4 allocs/op
+BenchmarkNormalizeIdentifier-14         	 8511142	       141.5 ns/op	     138 B/op	       4 allocs/op
+BenchmarkNormalizeIdentifier-14         	 8155084	       140.7 ns/op	     138 B/op	       4 allocs/op
+BenchmarkNormalizeIdentifier-14         	 8598385	       140.8 ns/op	     138 B/op	       4 allocs/op
+BenchmarkNormalizeIdentifier-14         	 8490742	       175.9 ns/op	     138 B/op	       4 allocs/op
+BenchmarkNormalizeIdentifier-14         	 5736453	       182.6 ns/op	     138 B/op	       4 allocs/op
+BenchmarkNormalizeIdentifier_Long-14    	 1553546	       824.1 ns/op	    1352 B/op	       9 allocs/op
+BenchmarkNormalizeIdentifier_Long-14    	 1578157	       752.3 ns/op	    1352 B/op	       9 allocs/op
+BenchmarkNormalizeIdentifier_Long-14    	 1473852	       841.9 ns/op	    1352 B/op	       9 allocs/op
+BenchmarkNormalizeIdentifier_Long-14    	 1351159	       895.6 ns/op	    1352 B/op	       9 allocs/op
+BenchmarkNormalizeIdentifier_Long-14    	 1487450	       891.3 ns/op	    1352 B/op	       9 allocs/op
+BenchmarkNormalizeIdentifier_Long-14    	 1510371	       781.9 ns/op	    1352 B/op	       9 allocs/op
+BenchmarkExtractIdentifiers-14          	 1836652	       638.4 ns/op	     218 B/op	       6 allocs/op
+BenchmarkExtractIdentifiers-14          	 1884564	       632.8 ns/op	     218 B/op	       6 allocs/op
+BenchmarkExtractIdentifiers-14          	 1690105	       634.9 ns/op	     219 B/op	       6 allocs/op
+BenchmarkExtractIdentifiers-14          	 1908166	       638.0 ns/op	     218 B/op	       6 allocs/op
+BenchmarkExtractIdentifiers-14          	 1824052	       638.3 ns/op	     218 B/op	       6 allocs/op
+BenchmarkExtractIdentifiers-14          	 1961847	       614.4 ns/op	     219 B/op	       6 allocs/op
+BenchmarkExtractContainer-14            	 2136037	       564.4 ns/op	      24 B/op	       0 allocs/op
+BenchmarkExtractContainer-14            	 2122201	       562.5 ns/op	      24 B/op	       0 allocs/op
+BenchmarkExtractContainer-14            	 2153913	       567.5 ns/op	      24 B/op	       0 allocs/op
+BenchmarkExtractContainer-14            	 2143210	       597.2 ns/op	      24 B/op	       0 allocs/op
+BenchmarkExtractContainer-14            	 2197952	       539.0 ns/op	      24 B/op	       0 allocs/op
+BenchmarkExtractContainer-14            	 2257752	       595.9 ns/op	      24 B/op	       0 allocs/op
+BenchmarkIsNonPIIIdentifier-14          	 5786624	       202.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIsNonPIIIdentifier-14          	 5778427	       205.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIsNonPIIIdentifier-14          	 5725184	       205.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIsNonPIIIdentifier-14          	 5888619	       205.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIsNonPIIIdentifier-14          	 5906107	       204.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIsNonPIIIdentifier-14          	 5963902	       217.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII-14                    	 1647216	       741.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII-14                    	 1652560	       742.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII-14                    	 1630870	       728.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII-14                    	 1668004	       741.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII-14                    	 1604221	       734.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII-14                    	 1639021	       742.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_Miss-14               	 1000000	      1173 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_Miss-14               	  981932	      1180 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_Miss-14               	 1000000	      1180 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_Miss-14               	 1000000	      1159 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_Miss-14               	 1000000	      1182 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_Miss-14               	 1000000	      1166 ns/op	       0 B/op	       0 allocs/op
+BenchmarkScannerPipeline/500lines-14    	     621	   1878317 ns/op	   8.13 MB/s	  209651 B/op	    6989 allocs/op
+BenchmarkScannerPipeline/500lines-14    	     633	   1905594 ns/op	   8.01 MB/s	  210004 B/op	    6989 allocs/op
+BenchmarkScannerPipeline/500lines-14    	     594	   2342094 ns/op	   6.52 MB/s	  209538 B/op	    6989 allocs/op
+BenchmarkScannerPipeline/500lines-14    	     511	   2322020 ns/op	   6.57 MB/s	  209363 B/op	    6989 allocs/op
+BenchmarkScannerPipeline/500lines-14    	     388	   3162610 ns/op	   4.83 MB/s	  209668 B/op	    6989 allocs/op
+BenchmarkScannerPipeline/500lines-14    	     517	   2393429 ns/op	   6.38 MB/s	  209045 B/op	    6989 allocs/op
+BenchmarkScannerPipeline/5klines-14     	      46	  23053294 ns/op	   6.64 MB/s	 2101899 B/op	   69845 allocs/op
+BenchmarkScannerPipeline/5klines-14     	      61	  18944044 ns/op	   8.07 MB/s	 2098428 B/op	   69845 allocs/op
+BenchmarkScannerPipeline/5klines-14     	      63	  18669786 ns/op	   8.19 MB/s	 2096889 B/op	   69844 allocs/op
+BenchmarkScannerPipeline/5klines-14     	      64	  18681627 ns/op	   8.19 MB/s	 2101081 B/op	   69845 allocs/op
+BenchmarkScannerPipeline/5klines-14     	      63	  18681007 ns/op	   8.19 MB/s	 2097486 B/op	   69845 allocs/op
+BenchmarkScannerPipeline/5klines-14     	      63	  19060614 ns/op	   8.03 MB/s	 2093948 B/op	   69844 allocs/op
+BenchmarkScannerPipeline/50klines-14    	       6	 186988569 ns/op	   8.18 MB/s	20808034 B/op	  698368 allocs/op
+BenchmarkScannerPipeline/50klines-14    	       6	 185438049 ns/op	   8.25 MB/s	20863693 B/op	  698376 allocs/op
+BenchmarkScannerPipeline/50klines-14    	       6	 186233264 ns/op	   8.22 MB/s	20832866 B/op	  698373 allocs/op
+BenchmarkScannerPipeline/50klines-14    	       6	 186745611 ns/op	   8.19 MB/s	20882424 B/op	  698381 allocs/op
+BenchmarkScannerPipeline/50klines-14    	       6	 185698542 ns/op	   8.24 MB/s	20882317 B/op	  698380 allocs/op
+BenchmarkScannerPipeline/50klines-14    	       6	 185828570 ns/op	   8.23 MB/s	20839005 B/op	  698373 allocs/op
+BenchmarkAuditFileSet/100files-14       	       9	 113226523 ns/op	   8.11 MB/s	12628507 B/op	  419042 allocs/op
+BenchmarkAuditFileSet/100files-14       	       9	 112449657 ns/op	   8.16 MB/s	12562530 B/op	  419032 allocs/op
+BenchmarkAuditFileSet/100files-14       	       9	 111991931 ns/op	   8.20 MB/s	12603716 B/op	  419038 allocs/op
+BenchmarkAuditFileSet/100files-14       	       9	 111576306 ns/op	   8.23 MB/s	12578746 B/op	  419034 allocs/op
+BenchmarkAuditFileSet/100files-14       	       9	 112547611 ns/op	   8.16 MB/s	12607951 B/op	  419038 allocs/op
+BenchmarkAuditFileSet/100files-14       	       9	 111628440 ns/op	   8.22 MB/s	12603539 B/op	  419038 allocs/op
+BenchmarkAuditFileSet/1kfiles-14        	       1	1123163000 ns/op	   8.17 MB/s	126363856 B/op	 4190429 allocs/op
+BenchmarkAuditFileSet/1kfiles-14        	       1	1124220000 ns/op	   8.17 MB/s	125804584 B/op	 4190343 allocs/op
+BenchmarkAuditFileSet/1kfiles-14        	       1	1150432541 ns/op	   7.98 MB/s	125619256 B/op	 4190323 allocs/op
+BenchmarkAuditFileSet/1kfiles-14        	       1	1121907334 ns/op	   8.18 MB/s	125842344 B/op	 4190356 allocs/op
+BenchmarkAuditFileSet/1kfiles-14        	       1	1173381750 ns/op	   7.82 MB/s	125917016 B/op	 4190371 allocs/op
+BenchmarkAuditFileSet/1kfiles-14        	       1	1126802542 ns/op	   8.15 MB/s	125471368 B/op	 4190306 allocs/op
+BenchmarkAuditFileSet/5kfiles-14        	       1	5613467292 ns/op	   8.18 MB/s	629732304 B/op	20951857 allocs/op
+BenchmarkAuditFileSet/5kfiles-14        	       1	5714221667 ns/op	   8.03 MB/s	630288600 B/op	20951942 allocs/op
+BenchmarkAuditFileSet/5kfiles-14        	       1	5906006750 ns/op	   7.77 MB/s	629471160 B/op	20951828 allocs/op
+BenchmarkAuditFileSet/5kfiles-14        	       1	7766709750 ns/op	   5.91 MB/s	629764200 B/op	20951848 allocs/op
+BenchmarkAuditFileSet/5kfiles-14        	       1	7441638750 ns/op	   6.17 MB/s	629543992 B/op	20951815 allocs/op
+BenchmarkAuditFileSet/5kfiles-14        	       1	7681212666 ns/op	   5.98 MB/s	630361624 B/op	20951956 allocs/op
+BenchmarkMatchPII_PatternScale/default_~80patterns-14         	  806410	      1551 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/default_~80patterns-14         	  722263	      1555 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/default_~80patterns-14         	  685858	      1512 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/default_~80patterns-14         	  803851	      1637 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/default_~80patterns-14         	  793191	      1527 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/default_~80patterns-14         	  806354	      2051 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/100patterns-14                 	  520012	      2079 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/100patterns-14                 	  652938	      1848 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/100patterns-14                 	  779718	      1654 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/100patterns-14                 	  798192	      1617 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/100patterns-14                 	  772701	      1633 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/100patterns-14                 	  745755	      1711 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/200patterns-14                 	  386634	      3144 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/200patterns-14                 	  369409	      4124 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/200patterns-14                 	  350917	      3759 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/200patterns-14                 	  327774	      3461 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/200patterns-14                 	  344373	      3214 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/200patterns-14                 	  371349	      3176 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/500patterns-14                 	  183715	      6804 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/500patterns-14                 	  182292	      6317 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/500patterns-14                 	  161373	      6620 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/500patterns-14                 	  199474	      5609 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/500patterns-14                 	  230452	      5374 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/500patterns-14                 	  227358	      5308 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNewPIIScanner-14                                     	  426730	      2733 ns/op	   13048 B/op	       6 allocs/op
+BenchmarkNewPIIScanner-14                                     	  446229	      2779 ns/op	   13048 B/op	       6 allocs/op
+BenchmarkNewPIIScanner-14                                     	  431460	      2824 ns/op	   13048 B/op	       6 allocs/op
+BenchmarkNewPIIScanner-14                                     	  395940	      4196 ns/op	   13048 B/op	       6 allocs/op
+BenchmarkNewPIIScanner-14                                     	  316576	      3216 ns/op	   13048 B/op	       6 allocs/op
+BenchmarkNewPIIScanner-14                                     	  404754	      2847 ns/op	   13048 B/op	       6 allocs/op
+BenchmarkNewPIIScannerWithExtras-14                           	  252061	      5019 ns/op	   20640 B/op	      32 allocs/op
+BenchmarkNewPIIScannerWithExtras-14                           	  217336	      5265 ns/op	   20640 B/op	      32 allocs/op
+BenchmarkNewPIIScannerWithExtras-14                           	  239155	      5083 ns/op	   20640 B/op	      32 allocs/op
+BenchmarkNewPIIScannerWithExtras-14                           	  226501	      4905 ns/op	   20640 B/op	      32 allocs/op
+BenchmarkNewPIIScannerWithExtras-14                           	  256540	      4815 ns/op	   20640 B/op	      32 allocs/op
+BenchmarkNewPIIScannerWithExtras-14                           	  246711	      4898 ns/op	   20640 B/op	      32 allocs/op
+PASS
+ok  	github.com/SimplyLiz/CodeMCP/internal/compliance	194.129s

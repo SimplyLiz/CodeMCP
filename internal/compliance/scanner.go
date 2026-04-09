@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"unicode"
+	"sync"
 )
 
 // PIIField represents a detected PII field in source code.
@@ -84,6 +84,10 @@ func (s *PIIScanner) scanFile(fullPath, relPath string) ([]PIIField, error) {
 	lineNum := 0
 	currentContainer := ""
 
+	// Reuse across lines to avoid per-line allocations.
+	seen := make(map[string]bool, 32)
+	identBuf := make([]string, 0, 32)
+
 	for scanner.Scan() {
 		lineNum++
 		line := scanner.Text()
@@ -100,8 +104,8 @@ func (s *PIIScanner) scanFile(fullPath, relPath string) ([]PIIField, error) {
 		}
 
 		// Extract identifiers from the line and check against PII patterns
-		identifiers := extractIdentifiers(line)
-		for _, ident := range identifiers {
+		identBuf = extractIdentifiers(line, identBuf, seen)
+		for _, ident := range identBuf {
 			normalized := normalizeIdentifier(ident)
 			if p, ok := s.matchPII(normalized); ok {
 				confidence := 0.65
@@ -136,6 +140,9 @@ func (s *PIIScanner) scanFile(fullPath, relPath string) ([]PIIField, error) {
 func (s *PIIScanner) CheckPIIInLogs(ctx context.Context, scope *ScanScope) ([]Finding, error) {
 	var findings []Finding
 
+	seen := make(map[string]bool, 32)
+	identBuf := make([]string, 0, 32)
+
 	for _, file := range scope.Files {
 		if ctx.Err() != nil {
 			return findings, ctx.Err()
@@ -169,8 +176,8 @@ func (s *PIIScanner) CheckPIIInLogs(ctx context.Context, scope *ScanScope) ([]Fi
 				}
 
 				// Check for PII identifiers in the log line
-				identifiers := extractIdentifiers(line)
-				for _, ident := range identifiers {
+				identBuf = extractIdentifiers(line, identBuf, seen)
+				for _, ident := range identBuf {
 					normalized := normalizeIdentifier(ident)
 					if p, ok := s.matchPII(normalized); ok {
 						findings = append(findings, Finding{
@@ -193,6 +200,9 @@ func (s *PIIScanner) CheckPIIInLogs(ctx context.Context, scope *ScanScope) ([]Fi
 // CheckPIIInErrors finds PII field names used in error messages/returns.
 func (s *PIIScanner) CheckPIIInErrors(ctx context.Context, scope *ScanScope) ([]Finding, error) {
 	var findings []Finding
+
+	seen := make(map[string]bool, 32)
+	identBuf := make([]string, 0, 32)
 
 	for _, file := range scope.Files {
 		if ctx.Err() != nil {
@@ -218,8 +228,8 @@ func (s *PIIScanner) CheckPIIInErrors(ctx context.Context, scope *ScanScope) ([]
 					continue
 				}
 
-				identifiers := extractIdentifiers(line)
-				for _, ident := range identifiers {
+				identBuf = extractIdentifiers(line, identBuf, seen)
+				for _, ident := range identBuf {
 					normalized := normalizeIdentifier(ident)
 					if p, ok := s.matchPII(normalized); ok {
 						findings = append(findings, Finding{
@@ -304,39 +314,56 @@ func isNonPIIIdentifier(normalized string) bool {
 	return false
 }
 
+// normBufPool reuses byte buffers for normalizeIdentifier to avoid per-call allocations.
+var normBufPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, 0, 64)
+		return &b
+	},
+}
+
 // normalizeIdentifier converts any casing convention to snake_case for matching.
+// Identifiers from identifierRe are always ASCII, so we use a byte-based approach
+// with a pooled buffer — 1 alloc (the returned string) instead of 4.
 func normalizeIdentifier(s string) string {
 	if s == "" {
 		return ""
 	}
 
-	var result []rune
-	runes := []rune(s)
+	bp := normBufPool.Get().(*[]byte)
+	buf := (*bp)[:0]
+	n := len(s)
 
-	for i, r := range runes {
-		if unicode.IsUpper(r) {
-			// Insert underscore before uppercase letter (camelCase/PascalCase boundary)
-			// but not if previous char is already an underscore
-			if i > 0 && runes[i-1] != '_' && !unicode.IsUpper(runes[i-1]) {
-				result = append(result, '_')
+	for i := 0; i < n; i++ {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' {
+			if i > 0 {
+				prev := s[i-1]
+				prevIsUpper := prev >= 'A' && prev <= 'Z'
+				if prev != '_' && !prevIsUpper {
+					// camelCase boundary: fooBar → foo_bar
+					buf = append(buf, '_')
+				} else if prevIsUpper && i+1 < n && s[i+1] >= 'a' && s[i+1] <= 'z' {
+					// Acronym boundary: HTMLParser → html_parser (fires on 'P')
+					buf = append(buf, '_')
+				}
 			}
-			// Handle consecutive uppercase: "HTMLParser" -> "html_parser"
-			if i > 0 && unicode.IsUpper(runes[i-1]) && i+1 < len(runes) && unicode.IsLower(runes[i+1]) {
-				result = append(result, '_')
+			buf = append(buf, c|0x20) // to lower
+		} else if c == '_' {
+			// Deduplicate underscores inline — handles SCREAMING_SNAKE_CASE
+			// where a case-transition '_' lands right before an existing '_'.
+			if len(buf) == 0 || buf[len(buf)-1] != '_' {
+				buf = append(buf, '_')
 			}
-			result = append(result, unicode.ToLower(r))
 		} else {
-			result = append(result, unicode.ToLower(r))
+			buf = append(buf, c)
 		}
 	}
 
-	// Collapse double underscores that may result from SCREAMING_SNAKE_CASE
-	normalized := string(result)
-	for strings.Contains(normalized, "__") {
-		normalized = strings.ReplaceAll(normalized, "__", "_")
-	}
-
-	return normalized
+	result := string(buf)
+	*bp = buf
+	normBufPool.Put(bp)
+	return result
 }
 
 // extractContainer detects struct/class/type declarations.
@@ -363,23 +390,26 @@ func extractContainer(line string) string {
 // identifierRe matches identifiers in source code.
 var identifierRe = regexp.MustCompile(`[a-zA-Z_][a-zA-Z0-9_]*`)
 
-func extractIdentifiers(line string) []string {
-	// Skip comments
+// extractIdentifiers fills result with unique non-keyword identifiers found in line.
+// seen and result must be pre-allocated by the caller and are reused across calls —
+// this eliminates per-line map and slice allocations. result is reset on each call;
+// do not retain the returned slice across the next call to extractIdentifiers.
+func extractIdentifiers(line string, result []string, seen map[string]bool) []string {
 	trimmed := strings.TrimSpace(line)
 	if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "*") {
-		return nil
+		return result[:0]
 	}
 
-	matches := identifierRe.FindAllString(line, -1)
-	// Deduplicate and filter short identifiers
-	seen := make(map[string]bool, len(matches))
-	var result []string
-	for _, m := range matches {
-		if len(m) < 3 || seen[m] {
-			continue
-		}
-		// Skip common keywords
-		if isCommonKeyword(m) {
+	for k := range seen {
+		delete(seen, k)
+	}
+	result = result[:0]
+
+	// FindAllStringIndex returns index pairs into line — no string copies.
+	locs := identifierRe.FindAllStringIndex(line, -1)
+	for _, loc := range locs {
+		m := line[loc[0]:loc[1]]
+		if len(m) < 3 || seen[m] || isCommonKeyword(m) {
 			continue
 		}
 		seen[m] = true
