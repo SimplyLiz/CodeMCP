@@ -229,7 +229,7 @@ jobs:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           set +e
-          ckb review --ci --base="${BASE_REF}" --format=json > review.json 2>&1
+          ckb review --ci --base="${BASE_REF}" --format=json > review.json 2>review_err.txt
           EXIT_CODE=$?
           set -e
 
