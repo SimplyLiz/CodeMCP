@@ -477,3 +477,34 @@ func ExtractContent(path, pattern string, opts *ExtractOptions) (*ExtractResult,
 	}
 	return &result, nil
 }
+
+// ContextHealth analyses the quality of an LLM context bundle and returns a
+// health report with a composite score (0–100, graded A–F) and per-metric
+// breakdown. opts may be nil to use defaults (Claude 200K window).
+func ContextHealth(content string, opts *ContextHealthOpts) (*ContextHealthReport, error) {
+	cContent := C.CString(content)
+	defer C.free(unsafe.Pointer(cContent))
+
+	var cOpts *C.char
+	if opts != nil {
+		b, err := json.Marshal(opts)
+		if err != nil {
+			return nil, &CartographerError{err.Error()}
+		}
+		cOpts = C.CString(string(b))
+		defer C.free(unsafe.Pointer(cOpts))
+	}
+
+	resp, err := callFFI(func() *C.char {
+		return C.cartographer_context_health(cContent, cOpts)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var result ContextHealthReport
+	if err := json.Unmarshal(resp.Data, &result); err != nil {
+		return nil, &CartographerError{err.Error()}
+	}
+	return &result, nil
+}

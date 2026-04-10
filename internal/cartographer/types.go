@@ -340,6 +340,50 @@ type ExtractResult struct {
 	Truncated     bool           `json:"truncated"`
 }
 
+// ---------------------------------------------------------------------------
+// Context health types
+// ---------------------------------------------------------------------------
+
+// ContextHealthOpts controls context_health scoring.
+// All fields are optional; zero values use sensible defaults.
+type ContextHealthOpts struct {
+	// Model family for context window default: "claude" (200K), "gpt4" (128K),
+	// "llama" (128K), "gpt35" (16K). Defaults to "claude".
+	Model string `json:"model,omitempty"`
+	// Override context window size in tokens (0 = use model default).
+	WindowSize int `json:"windowSize,omitempty"`
+	// Number of symbol signatures in the content (improves signal/entity scoring).
+	SignatureCount int `json:"signatureCount,omitempty"`
+	// Tokens occupied by signature text (improves signal density scoring).
+	SignatureTokens int `json:"signatureTokens,omitempty"`
+	// Relative positions (0.0–1.0) of key modules in the output order.
+	// Used for position health (U-bias) scoring.
+	KeyPositions []float64 `json:"keyPositions,omitempty"`
+}
+
+// MetricBreakdown holds the individual normalized (0–1) metric scores.
+type MetricBreakdown struct {
+	SignalDensity      float64 `json:"signal_density"`
+	CompressionDensity float64 `json:"compression_density"`
+	PositionHealth     float64 `json:"position_health"`
+	EntityDensity      float64 `json:"entity_density"`
+	UtilizationHeadroom float64 `json:"utilization_headroom"`
+	DedupRatio         float64 `json:"dedup_ratio"`
+}
+
+// ContextHealthReport is returned by ContextHealth.
+type ContextHealthReport struct {
+	TokenCount     int             `json:"token_count"`
+	CharCount      int             `json:"char_count"`
+	WindowSize     int             `json:"window_size"`
+	UtilizationPct float64         `json:"utilization_pct"`
+	Metrics        MetricBreakdown `json:"metrics"`
+	Score          float64         `json:"score"`   // 0–100
+	Grade          string          `json:"grade"`   // A / B / C / D / F
+	Warnings       []string        `json:"warnings"`
+	Recommendations []string       `json:"recommendations"`
+}
+
 // CartographerError is returned when a Cartographer FFI call fails.
 type CartographerError struct {
 	Message string

@@ -30,3 +30,4 @@ func SearchContent(_, _ string, _ *SearchContentOptions) (*SearchResult, error) 
 func FindFiles(_, _ string, _ uint32, _ *FindOptions) (*FindResult, error)             { return nil, ErrUnavailable }
 func ReplaceContent(_, _, _ string, _ *ReplaceOptions) (*ReplaceResult, error)        { return nil, ErrUnavailable }
 func ExtractContent(_, _ string, _ *ExtractOptions) (*ExtractResult, error)           { return nil, ErrUnavailable }
+func ContextHealth(_ string, _ *ContextHealthOpts) (*ContextHealthReport, error)      { return nil, ErrUnavailable }
