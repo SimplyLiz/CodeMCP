@@ -355,16 +355,26 @@ func SearchContent(path, pattern string, opts *SearchContentOptions) (*SearchRes
 }
 
 // FindFiles finds files whose repo-relative path matches a glob pattern.
-// limit=0 means unlimited.
-func FindFiles(path, pattern string, limit uint32) (*FindResult, error) {
+// limit=0 means unlimited. opts may be nil to use defaults.
+func FindFiles(path, pattern string, limit uint32, opts *FindOptions) (*FindResult, error) {
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 
 	cPattern := C.CString(pattern)
 	defer C.free(unsafe.Pointer(cPattern))
 
+	var cOpts *C.char
+	if opts != nil {
+		b, err := json.Marshal(opts)
+		if err != nil {
+			return nil, &CartographerError{err.Error()}
+		}
+		cOpts = C.CString(string(b))
+		defer C.free(unsafe.Pointer(cOpts))
+	}
+
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_find_files(cPath, cPattern, C.uint(limit))
+		return C.cartographer_find_files(cPath, cPattern, C.uint(limit), cOpts)
 	})
 	if err != nil {
 		return nil, err

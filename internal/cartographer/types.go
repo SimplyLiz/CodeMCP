@@ -178,13 +178,35 @@ type SemidiffFile struct {
 	Removed []string `json:"removed"`
 }
 
-// SearchContentOptions configures a content search request.
+// SearchContentOptions configures a content search request (mirrors Rust SearchOptions).
 type SearchContentOptions struct {
-	Literal       bool   `json:"literal,omitempty"`
-	CaseSensitive *bool  `json:"caseSensitive,omitempty"` // default true
-	ContextLines  int    `json:"contextLines,omitempty"`
-	MaxResults    int    `json:"maxResults,omitempty"`
-	FileGlob      string `json:"fileGlob,omitempty"`
+	Literal            bool     `json:"literal,omitempty"`
+	CaseSensitive      *bool    `json:"caseSensitive,omitempty"` // default true
+	ContextLines       int      `json:"contextLines,omitempty"`
+	BeforeContext      int      `json:"beforeContext,omitempty"`
+	AfterContext       int      `json:"afterContext,omitempty"`
+	MaxResults         int      `json:"maxResults,omitempty"`
+	FileGlob           string   `json:"fileGlob,omitempty"`
+	ExcludeGlob        string   `json:"excludeGlob,omitempty"`
+	ExtraPatterns      []string `json:"extraPatterns,omitempty"`
+	InvertMatch        bool     `json:"invertMatch,omitempty"`
+	WordRegexp         bool     `json:"wordRegexp,omitempty"`
+	OnlyMatching       bool     `json:"onlyMatching,omitempty"`
+	FilesWithMatches   bool     `json:"filesWithMatches,omitempty"`
+	FilesWithoutMatch  bool     `json:"filesWithoutMatch,omitempty"`
+	CountOnly          bool     `json:"countOnly,omitempty"`
+	NoIgnore           bool     `json:"noIgnore,omitempty"`
+	SearchPath         string   `json:"searchPath,omitempty"`
+}
+
+// FindOptions configures a file-find request (mirrors Rust FindOptions).
+type FindOptions struct {
+	ModifiedSinceSecs *uint64 `json:"modifiedSinceSecs,omitempty"`
+	NewerThan         string  `json:"newerThan,omitempty"`
+	MinSizeBytes      *uint64 `json:"minSizeBytes,omitempty"`
+	MaxSizeBytes      *uint64 `json:"maxSizeBytes,omitempty"`
+	MaxDepth          *int    `json:"maxDepth,omitempty"`
+	NoIgnore          bool    `json:"noIgnore,omitempty"`
 }
 
 // ContextLine is one line of before/after context around a search match.
@@ -198,16 +220,26 @@ type ContentMatch struct {
 	Path          string        `json:"path"`
 	LineNumber    int           `json:"lineNumber"`
 	Line          string        `json:"line"`
+	MatchedTexts  []string      `json:"matchedTexts,omitempty"`
 	BeforeContext []ContextLine `json:"beforeContext,omitempty"`
 	AfterContext  []ContextLine `json:"afterContext,omitempty"`
 }
 
+// FileCount holds the match count for one file (count_only mode).
+type FileCount struct {
+	Path  string `json:"path"`
+	Count int    `json:"count"`
+}
+
 // SearchResult is returned by SearchContent.
 type SearchResult struct {
-	Matches      []ContentMatch `json:"matches"`
-	TotalMatches int            `json:"totalMatches"`
-	FilesSearched int           `json:"filesSearched"`
-	Truncated    bool           `json:"truncated"`
+	Matches            []ContentMatch `json:"matches"`
+	TotalMatches       int            `json:"totalMatches"`
+	FilesSearched      int            `json:"filesSearched"`
+	Truncated          bool           `json:"truncated"`
+	FilesWithMatches   []string       `json:"filesWithMatches,omitempty"`
+	FilesWithoutMatch  []string       `json:"filesWithoutMatch,omitempty"`
+	FileCounts         []FileCount    `json:"fileCounts,omitempty"`
 }
 
 // FindFile is one file returned by FindFiles.
@@ -215,6 +247,7 @@ type FindFile struct {
 	Path      string  `json:"path"`
 	Language  *string `json:"language,omitempty"`
 	SizeBytes uint64  `json:"sizeBytes"`
+	Modified  *string `json:"modified,omitempty"`
 }
 
 // FindResult is returned by FindFiles.
