@@ -48,6 +48,21 @@ func (t *ToolResponse) WithDrilldowns(drilldowns []output.Drilldown) *ToolRespon
 	return t
 }
 
+// WithBackend sets the active backend name and derives accuracy on the envelope.
+// Emits a warn-level slog record when running in degraded mode (non-SCIP backend).
+func (t *ToolResponse) WithBackend(backend string, logger interface {
+	Warn(string, ...any)
+}) *ToolResponse {
+	t.builder.WithBackend(backend)
+	if backend != "scip" {
+		logger.Warn("Running in degraded mode",
+			"backend", backend,
+			"accuracy", envelope.AccuracyForBackend(backend),
+		)
+	}
+	return t
+}
+
 // Warning adds a warning message.
 func (t *ToolResponse) Warning(msg string) *ToolResponse {
 	t.builder.Warning(msg)

@@ -12,6 +12,7 @@ import (
 	"github.com/SimplyLiz/CodeMCP/internal/errors"
 	"github.com/SimplyLiz/CodeMCP/internal/index"
 	"github.com/SimplyLiz/CodeMCP/internal/jobs"
+	lipClient "github.com/SimplyLiz/CodeMCP/internal/lip"
 	"github.com/SimplyLiz/CodeMCP/internal/query"
 	"github.com/SimplyLiz/CodeMCP/internal/repos"
 )
@@ -1037,6 +1038,34 @@ func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (*envelope.
 		}
 	}
 
+	// Collect unique affected file paths for LIP annotation check.
+	seenFiles := make(map[string]bool)
+	var affectedFiles []string
+	for _, item := range impactResp.DirectImpact {
+		if item.Location != nil && item.Location.FileId != "" && !seenFiles[item.Location.FileId] {
+			seenFiles[item.Location.FileId] = true
+			affectedFiles = append(affectedFiles, item.Location.FileId)
+		}
+	}
+	for _, item := range impactResp.TransitiveImpact {
+		if item.Location != nil && item.Location.FileId != "" && !seenFiles[item.Location.FileId] {
+			seenFiles[item.Location.FileId] = true
+			affectedFiles = append(affectedFiles, item.Location.FileId)
+		}
+	}
+
+	// Best-effort LIP nyx-agent-lock check — silent when LIP is not running.
+	var lipWarnings []string
+	for _, filePath := range affectedFiles {
+		lipURI := "lip://local/" + filePath
+		if val, ok, _ := lipClient.GetAnnotation(lipURI, "lip:nyx-agent-lock"); ok {
+			lipWarnings = append(lipWarnings, fmt.Sprintf(
+				"file %s is locked by an active nyx.code agent (session: %s) — analysis may be stale",
+				filePath, val,
+			))
+		}
+	}
+
 	// Record wide-result metrics
 	totalImpact := len(impactResp.DirectImpact) + len(impactResp.TransitiveImpact)
 	responseBytes := MeasureJSONSize(data)
@@ -1050,10 +1079,16 @@ func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (*envelope.
 		ExecutionMs:     timer.ElapsedMs(),
 	})
 
-	return NewToolResponse().
+	eng := s.engine()
+	activeBackend := eng.ActiveBackendName()
+	resp := NewToolResponse().
 		Data(data).
 		WithProvenance(impactResp.Provenance).
-		Build(), nil
+		WithBackend(activeBackend, s.logger)
+	for _, w := range lipWarnings {
+		resp.Warning(w)
+	}
+	return resp.Build(), nil
 }
 
 // toolAnalyzeChange implements the analyzeChange tool

@@ -532,6 +532,20 @@ func (e *Engine) GetConfig() *config.Config {
 	return e.config
 }
 
+// ActiveBackendName returns the name of the highest-quality backend currently
+// serving requests: "scip" when available, "lsp" when the LSP supervisor is
+// configured, otherwise "tree-sitter". This is the name that should be set on
+// envelope.Meta.Backend so callers can see what accuracy tier they are getting.
+func (e *Engine) ActiveBackendName() string {
+	if e.scipAdapter != nil && e.scipAdapter.IsAvailable() {
+		return "scip"
+	}
+	if e.lspSupervisor != nil {
+		return "lsp"
+	}
+	return "tree-sitter"
+}
+
 // GetDB returns the storage database.
 func (e *Engine) GetDB() *storage.DB {
 	return e.db

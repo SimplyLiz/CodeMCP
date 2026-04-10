@@ -2291,6 +2291,12 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 						"type":        "integer",
 						"description": "End line of extraction region (for extract operations)",
 					},
+					"format": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"full", "compact"},
+						"default":     "full",
+						"description": "Response format: 'full' (default) returns all details; 'compact' returns a token-efficient summary with top affected files and tests",
+					},
 				},
 				"required": []string{"target"},
 			},

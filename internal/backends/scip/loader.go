@@ -60,6 +60,12 @@ type SCIPIndex struct {
 	// Sorted ascending by Name so binary search works for prefix queries.
 	NameIndex []NameEntry
 
+	// CallerIndex maps each callee symbolID to the slice of caller symbolIDs.
+	// Built once at load time from Documents — always in sync with in-memory state.
+	// Replaced entirely on LoadIndex(); never mutated after construction.
+	// FindCallers is O(1) via this index instead of the former O(docs×syms×occs) scan.
+	CallerIndex map[string][]string
+
 	// LoadedAt is when the index was loaded
 	LoadedAt time.Time
 
@@ -419,6 +425,14 @@ func loadSCIPIndexInternal(path, cachePath string) (*SCIPIndex, error) {
 			go saveDerivedCache(cachePath, scipIndex, path)
 		}
 	}
+
+	// ------------------------------------------------------------------ //
+	// Phase 4: CallerIndex.                                               //
+	// Build the inverted caller map from Documents so FindCallers is O(1) //
+	// instead of O(docs × syms × occs). Always rebuilt on reload, so it  //
+	// stays in sync with the in-memory Documents.                         //
+	// ------------------------------------------------------------------ //
+	scipIndex.CallerIndex = buildCallerIndex(scipIndex.Documents)
 
 	return scipIndex, nil
 }

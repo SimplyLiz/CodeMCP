@@ -74,6 +74,22 @@ type Meta struct {
 	Freshness  *Freshness  `json:"freshness,omitempty"`
 	Truncation *Truncation `json:"truncation,omitempty"`
 	Cache      *CacheInfo  `json:"cache,omitempty"` // v8.0: cache status
+	Backend    string      `json:"backend,omitempty"`  // "scip" | "lsp" | "tree-sitter" | "git"
+	Accuracy   string      `json:"accuracy,omitempty"` // "high" | "medium" | "low"
+}
+
+// AccuracyForBackend returns the accuracy tier string for a given backend name.
+func AccuracyForBackend(backend string) string {
+	switch backend {
+	case "scip":
+		return "high"
+	case "lsp":
+		return "medium"
+	case "tree-sitter":
+		return "low"
+	default:
+		return "low"
+	}
 }
 
 // SuggestedCall represents a recommended follow-up tool call.

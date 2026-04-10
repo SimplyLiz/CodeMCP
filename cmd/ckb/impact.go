@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -8,8 +9,24 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/SimplyLiz/CodeMCP/internal/envelope"
 	"github.com/SimplyLiz/CodeMCP/internal/query"
 )
+
+// CompactPrepareChange is a condensed view of prepareChange analysis,
+// suitable for token-budget-constrained callers that do not need the full
+// dependency listing.
+type CompactPrepareChange struct {
+	Target        string   `json:"target"`
+	Risk          string   `json:"risk"`
+	AffectedCount int      `json:"affected_count"`
+	AffectedFiles []string `json:"affected_files"` // top 10
+	TestsNeeded   []string `json:"tests_needed"`   // top 5
+	OwnerSuggest  string   `json:"owner_suggest,omitempty"`
+	Summary       string   `json:"summary"`
+	Backend       string   `json:"backend"`
+	Accuracy      string   `json:"accuracy"`
+}
 
 var (
 	impactDepth        int
@@ -19,6 +36,9 @@ var (
 	impactDiffStaged bool
 	impactDiffBase   string
 	impactDiffStrict bool
+	// prepareChange subcommand flags
+	prepareChangeFormat     string
+	prepareChangeChangeType string
 )
 
 var impactCmd = &cobra.Command{
@@ -38,6 +58,21 @@ Examples:
   ckb impact symbol-123 --include-tests`,
 	Args: cobra.ExactArgs(1),
 	Run:  runImpact,
+}
+
+var prepareChangeCmd = &cobra.Command{
+	Use:   "prepare <target>",
+	Short: "Pre-change analysis: blast radius, tests, coupling, and risk",
+	Long: `Analyze what would break if you change a symbol or file.
+
+Returns blast radius, affected tests, co-change coupling, and risk score.
+
+Examples:
+  ckb impact prepare symbol-123
+  ckb impact prepare internal/foo/bar.go
+  ckb impact prepare symbol-123 --format=compact`,
+	Args: cobra.ExactArgs(1),
+	Run:  runPrepareChange,
 }
 
 var impactDiffCmd = &cobra.Command{
@@ -73,8 +108,115 @@ func init() {
 	impactDiffCmd.Flags().BoolVar(&impactDiffStrict, "strict", false, "Fail if SCIP index is stale")
 	impactDiffCmd.Flags().StringVar(&impactFormat, "format", "human", "Output format (json, human, markdown)")
 
+	// prepareChange subcommand flags
+	prepareChangeCmd.Flags().StringVar(&prepareChangeFormat, "format", "full", "Output format (full, compact)")
+	prepareChangeCmd.Flags().StringVar(&prepareChangeChangeType, "change-type", "modify", "Change type (modify, rename, delete, extract, move)")
+
 	impactCmd.AddCommand(impactDiffCmd)
+	impactCmd.AddCommand(prepareChangeCmd)
 	rootCmd.AddCommand(impactCmd)
+}
+
+func runPrepareChange(cmd *cobra.Command, args []string) {
+	logger := newLogger(prepareChangeFormat)
+	target := args[0]
+
+	repoRoot := mustGetRepoRoot()
+	eng := mustGetEngine(repoRoot, logger)
+	ctx := newContext()
+
+	changeType := query.ChangeModify
+	switch prepareChangeChangeType {
+	case "rename":
+		changeType = query.ChangeRename
+	case "delete":
+		changeType = query.ChangeDelete
+	case "extract":
+		changeType = query.ChangeExtract
+	case "move":
+		changeType = query.ChangeMove
+	}
+
+	result, err := eng.PrepareChange(ctx, query.PrepareChangeOptions{
+		Target:     target,
+		ChangeType: changeType,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if prepareChangeFormat == "compact" {
+		activeBackend := eng.ActiveBackendName()
+		compact := buildCompactPrepareChange(target, result, activeBackend)
+		out, err := json.MarshalIndent(compact, "", "  ")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error serializing output: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(string(out))
+		return
+	}
+
+	// full format — reuse standard JSON/human output
+	out, err := FormatResponse(result, OutputFormat(impactFormat))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error formatting output: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println(out)
+}
+
+// buildCompactPrepareChange builds a CompactPrepareChange from a PrepareChangeResponse.
+func buildCompactPrepareChange(target string, r *query.PrepareChangeResponse, activeBackend string) CompactPrepareChange {
+	risk := "unknown"
+	if r.RiskAssessment != nil {
+		risk = r.RiskAssessment.Level
+	}
+
+	// Collect unique affected files from direct dependents (top 10)
+	seen := make(map[string]bool)
+	var affectedFiles []string
+	for _, dep := range r.DirectDependents {
+		if dep.File != "" && !seen[dep.File] {
+			seen[dep.File] = true
+			affectedFiles = append(affectedFiles, dep.File)
+		}
+		if len(affectedFiles) >= 10 {
+			break
+		}
+	}
+
+	affectedCount := len(r.DirectDependents)
+	if r.TransitiveImpact != nil {
+		affectedCount += r.TransitiveImpact.TotalCallers
+	}
+
+	// Top 5 tests
+	var testsNeeded []string
+	for i, t := range r.RelatedTests {
+		if i >= 5 {
+			break
+		}
+		name := t.File
+		if t.Name != "" {
+			name = t.Name
+		}
+		testsNeeded = append(testsNeeded, name)
+	}
+
+	summary := fmt.Sprintf("Changing %s affects %d files with %s risk.", target, len(affectedFiles), risk)
+
+	return CompactPrepareChange{
+		Target:        target,
+		Risk:          risk,
+		AffectedCount: affectedCount,
+		AffectedFiles: affectedFiles,
+		TestsNeeded:   testsNeeded,
+		Summary:       summary,
+		Backend:       activeBackend,
+		Accuracy:      envelope.AccuracyForBackend(activeBackend),
+	}
 }
 
 // formatImpactSubcommandError returns an error message when user provides

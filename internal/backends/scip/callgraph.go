@@ -1,6 +1,7 @@
 package scip
 
 import (
+	"sort"
 	"strings"
 )
 
@@ -134,56 +135,89 @@ func (idx *SCIPIndex) FindCallees(symbolId string) ([]*CallGraphNode, error) {
 	return callees, nil
 }
 
-// FindCallers finds all functions that call the given symbol
+// FindCallers finds all functions that call the given symbol.
+// Uses CallerIndex for O(1) lookup when available (always true after LoadIndex).
 func (idx *SCIPIndex) FindCallers(symbolId string) ([]*CallGraphNode, error) {
-	callers := make([]*CallGraphNode, 0)
-	seen := make(map[string]bool)
+	callerIDs := idx.CallerIndex[symbolId]
+	if len(callerIDs) == 0 {
+		return []*CallGraphNode{}, nil
+	}
+	callers := make([]*CallGraphNode, 0, len(callerIDs))
+	for _, callerID := range callerIDs {
+		symInfo := idx.GetSymbol(callerID)
+		kind := KindFunction
+		if symInfo != nil {
+			if k := mapSCIPKind(symInfo.Kind); k != KindUnknown {
+				kind = k
+			}
+		}
+		callers = append(callers, &CallGraphNode{
+			SymbolID: callerID,
+			Name:     extractSymbolName(callerID),
+			Kind:     kind,
+			Location: findSymbolLocation(callerID, idx),
+		})
+	}
+	return callers, nil
+}
 
-	// For each document, build a map of function line ranges
-	for _, doc := range idx.Documents {
-		// Build function ranges for this document
+// buildCallerIndex constructs the CallerIndex from all documents.
+// For every non-definition occurrence of a symbol that falls within a function
+// body, records that function as a caller of that symbol.
+// Result: callee symbolID → []caller symbolIDs (deduplicated per document).
+// Called once during LoadIndex; FindCallers is O(1) via this map.
+func buildCallerIndex(docs []*Document) map[string][]string {
+	callerIdx := make(map[string][]string, len(docs))
+
+	for _, doc := range docs {
 		funcRanges := buildFunctionRanges(doc)
+		if len(funcRanges) == 0 {
+			continue
+		}
 
-		// Find all occurrences of our target symbol in this document
+		// Sort intervals by start line for early-break during occurrence scan.
+		type interval struct {
+			symbol string
+			start  int
+			end    int
+		}
+		ivs := make([]interval, 0, len(funcRanges))
+		for sym, lr := range funcRanges {
+			ivs = append(ivs, interval{sym, lr.start, lr.end})
+		}
+		sort.Slice(ivs, func(i, j int) bool { return ivs[i].start < ivs[j].start })
+
+		// Deduplicate (callee, caller) edges within this document.
+		type edge struct{ callee, caller string }
+		docSeen := make(map[edge]bool)
+
 		for _, occ := range doc.Occurrences {
-			// Skip if not a reference to our target
-			if occ.Symbol != symbolId {
+			if occ.Symbol == "" || occ.SymbolRoles&SymbolRoleDefinition != 0 {
 				continue
 			}
-			// Skip definitions
-			if occ.SymbolRoles&SymbolRoleDefinition != 0 {
-				continue
-			}
-
 			occLine := int(occ.Range[0]) // #nosec G115 -- SCIP int32 fits in int
-
-			// Find which function contains this occurrence
-			for funcSymbol, lineRange := range funcRanges {
-				if seen[funcSymbol] {
-					continue
+			for _, iv := range ivs {
+				if occLine < iv.start {
+					break // ivs sorted by start; no later interval can contain occLine
 				}
-
-				if occLine >= lineRange.start && occLine <= lineRange.end {
-					seen[funcSymbol] = true
-					symInfo := idx.GetSymbol(funcSymbol)
-					kind := KindFunction
-					if symInfo != nil {
-						kind = mapSCIPKind(symInfo.Kind)
+				if occLine <= iv.end {
+					callee := occ.Symbol
+					caller := iv.symbol
+					if caller == callee {
+						break // skip self-references
 					}
-					location := findSymbolLocation(funcSymbol, idx)
-					callers = append(callers, &CallGraphNode{
-						SymbolID: funcSymbol,
-						Name:     extractSymbolName(funcSymbol),
-						Kind:     kind,
-						Location: location,
-					})
+					e := edge{callee, caller}
+					if !docSeen[e] {
+						docSeen[e] = true
+						callerIdx[callee] = append(callerIdx[callee], caller)
+					}
 					break
 				}
 			}
 		}
 	}
 
-	return callers, nil
+	return callerIdx
 }
 
 // lineRange represents a start and end line for a function
@@ -224,13 +258,9 @@ func buildFunctionRanges(doc *Document) map[string]lineRange {
 	}
 
 	// Sort by start line
-	for i := 0; i < len(funcs); i++ {
-		for j := i + 1; j < len(funcs); j++ {
-			if funcs[i].startLine > funcs[j].startLine {
-				funcs[i], funcs[j] = funcs[j], funcs[i]
-			}
-		}
-	}
+	sort.Slice(funcs, func(i, j int) bool {
+		return funcs[i].startLine < funcs[j].startLine
+	})
 
 	// Assign end lines (next function's start - 1, or a reasonable default)
 	for i, f := range funcs {
