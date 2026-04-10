@@ -31,3 +31,5 @@ func FindFiles(_, _ string, _ uint32, _ *FindOptions) (*FindResult, error)      
 func ReplaceContent(_, _, _ string, _ *ReplaceOptions) (*ReplaceResult, error)        { return nil, ErrUnavailable }
 func ExtractContent(_, _ string, _ *ExtractOptions) (*ExtractResult, error)           { return nil, ErrUnavailable }
 func ContextHealth(_ string, _ *ContextHealthOpts) (*ContextHealthReport, error)      { return nil, ErrUnavailable }
+func BM25Search(_, _ string, _ *BM25Options) (*BM25Result, error)                     { return nil, ErrUnavailable }
+func QueryContext(_, _ string, _ *QueryContextOpts) (*QueryContextResult, error)       { return nil, ErrUnavailable }

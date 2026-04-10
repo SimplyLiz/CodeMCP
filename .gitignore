@@ -7,9 +7,16 @@ bin/
 # Binaries
 /ckb
 /ckb-test
+/ckb-bench
 coverage.out
 *_test
 *.scip
+
+# Registry / credential tokens
+.mcpregistry_*
+
+# Marketing assets (large binaries)
+docs/marketing/*.zip
 
 # Go build artifacts
 *.exe

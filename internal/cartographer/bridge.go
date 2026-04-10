@@ -478,6 +478,73 @@ func ExtractContent(path, pattern string, opts *ExtractOptions) (*ExtractResult,
 	return &result, nil
 }
 
+// BM25Search ranks project files by BM25 relevance to a natural-language query.
+// opts may be nil to use defaults (k1=1.5, b=0.75, max 20 results).
+func BM25Search(path, query string, opts *BM25Options) (*BM25Result, error) {
+	cPath := C.CString(path)
+	defer C.free(unsafe.Pointer(cPath))
+
+	cQuery := C.CString(query)
+	defer C.free(unsafe.Pointer(cQuery))
+
+	var cOpts *C.char
+	if opts != nil {
+		b, err := json.Marshal(opts)
+		if err != nil {
+			return nil, &CartographerError{err.Error()}
+		}
+		cOpts = C.CString(string(b))
+		defer C.free(unsafe.Pointer(cOpts))
+	}
+
+	resp, err := callFFI(func() *C.char {
+		return C.cartographer_bm25_search(cPath, cQuery, cOpts)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var result BM25Result
+	if err := json.Unmarshal(resp.Data, &result); err != nil {
+		return nil, &CartographerError{err.Error()}
+	}
+	return &result, nil
+}
+
+// QueryContext runs the full PKG retrieval pipeline: BM25+regex search →
+// personalized PageRank skeleton → context health. Returns a ready-to-inject
+// context bundle. opts may be nil to use defaults (8000 token budget, claude model).
+func QueryContext(path, query string, opts *QueryContextOpts) (*QueryContextResult, error) {
+	cPath := C.CString(path)
+	defer C.free(unsafe.Pointer(cPath))
+
+	cQuery := C.CString(query)
+	defer C.free(unsafe.Pointer(cQuery))
+
+	var cOpts *C.char
+	if opts != nil {
+		b, err := json.Marshal(opts)
+		if err != nil {
+			return nil, &CartographerError{err.Error()}
+		}
+		cOpts = C.CString(string(b))
+		defer C.free(unsafe.Pointer(cOpts))
+	}
+
+	resp, err := callFFI(func() *C.char {
+		return C.cartographer_query_context(cPath, cQuery, cOpts)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var result QueryContextResult
+	if err := json.Unmarshal(resp.Data, &result); err != nil {
+		return nil, &CartographerError{err.Error()}
+	}
+	return &result, nil
+}
+
 // ContextHealth analyses the quality of an LLM context bundle and returns a
 // health report with a composite score (0–100, graded A–F) and per-metric
 // breakdown. opts may be nil to use defaults (Claude 200K window).

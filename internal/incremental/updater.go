@@ -55,8 +55,14 @@ func (u *IndexUpdater) ApplyDelta(delta *SymbolDelta) error {
 	}
 
 	return u.db.WithTx(func(tx *sql.Tx) error {
+		depsStmt, err := tx.Prepare(`INSERT OR IGNORE INTO file_deps (dependent_file, defining_file) VALUES (?, ?)`)
+		if err != nil {
+			return fmt.Errorf("prepare file_deps insert: %w", err)
+		}
+		defer depsStmt.Close() //nolint:errcheck
+
 		for _, fileDelta := range delta.FileDeltas {
-			if err := u.applyFileDelta(tx, fileDelta, symbolToFile); err != nil {
+			if err := u.applyFileDelta(tx, depsStmt, fileDelta, symbolToFile); err != nil {
 				return fmt.Errorf("failed to update %s: %w", fileDelta.Path, err)
 			}
 		}
@@ -92,22 +98,19 @@ func (u *IndexUpdater) ApplyDeltaWithInvalidation(delta *SymbolDelta) (int, erro
 // applyFileDelta applies changes for a single file
 // CRITICAL: Uses OldPath for deletions to handle renames correctly
 // V2.0: symbolToFile maps symbols to their defining files for dependency tracking
-func (u *IndexUpdater) applyFileDelta(tx *sql.Tx, delta FileDelta, symbolToFile map[string]string) error {
+func (u *IndexUpdater) applyFileDelta(tx *sql.Tx, depsStmt *sql.Stmt, delta FileDelta, symbolToFile map[string]string) error {
 	switch delta.ChangeType {
 	case ChangeDeleted:
-		// Delete everything for this file
 		return u.deleteFileData(tx, delta.Path)
 
 	case ChangeAdded:
-		// Just insert new data
-		return u.insertFileData(tx, delta, symbolToFile)
+		return u.insertFileData(tx, depsStmt, delta, symbolToFile)
 
 	case ChangeModified:
-		// Delete old data, insert new
 		if err := u.deleteFileData(tx, delta.Path); err != nil {
 			return err
 		}
-		return u.insertFileData(tx, delta, symbolToFile)
+		return u.insertFileData(tx, depsStmt, delta, symbolToFile)
 
 	case ChangeRenamed:
 		// CRITICAL: Delete using OldPath, insert using Path
@@ -117,7 +120,7 @@ func (u *IndexUpdater) applyFileDelta(tx *sql.Tx, delta FileDelta, symbolToFile 
 		if err := u.deleteFileData(tx, delta.OldPath); err != nil {
 			return err
 		}
-		return u.insertFileData(tx, delta, symbolToFile)
+		return u.insertFileData(tx, depsStmt, delta, symbolToFile)
 	}
 
 	return nil
@@ -157,7 +160,7 @@ func (u *IndexUpdater) deleteFileData(tx *sql.Tx, path string) error {
 
 // insertFileData adds all data for a file from its FileDelta
 // V2.0: symbolToFile is used to update file_deps for transitive invalidation
-func (u *IndexUpdater) insertFileData(tx *sql.Tx, delta FileDelta, symbolToFile map[string]string) error {
+func (u *IndexUpdater) insertFileData(tx *sql.Tx, depsStmt *sql.Stmt, delta FileDelta, symbolToFile map[string]string) error {
 	now := time.Now()
 
 	// 1. Insert or replace file tracking entry
@@ -193,8 +196,7 @@ func (u *IndexUpdater) insertFileData(tx *sql.Tx, delta FileDelta, symbolToFile 
 
 	// 4. Update file_deps for transitive invalidation (v2)
 	if len(delta.Refs) > 0 && symbolToFile != nil {
-		if err := u.depTracker.UpdateFileDeps(tx, delta.Path, delta.Refs, symbolToFile); err != nil {
-			// Log but don't fail - deps are best-effort
+		if err := u.depTracker.updateFileDepsWithStmt(tx, depsStmt, delta.Path, delta.Refs, symbolToFile, true); err != nil {
 			u.logger.Warn("Failed to update file_deps", "path", delta.Path, "error", err.Error())
 		}
 	}
@@ -330,7 +332,9 @@ func (u *IndexUpdater) PopulateFromFullIndex(extractor *SCIPExtractor) error {
 
 		now := time.Now()
 
-		// Prepare statements
+		// Prepare all statements once — reused across all files in the transaction.
+		// Previously UpdateFileDeps called tx.Prepare+Close per file, causing
+		// 50k round-trips on large repos.
 		fileStmt, err := tx.Prepare(`
 			INSERT INTO indexed_files (path, hash, mtime, indexed_at, scip_document_hash, symbol_count)
 			VALUES (?, ?, ?, ?, ?, ?)
@@ -338,7 +342,7 @@ func (u *IndexUpdater) PopulateFromFullIndex(extractor *SCIPExtractor) error {
 		if err != nil {
 			return fmt.Errorf("prepare indexed_files insert: %w", err)
 		}
-		defer fileStmt.Close() //nolint:errcheck // Best effort cleanup
+		defer fileStmt.Close() //nolint:errcheck
 
 		symbolStmt, err := tx.Prepare(`
 			INSERT OR IGNORE INTO file_symbols (file_path, symbol_id) VALUES (?, ?)
@@ -346,7 +350,13 @@ func (u *IndexUpdater) PopulateFromFullIndex(extractor *SCIPExtractor) error {
 		if err != nil {
 			return fmt.Errorf("prepare file_symbols insert: %w", err)
 		}
-		defer symbolStmt.Close() //nolint:errcheck // Best effort cleanup
+		defer symbolStmt.Close() //nolint:errcheck
+
+		depsStmt, err := tx.Prepare(`INSERT OR IGNORE INTO file_deps (dependent_file, defining_file) VALUES (?, ?)`)
+		if err != nil {
+			return fmt.Errorf("prepare file_deps insert: %w", err)
+		}
+		defer depsStmt.Close() //nolint:errcheck
 
 		totalCallEdges := 0
 		totalDeps := 0
@@ -374,14 +384,12 @@ func (u *IndexUpdater) PopulateFromFullIndex(extractor *SCIPExtractor) error {
 				totalCallEdges += len(delta.CallEdges)
 			}
 
-			// v2.0: Insert file dependencies
+			// v2.0: Insert file dependencies using the shared prepared statement.
 			if len(delta.Refs) > 0 {
-				if err := u.depTracker.UpdateFileDeps(tx, delta.Path, delta.Refs, symbolToFile); err != nil {
+				if err := u.depTracker.updateFileDepsWithStmt(tx, depsStmt, delta.Path, delta.Refs, symbolToFile); err != nil {
 					u.logger.Warn("Failed to update file_deps", "path", delta.Path, "error", err.Error())
 				} else {
-					// Count deps inserted (approximate)
-					deps, _ := u.depTracker.GetDependencies(delta.Path)
-					totalDeps += len(deps)
+					totalDeps += len(delta.Refs)
 				}
 			}
 		}

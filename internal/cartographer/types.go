@@ -394,6 +394,68 @@ func (e *CartographerError) Error() string {
 }
 
 // ---------------------------------------------------------------------------
+// BM25 search types
+// ---------------------------------------------------------------------------
+
+// BM25Options controls a BM25 ranked search request.
+type BM25Options struct {
+	// BM25 term saturation parameter (default 1.5).
+	K1 float64 `json:"k1,omitempty"`
+	// BM25 length normalisation parameter (default 0.75).
+	B float64 `json:"b,omitempty"`
+	// Maximum results to return (0 = default 20).
+	MaxResults int `json:"maxResults,omitempty"`
+	// Include only files matching this glob (e.g. "*.rs").
+	FileGlob string `json:"fileGlob,omitempty"`
+	// Restrict search to this subdirectory.
+	SearchPath string `json:"searchPath,omitempty"`
+	// Search vendor/generated files too.
+	NoIgnore bool `json:"noIgnore,omitempty"`
+}
+
+// BM25Match is one file ranked by BM25 relevance.
+type BM25Match struct {
+	Path          string   `json:"path"`
+	Score         float64  `json:"score"`
+	MatchingTerms []string `json:"matchingTerms"`
+	Snippets      []string `json:"snippets"`
+}
+
+// BM25Result is returned by BM25Search.
+type BM25Result struct {
+	Matches []BM25Match `json:"matches"`
+	Total   int         `json:"total"`
+}
+
+// ---------------------------------------------------------------------------
+// Query context (PKG retrieval pipeline) types
+// ---------------------------------------------------------------------------
+
+// QueryContextOpts controls the full PKG retrieval pipeline.
+type QueryContextOpts struct {
+	// Token budget for the skeleton portion (default 8000).
+	Budget int `json:"budget,omitempty"`
+	// Target model family for health scoring: "claude" (default), "gpt4", "llama", "gpt35".
+	Model string `json:"model,omitempty"`
+	// Max search hits used as focus seeds (default 20).
+	MaxSearchResults int `json:"maxSearchResults,omitempty"`
+}
+
+// QueryContextResult is returned by QueryContext.
+type QueryContextResult struct {
+	// Ready-to-inject context string (ranked skeleton with header).
+	Context string `json:"context"`
+	// Files included in the skeleton, sorted by PageRank descending.
+	FilesUsed []string `json:"filesUsed"`
+	// Files used as PageRank personalization seeds (from search hits).
+	FocusFiles []string `json:"focusFiles"`
+	// Total estimated tokens in Context.
+	TotalTokens int `json:"totalTokens"`
+	// Context health report for the bundle.
+	Health ContextHealthReport `json:"health"`
+}
+
+// ---------------------------------------------------------------------------
 // Internal: response envelope (used by real bridge only, but kept here so
 // bridge.go doesn't need its own import of encoding/json for this type)
 // ---------------------------------------------------------------------------

@@ -197,18 +197,28 @@ func loadSCIPIndexInternal(path, cachePath string) (*SCIPIndex, error) {
 					r.symbols[sym.Symbol] = sym
 				}
 
+				// Pre-allocate one backing slice for all OccurrenceRefs in this
+				// document. Taking pointers into a pre-sized slice replaces the
+				// previous pattern of one heap allocation per occurrence, cutting
+				// allocations from O(total_occs) — 68M at 50k docs — down to
+				// O(docs) — 50k. The slice stays alive because the map values
+				// hold pointers into it.
+				backing := make([]OccurrenceRef, 0, len(doc.Occurrences))
 				for i := range doc.Occurrences {
 					occ := doc.Occurrences[i]
 					if occ.Symbol == "" {
 						continue
 					}
-					ref := &OccurrenceRef{Doc: doc, Occ: occ}
-					r.refEntries[occ.Symbol] = append(r.refEntries[occ.Symbol], ref)
+					backing = append(backing, OccurrenceRef{Doc: doc, Occ: occ})
+				}
+				for i := range backing {
+					ref := &backing[i]
+					r.refEntries[ref.Occ.Symbol] = append(r.refEntries[ref.Occ.Symbol], ref)
 
 					// Capture first definition occurrence for DefinitionIndex.
-					if occ.SymbolRoles&SymbolRoleDefinition != 0 {
-						if _, exists := r.defEntries[occ.Symbol]; !exists {
-							r.defEntries[occ.Symbol] = ref
+					if ref.Occ.SymbolRoles&SymbolRoleDefinition != 0 {
+						if _, exists := r.defEntries[ref.Occ.Symbol]; !exists {
+							r.defEntries[ref.Occ.Symbol] = ref
 						}
 					}
 				}
