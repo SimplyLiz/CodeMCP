@@ -251,13 +251,16 @@ func (a *Analyzer) buildCoChangePairs(ctx context.Context, since time.Time, scop
 	pairCounts := make(map[filePair]int)
 	fileTotals := make(map[string]int)
 
-	// Parse output: groups of files per commit, separated by blank lines.
+	// Reusable buffers — allocated once, cleared between commits.
+	seen := make(map[string]bool, 32)
 	var currentFiles []string
+
+	// Parse output: groups of files per commit, separated by blank lines.
 	for _, line := range strings.Split(string(out), "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "COMMIT ") {
 			// Flush previous group.
-			a.recordCommit(currentFiles, pairCounts, fileTotals)
+			a.recordCommit(currentFiles, pairCounts, fileTotals, seen)
 			currentFiles = currentFiles[:0]
 			continue
 		}
@@ -266,17 +269,21 @@ func (a *Analyzer) buildCoChangePairs(ctx context.Context, since time.Time, scop
 		}
 		currentFiles = append(currentFiles, line)
 	}
-	a.recordCommit(currentFiles, pairCounts, fileTotals)
+	a.recordCommit(currentFiles, pairCounts, fileTotals, seen)
 
 	return pairCounts, fileTotals, nil
 }
 
-func (a *Analyzer) recordCommit(files []string, pairCounts map[filePair]int, fileTotals map[string]int) {
+func (a *Analyzer) recordCommit(files []string, pairCounts map[filePair]int, fileTotals map[string]int, seen map[string]bool) {
 	if len(files) == 0 {
 		return
 	}
-	// Only count each file once per commit; skip ignored paths.
-	seen := make(map[string]bool, len(files))
+	// Clear the reusable seen map from the previous commit.
+	for k := range seen {
+		delete(seen, k)
+	}
+	// Deduplicate and filter in a single pass, writing unique entries
+	// back into the files slice (safe: we only write index j where j <= i).
 	unique := files[:0]
 	for _, f := range files {
 		if shouldIgnore(f) {

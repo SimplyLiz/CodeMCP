@@ -47,7 +47,6 @@ func (s *MCPServer) toolScanPerformance(params map[string]interface{}) (*envelop
 
 	ctx := context.Background()
 	result, err := analyzer.Scan(ctx, perf.ScanOptions{
-		RepoRoot:       repoRoot,
 		Scope:          scope,
 		MinCorrelation: minCorrelation,
 		MinCoChanges:   minCoChanges,

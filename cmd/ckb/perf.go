@@ -80,7 +80,6 @@ func runPerfCoupling(cmd *cobra.Command, args []string) {
 
 	ctx := context.Background()
 	result, err := analyzer.Scan(ctx, perf.ScanOptions{
-		RepoRoot:       repoRoot,
 		Scope:          perfCouplingScope,
 		MinCorrelation: perfCouplingMinCorrelation,
 		MinCoChanges:   perfCouplingMinCoChanges,

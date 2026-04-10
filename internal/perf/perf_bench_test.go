@@ -18,13 +18,13 @@ import (
 //   ScanPipeline         — composite: pair-building + correlation + ignore filter
 //
 // Baselines (Apple M4 Pro, arm64, -count=1 -benchmem):
-//   recordCommit/2files:            ~81 ns/op,      0 B/op,   0 allocs/op
-//   recordCommit/5files:           ~512 ns/op,    744 B/op,   3 allocs/op
-//   recordCommit/10files:         ~2.8 µs/op,   5816 B/op,  13 allocs/op
-//   recordCommit/20files:          ~11 µs/op,  23544 B/op,  19 allocs/op
-//   recordCommit/50files:          ~78 µs/op, 195624 B/op,  30 allocs/op
-//   recordCommit_Reuse/10files:   ~1.1 µs/op,    456 B/op,   3 allocs/op  ← reused maps
-//   recordCommit_WithIgnored:      ~625 ns/op,   1200 B/op,   6 allocs/op  ← 5 real + 5 ignored
+//   recordCommit/2files:            ~79 ns/op,      0 B/op,   0 allocs/op
+//   recordCommit/5files:           ~497 ns/op,    744 B/op,   3 allocs/op
+//   recordCommit/10files:         ~2.7 µs/op,   5816 B/op,  13 allocs/op
+//   recordCommit/20files:          ~11 µs/op,  23992 B/op,  21 allocs/op
+//   recordCommit/50files:          ~74 µs/op, 197000 B/op,  34 allocs/op
+//   recordCommit_Reuse/10files:   ~1.0 µs/op,      0 B/op,   0 allocs/op  ← reused maps
+//   recordCommit_WithIgnored:      ~522 ns/op,    744 B/op,   3 allocs/op  ← 5 real + 5 ignored
 //   importCouldReferTo/1import:    ~48 ns/op,      0 B/op,   0 allocs/op
 //   importCouldReferTo/10imports: ~277 ns/op,      0 B/op,   0 allocs/op
 //   importCouldReferTo/50imports: ~1.3 µs/op,      0 B/op,   0 allocs/op
@@ -33,15 +33,16 @@ import (
 //   shouldIgnore/ignored:         ~1.8 ns/op,      0 B/op,   0 allocs/op
 //   shouldIgnore/not_ignored:     ~7.1 ns/op,      0 B/op,   0 allocs/op
 //   correlationLevel:            ~0.26 ns/op,      0 B/op,   0 allocs/op
-//   CoChangePipeline/100c_5f:     ~39 µs/op,   55888 B/op,  12 allocs/op
-//   CoChangePipeline/500c_10f:   ~718 µs/op,  634348 B/op, 1526 allocs/op
-//   CoChangePipeline/1kc_20f:    ~5.4 ms/op, 2522031 B/op, 3072 allocs/op  ← seen-map allocs per commit
+//   CoChangePipeline/100c_5f:     ~38 µs/op,   55888 B/op,  12 allocs/op
+//   CoChangePipeline/500c_10f:   ~630 µs/op,  406802 B/op,  29 allocs/op  ← seen-map lifted (was 1526)
+//   CoChangePipeline/1kc_20f:    ~4.8 ms/op, 1586994 B/op,  75 allocs/op  ← seen-map lifted (was 3072)
 //   correlationFilter/~20kpairs: ~372 µs/op,      0 B/op,   0 allocs/op
 //
 // Notable: recordCommit is O(files²) per commit — the dominant cost on repos
-// with large commits (fmt sweeps, mass renames). The per-commit seen-map
-// allocation drives alloc counts in CoChangePipeline (1k × make(map) ≈ 3k allocs).
-// The ignore filter cuts pairing work by dropping testdata/vendor before O(n²).
+// with large commits (fmt sweeps, mass renames). The seen map is now allocated
+// once in buildCoChangePairs and reused across commits (range-delete to clear),
+// reducing CoChangePipeline allocs by ~97% at 1k commits. The ignore filter
+// cuts pairing work by dropping testdata/vendor before O(n²).
 //
 // Use benchstat for before/after comparison:
 //   go test -bench=. -benchmem -count=6 -run=^$ ./internal/perf > before.txt
@@ -69,7 +70,8 @@ func BenchmarkRecordCommit(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				pairs := make(map[filePair]int)
 				totals := make(map[string]int)
-				a.recordCommit(files, pairs, totals)
+				seen := make(map[string]bool)
+				a.recordCommit(files, pairs, totals, seen)
 			}
 		})
 	}
@@ -77,6 +79,8 @@ func BenchmarkRecordCommit(b *testing.B) {
 
 // BenchmarkRecordCommit_Reuse measures recordCommit when the maps are reused
 // across calls (as in buildCoChangePairs). Avoids measuring map allocation.
+// BenchmarkRecordCommit_Reuse measures the steady-state cost with all maps
+// pre-allocated and reused across calls — what buildCoChangePairs actually does.
 func BenchmarkRecordCommit_Reuse(b *testing.B) {
 	a := &Analyzer{}
 	files := make([]string, 10)
@@ -85,11 +89,12 @@ func BenchmarkRecordCommit_Reuse(b *testing.B) {
 	}
 	pairs := make(map[filePair]int, 64)
 	totals := make(map[string]int, 64)
+	seen := make(map[string]bool, 16)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		a.recordCommit(files, pairs, totals)
+		a.recordCommit(files, pairs, totals, seen)
 	}
 }
 
@@ -110,13 +115,14 @@ func BenchmarkRecordCommit_WithIgnored(b *testing.B) {
 		"vendor/github.com/spf13/cobra/args.go",
 		"node_modules/lodash/lodash.js",
 	}
+	seen := make(map[string]bool, 8)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		pairs := make(map[filePair]int)
 		totals := make(map[string]int)
-		a.recordCommit(files, pairs, totals)
+		a.recordCommit(files, pairs, totals, seen)
 	}
 }
 
@@ -158,8 +164,9 @@ func BenchmarkCoChangePipelineSimulated(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				pairs := make(map[filePair]int, sc.commits*sc.files)
 				totals := make(map[string]int, sc.files*2)
+				seen := make(map[string]bool, sc.files)
 				for _, batch := range batches {
-					a.recordCommit(batch, pairs, totals)
+					a.recordCommit(batch, pairs, totals, seen)
 				}
 			}
 		})

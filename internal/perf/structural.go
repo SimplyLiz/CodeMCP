@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -304,6 +305,7 @@ func severityRank(s string) int {
 }
 
 // buildExplanation constructs a human-readable explanation for a loop call site.
+// Uses strings.Builder to avoid fmt.Sprintf's intermediate allocations.
 func buildExplanation(file, fnName, callText, loopType string, churnCount int, nearEP bool) string {
 	hotness := "frequently changed"
 	if churnCount >= 20 {
@@ -312,15 +314,23 @@ func buildExplanation(file, fnName, callText, loopType string, churnCount int, n
 		hotness = "recently changed"
 	}
 
-	ep := ""
+	// Pre-size to avoid buffer growth: typical output is ~320 chars.
+	var b strings.Builder
+	b.Grow(320)
+	b.WriteString(fnName)
+	b.WriteString(" in ")
+	b.WriteString(file)
+	b.WriteString(" contains a call to ")
+	b.WriteString(strconv.Quote(callText))
+	b.WriteString(" inside a ")
+	b.WriteString(loopType)
+	b.WriteString(" loop. This file is ")
+	b.WriteString(hotness)
+	b.WriteString(" (")
+	b.WriteString(strconv.Itoa(churnCount))
+	b.WriteString(" commits). Each loop iteration may trigger additional I/O, database queries, or expensive computation.")
 	if nearEP {
-		ep = " It is a system entrypoint, meaning this loop runs on every request."
+		b.WriteString(" It is a system entrypoint, meaning this loop runs on every request.")
 	}
-
-	return fmt.Sprintf(
-		"%s in %s contains a call to %q inside a %s loop. "+
-			"This file is %s (%d commits). "+
-			"Each loop iteration may trigger additional I/O, database queries, or expensive computation.%s",
-		fnName, file, callText, loopType, hotness, churnCount, ep,
-	)
+	return b.String()
 }

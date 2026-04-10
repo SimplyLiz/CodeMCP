@@ -21,19 +21,18 @@ import (
 //
 // Baselines (Apple M4 Pro, arm64, -count=1 -benchmem):
 //   computeSeverity:               ~0.26 ns/op,     0 B/op,  0 allocs/op
-//   buildExplanation/non_ep:       ~352 ns/op,    368 B/op,  6 allocs/op
-//   buildExplanation/entrypoint:   ~350 ns/op,    416 B/op,  7 allocs/op
+//   buildExplanation/non_ep:       ~208 ns/op,    432 B/op,  3 allocs/op  ← strings.Builder (was 352ns/6allocs)
+//   buildExplanation/entrypoint:   ~188 ns/op,    416 B/op,  3 allocs/op  ← strings.Builder (was 350ns/7allocs)
 //   findEnclosingFunction/1fn:    ~0.51 ns/op,     0 B/op,  0 allocs/op
 //   findEnclosingFunction/10fns:    ~3.0 ns/op,    0 B/op,  0 allocs/op
 //   findEnclosingFunction/50fns:    ~14 ns/op,     0 B/op,  0 allocs/op
 //   humanLoopType:                  ~1.1 ns/op,    0 B/op,  0 allocs/op
-//   CallSitePipeline/10sites:      ~3.2 µs/op,   3426 B/op, 62 allocs/op
-//   CallSitePipeline/100sites:      ~33 µs/op,  34266 B/op, 620 allocs/op
-//   CallSitePipeline/500sites:     ~160 µs/op, 171334 B/op, 3100 allocs/op
+//   CallSitePipeline/10sites:      ~1.5 µs/op,   3392 B/op,  14 allocs/op  ← strings.Builder (was 3.2µs/62allocs)
+//   CallSitePipeline/100sites:      ~15 µs/op,  33920 B/op, 140 allocs/op  ← strings.Builder (was 33µs/620allocs)
+//   CallSitePipeline/500sites:      ~75 µs/op, 169600 B/op, 700 allocs/op  ← strings.Builder (was 160µs/3100allocs)
 //
-// Notable: buildExplanation is the only allocating call per site (~6 allocs,
-// ~370 B). Everything else is zero-alloc. For 500 sites that's ~3100 allocs —
-// acceptable, but fmt.Sprintf pooling would halve it if this becomes a bottleneck.
+// Notable: buildExplanation uses strings.Builder + strconv, halving allocs (6→3)
+// and cutting latency ~40% vs fmt.Sprintf. Everything else is zero-alloc.
 //
 // Use benchstat for before/after comparison:
 //   go test -tags cgo -bench=. -benchmem -count=6 -run=^$ ./internal/perf > before.txt

@@ -8,10 +8,7 @@ import "time"
 
 // ScanOptions configures a performance scan.
 type ScanOptions struct {
-	// RepoRoot is the root of the repository.
-	RepoRoot string
-
-	// Scope limits analysis to these paths (relative to RepoRoot).
+	// Scope limits analysis to these paths (relative to repo root).
 	// Empty means whole repo.
 	Scope []string
 
