@@ -89,7 +89,7 @@ func (a *Analyzer) Scan(ctx context.Context, opts ScanOptions) (*PerfScanResult,
 	)
 
 	// Step 1: collect co-change pairs from git history.
-	pairCounts, fileTotals, err := a.buildCoChangePairs(ctx, since, opts.Scope)
+	pairCounts, fileTotals, err := a.buildCoChangePairs(ctx, since, opts.Scope, opts.MaxCommitFiles, opts.MinCoChanges)
 	if err != nil {
 		return nil, fmt.Errorf("building co-change pairs: %w", err)
 	}
@@ -223,7 +223,12 @@ func shouldIgnore(file string) bool {
 
 // buildCoChangePairs runs a single git log pass and builds co-change counts
 // for all file pairs. Returns pairCounts and per-file commit totals.
-func (a *Analyzer) buildCoChangePairs(ctx context.Context, since time.Time, scope []string) (map[filePair]int, map[string]int, error) {
+//
+// maxCommitFiles: skip commits touching more than this many files (0 = unlimited).
+// minCoChanges: prune pairs below this count after all commits are parsed —
+// those entries would be filtered in Scan anyway, so dropping them early
+// reduces memory and speeds up the O(N²/2) correlation iteration.
+func (a *Analyzer) buildCoChangePairs(ctx context.Context, since time.Time, scope []string, maxCommitFiles, minCoChanges int) (map[filePair]int, map[string]int, error) {
 	sinceStr := since.Format("2006-01-02")
 
 	args := []string{
@@ -267,6 +272,14 @@ func (a *Analyzer) buildCoChangePairs(ctx context.Context, since time.Time, scop
 	for scanner.Scan() {
 		b := bytes.TrimRight(scanner.Bytes(), "\r")
 		if bytes.HasPrefix(b, commitPrefix) {
+			// Fix 2: skip commits that touch more files than the threshold.
+			// Mass renames / formatting sweeps inflate pairCounts O(files²)
+			// without contributing useful coupling signal.
+			if maxCommitFiles > 0 && len(currentFiles) > maxCommitFiles {
+				a.logger.Debug("skipping large commit", "files", len(currentFiles))
+				currentFiles = currentFiles[:0]
+				continue
+			}
 			a.recordCommit(currentFiles, pairCounts, fileTotals, seen)
 			currentFiles = currentFiles[:0]
 			continue
@@ -280,13 +293,28 @@ func (a *Analyzer) buildCoChangePairs(ctx context.Context, since time.Time, scop
 		_ = cmd.Wait()
 		return nil, nil, fmt.Errorf("reading git log: %w", scanErr)
 	}
-	a.recordCommit(currentFiles, pairCounts, fileTotals, seen)
+	// Flush last commit (apply the same size guard).
+	if maxCommitFiles == 0 || len(currentFiles) <= maxCommitFiles {
+		a.recordCommit(currentFiles, pairCounts, fileTotals, seen)
+	}
 
 	if err := cmd.Wait(); err != nil {
 		if s := stderrBuf.String(); s != "" {
 			return nil, nil, fmt.Errorf("git log: %s", s)
 		}
 		return nil, nil, fmt.Errorf("git log: %w", err)
+	}
+
+	// Fix 3: early prune — drop pairs that can never reach MinCoChanges.
+	// The correlation filter in Scan() would remove these anyway; pruning here
+	// shrinks the map before the O(N²/2) correlation iteration, which matters
+	// for monorepos with thousands of hot files.
+	if minCoChanges > 1 {
+		for pair, count := range pairCounts {
+			if count < minCoChanges {
+				delete(pairCounts, pair)
+			}
+		}
 	}
 
 	return pairCounts, fileTotals, nil

@@ -25,6 +25,12 @@ type ScanOptions struct {
 
 	// Limit caps the number of hidden-coupling pairs returned. Default: 50
 	Limit int
+
+	// MaxCommitFiles skips commits that touch more than this many files.
+	// Mass renames and formatting sweeps produce O(files²) pairs that dominate
+	// the pairCounts map without contributing useful coupling signal.
+	// 0 means unlimited (no commits are skipped).
+	MaxCommitFiles int
 }
 
 // HiddenCouplingPair represents two files that co-change without any static

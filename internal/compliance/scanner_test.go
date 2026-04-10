@@ -1,6 +1,11 @@
 package compliance
 
 import (
+	"context"
+	"io"
+	"log/slog"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -99,6 +104,50 @@ func TestIsNonPIIIdentifier(t *testing.T) {
 				t.Errorf("isNonPIIIdentifier(%q) = %v, want %v", tt.input, got, tt.expected)
 			}
 		})
+	}
+}
+
+// TestScanFiles_BufferReusedAcrossFiles verifies that ScanFiles produces correct
+// results when scanning multiple files in sequence. The shared seen/identBuf
+// buffers must not bleed state from one file into the next.
+func TestScanFiles_BufferReusedAcrossFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	// file1: a Go struct with a PII field.
+	if err := os.WriteFile(filepath.Join(dir, "user.go"),
+		[]byte("type User struct { userEmail string }"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// file2: no PII — just a numeric counter.
+	if err := os.WriteFile(filepath.Join(dir, "config.go"),
+		[]byte("var count = 0"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	s := NewPIIScanner(nil)
+	scope := &ScanScope{
+		RepoRoot: dir,
+		Files:    []string{"user.go", "config.go"},
+		Logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	fields, err := s.ScanFiles(context.Background(), scope)
+	if err != nil {
+		t.Fatalf("ScanFiles: %v", err)
+	}
+
+	var foundInUser bool
+	for _, f := range fields {
+		if f.File == "user.go" {
+			foundInUser = true
+		}
+		// Buffer state from user.go must not bleed into config.go results.
+		if f.File == "config.go" {
+			t.Errorf("unexpected PII finding in config.go (buffer contamination?): %+v", f)
+		}
+	}
+	if !foundInUser {
+		t.Error("expected at least one PII finding in user.go, got none")
 	}
 }
 

@@ -514,6 +514,104 @@ func TestScan_SummaryFields(t *testing.T) {
 	}
 }
 
+// ─── MaxCommitFiles tests ─────────────────────────────────────────────────────
+
+func TestScan_SkipsCommitsAboveMaxFiles(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := initGitRepo(t)
+
+	// Large commit: 10 files — will be skipped when MaxCommitFiles=5.
+	largeFiles := map[string]string{}
+	for _, name := range []string{"a.go", "b.go", "c.go", "d.go", "e.go", "f.go", "g.go", "h.go", "i.go", "j.go"} {
+		largeFiles[name] = "package main"
+	}
+	writeAndCommit(t, dir, largeFiles, "large commit")
+
+	// Two small commits with a.go + b.go — they need 3 co-changes total to trigger coupling.
+	for i := 0; i < 2; i++ {
+		writeAndCommit(t, dir, map[string]string{
+			"a.go": "package main // v" + string(rune('0'+i)),
+			"b.go": "package main // v" + string(rune('0'+i)),
+		}, "small commit")
+	}
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	a := NewAnalyzer(dir, logger)
+
+	// MaxCommitFiles=5: large commit (10 files) is skipped.
+	// a.go+b.go only share 2 commits → below MinCoChanges=3 → no coupling.
+	result, err := a.Scan(context.Background(), ScanOptions{
+		WindowDays:     365,
+		MinCorrelation: 0.3,
+		MinCoChanges:   3,
+		MaxCommitFiles: 5,
+	})
+	if err != nil {
+		t.Fatalf("Scan() with MaxCommitFiles=5 error = %v", err)
+	}
+	if findPair(result.HiddenCoupling, "a.go", "b.go") {
+		t.Error("large commit should be skipped; a.go+b.go should not reach MinCoChanges=3")
+	}
+
+	// MaxCommitFiles=0 (unlimited): large commit counts → 3 co-changes → coupling detected.
+	result2, err := a.Scan(context.Background(), ScanOptions{
+		WindowDays:     365,
+		MinCorrelation: 0.3,
+		MinCoChanges:   3,
+		MaxCommitFiles: 0,
+	})
+	if err != nil {
+		t.Fatalf("Scan() unlimited error = %v", err)
+	}
+	if !findPair(result2.HiddenCoupling, "a.go", "b.go") {
+		t.Error("with MaxCommitFiles=0 (unlimited), a.go+b.go should reach MinCoChanges=3 via large commit")
+	}
+}
+
+// ─── Early-prune regression tests ─────────────────────────────────────────────
+
+// TestScan_EarlyPrunePreservesEligiblePairs ensures that pairs which exactly
+// meet MinCoChanges are NOT incorrectly dropped by the early prune step.
+func TestScan_EarlyPrunePreservesEligiblePairs(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := initGitRepo(t)
+
+	// a.go + b.go co-change exactly 3 times (== MinCoChanges).
+	for i := 0; i < 3; i++ {
+		writeAndCommit(t, dir, map[string]string{
+			"a.go": "package main // " + string(rune('0'+i)),
+			"b.go": "package main // " + string(rune('0'+i)),
+		}, "co-change")
+	}
+	// c.go appears alone — its pair with a.go/b.go has count=0, should be pruned.
+	writeAndCommit(t, dir, map[string]string{"c.go": "package main"}, "solo c")
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	a := NewAnalyzer(dir, logger)
+
+	result, err := a.Scan(context.Background(), ScanOptions{
+		WindowDays:     365,
+		MinCorrelation: 0.3,
+		MinCoChanges:   3,
+	})
+	if err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+	if !findPair(result.HiddenCoupling, "a.go", "b.go") {
+		t.Error("early prune must not drop pairs that exactly meet MinCoChanges")
+	}
+	// Pairs involving c.go should not appear (count < MinCoChanges).
+	for _, p := range result.HiddenCoupling {
+		if p.FileA == "c.go" || p.FileB == "c.go" {
+			t.Errorf("pair involving c.go should be pruned (count < MinCoChanges): %+v", p)
+		}
+	}
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 func initGitRepo(t *testing.T) string {

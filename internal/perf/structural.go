@@ -54,7 +54,9 @@ func (a *Analyzer) AnalyzeStructural(ctx context.Context, opts StructuralPerfOpt
 
 	// Step 1: get per-file commit totals from git log.
 	// buildCoChangePairs also returns fileTotals as a side-effect.
-	_, fileTotals, err := a.buildCoChangePairs(ctx, since, opts.Scope)
+	// maxCommitFiles=0 and minCoChanges=1 here — structural scan only needs
+	// fileTotals (churn counts), not coupling pairs, so no pruning is needed.
+	_, fileTotals, err := a.buildCoChangePairs(ctx, since, opts.Scope, 0, 1)
 	if err != nil {
 		return nil, fmt.Errorf("getting file churn data: %w", err)
 	}

@@ -55,12 +55,16 @@ func NewPIIScanner(extraPatterns []string) *PIIScanner {
 func (s *PIIScanner) ScanFiles(ctx context.Context, scope *ScanScope) ([]PIIField, error) {
 	var allFields []PIIField
 
+	// Allocate once and reuse across all files — avoids per-file map+slice allocs.
+	seen := make(map[string]bool, 32)
+	identBuf := make([]string, 0, 32)
+
 	for _, file := range scope.Files {
 		if ctx.Err() != nil {
 			return allFields, ctx.Err()
 		}
 
-		fields, err := s.scanFile(filepath.Join(scope.RepoRoot, file), file)
+		fields, err := s.scanFile(filepath.Join(scope.RepoRoot, file), file, seen, identBuf)
 		if err != nil {
 			scope.Logger.Debug("PII scan skipped file", "file", file, "error", err.Error())
 			continue
@@ -72,7 +76,9 @@ func (s *PIIScanner) ScanFiles(ctx context.Context, scope *ScanScope) ([]PIIFiel
 }
 
 // scanFile scans a single file for PII field declarations.
-func (s *PIIScanner) scanFile(fullPath, relPath string) ([]PIIField, error) {
+// seen and identBuf are caller-owned reusable buffers; they are cleared at the
+// start of each line by extractIdentifiers, so no reset is needed here.
+func (s *PIIScanner) scanFile(fullPath, relPath string, seen map[string]bool, identBuf []string) ([]PIIField, error) {
 	f, err := os.Open(fullPath)
 	if err != nil {
 		return nil, err
@@ -83,10 +89,6 @@ func (s *PIIScanner) scanFile(fullPath, relPath string) ([]PIIField, error) {
 	scanner := bufio.NewScanner(f)
 	lineNum := 0
 	currentContainer := ""
-
-	// Reuse across lines to avoid per-line allocations.
-	seen := make(map[string]bool, 32)
-	identBuf := make([]string, 0, 32)
 
 	for scanner.Scan() {
 		lineNum++
