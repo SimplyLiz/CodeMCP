@@ -408,3 +408,72 @@ func GetModuleContext(path, moduleID string, depth uint32) (*ModuleContext, erro
 	}
 	return &ctx, nil
 }
+
+// ReplaceContent performs a regex find-and-replace across project files.
+// replacement supports $0 (whole match) and $1/$2 (capture groups).
+// When opts.DryRun is true, no files are written.
+func ReplaceContent(path, pattern, replacement string, opts *ReplaceOptions) (*ReplaceResult, error) {
+	cPath := C.CString(path)
+	defer C.free(unsafe.Pointer(cPath))
+
+	cPattern := C.CString(pattern)
+	defer C.free(unsafe.Pointer(cPattern))
+
+	cReplacement := C.CString(replacement)
+	defer C.free(unsafe.Pointer(cReplacement))
+
+	var cOpts *C.char
+	if opts != nil {
+		b, err := json.Marshal(opts)
+		if err != nil {
+			return nil, &CartographerError{err.Error()}
+		}
+		cOpts = C.CString(string(b))
+		defer C.free(unsafe.Pointer(cOpts))
+	}
+
+	resp, err := callFFI(func() *C.char {
+		return C.cartographer_replace_content(cPath, cPattern, cReplacement, cOpts)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var result ReplaceResult
+	if err := json.Unmarshal(resp.Data, &result); err != nil {
+		return nil, &CartographerError{err.Error()}
+	}
+	return &result, nil
+}
+
+// ExtractContent extracts capture-group values from regex matches across project files.
+func ExtractContent(path, pattern string, opts *ExtractOptions) (*ExtractResult, error) {
+	cPath := C.CString(path)
+	defer C.free(unsafe.Pointer(cPath))
+
+	cPattern := C.CString(pattern)
+	defer C.free(unsafe.Pointer(cPattern))
+
+	var cOpts *C.char
+	if opts != nil {
+		b, err := json.Marshal(opts)
+		if err != nil {
+			return nil, &CartographerError{err.Error()}
+		}
+		cOpts = C.CString(string(b))
+		defer C.free(unsafe.Pointer(cOpts))
+	}
+
+	resp, err := callFFI(func() *C.char {
+		return C.cartographer_extract_content(cPath, cPattern, cOpts)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var result ExtractResult
+	if err := json.Unmarshal(resp.Data, &result); err != nil {
+		return nil, &CartographerError{err.Error()}
+	}
+	return &result, nil
+}

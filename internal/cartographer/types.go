@@ -257,6 +257,89 @@ type FindResult struct {
 	Truncated    bool       `json:"truncated"`
 }
 
+// ---------------------------------------------------------------------------
+// Replace types
+// ---------------------------------------------------------------------------
+
+// ReplaceOptions controls replace_content behaviour.
+type ReplaceOptions struct {
+	Literal      bool    `json:"literal,omitempty"`
+	CaseSensitive *bool  `json:"caseSensitive,omitempty"`
+	WordRegexp   bool    `json:"wordRegexp,omitempty"`
+	DryRun       bool    `json:"dryRun,omitempty"`
+	Backup       bool    `json:"backup,omitempty"`
+	ContextLines *int    `json:"contextLines,omitempty"`
+	FileGlob     string  `json:"fileGlob,omitempty"`
+	ExcludeGlob  string  `json:"excludeGlob,omitempty"`
+	SearchPath   string  `json:"searchPath,omitempty"`
+	NoIgnore     bool    `json:"noIgnore,omitempty"`
+	MaxPerFile   int     `json:"maxPerFile,omitempty"`
+}
+
+// DiffLine is one line in a contextual diff produced by ReplaceContent.
+type DiffLine struct {
+	Kind        string `json:"kind"`       // "context", "removed", "added", "separator"
+	LineNumber  int    `json:"lineNumber"`
+	Content     string `json:"content"`
+}
+
+// FileChange describes the replacements made (or previewed) in one file.
+type FileChange struct {
+	Path         string     `json:"path"`
+	Replacements int        `json:"replacements"`
+	Diff         []DiffLine `json:"diff"`
+}
+
+// ReplaceResult is returned by ReplaceContent.
+type ReplaceResult struct {
+	FilesChanged      int          `json:"filesChanged"`
+	TotalReplacements int          `json:"totalReplacements"`
+	Changes           []FileChange `json:"changes"`
+	DryRun            bool         `json:"dryRun"`
+}
+
+// ---------------------------------------------------------------------------
+// Extract types
+// ---------------------------------------------------------------------------
+
+// ExtractOptions controls extract_content behaviour.
+type ExtractOptions struct {
+	Groups        []int   `json:"groups,omitempty"`
+	Separator     string  `json:"separator,omitempty"`
+	Format        string  `json:"format,omitempty"` // "text", "json", "csv", "tsv"
+	Count         bool    `json:"count,omitempty"`
+	Dedup         bool    `json:"dedup,omitempty"`
+	Sort          bool    `json:"sort,omitempty"`
+	CaseSensitive *bool   `json:"caseSensitive,omitempty"`
+	FileGlob      string  `json:"fileGlob,omitempty"`
+	ExcludeGlob   string  `json:"excludeGlob,omitempty"`
+	SearchPath    string  `json:"searchPath,omitempty"`
+	NoIgnore      bool    `json:"noIgnore,omitempty"`
+	Limit         int     `json:"limit,omitempty"`
+}
+
+// ExtractMatch is one extracted row.
+type ExtractMatch struct {
+	Path       string   `json:"path"`
+	LineNumber int      `json:"lineNumber"`
+	Groups     []string `json:"groups"`
+}
+
+// CountEntry is a frequency entry returned when ExtractOptions.Count is true.
+type CountEntry struct {
+	Value string `json:"value"`
+	Count int    `json:"count"`
+}
+
+// ExtractResult is returned by ExtractContent.
+type ExtractResult struct {
+	Matches       []ExtractMatch `json:"matches,omitempty"`
+	Counts        []CountEntry   `json:"counts,omitempty"`
+	Total         int            `json:"total"`
+	FilesSearched int            `json:"filesSearched"`
+	Truncated     bool           `json:"truncated"`
+}
+
 // CartographerError is returned when a Cartographer FFI call fails.
 type CartographerError struct {
 	Message string

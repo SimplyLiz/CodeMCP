@@ -27,4 +27,6 @@ func Semidiff(_, _, _ string) ([]SemidiffFile, error)                           
 func RankedSkeleton(_ string, _ []string, _ uint32) (*RankedSkeletonResult, error)            { return nil, ErrUnavailable }
 func UnreferencedSymbols(_ string) (*UnreferencedSymbolsResult, error)                        { return nil, ErrUnavailable }
 func SearchContent(_, _ string, _ *SearchContentOptions) (*SearchResult, error)               { return nil, ErrUnavailable }
-func FindFiles(_, _ string, _ uint32, _ *FindOptions) (*FindResult, error) { return nil, ErrUnavailable }
+func FindFiles(_, _ string, _ uint32, _ *FindOptions) (*FindResult, error)             { return nil, ErrUnavailable }
+func ReplaceContent(_, _, _ string, _ *ReplaceOptions) (*ReplaceResult, error)        { return nil, ErrUnavailable }
+func ExtractContent(_, _ string, _ *ExtractOptions) (*ExtractResult, error)           { return nil, ErrUnavailable }
