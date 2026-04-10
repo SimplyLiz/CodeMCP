@@ -39,10 +39,11 @@ import (
 //   correlationFilter/~20kpairs: ~372 µs/op,      0 B/op,   0 allocs/op
 //
 // Notable: recordCommit is O(files²) per commit — the dominant cost on repos
-// with large commits (fmt sweeps, mass renames). The seen map is now allocated
-// once in buildCoChangePairs and reused across commits (range-delete to clear),
-// reducing CoChangePipeline allocs by ~97% at 1k commits. The ignore filter
-// cuts pairing work by dropping testdata/vendor before O(n²).
+// with large commits (fmt sweeps, mass renames). The seen map is allocated once
+// in buildCoChangePairs and reused across commits (range-delete to clear),
+// reducing CoChangePipeline allocs by ~97% at 1k commits. git output is parsed
+// via bufio.Scanner to avoid loading the full log into memory before processing.
+// The ignore filter cuts pairing work by dropping testdata/vendor before O(n²).
 //
 // Use benchstat for before/after comparison:
 //   go test -bench=. -benchmem -count=6 -run=^$ ./internal/perf > before.txt
@@ -162,7 +163,7 @@ func BenchmarkCoChangePipelineSimulated(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				pairs := make(map[filePair]int, sc.commits*sc.files)
+				pairs := make(map[filePair]int, sc.files*(sc.files-1)/2)
 				totals := make(map[string]int, sc.files*2)
 				seen := make(map[string]bool, sc.files)
 				for _, batch := range batches {

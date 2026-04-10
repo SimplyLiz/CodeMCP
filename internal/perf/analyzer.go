@@ -1,6 +1,8 @@
 package perf
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
@@ -240,11 +242,14 @@ func (a *Analyzer) buildCoChangePairs(ctx context.Context, since time.Time, scop
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = a.repoRoot
 
-	out, err := cmd.Output()
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = &stderrBuf
+
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
-			return nil, nil, fmt.Errorf("git log: %s", exitErr.Stderr)
-		}
+		return nil, nil, fmt.Errorf("git log pipe: %w", err)
+	}
+	if err := cmd.Start(); err != nil {
 		return nil, nil, fmt.Errorf("git log: %w", err)
 	}
 
@@ -255,21 +260,34 @@ func (a *Analyzer) buildCoChangePairs(ctx context.Context, since time.Time, scop
 	seen := make(map[string]bool, 32)
 	var currentFiles []string
 
-	// Parse output: groups of files per commit, separated by blank lines.
-	for _, line := range strings.Split(string(out), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "COMMIT ") {
-			// Flush previous group.
+	// Stream git output line by line — avoids loading the full log into memory
+	// and copying it to a string before splitting.
+	commitPrefix := []byte("COMMIT ")
+	scanner := bufio.NewScanner(stdout)
+	for scanner.Scan() {
+		b := bytes.TrimRight(scanner.Bytes(), "\r")
+		if bytes.HasPrefix(b, commitPrefix) {
 			a.recordCommit(currentFiles, pairCounts, fileTotals, seen)
 			currentFiles = currentFiles[:0]
 			continue
 		}
-		if line == "" {
+		if len(b) == 0 {
 			continue
 		}
-		currentFiles = append(currentFiles, line)
+		currentFiles = append(currentFiles, string(b))
+	}
+	if scanErr := scanner.Err(); scanErr != nil {
+		_ = cmd.Wait()
+		return nil, nil, fmt.Errorf("reading git log: %w", scanErr)
 	}
 	a.recordCommit(currentFiles, pairCounts, fileTotals, seen)
+
+	if err := cmd.Wait(); err != nil {
+		if s := stderrBuf.String(); s != "" {
+			return nil, nil, fmt.Errorf("git log: %s", s)
+		}
+		return nil, nil, fmt.Errorf("git log: %w", err)
+	}
 
 	return pairCounts, fileTotals, nil
 }
