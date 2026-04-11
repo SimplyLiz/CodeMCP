@@ -1,0 +1,27 @@
+# Rust
+Cargo.lock
+/target/
+**/*.pem
+**/*.pfx
+**/*.p12
+
+# Binary files
+**/*.bin
+**/*.dat
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+
+# OS generated
+.DS_Store
+Thumbs.db
+
+# Cartographer generated
+state_key.md
+.ckb/
+
+# Local Cartographer config (contains machine-specific paths)
+.cartographer/
