@@ -55,8 +55,11 @@ from the initial SCIP load on small indexes (1k docs), which were causing elevat
 GC pressure and a measurable load-time regression. Medium/large indexes are
 unaffected — the index is built once and cached thereafter.
 
-**Benchmark impact vs v8.4.0 (small, 1k docs):** load allocs return to baseline
-(~376k vs the previous ~397k). No change for medium/large load time.
+**Benchmark impact vs v8.4.0 (small, 1k docs):** load alloc count is unchanged
+(~375.6k in both versions — the CallerIndex for 1k docs is not large enough to
+register in alloc counts). The win is GC liveness: ~22k heap objects that would
+have been promoted to old-gen are no longer live after load. No change for
+medium/large.
 
 #### SCIP loader: `DiscardUnknown` proto decode
 
@@ -64,12 +67,54 @@ Both `proto.Unmarshal` calls in the document stream parser now use
 `proto.UnmarshalOptions{DiscardUnknown: true}`. This skips the reflection-based
 unknown-field accumulator, reducing allocations during SCIP file decode.
 
+**Measured vs v8.4.0 (medium, 10k docs):**
+- `B/op`: **909 MiB → 781 MiB (-14.10%)**
+- `allocs/op`: **6.94M → 6.64M (-4.27%)**
+
+Small and large indexes show no measurable change (unknown-field savings are
+proportionally smaller there).
+
 #### CallerIndex builder: generation-counter deduplication
 
 `buildCallerIndex` now reuses the `ivs` interval slice across documents (resliced
 to zero, grown only when needed) and replaces the per-document `map[edge]bool`
 with a generation counter (`map[edge]uint64`). Eliminates ~2k per-load allocs on
 the 1k-doc case and removes all per-document map allocs on medium/large.
+
+#### `PopulateFromFullIndexStreaming`: two-pass streaming to prevent OOM on large repos
+
+`PopulateFromFullIndex` has always called `LoadSCIPIndex` which materialises the
+entire `*SCIPIndex` in memory before processing a single file. On a 50k-doc
+monorepo this peaks at ~15 GB and causes sustained GC pressure (observed: 485s
+first run vs a consistent 83s with streaming).
+
+`PopulateFromFullIndexStreaming` replaces this with a two-pass strategy over
+the on-disk SCIP file (via `scip.StreamDocuments`), never materialising the full
+index:
+
+- **Pass 1**: build the `symbol→file` map — one `*scippb.Document` live at a time,
+  freed by GC before the next arrives. Peak live heap ≈ the symbolToFile map alone.
+- **Pass 2**: stream documents again, extract deltas via the new proto-native
+  `extractFileDeltaFromProto` (skips all `convertDocument` allocations), write SQL
+  in 1000-file batches.
+
+`extractFileDeltaFromProto` works directly on `*scippb.Document` so there are no
+intermediate `*scip.Document` / `*scip.Occurrence` / `*scip.SymbolInformation`
+allocations per document per pass.
+
+**Benchmark vs `PopulateFromFullIndex` (50k docs, Apple M4 Pro, -count=2):**
+
+| | current | streaming | delta |
+|---|---|---|---|
+| B/op | 15.69 GB | 15.23 GB | -2.9% |
+| allocs/op | 166.4M | 181.8M | +9.3% |
+| time (cold) | **485s** | **83s** | **-83%** |
+| time (warm) | 122s | 83s | -32% |
+
+The extra allocs/op come from two proto-unmarshal passes vs one (plus
+`convertDocument` in the current path). The time improvement reflects reduced
+GC pressure: streaming never has more than one document live at a time, so GC
+never needs to scan or collect the 15 GB of live SCIPIndex data.
 
 #### Incremental write path: major throughput improvements (landed in v8.4.0)
 

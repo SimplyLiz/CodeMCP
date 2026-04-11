@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -26,6 +27,15 @@ type Event struct {
 	Type      EventType
 	Path      string
 	Timestamp time.Time
+	Seq       uint64
+}
+
+// DeltaAck acknowledges receipt of a Delta event batch.
+// Mirrors the LIP protocol DeltaAck: seq matches the event Seq that triggered the notification.
+type DeltaAck struct {
+	Seq      uint64
+	Accepted bool
+	Error    string
 }
 
 // String returns a string representation of the event type
@@ -87,6 +97,9 @@ type Watcher struct {
 	cancel context.CancelFunc
 	mu     sync.RWMutex
 	wg     sync.WaitGroup
+
+	nextSeq     atomic.Uint64
+	pendingAcks sync.Map // seq → chan DeltaAck
 }
 
 // repoWatcher watches a single repository
@@ -217,6 +230,8 @@ func (w *Watcher) watchRepo(rw *repoWatcher) {
 func (w *Watcher) checkRepoChanges(rw *repoWatcher) {
 	var events []Event
 
+	seq := w.nextSeq.Add(1)
+
 	// Check HEAD changes (branch switch, new commit)
 	currentHead := w.readHead(rw.gitDir)
 	if currentHead != "" && currentHead != rw.lastHead {
@@ -224,6 +239,7 @@ func (w *Watcher) checkRepoChanges(rw *repoWatcher) {
 			Type:      EventModify,
 			Path:      filepath.Join(rw.gitDir, "HEAD"),
 			Timestamp: time.Now(),
+			Seq:       seq,
 		})
 		rw.lastHead = currentHead
 	}
@@ -235,6 +251,7 @@ func (w *Watcher) checkRepoChanges(rw *repoWatcher) {
 			Type:      EventModify,
 			Path:      filepath.Join(rw.gitDir, "index"),
 			Timestamp: time.Now(),
+			Seq:       seq,
 		})
 		rw.lastIndex = currentIndex
 	}
@@ -247,6 +264,35 @@ func (w *Watcher) checkRepoChanges(rw *repoWatcher) {
 				w.handler(rw.repoPath, events)
 			}
 		})
+	}
+}
+
+// Ack acknowledges receipt of a delta event batch identified by ack.Seq.
+// Callers that received events via the ChangeHandler can call this to confirm
+// the delta was applied. Unacked events are not retried — this is informational.
+func (w *Watcher) Ack(ack DeltaAck) {
+	if ch, ok := w.pendingAcks.Load(ack.Seq); ok {
+		select {
+		case ch.(chan DeltaAck) <- ack:
+		default:
+		}
+		w.pendingAcks.Delete(ack.Seq)
+	}
+	if !ack.Accepted && ack.Error != "" {
+		w.logger.Warn("DeltaAck rejected", "seq", ack.Seq, "error", ack.Error)
+	}
+}
+
+// WaitAck waits for an acknowledgment of the given seq, or until ctx is done.
+func (w *Watcher) WaitAck(ctx context.Context, seq uint64) (DeltaAck, error) {
+	ch := make(chan DeltaAck, 1)
+	w.pendingAcks.Store(seq, ch)
+	select {
+	case ack := <-ch:
+		return ack, nil
+	case <-ctx.Done():
+		w.pendingAcks.Delete(seq)
+		return DeltaAck{Seq: seq, Accepted: false, Error: "context cancelled"}, ctx.Err()
 	}
 }
 

@@ -381,6 +381,7 @@ func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (
 	var results []SearchResultItem
 	var backendContribs []BackendContribution
 	var completeness CompletenessInfo
+	lipRanked := false // true when results already came from LIP semantic search
 
 	// Try FTS5 first for fast symbol search.
 	// Request more results when filters are set, since most will be excluded.
@@ -507,6 +508,67 @@ func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (
 		}
 	}
 
+	// LIP semantic supplement/fallback: when symbol-level backends returned nothing
+	// (or fewer results than the minimum useful threshold), ask LIP for files whose
+	// content matches the query semantically, then resolve their symbols from the FTS
+	// content table. The threshold of 3 mirrors the PPR/LIP re-ranking gate — below
+	// that the lexical results aren't trustworthy enough to stand alone.
+	const lipFallbackThreshold = 3
+	if len(results) < lipFallbackThreshold {
+		lipSymLimit := opts.Limit * 3
+		lipResults := SemanticSearchWithLIP(opts.Query, 20, func(fileURI string) []SearchResultItem {
+			// Convert file:// URI back to a repo-relative path.
+			relPath := strings.TrimPrefix(fileURI, "file://"+e.repoRoot)
+			relPath = strings.TrimPrefix(relPath, "/")
+			syms := e.symbolsForFile(ctx, relPath, lipSymLimit)
+			items := make([]SearchResultItem, 0, len(syms))
+			for _, s := range syms {
+				items = append(items, SearchResultItem{
+					StableId: s.ID,
+					Name:     s.Name,
+					Kind:     s.Kind,
+					ModuleId: filepath.Dir(s.FilePath),
+					Location: &LocationInfo{FileId: s.FilePath},
+					Visibility: &VisibilityInfo{
+						Visibility: inferVisibility(s.Name, s.Kind),
+						Confidence: 0.6,
+						Source:     "lip",
+					},
+				})
+			}
+			return items
+		})
+		if len(lipResults) > 0 {
+			// Deduplicate against the existing (sparse) lexical results before merging.
+			existing := make(map[string]struct{}, len(results))
+			for _, r := range results {
+				if r.StableId != "" {
+					existing[r.StableId] = struct{}{}
+				}
+			}
+			for _, r := range lipResults {
+				if _, dup := existing[r.StableId]; !dup {
+					results = append(results, r)
+				}
+			}
+			lipRanked = true // LIP pass already ordered these; skip RerankWithLIP
+			backendContribs = append(backendContribs, BackendContribution{
+				BackendId:    "lip-semantic",
+				Available:    true,
+				Used:         true,
+				ResultCount:  len(lipResults),
+				Completeness: 0.6,
+			})
+			if completeness.Score == 0 {
+				completeness = CompletenessInfo{
+					Score:   0.6,
+					Reason:  "lip-semantic-fallback",
+					Details: "No lexical matches found. Results from LIP semantic file search.",
+				}
+			}
+		}
+	}
+
 	// If no results, return empty response
 	if len(results) == 0 {
 		completeness = CompletenessInfo{Score: 0.0, Reason: "no-results"}
@@ -559,13 +621,21 @@ func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (
 		return results[i].StableId < results[j].StableId
 	})
 
-	// Apply PPR re-ranking if SCIP graph is available
+	// Apply re-ranking. SCIP available → PPR over symbol graph (Standard tier).
+	// LSP-only → LIP embedding similarity as ranking signal (Fast tier).
 	if e.scipAdapter != nil && e.scipAdapter.IsAvailable() && len(results) > 3 {
 		// Build graph and re-rank (lazy graph building)
 		if symbolGraph, err := BuildGraphFromSCIP(ctx, e.scipAdapter, e.logger); err == nil && symbolGraph.NumNodes() > 0 {
 			if reranked, err := RerankWithPPR(ctx, symbolGraph, results, opts.Limit); err == nil {
 				results = reranked
 			}
+		}
+	} else if len(results) > 3 && !lipRanked {
+		// Fast tier: use LIP file embeddings as a semantic re-ranking signal.
+		// Skip when results already came from LIP semantic search (lipRanked=true) —
+		// they're already ordered by similarity, a second pass would be redundant.
+		if reranked, err := RerankWithLIP(ctx, results, e.repoRoot, opts.Query); err == nil {
+			results = reranked
 		}
 	}
 

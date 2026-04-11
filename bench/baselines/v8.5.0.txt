@@ -1,0 +1,150 @@
+# CKB v8.5.0 — scale benchmark baseline
+# Hardware: Apple M4 Pro, arm64, macOS 25.1.0
+# Go:       go1.26.1
+# Date:     2026-04-11
+# Flags:    -benchmem -count=6 (small/medium/incremental), -count=3 N=1 forced (large — too slow for more)
+#
+# NOTE: SCIP scale benchmarks must be run per-size to avoid memory-pressure
+# interference. Running small+medium+large in one invocation causes the medium
+# and large results to be inflated by residual GC pressure from prior sizes.
+# Each size below was measured in a separate invocation.
+#
+# Changes vs v8.4.0:
+#   scip/loader:    DiscardUnknown on proto.Unmarshal for Metadata and Document records
+#                   skips reflection-based unknown-field accumulator during SCIP decode.
+#                   Medium (10k docs): -14.10% B/op (909 MiB → 781 MiB), -4.27% allocs/op.
+#                   Small/large: no measurable change.
+#   scip/callgraph: CallerIndex built lazily on first FindCallers call (sync.Once)
+#                   instead of at LoadIndex time. Removes ~22k live heap objects after
+#                   load on small indexes (GC liveness win, not visible in alloc count).
+#   scip/callgraph: buildCallerIndex reuses ivs slice across docs (reslice to 0) and
+#                   uses generation-counter deduplication instead of per-doc map[edge]bool.
+#
+# How to compare a future version against this baseline:
+#
+#   go test -bench=BenchmarkLoadSCIPIndexScale/small -benchmem -count=6 -run=^$ \
+#       ./internal/backends/scip/ > /tmp/after.txt
+#   go test -bench=BenchmarkLoadSCIPIndexScale/medium -benchmem -count=6 -run=^$ \
+#       ./internal/backends/scip/ >> /tmp/after.txt
+#   go test -bench=BenchmarkLoadSCIPIndexScale/large -benchmem -count=3 -run=^$ \
+#       ./internal/backends/scip/ >> /tmp/after.txt
+#   go test -bench="BenchmarkApplyDeltaScale|BenchmarkGetDependenciesPerFile|BenchmarkUpdateFileDepsHotPath|BenchmarkExtractFileDeltaScale|BenchmarkSyntheticDeltaAlloc" \
+#       -benchmem -count=6 -run=^$ ./internal/incremental/ >> /tmp/after.txt
+#   benchstat bench/baselines/v8.5.0.txt /tmp/after.txt
+
+goos: darwin
+goarch: arm64
+pkg: github.com/SimplyLiz/CodeMCP/internal/backends/scip
+cpu: Apple M4 Pro
+BenchmarkLoadSCIPIndexScale/small_1k_docs-14	      31	  44184606 ns/op	44372379 B/op	  375664 allocs/op
+BenchmarkLoadSCIPIndexScale/small_1k_docs-14	      24	  61514477 ns/op	44366888 B/op	  375649 allocs/op
+BenchmarkLoadSCIPIndexScale/small_1k_docs-14	      26	  42582925 ns/op	44366721 B/op	  375649 allocs/op
+BenchmarkLoadSCIPIndexScale/small_1k_docs-14	      32	  40849770 ns/op	44366177 B/op	  375647 allocs/op
+BenchmarkLoadSCIPIndexScale/small_1k_docs-14	      27	  43406616 ns/op	44366294 B/op	  375647 allocs/op
+BenchmarkLoadSCIPIndexScale/small_1k_docs-14	      30	  49420442 ns/op	44365963 B/op	  375645 allocs/op
+PASS
+ok  	github.com/SimplyLiz/CodeMCP/internal/backends/scip	11.203s
+BenchmarkLoadSCIPIndexScale/medium_10k_docs-14	       2	1204811916 ns/op	819088372 B/op	 6644752 allocs/op
+BenchmarkLoadSCIPIndexScale/medium_10k_docs-14	       2	 689982896 ns/op	819078912 B/op	 6644726 allocs/op
+BenchmarkLoadSCIPIndexScale/medium_10k_docs-14	       2	 657820562 ns/op	819080368 B/op	 6644726 allocs/op
+BenchmarkLoadSCIPIndexScale/medium_10k_docs-14	       2	 638262584 ns/op	819072632 B/op	 6644708 allocs/op
+BenchmarkLoadSCIPIndexScale/medium_10k_docs-14	       2	 644333896 ns/op	819081904 B/op	 6644722 allocs/op
+BenchmarkLoadSCIPIndexScale/medium_10k_docs-14	       1	32735981250 ns/op	819070392 B/op	 6644703 allocs/op
+PASS
+ok  	github.com/SimplyLiz/CodeMCP/internal/backends/scip	59.958s
+BenchmarkLoadSCIPIndexScale/large_50k_docs-14	       1	25890898083 ns/op	6930954232 B/op	58205193 allocs/op
+BenchmarkLoadSCIPIndexScale/large_50k_docs-14	       1	13062751375 ns/op	6930931480 B/op	58205158 allocs/op
+BenchmarkLoadSCIPIndexScale/large_50k_docs-14	       1	13979731417 ns/op	6930931016 B/op	58205166 allocs/op
+PASS
+ok  	github.com/SimplyLiz/CodeMCP/internal/backends/scip	72.365s
+
+goos: darwin
+goarch: arm64
+pkg: github.com/SimplyLiz/CodeMCP/internal/incremental
+cpu: Apple M4 Pro
+BenchmarkApplyDeltaScale/small_1k_files-14         	       4	 255499136 ns/op	15511556 B/op	  507049 allocs/op
+BenchmarkApplyDeltaScale/small_1k_files-14         	       5	 224708617 ns/op	15511208 B/op	  507048 allocs/op
+BenchmarkApplyDeltaScale/small_1k_files-14         	       5	 224185342 ns/op	15512371 B/op	  507050 allocs/op
+BenchmarkApplyDeltaScale/small_1k_files-14         	       5	 284527750 ns/op	15511121 B/op	  507048 allocs/op
+BenchmarkApplyDeltaScale/small_1k_files-14         	       5	 244618825 ns/op	15511019 B/op	  507048 allocs/op
+BenchmarkApplyDeltaScale/small_1k_files-14         	       5	 228629033 ns/op	15510923 B/op	  507048 allocs/op
+BenchmarkApplyDeltaScale/medium_10k_files-14       	       1	4211537584 ns/op	217950744 B/op	 7150064 allocs/op
+BenchmarkApplyDeltaScale/medium_10k_files-14       	       1	4564104750 ns/op	217839912 B/op	 7150050 allocs/op
+BenchmarkApplyDeltaScale/medium_10k_files-14       	       1	4182511458 ns/op	217839912 B/op	 7150050 allocs/op
+BenchmarkApplyDeltaScale/medium_10k_files-14       	       1	4117324042 ns/op	217839912 B/op	 7150050 allocs/op
+BenchmarkApplyDeltaScale/medium_10k_files-14       	       1	4066518125 ns/op	217840392 B/op	 7150051 allocs/op
+BenchmarkApplyDeltaScale/medium_10k_files-14       	       1	4145741457 ns/op	217839912 B/op	 7150050 allocs/op
+BenchmarkApplyDeltaScale/large_50k_files-14        	       1	38959412459 ns/op	1408879912 B/op	46750050 allocs/op
+BenchmarkApplyDeltaScale/large_50k_files-14        	       1	33451321999 ns/op	1408880392 B/op	46750051 allocs/op
+BenchmarkApplyDeltaScale/large_50k_files-14        	       1	43253113000 ns/op	1408879912 B/op	46750050 allocs/op
+BenchmarkApplyDeltaScale/large_50k_files-14        	       1	39409032667 ns/op	1408880408 B/op	46750051 allocs/op
+BenchmarkApplyDeltaScale/large_50k_files-14        	       1	41108340374 ns/op	1408880392 B/op	46750051 allocs/op
+BenchmarkApplyDeltaScale/large_50k_files-14        	       1	36678660792 ns/op	1408879912 B/op	46750050 allocs/op
+BenchmarkExtractFileDeltaScale/10syms_50occs-14    	   98061	     12293 ns/op	   20569 B/op	     217 allocs/op
+BenchmarkExtractFileDeltaScale/10syms_50occs-14    	   98160	     12075 ns/op	   20569 B/op	     217 allocs/op
+BenchmarkExtractFileDeltaScale/10syms_50occs-14    	  100090	     11996 ns/op	   20569 B/op	     217 allocs/op
+BenchmarkExtractFileDeltaScale/10syms_50occs-14    	   99790	     12016 ns/op	   20570 B/op	     217 allocs/op
+BenchmarkExtractFileDeltaScale/10syms_50occs-14    	   99417	     12029 ns/op	   20569 B/op	     217 allocs/op
+BenchmarkExtractFileDeltaScale/10syms_50occs-14    	   98638	     13127 ns/op	   20569 B/op	     217 allocs/op
+BenchmarkExtractFileDeltaScale/30syms_200occs-14   	   28088	     45188 ns/op	   69347 B/op	     751 allocs/op
+BenchmarkExtractFileDeltaScale/30syms_200occs-14   	   26456	     44544 ns/op	   69347 B/op	     751 allocs/op
+BenchmarkExtractFileDeltaScale/30syms_200occs-14   	   27507	     43693 ns/op	   69347 B/op	     751 allocs/op
+BenchmarkExtractFileDeltaScale/30syms_200occs-14   	   27577	     42902 ns/op	   69347 B/op	     751 allocs/op
+BenchmarkExtractFileDeltaScale/30syms_200occs-14   	   28080	     42095 ns/op	   69346 B/op	     751 allocs/op
+BenchmarkExtractFileDeltaScale/30syms_200occs-14   	   28377	     41445 ns/op	   69345 B/op	     751 allocs/op
+BenchmarkExtractFileDeltaScale/50syms_500occs-14   	   12670	     96471 ns/op	  143993 B/op	    1734 allocs/op
+BenchmarkExtractFileDeltaScale/50syms_500occs-14   	   12584	     89052 ns/op	  143989 B/op	    1734 allocs/op
+BenchmarkExtractFileDeltaScale/50syms_500occs-14   	   13669	     87483 ns/op	  143989 B/op	    1734 allocs/op
+BenchmarkExtractFileDeltaScale/50syms_500occs-14   	   13443	     91248 ns/op	  143996 B/op	    1734 allocs/op
+BenchmarkExtractFileDeltaScale/50syms_500occs-14   	   10000	    100162 ns/op	  143995 B/op	    1734 allocs/op
+BenchmarkExtractFileDeltaScale/50syms_500occs-14   	   10000	    110552 ns/op	  143993 B/op	    1734 allocs/op
+BenchmarkUpdateFileDepsHotPath/50refs-14           	     290	   3756311 ns/op	  207796 B/op	    4703 allocs/op
+BenchmarkUpdateFileDepsHotPath/50refs-14           	     286	   3886889 ns/op	  207513 B/op	    4702 allocs/op
+BenchmarkUpdateFileDepsHotPath/50refs-14           	     292	   4578817 ns/op	  207508 B/op	    4702 allocs/op
+BenchmarkUpdateFileDepsHotPath/50refs-14           	     318	   3871920 ns/op	  207599 B/op	    4703 allocs/op
+BenchmarkUpdateFileDepsHotPath/50refs-14           	     318	   3911296 ns/op	  207499 B/op	    4702 allocs/op
+BenchmarkUpdateFileDepsHotPath/50refs-14           	     294	   3889220 ns/op	  207462 B/op	    4702 allocs/op
+BenchmarkUpdateFileDepsHotPath/200refs-14          	     320	   3791258 ns/op	  207562 B/op	    4703 allocs/op
+BenchmarkUpdateFileDepsHotPath/200refs-14          	     316	   3907246 ns/op	  207516 B/op	    4702 allocs/op
+BenchmarkUpdateFileDepsHotPath/200refs-14          	     315	   4246259 ns/op	  207487 B/op	    4702 allocs/op
+BenchmarkUpdateFileDepsHotPath/200refs-14          	     308	   4397887 ns/op	  207534 B/op	    4702 allocs/op
+BenchmarkUpdateFileDepsHotPath/200refs-14          	     316	   4099604 ns/op	  207465 B/op	    4702 allocs/op
+BenchmarkUpdateFileDepsHotPath/200refs-14          	     280	   4011615 ns/op	  207738 B/op	    4704 allocs/op
+BenchmarkUpdateFileDepsHotPath/500refs-14          	     306	   4042150 ns/op	  209211 B/op	    4803 allocs/op
+BenchmarkUpdateFileDepsHotPath/500refs-14          	     304	   4162082 ns/op	  209134 B/op	    4802 allocs/op
+BenchmarkUpdateFileDepsHotPath/500refs-14          	     312	   4112843 ns/op	  209151 B/op	    4803 allocs/op
+BenchmarkUpdateFileDepsHotPath/500refs-14          	     308	   4046801 ns/op	  209113 B/op	    4802 allocs/op
+BenchmarkUpdateFileDepsHotPath/500refs-14          	     304	   4401101 ns/op	  209114 B/op	    4802 allocs/op
+BenchmarkUpdateFileDepsHotPath/500refs-14          	     300	   4038771 ns/op	  209312 B/op	    4803 allocs/op
+BenchmarkGetDependenciesPerFile/100files-14        	    1839	    628590 ns/op	  148801 B/op	    5600 allocs/op
+BenchmarkGetDependenciesPerFile/100files-14        	    1826	    626567 ns/op	  148801 B/op	    5600 allocs/op
+BenchmarkGetDependenciesPerFile/100files-14        	    1863	    623963 ns/op	  148801 B/op	    5600 allocs/op
+BenchmarkGetDependenciesPerFile/100files-14        	    1882	    626242 ns/op	  148801 B/op	    5600 allocs/op
+BenchmarkGetDependenciesPerFile/100files-14        	    1858	    625757 ns/op	  148801 B/op	    5600 allocs/op
+BenchmarkGetDependenciesPerFile/100files-14        	    1856	    624870 ns/op	  148801 B/op	    5600 allocs/op
+BenchmarkGetDependenciesPerFile/1000files-14       	     186	   6398438 ns/op	 1528011 B/op	   56000 allocs/op
+BenchmarkGetDependenciesPerFile/1000files-14       	     186	   6436465 ns/op	 1528011 B/op	   56000 allocs/op
+BenchmarkGetDependenciesPerFile/1000files-14       	     187	   6421819 ns/op	 1528012 B/op	   56000 allocs/op
+BenchmarkGetDependenciesPerFile/1000files-14       	     174	   6419466 ns/op	 1528012 B/op	   56000 allocs/op
+BenchmarkGetDependenciesPerFile/1000files-14       	     186	   6435022 ns/op	 1528012 B/op	   56000 allocs/op
+BenchmarkGetDependenciesPerFile/1000files-14       	     183	   6443370 ns/op	 1528011 B/op	   56000 allocs/op
+BenchmarkGetDependenciesPerFile/10000files-14      	      18	  66235514 ns/op	15680108 B/op	  560000 allocs/op
+BenchmarkGetDependenciesPerFile/10000files-14      	      14	  75801247 ns/op	15680126 B/op	  560000 allocs/op
+BenchmarkGetDependenciesPerFile/10000files-14      	      14	  73881574 ns/op	15680125 B/op	  560000 allocs/op
+BenchmarkGetDependenciesPerFile/10000files-14      	      15	  66795106 ns/op	15680113 B/op	  560000 allocs/op
+BenchmarkGetDependenciesPerFile/10000files-14      	      16	  66637669 ns/op	15680114 B/op	  560000 allocs/op
+BenchmarkGetDependenciesPerFile/10000files-14      	      16	  67054891 ns/op	15680119 B/op	  560000 allocs/op
+BenchmarkSyntheticDeltaAlloc/1k_files-14           	      73	  13988442 ns/op	29875981 B/op	  254580 allocs/op
+BenchmarkSyntheticDeltaAlloc/1k_files-14           	      74	  13941621 ns/op	29875702 B/op	  254579 allocs/op
+BenchmarkSyntheticDeltaAlloc/1k_files-14           	      81	  13806704 ns/op	29875610 B/op	  254579 allocs/op
+BenchmarkSyntheticDeltaAlloc/1k_files-14           	      79	  14159604 ns/op	29875970 B/op	  254580 allocs/op
+BenchmarkSyntheticDeltaAlloc/1k_files-14           	      72	  14249045 ns/op	29876203 B/op	  254580 allocs/op
+BenchmarkSyntheticDeltaAlloc/1k_files-14           	      76	  14218122 ns/op	29875639 B/op	  254579 allocs/op
+BenchmarkSyntheticDeltaAlloc/10k_files-14          	       5	 216977808 ns/op	449026793 B/op	 4460560 allocs/op
+BenchmarkSyntheticDeltaAlloc/10k_files-14          	       5	 214917083 ns/op	449026966 B/op	 4460555 allocs/op
+BenchmarkSyntheticDeltaAlloc/10k_files-14          	       5	 217102767 ns/op	449026336 B/op	 4460557 allocs/op
+BenchmarkSyntheticDeltaAlloc/10k_files-14          	       5	 224571325 ns/op	449027244 B/op	 4460559 allocs/op
+BenchmarkSyntheticDeltaAlloc/10k_files-14          	       5	 220315467 ns/op	449026902 B/op	 4460555 allocs/op
+BenchmarkSyntheticDeltaAlloc/10k_files-14          	       5	 221335200 ns/op	449027846 B/op	 4460556 allocs/op
+PASS
+ok  	github.com/SimplyLiz/CodeMCP/internal/incremental	469.518s

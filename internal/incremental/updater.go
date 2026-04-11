@@ -9,6 +9,9 @@ import (
 	"sync"
 	"time"
 
+	scippb "github.com/sourcegraph/scip/bindings/go/scip"
+
+	"github.com/SimplyLiz/CodeMCP/internal/backends/scip"
 	"github.com/SimplyLiz/CodeMCP/internal/storage"
 )
 
@@ -477,6 +480,166 @@ func (u *IndexUpdater) PopulateFromFullIndex(extractor *SCIPExtractor) error {
 		"fileDeps", totalDeps,
 	)
 
+	return nil
+}
+
+// PopulateFromFullIndexStreaming is a memory-efficient replacement for
+// PopulateFromFullIndex. Instead of loading the entire SCIPIndex into memory
+// (6.45 GB for a 50k-doc repo), it makes two lightweight streaming passes over
+// the on-disk SCIP file:
+//
+//   - Pass 1: build the symbol→file map (~160 MB for 2M symbols)
+//   - Pass 2: extract deltas + write SQL in 1000-file batches, resolving
+//     file_deps on-the-fly using the map from pass 1
+//
+// Peak heap is dominated by the symbol→file map rather than the full index.
+func (u *IndexUpdater) PopulateFromFullIndexStreaming(extractor *SCIPExtractor) error {
+	u.logger.Info("Streaming populate: pass 1 — building symbol→file map")
+
+	// Pass 1: lightweight scan to build symbolToFile.
+	// Uses StreamDocuments (raw proto) to avoid convertDocument allocations.
+	// Only looks at definition occurrences; ignores everything else.
+	const defRole = int32(1) // scippb.SymbolRole_Definition == 1
+	symbolToFile := make(map[string]string, 1<<17) // pre-alloc 128k
+	if err := scip.StreamDocuments(extractor.indexPath, func(pbDoc *scippb.Document) error {
+		if pbDoc.Language != "go" && pbDoc.Language != "" {
+			return nil
+		}
+		for _, occ := range pbDoc.Occurrences {
+			if occ.SymbolRoles&defRole != 0 && occ.Symbol != "" {
+				symbolToFile[occ.Symbol] = pbDoc.RelativePath
+			}
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("streaming pass 1: %w", err)
+	}
+	u.logger.Info("Streaming populate: symbol map ready", "symbols", len(symbolToFile))
+
+	// PRAGMA synchronous=OFF for bulk load — safe: a failed full index is always re-run.
+	if _, err := u.db.Exec("PRAGMA synchronous=OFF"); err != nil {
+		u.logger.Warn("PRAGMA synchronous=OFF failed", "error", err.Error())
+	}
+	defer func() {
+		if _, err := u.db.Exec("PRAGMA synchronous=NORMAL"); err != nil {
+			u.logger.Warn("PRAGMA synchronous=NORMAL restore failed", "error", err.Error())
+		}
+	}()
+
+	// Clear existing tables.
+	if err := u.db.WithTx(func(tx *sql.Tx) error {
+		for _, q := range []string{
+			`DELETE FROM file_symbols`,
+			`DELETE FROM indexed_files`,
+			`DELETE FROM callgraph`,
+			`DELETE FROM file_deps`,
+			`DELETE FROM rescan_queue`,
+		} {
+			if _, err := tx.Exec(q); err != nil {
+				return fmt.Errorf("clear tables: %w", err)
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	// Pass 2: stream documents, extract deltas, write in 1000-file batches.
+	const batchSize = 1000
+	now := time.Now()
+	var batch []FileDelta
+	totalFiles, totalCallEdges, totalDeps := 0, 0, 0
+
+	flushBatch := func() error {
+		if len(batch) == 0 {
+			return nil
+		}
+		var batchCallEdges, batchDeps int
+		if err := u.db.WithTx(func(tx *sql.Tx) error {
+			fileStmt, err := tx.Prepare(`
+				INSERT INTO indexed_files (path, hash, mtime, indexed_at, scip_document_hash, symbol_count)
+				VALUES (?, ?, ?, ?, ?, ?)
+			`)
+			if err != nil {
+				return fmt.Errorf("prepare indexed_files: %w", err)
+			}
+			defer fileStmt.Close() //nolint:errcheck
+
+			callStmt, err := tx.Prepare(`
+				INSERT OR REPLACE INTO callgraph
+				(caller_id, callee_id, caller_file, call_line, call_col, call_end_col)
+				VALUES (?, ?, ?, ?, ?, ?)
+			`)
+			if err != nil {
+				return fmt.Errorf("prepare callgraph: %w", err)
+			}
+			defer callStmt.Close() //nolint:errcheck
+
+			depsStmt, err := tx.Prepare(`INSERT OR IGNORE INTO file_deps (dependent_file, defining_file) VALUES (?, ?)`)
+			if err != nil {
+				return fmt.Errorf("prepare file_deps: %w", err)
+			}
+			defer depsStmt.Close() //nolint:errcheck
+
+			for _, delta := range batch {
+				if _, err := fileStmt.Exec(delta.Path, delta.Hash, now.Unix(), now.Unix(),
+					delta.SCIPDocumentHash, delta.SymbolCount); err != nil {
+					return fmt.Errorf("insert indexed_file %s: %w", delta.Path, err)
+				}
+				if len(delta.Symbols) > 0 {
+					if err := bulkInsertFileSymbols(tx, delta.Path, delta.Symbols); err != nil {
+						return fmt.Errorf("bulk insert file_symbols %s: %w", delta.Path, err)
+					}
+				}
+				if len(delta.CallEdges) > 0 {
+					if err := u.insertCallEdgesWithStmt(callStmt, delta); err != nil {
+						return fmt.Errorf("insert callgraph %s: %w", delta.Path, err)
+					}
+					batchCallEdges += len(delta.CallEdges)
+				}
+				if len(delta.Refs) > 0 {
+					if err := u.depTracker.updateFileDepsWithStmt(tx, depsStmt, delta.Path, delta.Refs, symbolToFile, true); err != nil {
+						u.logger.Warn("file_deps update failed", "path", delta.Path, "error", err.Error())
+					} else {
+						batchDeps += len(delta.Refs)
+					}
+				}
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		totalCallEdges += batchCallEdges
+		totalDeps += batchDeps
+		totalFiles += len(batch)
+		batch = batch[:0]
+		return nil
+	}
+
+	u.logger.Info("Streaming populate: pass 2 — extracting deltas + writing SQL")
+	if err := scip.StreamDocuments(extractor.indexPath, func(pbDoc *scippb.Document) error {
+		if pbDoc.Language != "go" && pbDoc.Language != "" {
+			return nil
+		}
+		change := ChangedFile{Path: pbDoc.RelativePath, ChangeType: ChangeAdded}
+		delta := extractor.extractFileDeltaFromProto(pbDoc, change)
+		batch = append(batch, delta)
+		if len(batch) >= batchSize {
+			return flushBatch()
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("streaming pass 2: %w", err)
+	}
+	if err := flushBatch(); err != nil {
+		return err
+	}
+
+	u.logger.Info("Streaming populate complete",
+		"files", totalFiles,
+		"callEdges", totalCallEdges,
+		"fileDeps", totalDeps,
+	)
 	return nil
 }
 

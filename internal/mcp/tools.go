@@ -2660,6 +2660,45 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		// v9.0 LIP symbol annotations
+		{
+			Name:        "annotationSet",
+			Description: "Attach a key/value annotation to a symbol URI. Annotations survive context resets and are scoped to the symbol, not the module. Mirrors LIP AnnotationEntry.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"symbol_uri": map[string]interface{}{"type": "string", "description": "LIP symbol URI, e.g. lip://local/src/foo.go#MyFunc"},
+					"key":        map[string]interface{}{"type": "string", "description": "Annotation key"},
+					"value":      map[string]interface{}{"type": "string", "description": "Annotation value (any string)"},
+					"author_id":  map[string]interface{}{"type": "string", "description": "Author identifier (default: agent:ckb)"},
+					"confidence": map[string]interface{}{"type": "number", "description": "Confidence 0-100 (default: 80)"},
+				},
+				"required": []string{"symbol_uri", "key", "value"},
+			},
+		},
+		{
+			Name:        "annotationGet",
+			Description: "Retrieve a specific annotation for a symbol URI by key.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"symbol_uri": map[string]interface{}{"type": "string"},
+					"key":        map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"symbol_uri", "key"},
+			},
+		},
+		{
+			Name:        "annotationList",
+			Description: "List all annotations for a symbol URI.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"symbol_uri": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"symbol_uri"},
+			},
+		},
 	}
 }
 
@@ -2796,6 +2835,10 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["detectShotgunSurgery"] = s.toolDetectShotgunSurgery
 	s.tools["getArchitecturalEvolution"] = s.toolGetArchitecturalEvolution
 	s.tools["getBlastRadius"] = s.toolGetBlastRadius
+	// v9.0 LIP symbol annotations
+	s.tools["annotationSet"] = s.toolAnnotationSet
+	s.tools["annotationGet"] = s.toolAnnotationGet
+	s.tools["annotationList"] = s.toolAnnotationList
 
 	// v8.0 Streaming support
 	s.RegisterStreamableTools()
