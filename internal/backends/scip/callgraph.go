@@ -169,6 +169,20 @@ func (idx *SCIPIndex) FindCallers(symbolId string) ([]*CallGraphNode, error) {
 func buildCallerIndex(docs []*Document) map[string][]string {
 	callerIdx := make(map[string][]string, len(docs))
 
+	// interval is declared outside the loop so ivs can be reused across docs.
+	type interval struct {
+		symbol string
+		start  int
+		end    int
+	}
+	type edge struct{ callee, caller string }
+
+	// Reuse ivs across docs — resliced to 0, grown only when needed.
+	var ivs []interval
+	// Reuse docSeen via a generation counter — no per-doc alloc or clear.
+	docSeen := make(map[edge]uint64, 64)
+	var gen uint64
+
 	for _, doc := range docs {
 		funcRanges := buildFunctionRanges(doc)
 		if len(funcRanges) == 0 {
@@ -176,20 +190,17 @@ func buildCallerIndex(docs []*Document) map[string][]string {
 		}
 
 		// Sort intervals by start line for early-break during occurrence scan.
-		type interval struct {
-			symbol string
-			start  int
-			end    int
+		ivs = ivs[:0]
+		if cap(ivs) < len(funcRanges) {
+			ivs = make([]interval, 0, len(funcRanges))
 		}
-		ivs := make([]interval, 0, len(funcRanges))
 		for sym, lr := range funcRanges {
 			ivs = append(ivs, interval{sym, lr.start, lr.end})
 		}
 		sort.Slice(ivs, func(i, j int) bool { return ivs[i].start < ivs[j].start })
 
-		// Deduplicate (callee, caller) edges within this document.
-		type edge struct{ callee, caller string }
-		docSeen := make(map[edge]bool)
+		// Bump generation to logically clear docSeen without re-allocating.
+		gen++
 
 		for _, occ := range doc.Occurrences {
 			if occ.Symbol == "" || occ.SymbolRoles&SymbolRoleDefinition != 0 {
@@ -207,8 +218,8 @@ func buildCallerIndex(docs []*Document) map[string][]string {
 						break // skip self-references
 					}
 					e := edge{callee, caller}
-					if !docSeen[e] {
-						docSeen[e] = true
+					if docSeen[e] != gen {
+						docSeen[e] = gen
 						callerIdx[callee] = append(callerIdx[callee], caller)
 					}
 					break

@@ -10,14 +10,14 @@
 package cartographer
 
 /*
-#cgo darwin CFLAGS: -I${SRCDIR}/../../../../Cartographer/mapper-core/cartographer/include
-#cgo darwin LDFLAGS: -L${SRCDIR}/../../../../Cartographer/mapper-core/cartographer/target/release -lcartographer -lm -ldl -framework Security -framework CoreFoundation
+#cgo darwin CFLAGS: -I${SRCDIR}/../../third_party/cartographer/mapper-core/cartographer/include
+#cgo darwin LDFLAGS: -L${SRCDIR}/../../third_party/cartographer/mapper-core/cartographer/target/release -lcartographer -lm -ldl -framework Security -framework CoreFoundation
 
-#cgo linux CFLAGS: -I${SRCDIR}/../../../../Cartographer/mapper-core/cartographer/include
-#cgo linux LDFLAGS: -L${SRCDIR}/../../../../Cartographer/mapper-core/cartographer/target/release -lcartographer -lm -ldl -lpthread
+#cgo linux CFLAGS: -I${SRCDIR}/../../third_party/cartographer/mapper-core/cartographer/include
+#cgo linux LDFLAGS: -L${SRCDIR}/../../third_party/cartographer/mapper-core/cartographer/target/release -lcartographer -lm -ldl -lpthread
 
-#cgo windows CFLAGS: -I${SRCDIR}/../../../../Cartographer/mapper-core/cartographer/include
-#cgo windows LDFLAGS: -L${SRCDIR}/../../../../Cartographer/mapper-core/cartographer/target/release -lcartographer -lm
+#cgo windows CFLAGS: -I${SRCDIR}/../../third_party/cartographer/mapper-core/cartographer/include
+#cgo windows LDFLAGS: -L${SRCDIR}/../../third_party/cartographer/mapper-core/cartographer/target/release -lcartographer -lm
 
 #include <stdlib.h>
 #include "cartographer.h"
@@ -539,6 +539,71 @@ func QueryContext(path, query string, opts *QueryContextOpts) (*QueryContextResu
 	}
 
 	var result QueryContextResult
+	if err := json.Unmarshal(resp.Data, &result); err != nil {
+		return nil, &CartographerError{err.Error()}
+	}
+	return &result, nil
+}
+
+// ShotgunSurgery returns files ranked by co-change dispersion.
+// limit=0 uses the Cartographer default (100). minPartners=0 uses the default (3).
+// Files with a high dispersion score exhibit the shotgun surgery smell: changing them
+// historically required simultaneous changes across many unrelated files.
+func ShotgunSurgery(path string, limit, minPartners uint32) ([]ShotgunSurgeryEntry, error) {
+	cPath := C.CString(path)
+	defer C.free(unsafe.Pointer(cPath))
+
+	resp, err := callFFI(func() *C.char {
+		return C.cartographer_shotgun_surgery(cPath, C.uint(limit), C.uint(minPartners))
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var entries []ShotgunSurgeryEntry
+	if err := json.Unmarshal(resp.Data, &entries); err != nil {
+		return nil, &CartographerError{err.Error()}
+	}
+	return entries, nil
+}
+
+// Evolution returns architectural health snapshots over the last `days` days of git history.
+// days=0 uses the Cartographer default (90).
+func Evolution(path string, days uint32) (*EvolutionResult, error) {
+	cPath := C.CString(path)
+	defer C.free(unsafe.Pointer(cPath))
+
+	resp, err := callFFI(func() *C.char {
+		return C.cartographer_evolution(cPath, C.uint(days))
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var result EvolutionResult
+	if err := json.Unmarshal(resp.Data, &result); err != nil {
+		return nil, &CartographerError{err.Error()}
+	}
+	return &result, nil
+}
+
+// BlastRadius returns the graph-theoretic blast radius for a module/file target.
+// target is a repo-relative file path or module ID. maxRelated=0 uses the default (50).
+func BlastRadius(path, target string, maxRelated uint32) (*BlastRadiusResult, error) {
+	cPath := C.CString(path)
+	defer C.free(unsafe.Pointer(cPath))
+
+	cTarget := C.CString(target)
+	defer C.free(unsafe.Pointer(cTarget))
+
+	resp, err := callFFI(func() *C.char {
+		return C.cartographer_blast_radius(cPath, cTarget, C.uint(maxRelated))
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var result BlastRadiusResult
 	if err := json.Unmarshal(resp.Data, &result); err != nil {
 		return nil, &CartographerError{err.Error()}
 	}

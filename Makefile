@@ -1,4 +1,4 @@
-CARTOGRAPHER_DIR := ../../Cartographer/mapper-core/cartographer
+CARTOGRAPHER_DIR := third_party/cartographer/mapper-core/cartographer
 CARTOGRAPHER_LIB := $(CARTOGRAPHER_DIR)/target/release/libcartographer.a
 BIN_DIR := bin
 

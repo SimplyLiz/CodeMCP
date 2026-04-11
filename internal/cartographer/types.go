@@ -456,6 +456,55 @@ type QueryContextResult struct {
 }
 
 // ---------------------------------------------------------------------------
+// Shotgun surgery types
+// ---------------------------------------------------------------------------
+
+// ShotgunSurgeryEntry describes a file that exhibits the shotgun surgery smell:
+// a change to it historically required simultaneous changes to many other files.
+type ShotgunSurgeryEntry struct {
+	File            string  `json:"file"`
+	PartnerCount    int     `json:"partnerCount"`
+	TotalCochanges  int     `json:"totalCochanges"`
+	Entropy         float64 `json:"entropy"`
+	DispersionScore float64 `json:"dispersionScore"`
+}
+
+// ---------------------------------------------------------------------------
+// Evolution types
+// ---------------------------------------------------------------------------
+
+// EvolutionResult captures architectural health snapshots over git history.
+type EvolutionResult struct {
+	Snapshots       []EvolutionSnapshot `json:"snapshots"`
+	HealthTrend     string              `json:"healthTrend"` // "improving" | "stable" | "degrading"
+	DebtIndicators  []string            `json:"debtIndicators"`
+	Recommendations []string            `json:"recommendations"`
+}
+
+// EvolutionSnapshot is the health state at a point in time.
+type EvolutionSnapshot struct {
+	Timestamp   interface{} `json:"timestamp"` // string or int64 depending on Rust build
+	HealthScore float64     `json:"healthScore"`
+}
+
+// ---------------------------------------------------------------------------
+// Blast radius types
+// ---------------------------------------------------------------------------
+
+// BlastRadiusResult is the graph-theoretic blast radius for a module/file.
+type BlastRadiusResult struct {
+	ModuleID string               `json:"moduleId"`
+	Related  []BlastRadiusRelated `json:"related"`
+}
+
+// BlastRadiusRelated is a module that would be affected by a change.
+type BlastRadiusRelated struct {
+	ModuleID     string `json:"moduleId"`
+	Path         string `json:"path"`
+	Relationship string `json:"relationship"` // "dependent" | "dependency"
+}
+
+// ---------------------------------------------------------------------------
 // Internal: response envelope (used by real bridge only, but kept here so
 // bridge.go doesn't need its own import of encoding/json for this type)
 // ---------------------------------------------------------------------------

@@ -33,3 +33,6 @@ func ExtractContent(_, _ string, _ *ExtractOptions) (*ExtractResult, error)     
 func ContextHealth(_ string, _ *ContextHealthOpts) (*ContextHealthReport, error)      { return nil, ErrUnavailable }
 func BM25Search(_, _ string, _ *BM25Options) (*BM25Result, error)                     { return nil, ErrUnavailable }
 func QueryContext(_, _ string, _ *QueryContextOpts) (*QueryContextResult, error)       { return nil, ErrUnavailable }
+func ShotgunSurgery(_ string, _, _ uint32) ([]ShotgunSurgeryEntry, error)             { return nil, ErrUnavailable }
+func Evolution(_ string, _ uint32) (*EvolutionResult, error)                          { return nil, ErrUnavailable }
+func BlastRadius(_, _ string, _ uint32) (*BlastRadiusResult, error)                   { return nil, ErrUnavailable }

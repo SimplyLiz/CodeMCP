@@ -1916,6 +1916,68 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		// v8.6 Cartographer context tools
 		{
+			Name:        "detectShotgunSurgery",
+			Description: "Detect files exhibiting the shotgun surgery smell: a change to them historically required simultaneous edits across many unrelated files. Ranks results by co-change dispersion score. Use before large refactors to identify high-blast-radius files.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"repo_path": map[string]interface{}{
+						"type":        "string",
+						"description": "Absolute path to the repository root",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"description": "Max number of commits to analyse (default 100)",
+					},
+					"min_partners": map[string]interface{}{
+						"type":        "integer",
+						"description": "Minimum co-change partner count to qualify as a suspect (default 3)",
+					},
+				},
+				"required": []string{"repo_path"},
+			},
+		},
+		{
+			Name:        "getArchitecturalEvolution",
+			Description: "Show how architectural health (health score, debt indicators) has changed over git history. Returns snapshots ranked by time with a trend label (improving/stable/degrading) and actionable recommendations.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"repo_path": map[string]interface{}{
+						"type":        "string",
+						"description": "Absolute path to the repository root",
+					},
+					"days": map[string]interface{}{
+						"type":        "integer",
+						"description": "Number of days of git history to scan (default 90)",
+					},
+				},
+				"required": []string{"repo_path"},
+			},
+		},
+		{
+			Name:        "getBlastRadius",
+			Description: "Graph-theoretic blast radius for a file or module: returns direct dependents and dependencies up to max_related hops. Works without a SCIP index; complements analyzeImpact for repos without indexing.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"repo_path": map[string]interface{}{
+						"type":        "string",
+						"description": "Absolute path to the repository root",
+					},
+					"target": map[string]interface{}{
+						"type":        "string",
+						"description": "Repo-relative file path or module ID to analyse",
+					},
+					"max_related": map[string]interface{}{
+						"type":        "integer",
+						"description": "Maximum related modules to return (default 50)",
+					},
+				},
+				"required": []string{"repo_path", "target"},
+			},
+		},
+		{
 			Name:        "queryContext",
 			Description: "Retrieve the most relevant code context for a task or question. Runs Cartographer's PKG retrieval pipeline: BM25 content search → personalized PageRank skeleton → context health scoring. Returns a ready-to-use context bundle with token count and A–F quality grade. Use this before starting any non-trivial coding task.",
 			InputSchema: map[string]interface{}{
@@ -2731,6 +2793,9 @@ func (s *MCPServer) RegisterTools() {
 	// v8.6 Cartographer context tools
 	s.tools["queryContext"] = s.toolQueryContext
 	s.tools["contextHealth"] = s.toolContextHealth
+	s.tools["detectShotgunSurgery"] = s.toolDetectShotgunSurgery
+	s.tools["getArchitecturalEvolution"] = s.toolGetArchitecturalEvolution
+	s.tools["getBlastRadius"] = s.toolGetBlastRadius
 
 	// v8.0 Streaming support
 	s.RegisterStreamableTools()

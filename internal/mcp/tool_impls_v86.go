@@ -68,3 +68,83 @@ func (s *MCPServer) toolContextHealth(params map[string]interface{}) (*envelope.
 
 	return NewToolResponse().Data(result).Build(), nil
 }
+
+// toolDetectShotgunSurgery returns files ranked by co-change dispersion score.
+func (s *MCPServer) toolDetectShotgunSurgery(params map[string]interface{}) (*envelope.Response, error) {
+	if !cartographer.Available() {
+		return nil, errors.NewOperationError("detect shotgun surgery", cartographer.ErrUnavailable)
+	}
+
+	repoPath, ok := params["repo_path"].(string)
+	if !ok || repoPath == "" {
+		return nil, errors.NewInvalidParameterError("repo_path", "required")
+	}
+
+	var limit, minPartners uint32
+	if v, ok := params["limit"].(float64); ok && v > 0 {
+		limit = uint32(v)
+	}
+	if v, ok := params["min_partners"].(float64); ok && v > 0 {
+		minPartners = uint32(v)
+	}
+
+	entries, err := cartographer.ShotgunSurgery(repoPath, limit, minPartners)
+	if err != nil {
+		return nil, errors.NewOperationError("detect shotgun surgery", err)
+	}
+
+	return NewToolResponse().Data(entries).Build(), nil
+}
+
+// toolGetArchitecturalEvolution returns health snapshots over git history.
+func (s *MCPServer) toolGetArchitecturalEvolution(params map[string]interface{}) (*envelope.Response, error) {
+	if !cartographer.Available() {
+		return nil, errors.NewOperationError("get architectural evolution", cartographer.ErrUnavailable)
+	}
+
+	repoPath, ok := params["repo_path"].(string)
+	if !ok || repoPath == "" {
+		return nil, errors.NewInvalidParameterError("repo_path", "required")
+	}
+
+	var days uint32
+	if v, ok := params["days"].(float64); ok && v > 0 {
+		days = uint32(v)
+	}
+
+	result, err := cartographer.Evolution(repoPath, days)
+	if err != nil {
+		return nil, errors.NewOperationError("get architectural evolution", err)
+	}
+
+	return NewToolResponse().Data(result).Build(), nil
+}
+
+// toolGetBlastRadius returns the graph-theoretic blast radius for a module/file.
+func (s *MCPServer) toolGetBlastRadius(params map[string]interface{}) (*envelope.Response, error) {
+	if !cartographer.Available() {
+		return nil, errors.NewOperationError("get blast radius", cartographer.ErrUnavailable)
+	}
+
+	repoPath, ok := params["repo_path"].(string)
+	if !ok || repoPath == "" {
+		return nil, errors.NewInvalidParameterError("repo_path", "required")
+	}
+
+	target, ok := params["target"].(string)
+	if !ok || target == "" {
+		return nil, errors.NewInvalidParameterError("target", "required")
+	}
+
+	var maxRelated uint32
+	if v, ok := params["max_related"].(float64); ok && v > 0 {
+		maxRelated = uint32(v)
+	}
+
+	result, err := cartographer.BlastRadius(repoPath, target, maxRelated)
+	if err != nil {
+		return nil, errors.NewOperationError("get blast radius", err)
+	}
+
+	return NewToolResponse().Data(result).Build(), nil
+}

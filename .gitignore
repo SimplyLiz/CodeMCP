@@ -44,3 +44,6 @@ Thumbs.db
 testdata/fixtures/typescript/node_modules/
 testdata/**/.dart_tool/
 testdata/**/pubspec.lock
+
+# Vendored Cartographer Rust build artifacts
+third_party/cartographer/mapper-core/cartographer/target/
