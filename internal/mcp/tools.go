@@ -1914,6 +1914,61 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		// v8.6 Cartographer context tools
+		{
+			Name:        "queryContext",
+			Description: "Retrieve the most relevant code context for a task or question. Runs Cartographer's PKG retrieval pipeline: BM25 content search → personalized PageRank skeleton → context health scoring. Returns a ready-to-use context bundle with token count and A–F quality grade. Use this before starting any non-trivial coding task.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"query": map[string]interface{}{
+						"type":        "string",
+						"description": "Natural language description of the task or question (e.g. 'add pagination to the user list API')",
+					},
+					"budget": map[string]interface{}{
+						"type":        "integer",
+						"default":     8000,
+						"description": "Token budget for the skeleton portion",
+					},
+					"model": map[string]interface{}{
+						"type":        "string",
+						"default":     "claude",
+						"description": "Target model family for context window sizing: claude (200K), gpt4 (128K), llama (128K), gpt35 (16K)",
+						"enum":        []string{"claude", "gpt4", "llama", "gpt35"},
+					},
+					"maxSearchResults": map[string]interface{}{
+						"type":        "integer",
+						"default":     20,
+						"description": "Max BM25 search hits used as PageRank personalization seeds",
+					},
+				},
+				"required": []string{"query"},
+			},
+		},
+		{
+			Name:        "contextHealth",
+			Description: "Score the quality of an LLM context bundle on 6 research-backed metrics: signal density, compression density, position health (U-shaped attention bias), entity density, utilisation headroom, and dedup ratio. Returns a composite 0–100 score graded A–F with per-metric breakdown and actionable recommendations.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"content": map[string]interface{}{
+						"type":        "string",
+						"description": "The context string to evaluate (what you would send to the LLM)",
+					},
+					"model": map[string]interface{}{
+						"type":        "string",
+						"default":     "claude",
+						"description": "Target model family for window-size reference: claude (200K), gpt4 (128K), llama (128K), gpt35 (16K)",
+						"enum":        []string{"claude", "gpt4", "llama", "gpt35"},
+					},
+					"signatureCount": map[string]interface{}{
+						"type":        "integer",
+						"description": "Number of symbol signatures in the content (improves signal density scoring)",
+					},
+				},
+				"required": []string{"content"},
+			},
+		},
 		// v8.0 Secret Detection
 		{
 			Name:        "scanSecrets",
@@ -2673,6 +2728,9 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["scanPerformance"] = s.toolScanPerformance
 	// v8.5 Structural performance scan (loop call sites)
 	s.tools["analyzeStructuralPerf"] = s.toolAnalyzeStructuralPerf
+	// v8.6 Cartographer context tools
+	s.tools["queryContext"] = s.toolQueryContext
+	s.tools["contextHealth"] = s.toolContextHealth
 
 	// v8.0 Streaming support
 	s.RegisterStreamableTools()

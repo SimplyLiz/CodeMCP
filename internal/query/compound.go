@@ -1411,15 +1411,19 @@ type PrepareChangeOptions struct {
 // PrepareChangeResponse provides comprehensive pre-change analysis.
 type PrepareChangeResponse struct {
 	AINavigationMeta
-	Target           *PrepareChangeTarget `json:"target"`
-	DirectDependents []PrepareDependent   `json:"directDependents"`
-	TransitiveImpact *PrepareTransitive   `json:"transitiveImpact"`
-	RelatedTests     []PrepareTest        `json:"relatedTests"`
-	CoChangeFiles    []PrepareCoChange    `json:"coChangeFiles,omitempty"`
-	RiskAssessment   *PrepareRisk         `json:"riskAssessment"`
-	RenameDetail     *RenameDetail        `json:"renameDetail,omitempty"`
-	ExtractDetail    *ExtractDetail       `json:"extractDetail,omitempty"`
-	MoveDetail       *MoveDetail          `json:"moveDetail,omitempty"`
+	Target           *PrepareChangeTarget         `json:"target"`
+	DirectDependents []PrepareDependent            `json:"directDependents"`
+	TransitiveImpact *PrepareTransitive            `json:"transitiveImpact"`
+	RelatedTests     []PrepareTest                 `json:"relatedTests"`
+	CoChangeFiles    []PrepareCoChange             `json:"coChangeFiles,omitempty"`
+	RiskAssessment   *PrepareRisk                  `json:"riskAssessment"`
+	RenameDetail     *RenameDetail                 `json:"renameDetail,omitempty"`
+	ExtractDetail    *ExtractDetail                `json:"extractDetail,omitempty"`
+	MoveDetail       *MoveDetail                   `json:"moveDetail,omitempty"`
+	// ArchImpact is Cartographer's module-level impact simulation: predicted affected
+	// modules, cycle risk, layer violations, and health delta. Only populated when the
+	// binary is built with -tags cartographer.
+	ArchImpact       *cartographer.ImpactAnalysis  `json:"archImpact,omitempty"`
 }
 
 // PrepareChangeTarget describes what will be changed.
@@ -1507,6 +1511,7 @@ func (e *Engine) PrepareChange(ctx context.Context, opts PrepareChangeOptions) (
 	var moveDetail *MoveDetail
 	var riskFactors []string
 	var warnings []string
+	var archImpact *cartographer.ImpactAnalysis
 
 	// Get impact analysis
 	wg.Add(1)
@@ -1600,6 +1605,26 @@ func (e *Engine) PrepareChange(ctx context.Context, opts PrepareChangeOptions) (
 		}()
 	}
 
+	// Architectural impact simulation via Cartographer (module-level cascade,
+	// cycle risk, layer violations). Falls through silently if not compiled in.
+	if cartographer.Available() && target.Path != "" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if ai, cerr := cartographer.SimulateChange(e.repoRoot, target.Path, "", ""); cerr == nil {
+				mu.Lock()
+				archImpact = ai
+				if ai.PredictedImpact.WillCreateCycle {
+					riskFactors = append(riskFactors, "Change may introduce a dependency cycle")
+				}
+				if len(ai.PredictedImpact.LayerViolations) > 0 {
+					riskFactors = append(riskFactors, fmt.Sprintf("Change may create %d layer violation(s)", len(ai.PredictedImpact.LayerViolations)))
+				}
+				mu.Unlock()
+			}
+		}()
+	}
+
 	wg.Wait()
 
 	// Calculate risk assessment
@@ -1644,6 +1669,7 @@ func (e *Engine) PrepareChange(ctx context.Context, opts PrepareChangeOptions) (
 		RenameDetail:     renameDetail,
 		ExtractDetail:    extractDetail,
 		MoveDetail:       moveDetail,
+		ArchImpact:       archImpact,
 	}, nil
 }
 
