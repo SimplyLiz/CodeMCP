@@ -31,6 +31,62 @@ type annotationGetResp struct {
 	Value *string `json:"value"`
 }
 
+type embeddingGetReq struct {
+	Action string `json:"action"`
+	URI    string `json:"uri"`
+	Model  string `json:"model,omitempty"`
+}
+
+type embeddingGetResp struct {
+	Vector []float32 `json:"vector"`
+	Model  string    `json:"model"`
+	Dims   int       `json:"dims"`
+}
+
+// GetEmbedding requests a quantized embedding vector for the given URI from the
+// LIP daemon. model may be empty to use the daemon's default. Returns nil when
+// LIP is unavailable or the URI has no embedding — callers must handle nil gracefully.
+//
+// The returned vector uses TurboQuant-style online VQ: coordinates are pre-rotated
+// and scalar-quantized per channel, making dot-product similarity accurate without
+// dequantization. Suitable for nearest-neighbour ranking directly as []float32.
+func GetEmbedding(lipURI, model string) ([]float32, error) {
+	conn, err := net.DialTimeout("unix", SocketPath(), 100*time.Millisecond)
+	if err != nil {
+		return nil, nil
+	}
+	defer conn.Close()
+	conn.SetDeadline(time.Now().Add(500 * time.Millisecond)) //nolint:errcheck
+
+	payload, _ := json.Marshal(embeddingGetReq{Action: "embedding_get", URI: lipURI, Model: model})
+	lenBuf := make([]byte, 4)
+	binary.BigEndian.PutUint32(lenBuf, uint32(len(payload)))
+	if _, err := conn.Write(append(lenBuf, payload...)); err != nil {
+		return nil, nil
+	}
+
+	if _, err := conn.Read(lenBuf); err != nil {
+		return nil, nil
+	}
+	respLen := binary.BigEndian.Uint32(lenBuf)
+	if respLen > 4<<20 { // 4 MB cap — embeddings are never this large
+		return nil, nil
+	}
+	respBuf := make([]byte, respLen)
+	if _, err := conn.Read(respBuf); err != nil {
+		return nil, nil
+	}
+
+	var resp embeddingGetResp
+	if err := json.Unmarshal(respBuf, &resp); err != nil {
+		return nil, nil
+	}
+	if len(resp.Vector) == 0 {
+		return nil, nil
+	}
+	return resp.Vector, nil
+}
+
 // GetAnnotation queries the LIP daemon for an annotation on the given URI and key.
 // Returns (value, true, nil) when found, ("", false, nil) when absent or LIP is
 // unavailable. The error return is reserved for structural issues (oversized

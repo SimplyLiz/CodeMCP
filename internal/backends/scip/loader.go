@@ -61,10 +61,10 @@ type SCIPIndex struct {
 	NameIndex []NameEntry
 
 	// CallerIndex maps each callee symbolID to the slice of caller symbolIDs.
-	// Built once at load time from Documents — always in sync with in-memory state.
-	// Replaced entirely on LoadIndex(); never mutated after construction.
+	// Populated lazily on the first FindCallers call via callerOnce.
 	// FindCallers is O(1) via this index instead of the former O(docs×syms×occs) scan.
-	CallerIndex map[string][]string
+	CallerIndex     map[string][]string
+	callerIndexOnce sync.Once
 
 	// LoadedAt is when the index was loaded
 	LoadedAt time.Time
@@ -115,6 +115,10 @@ func loadSCIPIndexInternal(path, cachePath string) (*SCIPIndex, error) {
 	// ------------------------------------------------------------------ //
 	nWorkers := runtime.GOMAXPROCS(0)
 
+	// DiscardUnknown skips unknown proto fields during decode, reducing
+	// allocations from the reflection-based unknown-field accumulator.
+	discardUnknownOpts := proto.UnmarshalOptions{DiscardUnknown: true}
+
 	type docResult struct {
 		doc              *Document
 		symbols          map[string]*SymbolInformation
@@ -149,7 +153,7 @@ func loadSCIPIndexInternal(path, cachePath string) (*SCIPIndex, error) {
 					continue
 				}
 				var m scippb.Metadata
-				if proto.Unmarshal(v, &m) == nil {
+				if discardUnknownOpts.Unmarshal(v, &m) == nil {
 					pbMeta = &m
 				}
 				b = b[n:]
@@ -161,7 +165,7 @@ func loadSCIPIndexInternal(path, cachePath string) (*SCIPIndex, error) {
 					continue
 				}
 				var d scippb.Document
-				if proto.Unmarshal(v, &d) == nil {
+				if discardUnknownOpts.Unmarshal(v, &d) == nil {
 					jobs <- pbDocMsg{doc: &d}
 				}
 				b = b[n:]
@@ -426,13 +430,9 @@ func loadSCIPIndexInternal(path, cachePath string) (*SCIPIndex, error) {
 		}
 	}
 
-	// ------------------------------------------------------------------ //
-	// Phase 4: CallerIndex.                                               //
-	// Build the inverted caller map from Documents so FindCallers is O(1) //
-	// instead of O(docs × syms × occs). Always rebuilt on reload, so it  //
-	// stays in sync with the in-memory Documents.                         //
-	// ------------------------------------------------------------------ //
-	scipIndex.CallerIndex = buildCallerIndex(scipIndex.Documents)
+	// Phase 4 (CallerIndex) is built lazily on the first FindCallers call.
+	// This keeps load time clean and avoids ~22k persistent heap objects on
+	// small indexes that would otherwise inflate GC pressure at startup.
 
 	return scipIndex, nil
 }

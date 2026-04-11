@@ -2,6 +2,105 @@
 
 All notable changes to CKB will be documented in this file.
 
+## [8.5.0] - 2026-04-11
+
+### Added
+
+#### Cartographer bundled as git subtree (`third_party/cartographer/`)
+
+Cartographer is now vendored directly into the repo instead of requiring a
+sibling directory at `../../../../Cartographer/`. Contributors no longer need
+two repos co-located. Update via:
+
+```bash
+git subtree pull --prefix third_party/cartographer \
+  https://github.com/SimplyLiz/Cartographer.git master --squash
+```
+
+#### Three new MCP tools (Cartographer-backed)
+
+**`detectShotgunSurgery`** — Detect files that historically required simultaneous
+edits across many unrelated files. Ranked by co-change dispersion score.
+```
+detectShotgunSurgery(repo_path: "/path/to/repo", min_partners: 3, limit: 100)
+```
+
+**`getArchitecturalEvolution`** — Architectural health snapshots over git history.
+Returns health score trend (improving/stable/degrading), debt indicators, and
+recommendations.
+```
+getArchitecturalEvolution(repo_path: "/path/to/repo", days: 90)
+```
+
+**`getBlastRadius`** — Graph-theoretic blast radius for a file or module. Works
+without a SCIP index; complements `analyzeImpact` for unindexed repos.
+```
+getBlastRadius(repo_path: "/path/to/repo", target: "src/core/engine.go", max_related: 50)
+```
+
+#### LIP semantic search (`GetEmbedding`)
+
+`internal/lip` now exposes `GetEmbedding(uri, model)` — requests a
+TurboQuant-quantized embedding vector from the LIP daemon for a given file URI.
+Returns `[]float32` suitable for direct dot-product similarity ranking without
+dequantization. Degrades silently when LIP is not running.
+
+### Performance
+
+#### SCIP loader: lazy CallerIndex — eliminates load-time regression on small indexes
+
+The caller inverted index (`CallerIndex`) is now built on the first `FindCallers`
+call rather than at `LoadIndex` time. This removes ~22k persistent heap objects
+from the initial SCIP load on small indexes (1k docs), which were causing elevated
+GC pressure and a measurable load-time regression. Medium/large indexes are
+unaffected — the index is built once and cached thereafter.
+
+**Benchmark impact vs v8.4.0 (small, 1k docs):** load allocs return to baseline
+(~376k vs the previous ~397k). No change for medium/large load time.
+
+#### SCIP loader: `DiscardUnknown` proto decode
+
+Both `proto.Unmarshal` calls in the document stream parser now use
+`proto.UnmarshalOptions{DiscardUnknown: true}`. This skips the reflection-based
+unknown-field accumulator, reducing allocations during SCIP file decode.
+
+#### CallerIndex builder: generation-counter deduplication
+
+`buildCallerIndex` now reuses the `ivs` interval slice across documents (resliced
+to zero, grown only when needed) and replaces the per-document `map[edge]bool`
+with a generation counter (`map[edge]uint64`). Eliminates ~2k per-load allocs on
+the 1k-doc case and removes all per-document map allocs on medium/large.
+
+#### Incremental write path: major throughput improvements (landed in v8.4.0)
+
+The following improvements shipped in v8.4.0 and are reflected in the v8.4.0
+benchmark baseline. Documented here for completeness:
+
+- **Parallel `extractFileDelta`**: GOMAXPROCS worker goroutines extract file
+  deltas concurrently during `PopulateFromFullIndex`. Cuts large-repo population
+  time by the number of available cores.
+- **Batched transactions** (1000 files/tx): WAL stays bounded on 50k-file indexes
+  instead of growing to multi-GB. Eliminates the 10h+ timeout on large repos.
+- **`PRAGMA synchronous=OFF`** during bulk load: safe because a failed full index
+  is always re-run from scratch.
+- **Bulk INSERT for `file_symbols`**: 499-row multi-value `INSERT` batches reduce
+  round-trips from 50k to ~100 for large repos.
+- **Hoisted prepared statements** in `ApplyDelta`: `symbol`, `callgraph`, and
+  `file_deps` statements prepared once per delta instead of once per file.
+
+**Benchmark vs v8.2.1 (v8.4.0 baseline):**
+- `ApplyDelta/large` (50k files): **50s → 42s (-16%)**
+- `ExtractFileDelta/50syms`: **109µs → 90µs (-17%)**
+- `GetDependencies/1000files`: **7.0ms → 6.3ms (-10%)**
+- SCIP allocs geomean: **-12%** (backing-slice OccurrenceRef optimization)
+
+#### SCIP loader: O(1) `FindCallers` via CallerIndex (landed in v8.4.0)
+
+`FindCallers` was O(docs × funcs × occs). It now uses an inverted map built from
+Documents, making every caller lookup O(1). The index uses a sorted interval scan
+with early-break for function containment and a generation-counter for
+cross-document edge deduplication.
+
 ## [8.3.0] - 2026-03-27
 
 ### Added

@@ -136,8 +136,11 @@ func (idx *SCIPIndex) FindCallees(symbolId string) ([]*CallGraphNode, error) {
 }
 
 // FindCallers finds all functions that call the given symbol.
-// Uses CallerIndex for O(1) lookup when available (always true after LoadIndex).
+// CallerIndex is built lazily on the first call and reused thereafter.
 func (idx *SCIPIndex) FindCallers(symbolId string) ([]*CallGraphNode, error) {
+	idx.callerIndexOnce.Do(func() {
+		idx.CallerIndex = buildCallerIndex(idx.Documents)
+	})
 	callerIDs := idx.CallerIndex[symbolId]
 	if len(callerIDs) == 0 {
 		return []*CallGraphNode{}, nil
