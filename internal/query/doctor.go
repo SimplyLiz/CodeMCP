@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/SimplyLiz/CodeMCP/internal/config"
+	"github.com/SimplyLiz/CodeMCP/internal/lip"
 	"github.com/SimplyLiz/CodeMCP/internal/project"
 )
 
@@ -52,6 +53,7 @@ func (e *Engine) Doctor(ctx context.Context, checkName string) (*DoctorResponse,
 		checks = append(checks, e.checkGit(ctx))
 		checks = append(checks, e.checkScip(ctx))
 		checks = append(checks, e.checkLsp(ctx))
+		checks = append(checks, e.checkLIP(ctx))
 		checks = append(checks, e.checkConfig(ctx))
 		checks = append(checks, e.checkStorage(ctx))
 		checks = append(checks, e.checkOrphanedIndexes(ctx))
@@ -64,6 +66,8 @@ func (e *Engine) Doctor(ctx context.Context, checkName string) (*DoctorResponse,
 			checks = append(checks, e.checkScip(ctx))
 		case "lsp":
 			checks = append(checks, e.checkLsp(ctx))
+		case "lip":
+			checks = append(checks, e.checkLIP(ctx))
 		case "config":
 			checks = append(checks, e.checkConfig(ctx))
 		case "storage":
@@ -156,6 +160,10 @@ func (e *Engine) checkGit(ctx context.Context) DoctorCheck {
 	return check
 }
 
+// scipLargeRepoThreshold matches the threshold in cmd/ckb/index.go.
+// Repos above this size skip SCIP by default and use LSP+LIP instead.
+const scipLargeRepoThreshold = 50_000
+
 // checkScip verifies SCIP index availability.
 func (e *Engine) checkScip(ctx context.Context) DoctorCheck {
 	check := DoctorCheck{
@@ -170,6 +178,23 @@ func (e *Engine) checkScip(ctx context.Context) DoctorCheck {
 	}
 
 	if !e.scipAdapter.IsAvailable() {
+		// Check whether this looks like a large repo that intentionally skipped SCIP.
+		lang, _, _ := project.DetectLanguage(e.repoRoot)
+		if lang != "" && countDoctorSourceFiles(e.repoRoot, lang) >= scipLargeRepoThreshold {
+			check.Status = "pass"
+			check.Message = "SCIP disabled — repo exceeds 50k source files. " +
+				"Active tier: FTS + LSP + LIP semantic search. " +
+				"Call graph and analyzeImpact require SCIP (run: ckb index --scip)"
+			check.SuggestedFixes = []FixAction{
+				{
+					Type:        "run-command",
+					Command:     "ckb index --scip",
+					Safe:        true,
+					Description: "Generate SCIP index (may take 30–90 min on large repos)",
+				},
+			}
+			return check
+		}
 		check.Status = "warn"
 		check.Message = e.scipNotFoundMessage()
 		check.SuggestedFixes = e.getSCIPInstallSuggestions()
@@ -685,6 +710,86 @@ func (e *Engine) checkOptionalTools(ctx context.Context) DoctorCheck {
 	}
 
 	return check
+}
+
+// checkLIP checks whether the LIP semantic-search daemon is running and indexed.
+func (e *Engine) checkLIP(_ context.Context) DoctorCheck {
+	check := DoctorCheck{Name: "lip"}
+
+	status, err := lip.IndexStatus()
+	if err != nil || status == nil {
+		check.Status = "warn"
+		check.Message = "LIP daemon not running — semantic search and re-ranking disabled"
+		check.SuggestedFixes = []FixAction{
+			{
+				Type:        "open-docs",
+				Description: "Start the LIP daemon to enable semantic search",
+			},
+		}
+		return check
+	}
+
+	if status.IndexedFiles == 0 {
+		check.Status = "warn"
+		check.Message = "LIP daemon running but no files indexed yet"
+		return check
+	}
+
+	pending := ""
+	if status.Pending > 0 {
+		pending = fmt.Sprintf(", %d pending", status.Pending)
+	}
+	check.Status = "pass"
+	check.Message = fmt.Sprintf("LIP daemon running — %d files indexed%s", status.IndexedFiles, pending)
+	return check
+}
+
+// countDoctorSourceFiles counts source files for the given language, used by
+// the doctor SCIP check to distinguish "not indexed yet" from "deliberately skipped".
+func countDoctorSourceFiles(root string, lang project.Language) int {
+	var extensions []string
+	switch lang {
+	case project.LangGo:
+		extensions = []string{".go"}
+	case project.LangTypeScript, project.LangJavaScript:
+		extensions = []string{".ts", ".tsx", ".js", ".jsx"}
+	case project.LangPython:
+		extensions = []string{".py"}
+	case project.LangRust:
+		extensions = []string{".rs"}
+	case project.LangJava:
+		extensions = []string{".java"}
+	case project.LangKotlin:
+		extensions = []string{".kt", ".kts"}
+	case project.LangCpp:
+		extensions = []string{".cpp", ".cc", ".cxx", ".c", ".h", ".hpp"}
+	default:
+		return 0
+	}
+
+	extSet := make(map[string]bool, len(extensions))
+	for _, ext := range extensions {
+		extSet[ext] = true
+	}
+
+	count := 0
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return nil //nolint:nilerr
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case ".git", ".ckb", "node_modules", "vendor", ".venv", "__pycache__", "target", "build", "dist":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if extSet[filepath.Ext(path)] {
+			count++
+		}
+		return nil
+	})
+	return count
 }
 
 // GenerateFixScript generates a shell script for all suggested fixes.

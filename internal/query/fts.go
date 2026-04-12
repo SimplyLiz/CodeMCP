@@ -2,7 +2,6 @@ package query
 
 import (
 	"context"
-	"sort"
 	"strings"
 	"time"
 
@@ -27,19 +26,13 @@ func (e *Engine) PopulateFTSFromSCIP(ctx context.Context) error {
 		return nil
 	}
 
-	// Convert SCIP symbols to FTS records in deterministic order.
-	// index.Symbols is a Go map — iteration order is random, which causes
-	// non-deterministic FTS5 BM25 scores and flaky golden tests.
-	symIDs := make([]string, 0, len(index.Symbols))
-	for id := range index.Symbols {
-		symIDs = append(symIDs, id)
-	}
-	sort.Strings(symIDs)
-
-	var records []storage.SymbolFTSRecord
-	for _, id := range symIDs {
-		record := convertSymbolToFTSRecord(index.Symbols[id], index)
-		records = append(records, record)
+	// Build FTS records directly from the Symbols map.
+	// FTS5's 'rebuild' command produces deterministic output regardless of
+	// insert order — the underlying FTS5 B-tree is keyed by rowid, not by
+	// insertion sequence — so no sort is needed here.
+	records := make([]storage.SymbolFTSRecord, 0, len(index.Symbols))
+	for _, sym := range index.Symbols {
+		records = append(records, convertSymbolToFTSRecord(sym, index))
 	}
 
 	if len(records) == 0 {
