@@ -142,6 +142,17 @@ func (s *SCIPAdapter) LoadIndex() error {
 
 	s.index = index
 
+	// Pre-warm CallerIndex in background so the first FindCallers / getCallGraph
+	// call is instant instead of blocking for several seconds on a large repo.
+	// callerIndexOnce guarantees no duplicate work if FindCallers is called
+	// before this goroutine finishes.
+	idx := index
+	go func() {
+		idx.callerIndexOnce.Do(func() {
+			idx.CallerIndex = buildCallerIndex(idx.Documents)
+		})
+	}()
+
 	s.logger.Info("SCIP index loaded successfully",
 		"documents", len(index.Documents),
 		"symbols", len(index.Symbols),
