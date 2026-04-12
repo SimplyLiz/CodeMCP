@@ -56,6 +56,31 @@ type SymbolFTSRecord struct {
 	Language      string
 }
 
+// ftsDropTriggers lists DROP TRIGGER statements used before bulk operations.
+var ftsDropTriggers = []string{
+	"DROP TRIGGER IF EXISTS symbols_fts_ai",
+	"DROP TRIGGER IF EXISTS symbols_fts_au",
+	"DROP TRIGGER IF EXISTS symbols_fts_ad",
+}
+
+// ftsCreateTriggers lists CREATE TRIGGER statements used after bulk operations.
+var ftsCreateTriggers = []string{
+	`CREATE TRIGGER symbols_fts_ai AFTER INSERT ON symbols_fts_content BEGIN
+		INSERT INTO symbols_fts(rowid, name, documentation, signature)
+		VALUES (new.rowid, new.name, new.documentation, new.signature);
+	END`,
+	`CREATE TRIGGER symbols_fts_au AFTER UPDATE ON symbols_fts_content BEGIN
+		INSERT INTO symbols_fts(symbols_fts, rowid, name, documentation, signature)
+		VALUES ('delete', old.rowid, old.name, old.documentation, old.signature);
+		INSERT INTO symbols_fts(rowid, name, documentation, signature)
+		VALUES (new.rowid, new.name, new.documentation, new.signature);
+	END`,
+	`CREATE TRIGGER symbols_fts_ad AFTER DELETE ON symbols_fts_content BEGIN
+		INSERT INTO symbols_fts(symbols_fts, rowid, name, documentation, signature)
+		VALUES ('delete', old.rowid, old.name, old.documentation, old.signature);
+	END`,
+}
+
 // InitSchema creates the FTS5 table and triggers for symbols
 func (m *FTSManager) InitSchema() error {
 	// Create the base symbols_fts_content table first
@@ -102,30 +127,25 @@ func (m *FTSManager) InitSchema() error {
 		return fmt.Errorf("failed to create symbols_fts table: %w", err)
 	}
 
-	// Create triggers for automatic sync
-	triggers := []string{
-		// After INSERT trigger
+	// Create triggers for automatic sync (use IF NOT EXISTS variants for idempotency)
+	ifNotExists := []string{
 		`CREATE TRIGGER IF NOT EXISTS symbols_fts_ai AFTER INSERT ON symbols_fts_content BEGIN
 			INSERT INTO symbols_fts(rowid, name, documentation, signature)
 			VALUES (new.rowid, new.name, new.documentation, new.signature);
 		END`,
-
-		// After UPDATE trigger
 		`CREATE TRIGGER IF NOT EXISTS symbols_fts_au AFTER UPDATE ON symbols_fts_content BEGIN
 			INSERT INTO symbols_fts(symbols_fts, rowid, name, documentation, signature)
 			VALUES ('delete', old.rowid, old.name, old.documentation, old.signature);
 			INSERT INTO symbols_fts(rowid, name, documentation, signature)
 			VALUES (new.rowid, new.name, new.documentation, new.signature);
 		END`,
-
-		// After DELETE trigger
 		`CREATE TRIGGER IF NOT EXISTS symbols_fts_ad AFTER DELETE ON symbols_fts_content BEGIN
 			INSERT INTO symbols_fts(symbols_fts, rowid, name, documentation, signature)
 			VALUES ('delete', old.rowid, old.name, old.documentation, old.signature);
 		END`,
 	}
 
-	for _, trigger := range triggers {
+	for _, trigger := range ifNotExists {
 		if _, err := m.db.Exec(trigger); err != nil {
 			return fmt.Errorf("failed to create trigger: %w", err)
 		}
@@ -147,12 +167,7 @@ func (m *FTSManager) BulkInsert(ctx context.Context, symbols []SymbolFTSRecord) 
 	defer func() { _ = tx.Rollback() }()
 
 	// Drop triggers for bulk operation
-	triggerDrops := []string{
-		"DROP TRIGGER IF EXISTS symbols_fts_ai",
-		"DROP TRIGGER IF EXISTS symbols_fts_au",
-		"DROP TRIGGER IF EXISTS symbols_fts_ad",
-	}
-	for _, drop := range triggerDrops {
+	for _, drop := range ftsDropTriggers {
 		if _, dropErr := tx.ExecContext(ctx, drop); dropErr != nil {
 			return fmt.Errorf("failed to drop trigger: %w", dropErr)
 		}
@@ -190,23 +205,81 @@ func (m *FTSManager) BulkInsert(ctx context.Context, symbols []SymbolFTSRecord) 
 	}
 
 	// Re-create triggers
-	triggerCreates := []string{
-		`CREATE TRIGGER symbols_fts_ai AFTER INSERT ON symbols_fts_content BEGIN
-			INSERT INTO symbols_fts(rowid, name, documentation, signature)
-			VALUES (new.rowid, new.name, new.documentation, new.signature);
-		END`,
-		`CREATE TRIGGER symbols_fts_au AFTER UPDATE ON symbols_fts_content BEGIN
-			INSERT INTO symbols_fts(symbols_fts, rowid, name, documentation, signature)
-			VALUES ('delete', old.rowid, old.name, old.documentation, old.signature);
-			INSERT INTO symbols_fts(rowid, name, documentation, signature)
-			VALUES (new.rowid, new.name, new.documentation, new.signature);
-		END`,
-		`CREATE TRIGGER symbols_fts_ad AFTER DELETE ON symbols_fts_content BEGIN
-			INSERT INTO symbols_fts(symbols_fts, rowid, name, documentation, signature)
-			VALUES ('delete', old.rowid, old.name, old.documentation, old.signature);
-		END`,
+	for _, create := range ftsCreateTriggers {
+		if _, err := tx.ExecContext(ctx, create); err != nil {
+			return fmt.Errorf("failed to create trigger: %w", err)
+		}
 	}
-	for _, create := range triggerCreates {
+
+	return tx.Commit()
+}
+
+// BulkInsertFunc is a streaming variant of BulkInsert. Instead of requiring the
+// full []SymbolFTSRecord slice to be materialised up front, it calls fn with a
+// flush callback. fn should call flush(chunk) for each chunk of records it
+// produces; BulkInsertFunc handles all transaction setup, trigger management,
+// and the final FTS rebuild. This avoids peak-memory spikes for large repos.
+//
+// Example:
+//
+//	err = ftsManager.BulkInsertFunc(ctx, func(flush func([]SymbolFTSRecord) error) error {
+//	    chunk := make([]SymbolFTSRecord, 0, 10_000)
+//	    for _, sym := range symbols {
+//	        chunk = append(chunk, convert(sym))
+//	        if len(chunk) >= 10_000 {
+//	            if err := flush(chunk); err != nil { return err }
+//	            chunk = chunk[:0]
+//	        }
+//	    }
+//	    return flush(chunk)
+//	})
+func (m *FTSManager) BulkInsertFunc(ctx context.Context, fn func(flush func([]SymbolFTSRecord) error) error) error {
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	for _, drop := range ftsDropTriggers {
+		if _, dropErr := tx.ExecContext(ctx, drop); dropErr != nil {
+			return fmt.Errorf("failed to drop trigger: %w", dropErr)
+		}
+	}
+
+	if _, delErr := tx.ExecContext(ctx, "DELETE FROM symbols_fts_content"); delErr != nil {
+		return fmt.Errorf("failed to clear content: %w", delErr)
+	}
+
+	const ftsRowsPerBatch = 499
+	flush := func(symbols []SymbolFTSRecord) error {
+		for i := 0; i < len(symbols); i += ftsRowsPerBatch {
+			chunk := symbols[i:min(i+ftsRowsPerBatch, len(symbols))]
+			var sb strings.Builder
+			sb.WriteString("INSERT INTO symbols_fts_content (id, name, kind, documentation, signature, file_path, language) VALUES ")
+			args := make([]interface{}, 0, len(chunk)*7)
+			for j, sym := range chunk {
+				if j > 0 {
+					sb.WriteByte(',')
+				}
+				sb.WriteString("(?,?,?,?,?,?,?)")
+				args = append(args, sym.ID, sym.Name, sym.Kind, sym.Documentation, sym.Signature, sym.FilePath, sym.Language)
+			}
+			if _, err := tx.ExecContext(ctx, sb.String(), args...); err != nil {
+				return fmt.Errorf("failed to bulk insert symbols: %w", err)
+			}
+		}
+		return nil
+	}
+
+	if err := fn(flush); err != nil {
+		return err
+	}
+
+	if _, err := tx.ExecContext(ctx, "INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')"); err != nil {
+		return fmt.Errorf("failed to rebuild FTS: %w", err)
+	}
+
+	for _, create := range ftsCreateTriggers {
 		if _, err := tx.ExecContext(ctx, create); err != nil {
 			return fmt.Errorf("failed to create trigger: %w", err)
 		}
