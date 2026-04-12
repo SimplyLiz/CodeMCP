@@ -369,13 +369,36 @@ func (u *IndexUpdater) PopulateFromFullIndex(extractor *SCIPExtractor) error {
 
 	now := time.Now()
 
-	// PRAGMA synchronous=OFF for bulk load — safe: a failed full index is always re-run.
-	if _, err := u.db.Exec("PRAGMA synchronous=OFF"); err != nil {
-		u.logger.Warn("PRAGMA synchronous=OFF failed", "error", err.Error())
+	// Bulk-load PRAGMA tuning — safe because a failed full index is always re-run.
+	// synchronous=OFF: skip fsync on WAL writes (startup default: NORMAL).
+	// cache_size=-131072: 128 MB page cache vs startup's 64 MB — keeps more B-tree
+	//   nodes warm during the unique-key checks in callgraph/file_symbols.
+	// wal_autocheckpoint=0: disable automatic WAL checkpoints so the batch-loop
+	//   transactions aren't interrupted by checkpoint I/O mid-populate. One explicit
+	//   TRUNCATE checkpoint runs after the loop.
+	// (mmap_size and temp_store are already set at connection open.)
+	for _, pragma := range []string{
+		"PRAGMA synchronous=OFF",
+		"PRAGMA cache_size=-131072",
+		"PRAGMA wal_autocheckpoint=0",
+	} {
+		if _, err := u.db.Exec(pragma); err != nil {
+			u.logger.Warn("bulk PRAGMA failed", "pragma", pragma, "error", err.Error())
+		}
 	}
 	defer func() {
-		if _, err := u.db.Exec("PRAGMA synchronous=NORMAL"); err != nil {
-			u.logger.Warn("PRAGMA synchronous=NORMAL restore failed", "error", err.Error())
+		// Restore normal settings and do a single final WAL checkpoint.
+		for _, pragma := range []string{
+			"PRAGMA synchronous=NORMAL",
+			"PRAGMA cache_size=-64000",
+			"PRAGMA wal_autocheckpoint=1000",
+		} {
+			if _, err := u.db.Exec(pragma); err != nil {
+				u.logger.Warn("bulk PRAGMA restore failed", "pragma", pragma, "error", err.Error())
+			}
+		}
+		if _, err := u.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+			u.logger.Warn("WAL checkpoint after bulk load failed", "error", err.Error())
 		}
 	}()
 
@@ -448,7 +471,7 @@ func (u *IndexUpdater) PopulateFromFullIndex(extractor *SCIPExtractor) error {
 					}
 				}
 
-				// 3. Call edges
+				// 3. Call edges — prepared stmt, one exec per edge
 				if len(delta.CallEdges) > 0 {
 					if err := u.insertCallEdgesWithStmt(callStmt, delta); err != nil {
 						return fmt.Errorf("insert callgraph for %s: %w", delta.Path, err)
@@ -516,13 +539,36 @@ func (u *IndexUpdater) PopulateFromFullIndexStreaming(extractor *SCIPExtractor) 
 	}
 	u.logger.Info("Streaming populate: symbol map ready", "symbols", len(symbolToFile))
 
-	// PRAGMA synchronous=OFF for bulk load — safe: a failed full index is always re-run.
-	if _, err := u.db.Exec("PRAGMA synchronous=OFF"); err != nil {
-		u.logger.Warn("PRAGMA synchronous=OFF failed", "error", err.Error())
+	// Bulk-load PRAGMA tuning — safe because a failed full index is always re-run.
+	// synchronous=OFF: skip fsync on WAL writes (startup default: NORMAL).
+	// cache_size=-131072: 128 MB page cache vs startup's 64 MB — keeps more B-tree
+	//   nodes warm during the unique-key checks in callgraph/file_symbols.
+	// wal_autocheckpoint=0: disable automatic WAL checkpoints so the batch-loop
+	//   transactions aren't interrupted by checkpoint I/O mid-populate. One explicit
+	//   TRUNCATE checkpoint runs after the loop.
+	// (mmap_size and temp_store are already set at connection open.)
+	for _, pragma := range []string{
+		"PRAGMA synchronous=OFF",
+		"PRAGMA cache_size=-131072",
+		"PRAGMA wal_autocheckpoint=0",
+	} {
+		if _, err := u.db.Exec(pragma); err != nil {
+			u.logger.Warn("bulk PRAGMA failed", "pragma", pragma, "error", err.Error())
+		}
 	}
 	defer func() {
-		if _, err := u.db.Exec("PRAGMA synchronous=NORMAL"); err != nil {
-			u.logger.Warn("PRAGMA synchronous=NORMAL restore failed", "error", err.Error())
+		// Restore normal settings and do a single final WAL checkpoint.
+		for _, pragma := range []string{
+			"PRAGMA synchronous=NORMAL",
+			"PRAGMA cache_size=-64000",
+			"PRAGMA wal_autocheckpoint=1000",
+		} {
+			if _, err := u.db.Exec(pragma); err != nil {
+				u.logger.Warn("bulk PRAGMA restore failed", "pragma", pragma, "error", err.Error())
+			}
+		}
+		if _, err := u.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+			u.logger.Warn("WAL checkpoint after bulk load failed", "error", err.Error())
 		}
 	}()
 

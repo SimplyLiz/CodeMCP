@@ -163,20 +163,24 @@ func (m *FTSManager) BulkInsert(ctx context.Context, symbols []SymbolFTSRecord) 
 		return fmt.Errorf("failed to clear content: %w", delErr)
 	}
 
-	// Prepare insert statement
-	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO symbols_fts_content (id, name, kind, documentation, signature, file_path, language)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to prepare statement: %w", err)
-	}
-	defer func() { _ = stmt.Close() }()
-
-	// Insert all symbols
-	for _, sym := range symbols {
-		if _, err := stmt.ExecContext(ctx, sym.ID, sym.Name, sym.Kind, sym.Documentation, sym.Signature, sym.FilePath, sym.Language); err != nil {
-			return fmt.Errorf("failed to insert symbol %s: %w", sym.ID, err)
+	// Insert all symbols using batched multi-row VALUES.
+	// 7 params per row × 499 rows = 3493 params per INSERT — well under SQLite's 32766 limit.
+	// Replaces 2M individual stmt.Exec calls for a 50k-file repo with ~4k batched INSERTs.
+	const ftsRowsPerBatch = 499
+	for i := 0; i < len(symbols); i += ftsRowsPerBatch {
+		chunk := symbols[i:min(i+ftsRowsPerBatch, len(symbols))]
+		var sb strings.Builder
+		sb.WriteString("INSERT INTO symbols_fts_content (id, name, kind, documentation, signature, file_path, language) VALUES ")
+		args := make([]interface{}, 0, len(chunk)*7)
+		for j, sym := range chunk {
+			if j > 0 {
+				sb.WriteByte(',')
+			}
+			sb.WriteString("(?,?,?,?,?,?,?)")
+			args = append(args, sym.ID, sym.Name, sym.Kind, sym.Documentation, sym.Signature, sym.FilePath, sym.Language)
+		}
+		if _, err := tx.ExecContext(ctx, sb.String(), args...); err != nil {
+			return fmt.Errorf("failed to bulk insert symbols: %w", err)
 		}
 	}
 
