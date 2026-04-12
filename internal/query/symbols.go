@@ -516,27 +516,36 @@ func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (
 	const lipFallbackThreshold = 3
 	if len(results) < lipFallbackThreshold {
 		lipSymLimit := opts.Limit * 3
-		lipResults := SemanticSearchWithLIP(opts.Query, 20, func(fileURI string) []SearchResultItem {
-			// Convert file:// URI back to a repo-relative path.
-			relPath := strings.TrimPrefix(fileURI, "file://"+e.repoRoot)
-			relPath = strings.TrimPrefix(relPath, "/")
-			syms := e.symbolsForFile(ctx, relPath, lipSymLimit)
-			items := make([]SearchResultItem, 0, len(syms))
-			for _, s := range syms {
-				items = append(items, SearchResultItem{
-					StableId: s.ID,
-					Name:     s.Name,
-					Kind:     s.Kind,
-					ModuleId: filepath.Dir(s.FilePath),
-					Location: &LocationInfo{FileId: s.FilePath},
-					Visibility: &VisibilityInfo{
-						Visibility: inferVisibility(s.Name, s.Kind),
-						Confidence: 0.6,
-						Source:     "lip",
-					},
-				})
+		lipResults := SemanticSearchWithLIP(opts.Query, 20, func(fileURIs []string) map[string][]SearchResultItem {
+			// Convert file:// URIs back to repo-relative paths for the batch query.
+			relPaths := make([]string, len(fileURIs))
+			for i, uri := range fileURIs {
+				rel := strings.TrimPrefix(uri, "file://"+e.repoRoot)
+				relPaths[i] = strings.TrimPrefix(rel, "/")
 			}
-			return items
+			// One query for all files instead of N individual queries.
+			byPath := e.symbolsForFiles(ctx, relPaths, lipSymLimit)
+			out := make(map[string][]SearchResultItem, len(fileURIs))
+			for i, uri := range fileURIs {
+				syms := byPath[relPaths[i]]
+				items := make([]SearchResultItem, 0, len(syms))
+				for _, s := range syms {
+					items = append(items, SearchResultItem{
+						StableId: s.ID,
+						Name:     s.Name,
+						Kind:     s.Kind,
+						ModuleId: filepath.Dir(s.FilePath),
+						Location: &LocationInfo{FileId: s.FilePath},
+						Visibility: &VisibilityInfo{
+							Visibility: inferVisibility(s.Name, s.Kind),
+							Confidence: 0.6,
+							Source:     "lip",
+						},
+					})
+				}
+				out[uri] = items
+			}
+			return out
 		})
 		if len(lipResults) > 0 {
 			// Deduplicate against the existing (sparse) lexical results before merging.

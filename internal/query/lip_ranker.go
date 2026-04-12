@@ -124,22 +124,31 @@ func RerankWithLIP(_ context.Context, results []SearchResultItem, repoRoot, _ st
 // where FTS5 matches symbol names lexically, this finds semantically related
 // files even when the query terms don't appear literally in the code.
 //
-// fn is called with each URI returned by LIP; it should return any SearchResultItems
-// associated with that file (e.g. all symbols defined there). Results are ordered by
-// LIP similarity score (highest first) and deduplicated by symbol ID.
+// fn receives the full slice of URIs returned by LIP in a single call and should
+// return a map from URI to SearchResultItems for that file. This allows callers to
+// batch all symbol lookups into one round-trip instead of N.
+//
+// Results are ordered by LIP similarity score (highest first) and deduplicated by
+// symbol ID.
 //
 // Returns nil (not an error) when LIP is unavailable or returns no results.
-func SemanticSearchWithLIP(query string, topK int, fn func(fileURI string) []SearchResultItem) []SearchResultItem {
+func SemanticSearchWithLIP(query string, topK int, fn func(fileURIs []string) map[string][]SearchResultItem) []SearchResultItem {
 	hits, _ := lip.NearestByText(query, topK)
 	if len(hits) == 0 {
 		return nil
 	}
 
+	// Collect all URIs in hit order and resolve them in a single batch call.
+	uris := make([]string, len(hits))
+	for i, h := range hits {
+		uris[i] = h.URI
+	}
+	byURI := fn(uris)
+
 	seen := make(map[string]struct{}, topK*4)
 	var out []SearchResultItem
 	for _, h := range hits {
-		items := fn(h.URI)
-		for _, item := range items {
+		for _, item := range byURI[h.URI] {
 			id := item.StableId
 			if id == "" {
 				id = item.Name

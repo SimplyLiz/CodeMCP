@@ -245,3 +245,44 @@ func BenchmarkLoadSCIPIndexPhases(b *testing.B) {
 		_ = idx
 	}
 }
+
+// BenchmarkBuildCallerIndex measures the work the background pre-warm goroutine
+// performs after LoadIndex returns. This is the latency that was previously paid
+// on the *first* getCallGraph / traceUsage call; it is now absorbed in the
+// background.
+//
+// Synthetic documents use ~5 cross-file references per occurrence, which
+// approximates a real Go monorepo call-site density.
+func BenchmarkBuildCallerIndex(b *testing.B) {
+	scenarios := []struct {
+		name        string
+		nDocs       int
+		nSymsPerDoc int
+		nOccsPerDoc int
+	}{
+		{"small_1k_docs", 1_000, 20, 50},
+		{"medium_10k_docs", 10_000, 30, 100},
+		{"large_50k_docs", 50_000, 40, 200},
+	}
+
+	for _, sc := range scenarios {
+		sc := sc
+		b.Run(sc.name, func(b *testing.B) {
+			// Build the document list once; we re-use it across iterations so
+			// the benchmark measures only buildCallerIndex, not doc construction.
+			docs := make([]*Document, sc.nDocs)
+			for d := 0; d < sc.nDocs; d++ {
+				pb := syntheticDocument(d, sc.nDocs, sc.nSymsPerDoc, sc.nOccsPerDoc)
+				docs[d] = convertDocument(pb)
+			}
+			b.ReportMetric(float64(sc.nDocs), "docs")
+			b.ReportMetric(float64(sc.nDocs*sc.nSymsPerDoc), "syms")
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				ci := buildCallerIndex(docs)
+				_ = ci
+			}
+		})
+	}
+}
