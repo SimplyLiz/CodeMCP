@@ -12,6 +12,7 @@ import (
 	"github.com/SimplyLiz/CodeMCP/internal/errors"
 
 	scippb "github.com/sourcegraph/scip/bindings/go/scip"
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -19,6 +20,12 @@ import (
 type OccurrenceRef struct {
 	Doc *Document
 	Occ *Occurrence
+}
+
+// NameEntry is a compact (name, symbolID) pair used in the sorted NameIndex.
+type NameEntry struct {
+	Name string
+	ID   string
 }
 
 // SCIPIndex represents a loaded SCIP index
@@ -45,6 +52,20 @@ type SCIPIndex struct {
 	// Key format: "docPath:line:col" -> containerSymbolId
 	ContainerIndex map[string]string
 
+	// DefinitionIndex maps symbolId to its single definition OccurrenceRef for O(1) lookup.
+	// Built during the parallel doc phase alongside RefIndex.
+	DefinitionIndex map[string]*OccurrenceRef
+
+	// NameIndex is a sorted slice of (name, symbolId) pairs for cache-friendly search.
+	// Sorted ascending by Name so binary search works for prefix queries.
+	NameIndex []NameEntry
+
+	// CallerIndex maps each callee symbolID to the slice of caller symbolIDs.
+	// Populated lazily on the first FindCallers call via callerOnce.
+	// FindCallers is O(1) via this index instead of the former O(docs×syms×occs) scan.
+	CallerIndex     map[string][]string
+	callerIndexOnce sync.Once
+
 	// LoadedAt is when the index was loaded
 	LoadedAt time.Time
 
@@ -52,9 +73,15 @@ type SCIPIndex struct {
 	IndexedCommit string
 }
 
-// LoadSCIPIndex loads a SCIP index from the specified path
+// LoadSCIPIndex loads a SCIP index from the specified path.
 func LoadSCIPIndex(path string) (*SCIPIndex, error) {
-	// Check if file exists
+	return loadSCIPIndexInternal(path, "")
+}
+
+// loadSCIPIndexInternal is the implementation shared by LoadSCIPIndex and the
+// cache-aware path used by SCIPAdapter.
+func loadSCIPIndexInternal(path, cachePath string) (*SCIPIndex, error) {
+	// Verify the file exists before mmap'ing.
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return nil, errors.NewCkbError(
 			errors.IndexMissing,
@@ -65,8 +92,10 @@ func LoadSCIPIndex(path string) (*SCIPIndex, error) {
 		)
 	}
 
-	// Read the file
-	data, err := os.ReadFile(path)
+	// Memory-map the file. On Unix this avoids copying the raw bytes onto the
+	// Go heap: the OS manages paging and only pulls in pages that are actually
+	// accessed during the protobuf parse below.
+	data, cleanup, err := mapFile(path)
 	if err != nil {
 		return nil, errors.NewCkbError(
 			errors.InternalError,
@@ -76,14 +105,185 @@ func LoadSCIPIndex(path string) (*SCIPIndex, error) {
 			nil,
 		)
 	}
+	defer cleanup()
 
-	// Parse protobuf
-	var index scippb.Index
-	if err := proto.Unmarshal(data, &index); err != nil {
+	// ------------------------------------------------------------------ //
+	// Phase 1: stream-parse the Index wire format document by document.   //
+	// We never materialise a scippb.Index (which would hold all documents //
+	// simultaneously). Instead, each scippb.Document is unmarshalled      //
+	// individually, handed to a worker, then released.                    //
+	// ------------------------------------------------------------------ //
+	nWorkers := runtime.GOMAXPROCS(0)
+
+	// DiscardUnknown skips unknown proto fields during decode, reducing
+	// allocations from the reflection-based unknown-field accumulator.
+	discardUnknownOpts := proto.UnmarshalOptions{DiscardUnknown: true}
+
+	type docResult struct {
+		doc              *Document
+		symbols          map[string]*SymbolInformation
+		refEntries       map[string][]*OccurrenceRef
+		defEntries       map[string]*OccurrenceRef // first definition per symbol
+		containerEntries map[string]string
+	}
+
+	// Producer: parses the outer Index message and sends each document to workers.
+	type pbDocMsg struct{ doc *scippb.Document }
+	jobs := make(chan pbDocMsg, nWorkers*2)
+
+	var pbMeta *scippb.Metadata
+	var parseErr error
+
+	go func() {
+		defer close(jobs)
+		b := data
+		for len(b) > 0 {
+			num, typ, n := protowire.ConsumeTag(b)
+			if n < 0 {
+				parseErr = fmt.Errorf("protowire: invalid tag at offset %d", len(data)-len(b))
+				return
+			}
+			b = b[n:]
+
+			switch num {
+			case 1: // Metadata
+				v, n := protowire.ConsumeBytes(b)
+				if n < 0 {
+					b = b[max(n, 1):]
+					continue
+				}
+				var m scippb.Metadata
+				if discardUnknownOpts.Unmarshal(v, &m) == nil {
+					pbMeta = &m
+				}
+				b = b[n:]
+
+			case 2: // Document (protobuf:"bytes,2,rep,name=documents")
+				v, n := protowire.ConsumeBytes(b)
+				if n < 0 {
+					b = b[max(n, 1):]
+					continue
+				}
+				var d scippb.Document
+				if discardUnknownOpts.Unmarshal(v, &d) == nil {
+					jobs <- pbDocMsg{doc: &d}
+				}
+				b = b[n:]
+
+			default: // external_symbols (field 3) or unknown fields — skip
+				n := protowire.ConsumeFieldValue(num, typ, b)
+				if n < 0 {
+					b = b[max(n, 1):]
+					continue
+				}
+				b = b[n:]
+			}
+		}
+	}()
+
+	// Consumers: convert each document and build per-doc indexes.
+	var (
+		results   []docResult
+		resultsMu sync.Mutex
+		wg        sync.WaitGroup
+	)
+	for w := 0; w < nWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for msg := range jobs {
+				pbDoc := msg.doc
+				doc := convertDocument(pbDoc)
+
+				r := docResult{
+					doc:              doc,
+					symbols:          make(map[string]*SymbolInformation, len(doc.Symbols)),
+					refEntries:       make(map[string][]*OccurrenceRef, len(doc.Occurrences)/4+1),
+					defEntries:       make(map[string]*OccurrenceRef),
+					containerEntries: make(map[string]string),
+				}
+
+				for _, sym := range doc.Symbols {
+					r.symbols[sym.Symbol] = sym
+				}
+
+				// Pre-allocate one backing slice for all OccurrenceRefs in this
+				// document. Taking pointers into a pre-sized slice replaces the
+				// previous pattern of one heap allocation per occurrence, cutting
+				// allocations from O(total_occs) — 68M at 50k docs — down to
+				// O(docs) — 50k. The slice stays alive because the map values
+				// hold pointers into it.
+				backing := make([]OccurrenceRef, 0, len(doc.Occurrences))
+				for i := range doc.Occurrences {
+					occ := doc.Occurrences[i]
+					if occ.Symbol == "" {
+						continue
+					}
+					backing = append(backing, OccurrenceRef{Doc: doc, Occ: occ})
+				}
+				for i := range backing {
+					ref := &backing[i]
+					r.refEntries[ref.Occ.Symbol] = append(r.refEntries[ref.Occ.Symbol], ref)
+
+					// Capture first definition occurrence for DefinitionIndex.
+					if ref.Occ.SymbolRoles&SymbolRoleDefinition != 0 {
+						if _, exists := r.defEntries[ref.Occ.Symbol]; !exists {
+							r.defEntries[ref.Occ.Symbol] = ref
+						}
+					}
+				}
+
+				// ContainerIndex: sort def-scopes by size so first match = innermost.
+				type defScope struct {
+					symbol    string
+					startLine int32
+					endLine   int32
+				}
+				var defScopes []defScope
+				for _, occ := range doc.Occurrences {
+					if occ.SymbolRoles&SymbolRoleDefinition != 0 && len(occ.EnclosingRange) >= 3 {
+						startLine := occ.EnclosingRange[0]
+						endLine := startLine
+						if len(occ.EnclosingRange) >= 4 {
+							endLine = occ.EnclosingRange[2]
+						}
+						defScopes = append(defScopes, defScope{occ.Symbol, startLine, endLine})
+					}
+				}
+				if len(defScopes) > 0 {
+					sort.Slice(defScopes, func(a, b int) bool {
+						return (defScopes[a].endLine - defScopes[a].startLine) <
+							(defScopes[b].endLine - defScopes[b].startLine)
+					})
+					for _, occ := range doc.Occurrences {
+						if len(occ.Range) < 2 {
+							continue
+						}
+						occLine := occ.Range[0]
+						for di := range defScopes {
+							ds := &defScopes[di]
+							if occLine >= ds.startLine && occLine <= ds.endLine {
+								r.containerEntries[fmt.Sprintf("%s:%d:%d",
+									doc.RelativePath, occ.Range[0], occ.Range[1])] = ds.symbol
+								break
+							}
+						}
+					}
+				}
+
+				resultsMu.Lock()
+				results = append(results, r)
+				resultsMu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+
+	if parseErr != nil {
 		return nil, errors.NewCkbError(
 			errors.InternalError,
-			fmt.Sprintf("Failed to parse SCIP index from %s", path),
-			err,
+			fmt.Sprintf("Failed to parse SCIP index from %s: %v", path, parseErr),
+			parseErr,
 			[]errors.FixAction{
 				{
 					Type:        errors.RunCommand,
@@ -96,127 +296,37 @@ func LoadSCIPIndex(path string) (*SCIPIndex, error) {
 		)
 	}
 
-	// Convert to internal representation using parallel document processing.
-	nWorkers := runtime.GOMAXPROCS(0)
+	// ------------------------------------------------------------------ //
+	// Phase 2: merge per-doc results into the main index.                 //
+	// ------------------------------------------------------------------ //
 
-	// Phase 1: convert documents and build per-doc indexes in parallel.
-	type docResult struct {
-		doc              *Document
-		symbols          map[string]*SymbolInformation
-		refEntries       map[string][]*OccurrenceRef
-		containerEntries map[string]string
-	}
+	// Sort results by document path so RefIndex / DefinitionIndex construction
+	// is deterministic regardless of goroutine scheduling.
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].doc.RelativePath < results[j].doc.RelativePath
+	})
 
-	results := make([]docResult, len(index.Documents))
-
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, nWorkers)
-
-	for i, pbDoc := range index.Documents {
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(i int, pbDoc *scippb.Document) {
-			defer wg.Done()
-			defer func() { <-sem }()
-
-			doc := convertDocument(pbDoc)
-			r := docResult{
-				doc:              doc,
-				symbols:          make(map[string]*SymbolInformation, len(doc.Symbols)),
-				refEntries:       make(map[string][]*OccurrenceRef),
-				containerEntries: make(map[string]string),
-			}
-
-			// Index symbols
-			for _, sym := range doc.Symbols {
-				r.symbols[sym.Symbol] = sym
-			}
-
-			// Build inverted reference index for O(1) lookups
-			for _, occ := range doc.Occurrences {
-				if occ.Symbol != "" {
-					r.refEntries[occ.Symbol] = append(
-						r.refEntries[occ.Symbol],
-						&OccurrenceRef{Doc: doc, Occ: occ},
-					)
-				}
-			}
-
-			// Build container index.
-			// Collect definition occurrences that have enclosing ranges.
-			type defScope struct {
-				symbol    string
-				startLine int32
-				endLine   int32
-			}
-			var defScopes []defScope
-			for _, occ := range doc.Occurrences {
-				if occ.SymbolRoles&SymbolRoleDefinition != 0 && len(occ.EnclosingRange) >= 3 {
-					startLine := occ.EnclosingRange[0]
-					var endLine int32
-					if len(occ.EnclosingRange) >= 4 {
-						endLine = occ.EnclosingRange[2]
-					} else {
-						endLine = startLine
-					}
-					defScopes = append(defScopes, defScope{
-						symbol:    occ.Symbol,
-						startLine: startLine,
-						endLine:   endLine,
-					})
-				}
-			}
-
-			if len(defScopes) > 0 {
-				// Sort by scope size ascending so the first match is the innermost.
-				sort.Slice(defScopes, func(a, b int) bool {
-					return (defScopes[a].endLine - defScopes[a].startLine) <
-						(defScopes[b].endLine - defScopes[b].startLine)
-				})
-
-				for _, occ := range doc.Occurrences {
-					if len(occ.Range) < 2 {
-						continue
-					}
-					occLine := occ.Range[0]
-					for idx := range defScopes {
-						ds := &defScopes[idx]
-						if occLine >= ds.startLine && occLine <= ds.endLine {
-							key := fmt.Sprintf("%s:%d:%d", doc.RelativePath, occ.Range[0], occ.Range[1])
-							r.containerEntries[key] = ds.symbol
-							break // first match is innermost (sorted by size asc)
-						}
-					}
-				}
-			}
-
-			results[i] = r
-		}(i, pbDoc)
-	}
-	wg.Wait()
-
-	// Merge per-doc results into the main index (serial, fast map assignment).
-	// Pre-size maps based on doc count to reduce rehashing.
 	totalSyms := 0
 	totalRefs := 0
 	totalContainer := 0
-	docs := make([]*Document, len(results))
-	for i, r := range results {
-		docs[i] = r.doc
+	docs := make([]*Document, 0, len(results))
+	for _, r := range results {
+		docs = append(docs, r.doc)
 		totalSyms += len(r.symbols)
 		totalRefs += len(r.refEntries)
 		totalContainer += len(r.containerEntries)
 	}
 
 	scipIndex := &SCIPIndex{
-		Metadata:        convertMetadata(index.Metadata),
-		Documents:       docs,
-		DocumentsByPath: make(map[string]*Document, len(docs)),
-		Symbols:         make(map[string]*SymbolInformation, totalSyms),
-		RefIndex:        make(map[string][]*OccurrenceRef, totalRefs),
+		Metadata:         convertMetadata(pbMeta),
+		Documents:        docs,
+		DocumentsByPath:  make(map[string]*Document, len(docs)),
+		Symbols:          make(map[string]*SymbolInformation, totalSyms),
+		RefIndex:         make(map[string][]*OccurrenceRef, totalRefs),
 		ConvertedSymbols: make(map[string]*SCIPSymbol, totalSyms),
-		ContainerIndex:  make(map[string]string, totalContainer),
-		LoadedAt:        time.Now(),
+		ContainerIndex:   make(map[string]string, totalContainer),
+		DefinitionIndex:  make(map[string]*OccurrenceRef, totalSyms/2),
+		LoadedAt:         time.Now(),
 	}
 
 	for _, doc := range docs {
@@ -232,57 +342,107 @@ func LoadSCIPIndex(path string) (*SCIPIndex, error) {
 		for k, v := range r.containerEntries {
 			scipIndex.ContainerIndex[k] = v
 		}
-	}
-
-	// Phase 2: pre-convert all symbols in parallel.
-	// RefIndex and Symbols are fully built at this point (read-only from here).
-	type symResult struct {
-		id  string
-		sym *SCIPSymbol
-	}
-
-	symIDs := make([]string, 0, len(scipIndex.Symbols))
-	for id := range scipIndex.Symbols {
-		symIDs = append(symIDs, id)
-	}
-
-	symCh := make(chan symResult, len(symIDs))
-	batchSize := (len(symIDs) + nWorkers - 1) / nWorkers
-	if batchSize < 1 {
-		batchSize = 1
-	}
-
-	var wg2 sync.WaitGroup
-	for b := 0; b*batchSize < len(symIDs); b++ {
-		start := b * batchSize
-		end := start + batchSize
-		if end > len(symIDs) {
-			end = len(symIDs)
-		}
-		wg2.Add(1)
-		go func(ids []string) {
-			defer wg2.Done()
-			for _, id := range ids {
-				if converted, err := convertToSCIPSymbol(scipIndex.Symbols[id], scipIndex); err == nil {
-					symCh <- symResult{id: id, sym: converted}
-				}
+		for k, v := range r.defEntries {
+			if _, exists := scipIndex.DefinitionIndex[k]; !exists {
+				scipIndex.DefinitionIndex[k] = v
 			}
-		}(symIDs[start:end])
-	}
-	go func() {
-		wg2.Wait()
-		close(symCh)
-	}()
-	for r := range symCh {
-		scipIndex.ConvertedSymbols[r.id] = r.sym
+		}
 	}
 
-	// Extract indexed commit from metadata if available
+	// Extract indexed commit from metadata.
 	if scipIndex.Metadata != nil && scipIndex.Metadata.ToolInfo != nil {
 		scipIndex.IndexedCommit = extractCommitFromToolInfo(scipIndex.Metadata.ToolInfo)
 	}
 
+	// ------------------------------------------------------------------ //
+	// Phase 3: ConvertedSymbols + NameIndex.                              //
+	// Check the derived cache first — if valid, skip the expensive        //
+	// parallel symbol-conversion pass.                                    //
+	// ------------------------------------------------------------------ //
+	var cached *derivedCache
+	if cachePath != "" {
+		cached = loadDerivedCache(cachePath, path)
+	}
+
+	if cached != nil {
+		// Fast path: restore from cache.
+		applyCachedDerived(scipIndex, cached)
+	} else {
+		// Slow path: parallel symbol conversion.
+		type symResult struct {
+			id  string
+			sym *SCIPSymbol
+		}
+		symIDs := make([]string, 0, len(scipIndex.Symbols))
+		for id := range scipIndex.Symbols {
+			symIDs = append(symIDs, id)
+		}
+
+		symCh := make(chan symResult, len(symIDs))
+		batchSize := (len(symIDs) + nWorkers - 1) / nWorkers
+		if batchSize < 1 {
+			batchSize = 1
+		}
+
+		var wg2 sync.WaitGroup
+		for b := 0; b*batchSize < len(symIDs); b++ {
+			start := b * batchSize
+			end := start + batchSize
+			if end > len(symIDs) {
+				end = len(symIDs)
+			}
+			wg2.Add(1)
+			go func(ids []string) {
+				defer wg2.Done()
+				for _, id := range ids {
+					if converted, err := convertToSCIPSymbol(scipIndex.Symbols[id], scipIndex); err == nil {
+						symCh <- symResult{id: id, sym: converted}
+					}
+				}
+			}(symIDs[start:end])
+		}
+		go func() {
+			wg2.Wait()
+			close(symCh)
+		}()
+		for r := range symCh {
+			scipIndex.ConvertedSymbols[r.id] = r.sym
+		}
+
+		// Build NameIndex: sorted (name, id) pairs for cache-friendly search.
+		// Sort by (Name, ID) to get a total order — equal names would otherwise
+		// produce non-deterministic output since the map iteration order is random.
+		nameIdx := make([]NameEntry, 0, len(scipIndex.ConvertedSymbols))
+		for id, sym := range scipIndex.ConvertedSymbols {
+			nameIdx = append(nameIdx, NameEntry{Name: sym.Name, ID: id})
+		}
+		sort.Slice(nameIdx, func(a, b int) bool {
+			if nameIdx[a].Name != nameIdx[b].Name {
+				return nameIdx[a].Name < nameIdx[b].Name
+			}
+			return nameIdx[a].ID < nameIdx[b].ID
+		})
+		scipIndex.NameIndex = nameIdx
+
+		// Persist to cache for next startup.
+		if cachePath != "" {
+			go saveDerivedCache(cachePath, scipIndex, path)
+		}
+	}
+
+	// Phase 4 (CallerIndex) is built lazily on the first FindCallers call.
+	// This keeps load time clean and avoids ~22k persistent heap objects on
+	// small indexes that would otherwise inflate GC pressure at startup.
+
 	return scipIndex, nil
+}
+
+// max returns the larger of a and b (int).
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // IsStale checks if the index is stale compared to the current HEAD commit
@@ -336,15 +496,6 @@ func convertMetadata(meta *scippb.Metadata) *Metadata {
 		ProjectRoot:          meta.ProjectRoot,
 		TextDocumentEncoding: meta.TextDocumentEncoding.String(),
 	}
-}
-
-// convertDocuments converts protobuf documents to internal representation
-func convertDocuments(docs []*scippb.Document) []*Document {
-	result := make([]*Document, len(docs))
-	for i, doc := range docs {
-		result[i] = convertDocument(doc)
-	}
-	return result
 }
 
 // convertDocument converts a single protobuf document

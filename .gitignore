@@ -7,9 +7,16 @@ bin/
 # Binaries
 /ckb
 /ckb-test
+/ckb-bench
 coverage.out
 *_test
 *.scip
+
+# Registry / credential tokens
+.mcpregistry_*
+
+# Marketing assets (large binaries)
+docs/marketing/*.zip
 
 # Go build artifacts
 *.exe
@@ -37,3 +44,6 @@ Thumbs.db
 testdata/fixtures/typescript/node_modules/
 testdata/**/.dart_tool/
 testdata/**/pubspec.lock
+
+# Vendored Cartographer Rust build artifacts
+third_party/cartographer/mapper-core/cartographer/target/

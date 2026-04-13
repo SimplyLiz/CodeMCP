@@ -2,6 +2,7 @@ package compliance
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -36,13 +37,13 @@ import (
 // latency becomes a bottleneck on large repos.
 //
 // Use benchstat for before/after comparison:
-//   go test -bench=. ./internal/compliance/... -count=10 > before.txt
+//   go test -bench=. -benchmem -count=6 -run=^$ ./internal/compliance > before.txt
 //   # make changes
-//   go test -bench=. ./internal/compliance/... -count=10 > after.txt
+//   go test -bench=. -benchmem -count=6 -run=^$ ./internal/compliance > after.txt
 //   benchstat before.txt after.txt
 //
 // To update the stored baseline:
-//   go test -bench=. ./internal/compliance/... -count=10 > testdata/benchmarks/compliance_baseline.txt
+//   go test -bench=. -benchmem -count=6 -run=^$ ./internal/compliance > testdata/benchmarks/compliance_baseline.txt
 // =============================================================================
 
 // BenchmarkNormalizeIdentifier measures identifier normalization (camelCase → snake_case).
@@ -89,10 +90,12 @@ func BenchmarkExtractIdentifiers(b *testing.B) {
 		"const MAX_RETRY_COUNT = 3", // constant
 	}
 
+	seen := make(map[string]bool, 16)
+	result := make([]string, 0, 16)
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		extractIdentifiers(lines[i%len(lines)])
+		result = extractIdentifiers(lines[i%len(lines)], result, seen)
 	}
 }
 
@@ -261,8 +264,11 @@ func BenchmarkScannerPipeline(b *testing.B) {
 		b.Run(sz.name, func(b *testing.B) {
 			b.SetBytes(totalBytes)
 			b.ReportAllocs()
-			b.ResetTimer()
 
+			seen := make(map[string]bool, 32)
+			identBuf := make([]string, 0, 32)
+
+			b.ResetTimer()
 			for iter := 0; iter < b.N; iter++ {
 				currentContainer := ""
 				for _, line := range lines {
@@ -272,8 +278,8 @@ func BenchmarkScannerPipeline(b *testing.B) {
 					if strings.HasPrefix(strings.TrimSpace(line), "}") {
 						currentContainer = ""
 					}
-					identifiers := extractIdentifiers(line)
-					for _, ident := range identifiers {
+					identBuf = extractIdentifiers(line, identBuf, seen)
+					for _, ident := range identBuf {
 						normalized := normalizeIdentifier(ident)
 						pii.matchPII(normalized)
 						_ = currentContainer
@@ -318,9 +324,17 @@ func BenchmarkAuditFileSet(b *testing.B) {
 		b.Run(set.name, func(b *testing.B) {
 			b.SetBytes(totalBytes)
 			b.ReportAllocs()
-			b.ResetTimer()
 
+			seen := make(map[string]bool, 32)
+			identBuf := make([]string, 0, 32)
+
+			b.ResetTimer()
 			for iter := 0; iter < b.N; iter++ {
+				// Force GC before each full-repo iteration so pauses land
+				// out-of-band rather than inside the timed section.
+				runtime.GC()
+				b.ResetTimer()
+
 				for f := 0; f < set.files; f++ {
 					currentContainer := ""
 					for _, line := range fileLines {
@@ -330,8 +344,8 @@ func BenchmarkAuditFileSet(b *testing.B) {
 						if strings.HasPrefix(strings.TrimSpace(line), "}") {
 							currentContainer = ""
 						}
-						identifiers := extractIdentifiers(line)
-						for _, ident := range identifiers {
+						identBuf = extractIdentifiers(line, identBuf, seen)
+						for _, ident := range identBuf {
 							normalized := normalizeIdentifier(ident)
 							pii.matchPII(normalized)
 							_ = currentContainer

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"time"
 
 	"github.com/SimplyLiz/CodeMCP/internal/project"
@@ -225,11 +226,31 @@ func (i *IncrementalIndexer) GetIndexState() IndexState {
 	return state
 }
 
+// scipStreamingThresholdBytes is the index file size above which
+// PopulateFromFullIndexStreaming is used instead of PopulateFromFullIndex.
+// Below this size the single-pass path is faster (no double proto-unmarshal
+// overhead). Above it the GC pressure from holding the full index in memory
+// dominates, and streaming's lower peak heap wins decisively.
+//
+// Measured crossover (Apple M4 Pro, synthetic benchmark):
+//
+//	small  1k docs  /  4 MB  → old path faster (+14%)
+//	medium 10k docs / 80 MB  → old path faster (+20%)
+//	large  50k docs / 738MB  → streaming faster (-4% warm, -83% cold GC)
+const scipStreamingThresholdBytes = 200 << 20 // 200 MB
+
 // PopulateAfterFullIndex populates tracking tables after a full reindex
 // This enables subsequent incremental updates
 func (i *IncrementalIndexer) PopulateAfterFullIndex() error {
-	// Populate file tracking from SCIP index
-	if err := i.updater.PopulateFromFullIndex(i.extractor); err != nil {
+	// Choose populate strategy based on index file size.
+	// Streaming avoids materialising the full SCIPIndex in RAM, which eliminates
+	// GC pressure on large repos. For small indexes the double-pass overhead
+	// outweighs the benefit, so we keep the faster single-pass path there.
+	populate := i.updater.PopulateFromFullIndex
+	if fi, err := os.Stat(i.extractor.indexPath); err == nil && fi.Size() > scipStreamingThresholdBytes {
+		populate = i.updater.PopulateFromFullIndexStreaming
+	}
+	if err := populate(i.extractor); err != nil {
 		return fmt.Errorf("failed to populate from full index: %w", err)
 	}
 

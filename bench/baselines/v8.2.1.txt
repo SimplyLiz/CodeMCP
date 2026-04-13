@@ -1,0 +1,84 @@
+# CKB v8.2.1 — scale benchmark baseline
+# Hardware: Apple M4 Pro, arm64, macOS 25.1.0
+# Go:       go1.26.1
+# Date:     2026-04-10
+# Flags:    -benchmem -count=3 (small/medium), -count=3 N=1 forced (large — too slow for more)
+#
+# Purpose: first baseline for the large-repo indexing bottleneck investigation.
+# A customer repo (~50k files) caused scip-go to take 1h and ckb index to
+# timeout at 10h+. These numbers are the before-fix reference point.
+#
+# How to compare a future version against this baseline:
+#
+#   go test -bench=BenchmarkLoadSCIPIndexScale -benchmem -count=6 -run=^$ \
+#       ./internal/backends/scip/ > /tmp/after.txt
+#   benchstat bench/baselines/v8.2.1.txt /tmp/after.txt
+#
+#   go test -bench="BenchmarkApplyDeltaScale|BenchmarkGetDependenciesPerFile|BenchmarkUpdateFileDepsHotPath" \
+#       -benchmem -count=6 -run=^$ ./internal/incremental/ >> /tmp/after.txt
+#   benchstat bench/baselines/v8.2.1.txt /tmp/after.txt
+
+goos: darwin
+goarch: arm64
+pkg: github.com/SimplyLiz/CodeMCP/internal/backends/scip
+cpu: Apple M4 Pro
+BenchmarkLoadSCIPIndexScale/small_1k_docs-14	      66	  20036155 ns/op	44270854 B/op	  424649 allocs/op
+BenchmarkLoadSCIPIndexScale/small_1k_docs-14	      58	  19796468 ns/op	44269924 B/op	  424647 allocs/op
+BenchmarkLoadSCIPIndexScale/small_1k_docs-14	      50	  21626164 ns/op	44270031 B/op	  424647 allocs/op
+BenchmarkLoadSCIPIndexScale/medium_10k_docs-14	       4	 316235916 ns/op	817150332 B/op	 7634704 allocs/op
+BenchmarkLoadSCIPIndexScale/medium_10k_docs-14	       3	 335014070 ns/op	817149885 B/op	 7634700 allocs/op
+BenchmarkLoadSCIPIndexScale/medium_10k_docs-14	       4	 325795614 ns/op	817149864 B/op	 7634700 allocs/op
+BenchmarkLoadSCIPIndexScale/large_50k_docs-14	       1	7607670583 ns/op	6918114200 B/op	68155103 allocs/op
+BenchmarkLoadSCIPIndexScale/large_50k_docs-14	       1	8502232833 ns/op	6918115528 B/op	68155114 allocs/op
+BenchmarkLoadSCIPIndexScale/large_50k_docs-14	       1	8159184333 ns/op	6918116360 B/op	68155122 allocs/op
+PASS
+ok  	github.com/SimplyLiz/CodeMCP/internal/backends/scip	59.316s
+
+goos: darwin
+goarch: arm64
+pkg: github.com/SimplyLiz/CodeMCP/internal/incremental
+cpu: Apple M4 Pro
+BenchmarkApplyDeltaScale/small_1k_files-14	       4	 301173218 ns/op	16495268 B/op	  527048 allocs/op
+BenchmarkApplyDeltaScale/small_1k_files-14	       4	 288278282 ns/op	16495332 B/op	  527048 allocs/op
+BenchmarkApplyDeltaScale/small_1k_files-14	       4	 259131678 ns/op	16495304 B/op	  527047 allocs/op
+BenchmarkApplyDeltaScale/medium_10k_files-14	       1	4729043499 ns/op	228371568 B/op	 7350072 allocs/op
+BenchmarkApplyDeltaScale/medium_10k_files-14	       1	4645922168 ns/op	228261440 B/op	 7350061 allocs/op
+BenchmarkApplyDeltaScale/medium_10k_files-14	       1	5161772916 ns/op	228261216 B/op	 7350059 allocs/op
+BenchmarkApplyDeltaScale/large_50k_files-14	       1	50414377542 ns/op	1460179840 B/op	47750064 allocs/op
+BenchmarkApplyDeltaScale/large_50k_files-14	       1	52151381251 ns/op	1460179840 B/op	47750064 allocs/op
+BenchmarkApplyDeltaScale/large_50k_files-14	       1	47769966667 ns/op	1460179840 B/op	47750064 allocs/op
+BenchmarkExtractFileDeltaScale/10syms_50occs-14	   76534	     16081 ns/op	   20569 B/op	     217 allocs/op
+BenchmarkExtractFileDeltaScale/10syms_50occs-14	   74947	     15129 ns/op	   20569 B/op	     217 allocs/op
+BenchmarkExtractFileDeltaScale/10syms_50occs-14	   80034	     15612 ns/op	   20568 B/op	     217 allocs/op
+BenchmarkExtractFileDeltaScale/30syms_200occs-14	   23862	     72689 ns/op	   69344 B/op	     751 allocs/op
+BenchmarkExtractFileDeltaScale/30syms_200occs-14	   20800	     50719 ns/op	   69345 B/op	     751 allocs/op
+BenchmarkExtractFileDeltaScale/30syms_200occs-14	   25150	     46289 ns/op	   69344 B/op	     751 allocs/op
+BenchmarkExtractFileDeltaScale/50syms_500occs-14	   10000	    108760 ns/op	  143987 B/op	    1734 allocs/op
+BenchmarkExtractFileDeltaScale/50syms_500occs-14	   10000	    108254 ns/op	  143986 B/op	    1734 allocs/op
+BenchmarkExtractFileDeltaScale/50syms_500occs-14	   10000	    117505 ns/op	  143989 B/op	    1734 allocs/op
+BenchmarkUpdateFileDepsHotPath/50refs-14	     330	   3635980 ns/op	  144219 B/op	    4001 allocs/op
+BenchmarkUpdateFileDepsHotPath/50refs-14	     336	   4147556 ns/op	  144103 B/op	    4000 allocs/op
+BenchmarkUpdateFileDepsHotPath/50refs-14	     302	   3968605 ns/op	  144140 B/op	    4001 allocs/op
+BenchmarkUpdateFileDepsHotPath/200refs-14	     312	   3728398 ns/op	  144206 B/op	    4001 allocs/op
+BenchmarkUpdateFileDepsHotPath/200refs-14	     336	   3738264 ns/op	  144105 B/op	    4000 allocs/op
+BenchmarkUpdateFileDepsHotPath/200refs-14	     325	   3838651 ns/op	  144153 B/op	    4001 allocs/op
+BenchmarkUpdateFileDepsHotPath/500refs-14	     327	   3860694 ns/op	  145830 B/op	    4101 allocs/op
+BenchmarkUpdateFileDepsHotPath/500refs-14	     321	   4170416 ns/op	  145759 B/op	    4101 allocs/op
+BenchmarkUpdateFileDepsHotPath/500refs-14	     265	   3916841 ns/op	  145775 B/op	    4101 allocs/op
+BenchmarkGetDependenciesPerFile/100files-14	    1632	    691755 ns/op	  148801 B/op	    5600 allocs/op
+BenchmarkGetDependenciesPerFile/100files-14	    1737	    680417 ns/op	  148801 B/op	    5600 allocs/op
+BenchmarkGetDependenciesPerFile/100files-14	    1723	    673102 ns/op	  148801 B/op	    5600 allocs/op
+BenchmarkGetDependenciesPerFile/1000files-14	     168	   6864207 ns/op	 1528013 B/op	   56000 allocs/op
+BenchmarkGetDependenciesPerFile/1000files-14	     171	   7047773 ns/op	 1528012 B/op	   56000 allocs/op
+BenchmarkGetDependenciesPerFile/1000files-14	     163	   7195366 ns/op	 1528012 B/op	   56000 allocs/op
+BenchmarkGetDependenciesPerFile/10000files-14	      16	  70651945 ns/op	15680113 B/op	  560000 allocs/op
+BenchmarkGetDependenciesPerFile/10000files-14	      14	  71967268 ns/op	15680119 B/op	  560000 allocs/op
+BenchmarkGetDependenciesPerFile/10000files-14	      14	  96040667 ns/op	15680117 B/op	  560000 allocs/op
+BenchmarkSyntheticDeltaAlloc/1k_files-14	      68	  15927142 ns/op	29876053 B/op	  254580 allocs/op
+BenchmarkSyntheticDeltaAlloc/1k_files-14	      70	  15642024 ns/op	29875703 B/op	  254579 allocs/op
+BenchmarkSyntheticDeltaAlloc/1k_files-14	      73	  15738229 ns/op	29875982 B/op	  254580 allocs/op
+BenchmarkSyntheticDeltaAlloc/10k_files-14	       4	 255967458 ns/op	449031250 B/op	 4460566 allocs/op
+BenchmarkSyntheticDeltaAlloc/10k_files-14	       5	 246669508 ns/op	449027454 B/op	 4460556 allocs/op
+BenchmarkSyntheticDeltaAlloc/10k_files-14	       4	 257921438 ns/op	449029052 B/op	 4460557 allocs/op
+PASS
+ok  	github.com/SimplyLiz/CodeMCP/internal/incremental	257.434s

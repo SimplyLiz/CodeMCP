@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
 	"github.com/SimplyLiz/CodeMCP/internal/index"
 	"github.com/SimplyLiz/CodeMCP/internal/tier"
 	"github.com/SimplyLiz/CodeMCP/internal/version"
@@ -140,6 +141,35 @@ func (e *Engine) getBackendStatuses(ctx context.Context) []BackendStatus {
 		gitStatus.Details = "Ready"
 	}
 	statuses = append(statuses, gitStatus)
+
+	// Cartographer backend (optional — only present when built with -tags cartographer)
+	cartographerStatus := BackendStatus{
+		Id:        "cartographer",
+		Available: cartographer.Available(),
+		Capabilities: []string{
+			"layer-analysis",      // CheckLayers in PR review
+			"health-scoring",      // MapProject in getArchitecture, Health in review pipeline
+			"hidden-coupling",     // HiddenCoupling in PR coupling check
+			"churn-analysis",      // GitChurn in blast-radius check
+			"cochange-analysis",   // GitCochange in getHotspots
+			"dead-code-detection", // UnreferencedSymbols in PR dead-code check
+			"simulate-change",     // SimulateChange in analyzeImpact
+			"semidiff",            // Semidiff in summarizeDiff
+			"module-skeleton",     // GetModuleContext in getModuleOverview
+			"skeleton-extraction", // SkeletonMap in exportForLLM
+			"ranked-skeleton",     // RankedSkeleton in exportForLLM (tokenBudget)
+		},
+	}
+	if cartographer.Available() {
+		if ver, err := cartographer.Version(); err == nil {
+			cartographerStatus.Healthy = true
+			cartographerStatus.Details = "v" + ver
+		} else {
+			cartographerStatus.Healthy = false
+			cartographerStatus.Warning = err.Error()
+		}
+	}
+	statuses = append(statuses, cartographerStatus)
 
 	return statuses
 }

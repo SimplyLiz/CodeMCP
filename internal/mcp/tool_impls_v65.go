@@ -9,6 +9,7 @@ import (
 	"github.com/SimplyLiz/CodeMCP/internal/errors"
 	"github.com/SimplyLiz/CodeMCP/internal/explain"
 	"github.com/SimplyLiz/CodeMCP/internal/export"
+	"github.com/SimplyLiz/CodeMCP/internal/output"
 )
 
 // v6.5 Developer Intelligence tool implementations
@@ -94,8 +95,21 @@ func (s *MCPServer) toolAnalyzeCoupling(params map[string]interface{}) (*envelop
 		return nil, errors.NewOperationError("analyze coupling", err)
 	}
 
+	var drilldowns []output.Drilldown
+	for _, c := range result.Correlations {
+		if c.Level == "high" {
+			drilldowns = append(drilldowns, output.Drilldown{
+				Label:          "Detect shotgun surgery smell across the repo",
+				Query:          "detectShotgunSurgery",
+				RelevanceScore: 0.85,
+			})
+			break
+		}
+	}
+
 	return NewToolResponse().
 		Data(result).
+		WithDrilldowns(drilldowns).
 		Build(), nil
 }
 
@@ -167,14 +181,33 @@ func (s *MCPServer) toolExportForLLM(params map[string]interface{}) (*envelope.R
 		IncludeContracts:  includeContracts,
 	})
 
-	return NewToolResponse().
-		Data(map[string]interface{}{
-			"text":      formatted,
-			"metadata":  result.Metadata,
-			"moduleMap": organized.ModuleMap,
-			"bridges":   organized.Bridges,
-		}).
-		Build(), nil
+	data := map[string]interface{}{
+		"text":      formatted,
+		"metadata":  result.Metadata,
+		"moduleMap": organized.ModuleMap,
+		"bridges":   organized.Bridges,
+	}
+
+	// Augment with Cartographer skeleton when a token budget is requested.
+	// Cartographer's signature-only extraction reduces token usage by ~90% vs full source.
+	if tokenBudget, ok := params["tokenBudget"].(float64); ok && tokenBudget > 0 {
+		focusFiles, _ := params["focusFiles"].([]interface{})
+		focus := make([]string, 0, len(focusFiles))
+		for _, f := range focusFiles {
+			if s, ok := f.(string); ok {
+				focus = append(focus, s)
+			}
+		}
+		if skeleton, serr := s.engine().GetRankedSkeleton(focus, uint32(tokenBudget)); serr == nil && skeleton != nil {
+			data["rankedSkeleton"] = skeleton
+		}
+	} else {
+		if skeleton, serr := s.engine().GetSkeleton("standard"); serr == nil && skeleton != nil {
+			data["skeleton"] = skeleton
+		}
+	}
+
+	return NewToolResponse().Data(data).Build(), nil
 }
 
 // toolAuditRisk finds risky code based on multiple signals

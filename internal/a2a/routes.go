@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	"github.com/SimplyLiz/CodeMCP/internal/index"
 )
@@ -23,8 +24,9 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("POST /message:stream", s.handleHTTPMessageStream)
 	s.router.HandleFunc("GET /tasks/{id}", s.handleHTTPGetTask)
 	s.router.HandleFunc("GET /tasks", s.handleHTTPListTasks)
-	s.router.HandleFunc("POST /tasks/{id}:cancel", s.handleHTTPCancelTask)
-	s.router.HandleFunc("POST /tasks/{id}:subscribe", s.handleHTTPSubscribeTask)
+	// Go 1.22 ServeMux rejects "{id}:action" patterns (colon after wildcard segment).
+	// Use a prefix catch-all for POST /tasks/ and dispatch by action suffix.
+	s.router.HandleFunc("POST /tasks/", s.handleHTTPTaskActions)
 
 	// Push notification config CRUD
 	s.router.HandleFunc("POST /tasks/{id}/pushNotificationConfigs", s.handleHTTPCreatePushConfig)
@@ -34,6 +36,39 @@ func (s *Server) registerRoutes() {
 
 	// Health
 	s.router.HandleFunc("GET /health", s.handleHealth)
+}
+
+// handleHTTPTaskActions dispatches POST /tasks/<id>:cancel and POST /tasks/<id>:subscribe.
+// Go 1.22's net/http.ServeMux rejects "{id}:action" patterns (literal colon after a
+// wildcard segment is not allowed). We register a prefix catch-all and parse manually.
+func (s *Server) handleHTTPTaskActions(w http.ResponseWriter, r *http.Request) {
+	// path is everything after "/tasks/"
+	path := strings.TrimPrefix(r.URL.Path, "/tasks/")
+
+	var taskID, action string
+	if idx := strings.LastIndex(path, ":"); idx >= 0 {
+		taskID = path[:idx]
+		action = path[idx+1:]
+	} else {
+		taskID = path
+	}
+
+	if taskID == "" {
+		writeA2AError(w, NewInvalidParamsError("task ID required"))
+		return
+	}
+
+	// Inject the task ID so existing handlers can read it via r.PathValue("id").
+	r.SetPathValue("id", taskID)
+
+	switch action {
+	case "cancel":
+		s.handleHTTPCancelTask(w, r)
+	case "subscribe":
+		s.handleHTTPSubscribeTask(w, r)
+	default:
+		http.NotFound(w, r)
+	}
 }
 
 // handleHealth returns health with repo init status, index freshness, and suggestions.

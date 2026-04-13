@@ -1914,6 +1914,109 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		// v8.6 Cartographer context tools
+		{
+			Name:        "detectShotgunSurgery",
+			Description: "Detect files exhibiting the shotgun surgery smell: a change to them historically required simultaneous edits across many unrelated files. Ranks results by co-change dispersion score. Use before large refactors to identify high-blast-radius files.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"description": "Max number of commits to analyse (default 100)",
+					},
+					"min_partners": map[string]interface{}{
+						"type":        "integer",
+						"description": "Minimum co-change partner count to qualify as a suspect (default 3)",
+					},
+				},
+			},
+		},
+		{
+			Name:        "getArchitecturalEvolution",
+			Description: "Show how architectural health (health score, debt indicators) has changed over git history. Returns snapshots ranked by time with a trend label (improving/stable/degrading) and actionable recommendations.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"days": map[string]interface{}{
+						"type":        "integer",
+						"description": "Number of days of git history to scan (default 90)",
+					},
+				},
+			},
+		},
+		{
+			Name:        "getBlastRadius",
+			Description: "Graph-theoretic blast radius for a file or module: returns direct dependents and dependencies up to max_related hops. Works without a SCIP index; complements analyzeImpact for repos without indexing.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"target": map[string]interface{}{
+						"type":        "string",
+						"description": "Repo-relative file path or module ID to analyse",
+					},
+					"max_related": map[string]interface{}{
+						"type":        "integer",
+						"description": "Maximum related modules to return (default 50)",
+					},
+				},
+				"required": []string{"target"},
+			},
+		},
+		{
+			Name:        "queryContext",
+			Description: "Retrieve the most relevant code context for a task or question. Runs Cartographer's PKG retrieval pipeline: BM25 content search → personalized PageRank skeleton → context health scoring. Returns a ready-to-use context bundle with token count and A–F quality grade. Use this before starting any non-trivial coding task.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"query": map[string]interface{}{
+						"type":        "string",
+						"description": "Natural language description of the task or question (e.g. 'add pagination to the user list API')",
+					},
+					"budget": map[string]interface{}{
+						"type":        "integer",
+						"default":     8000,
+						"description": "Token budget for the skeleton portion",
+					},
+					"model": map[string]interface{}{
+						"type":        "string",
+						"default":     "claude",
+						"description": "Target model family for context window sizing: claude (200K), gpt4 (128K), llama (128K), gpt35 (16K)",
+						"enum":        []string{"claude", "gpt4", "llama", "gpt35"},
+					},
+					"maxSearchResults": map[string]interface{}{
+						"type":        "integer",
+						"default":     20,
+						"description": "Max BM25 search hits used as PageRank personalization seeds",
+					},
+				},
+				"required": []string{"query"},
+			},
+		},
+		{
+			Name:        "contextHealth",
+			Description: "Score the quality of an LLM context bundle on 6 research-backed metrics: signal density, compression density, position health (U-shaped attention bias), entity density, utilisation headroom, and dedup ratio. Returns a composite 0–100 score graded A–F with per-metric breakdown and actionable recommendations.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"content": map[string]interface{}{
+						"type":        "string",
+						"description": "The context string to evaluate (what you would send to the LLM)",
+					},
+					"model": map[string]interface{}{
+						"type":        "string",
+						"default":     "claude",
+						"description": "Target model family for window-size reference: claude (200K), gpt4 (128K), llama (128K), gpt35 (16K)",
+						"enum":        []string{"claude", "gpt4", "llama", "gpt35"},
+					},
+					"signatureCount": map[string]interface{}{
+						"type":        "integer",
+						"description": "Number of symbol signatures in the content (improves signal density scoring)",
+					},
+				},
+				"required": []string{"content"},
+			},
+		},
 		// v8.0 Secret Detection
 		{
 			Name:        "scanSecrets",
@@ -2035,7 +2138,12 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 					"checks": map[string]interface{}{
 						"type":        "array",
 						"items":       map[string]interface{}{"type": "string"},
-						"description": "Limit to specific checks: breaking, secrets, tests, complexity, coupling, hotspots, risk, critical, generated, classify, split, health, traceability, independence, dead-code, test-gaps, blast-radius, comment-drift, format-consistency, bug-patterns",
+						"description": "Run only these checks (allowlist): breaking, secrets, tests, complexity, coupling, hotspots, risk, critical, generated, classify, split, health, traceability, independence, dead-code, test-gaps, blast-radius, comment-drift, format-consistency, bug-patterns",
+					},
+					"skip": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "Skip these checks (denylist) — complement of 'checks'. Useful on large repos where a full SCIP re-index is expensive: skip=[\"dead-code\",\"blast-radius\",\"unwired\"] runs everything else at full accuracy.",
 					},
 					"staged": map[string]interface{}{
 						"type":        "boolean",
@@ -2291,6 +2399,12 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 						"type":        "integer",
 						"description": "End line of extraction region (for extract operations)",
 					},
+					"format": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"full", "compact"},
+						"default":     "full",
+						"description": "Response format: 'full' (default) returns all details; 'compact' returns a token-efficient summary with top affected files and tests",
+					},
 				},
 				"required": []string{"target"},
 			},
@@ -2429,6 +2543,81 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
+		// v8.4 Performance scan
+		{
+			Name:        "scanPerformance",
+			Description: "Scan for structural performance problems. Detects hidden coupling: file pairs that co-change frequently in git history but have no static import edge between them. Hidden coupling indicates implicit shared state or behavioral coupling that the dependency graph cannot see, and is the highest-signal structural risk for refactoring and maintenance cost.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"minCorrelation": map[string]interface{}{
+						"type":        "number",
+						"default":     0.3,
+						"description": "Minimum co-change correlation threshold (0–1). Higher values return only the most tightly coupled pairs.",
+					},
+					"minCoChanges": map[string]interface{}{
+						"type":        "number",
+						"default":     3,
+						"description": "Minimum number of shared commits. Filters out spurious pairs from low-activity files.",
+					},
+					"windowDays": map[string]interface{}{
+						"type":        "number",
+						"default":     365,
+						"description": "Git history window in days.",
+					},
+					"limit": map[string]interface{}{
+						"type":        "number",
+						"default":     50,
+						"description": "Maximum number of hidden-coupling pairs to return.",
+					},
+					"scope": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Limit analysis to these repo-relative paths. Empty means whole repo.",
+					},
+				},
+			},
+		},
+		// v8.5 Structural performance scan (loop call sites in hot files)
+		{
+			Name: "analyzeStructuralPerf",
+			Description: "Detect structural performance anti-patterns in high-churn files. " +
+				"Uses tree-sitter to find call expressions inside loop bodies — the primary " +
+				"structural signal for O(n) and O(n²) hidden costs that do not appear in " +
+				"profiling until production load. Hot files (frequently changed in git history) " +
+				"are prioritized; loop call sites in system entrypoints are ranked higher. " +
+				"Complements scanPerformance (which detects hidden coupling) by targeting " +
+				"intra-file loop patterns rather than cross-file co-change.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"windowDays": map[string]interface{}{
+						"type":        "number",
+						"default":     90,
+						"description": "Git history window in days for identifying hot files.",
+					},
+					"minChurnCount": map[string]interface{}{
+						"type":        "number",
+						"default":     3,
+						"description": "Minimum number of commits for a file to be considered hot.",
+					},
+					"limit": map[string]interface{}{
+						"type":        "number",
+						"default":     100,
+						"description": "Maximum number of loop call sites to return.",
+					},
+					"scope": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+						"description": "Limit analysis to these repo-relative paths. Empty means whole repo.",
+					},
+				},
+			},
+		},
 		// v8.1 Suggested Refactorings
 		{
 			Name:        "suggestRefactorings",
@@ -2460,6 +2649,45 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 						"description": "Maximum number of suggestions to return",
 					},
 				},
+			},
+		},
+		// v9.0 LIP symbol annotations
+		{
+			Name:        "annotationSet",
+			Description: "Attach a key/value annotation to a symbol URI. Annotations survive context resets and are scoped to the symbol, not the module. Mirrors LIP AnnotationEntry.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"symbol_uri": map[string]interface{}{"type": "string", "description": "LIP symbol URI, e.g. lip://local/src/foo.go#MyFunc"},
+					"key":        map[string]interface{}{"type": "string", "description": "Annotation key"},
+					"value":      map[string]interface{}{"type": "string", "description": "Annotation value (any string)"},
+					"author_id":  map[string]interface{}{"type": "string", "description": "Author identifier (default: agent:ckb)"},
+					"confidence": map[string]interface{}{"type": "number", "description": "Confidence 0-100 (default: 80)"},
+				},
+				"required": []string{"symbol_uri", "key", "value"},
+			},
+		},
+		{
+			Name:        "annotationGet",
+			Description: "Retrieve a specific annotation for a symbol URI by key.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"symbol_uri": map[string]interface{}{"type": "string"},
+					"key":        map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"symbol_uri", "key"},
+			},
+		},
+		{
+			Name:        "annotationList",
+			Description: "List all annotations for a symbol URI.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"symbol_uri": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"symbol_uri"},
 			},
 		},
 	}
@@ -2588,6 +2816,20 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["findCycles"] = s.toolFindCycles
 	// v8.1 Suggested Refactorings
 	s.tools["suggestRefactorings"] = s.toolSuggestRefactorings
+	// v8.4 Performance scan
+	s.tools["scanPerformance"] = s.toolScanPerformance
+	// v8.5 Structural performance scan (loop call sites)
+	s.tools["analyzeStructuralPerf"] = s.toolAnalyzeStructuralPerf
+	// v8.6 Cartographer context tools
+	s.tools["queryContext"] = s.toolQueryContext
+	s.tools["contextHealth"] = s.toolContextHealth
+	s.tools["detectShotgunSurgery"] = s.toolDetectShotgunSurgery
+	s.tools["getArchitecturalEvolution"] = s.toolGetArchitecturalEvolution
+	s.tools["getBlastRadius"] = s.toolGetBlastRadius
+	// v9.0 LIP symbol annotations
+	s.tools["annotationSet"] = s.toolAnnotationSet
+	s.tools["annotationGet"] = s.toolAnnotationGet
+	s.tools["annotationList"] = s.toolAnnotationList
 
 	// v8.0 Streaming support
 	s.RegisterStreamableTools()

@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 
 	"github.com/SimplyLiz/CodeMCP/internal/backends/scip"
@@ -55,12 +56,25 @@ func setupGoldenEngine(t *testing.T, fixture *testutil.FixtureContext) (*Engine,
 		t.Fatalf("Failed to create engine: %v", err)
 	}
 
-	// Ensure SCIP backend is loaded with fixture index
+	// Suppress the background FTS goroutine so the synchronous PopulateFTSFromSCIP
+	// below is the only writer — this eliminates the race that produces non-
+	// deterministic symbol counts (SCIP vs FTS return different result sets).
+	engine.DisableBgFTS()
+
+	// Ensure SCIP backend is loaded with fixture index.
+	// Redirect the derived-index cache to tmpDir so concurrent tests don't
+	// race on the shared fixture/.ckb/scip_derived.gob file.
 	scipBackend := engine.GetScipBackend()
 	if scipBackend != nil {
+		scipBackend.SetCacheRoot(tmpDir)
 		if loadErr := scipBackend.LoadIndex(); loadErr != nil {
 			t.Logf("Warning: Failed to load SCIP index: %v", loadErr)
 		}
+	}
+
+	// Populate FTS synchronously so every golden test run takes the FTS code path.
+	if popErr := engine.PopulateFTSFromSCIP(context.Background()); popErr != nil {
+		t.Logf("Warning: Failed to populate FTS: %v", popErr)
 	}
 
 	cleanup := func() {
@@ -437,6 +451,25 @@ func normalizeSearchResults(resp *SearchSymbolsResponse) map[string]any {
 			"line":     line,
 		})
 	}
+
+	// Sort for stable golden comparison: engine ranks by score, but equal-score
+	// results can appear in different order between runs.
+	sort.Slice(results, func(i, j int) bool {
+		ai, aj := results[i], results[j]
+		ni, _ := ai["name"].(string)
+		nj, _ := aj["name"].(string)
+		if ni != nj {
+			return ni < nj
+		}
+		ki, _ := ai["kind"].(string)
+		kj, _ := aj["kind"].(string)
+		if ki != kj {
+			return ki < kj
+		}
+		fi, _ := ai["file"].(string)
+		fj, _ := aj["file"].(string)
+		return fi < fj
+	})
 
 	return map[string]any{
 		"symbols": results,

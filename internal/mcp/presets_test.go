@@ -42,9 +42,9 @@ func TestPresetFiltering(t *testing.T) {
 		t.Fatalf("failed to set full preset: %v", err)
 	}
 	fullTools := server.GetFilteredTools()
-	// v8.4: Full now includes findUnwiredModules (97)
-	if len(fullTools) != 97 {
-		t.Errorf("expected 97 full tools, got %d", len(fullTools))
+	// v8.5: +3 Cartographer (shotgunSurgery, evolution, blastRadius) +3 LIP annotation tools = 107
+	if len(fullTools) != 107 {
+		t.Errorf("expected 107 full tools, got %d", len(fullTools))
 	}
 
 	// Full preset should still have core tools first

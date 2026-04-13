@@ -139,28 +139,7 @@
       "line": 0,
       "moduleId": "src/pkg",
       "name": "newServer().(handler)"
-    },
-    {
-      "file": "src/pkg/handler.ts",
-      "kind": "property",
-      "line": 0,
-      "moduleId": "src/pkg",
-      "name": ""
-    },
-    {
-      "file": "src/main.ts",
-      "kind": "unknown",
-      "line": 0,
-      "moduleId": "src",
-      "name": ""
-    },
-    {
-      "file": "src/main.ts",
-      "kind": "unknown",
-      "line": 0,
-      "moduleId": "src",
-      "name": ""
     }
   ],
-  "total": 23
+  "total": 20
 }

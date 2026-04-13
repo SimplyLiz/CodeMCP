@@ -20,14 +20,7 @@
       "line": 12,
       "moduleId": ".",
       "name": "main"
-    },
-    {
-      "file": "main.go",
-      "kind": "property",
-      "line": 0,
-      "moduleId": ".",
-      "name": ""
     }
   ],
-  "total": 4
+  "total": 3
 }

@@ -34,7 +34,6 @@ type ProtocolBinding string
 
 const (
 	BindingJSONRPC  ProtocolBinding = "JSONRPC"
-	BindingGRPC     ProtocolBinding = "GRPC"
 	BindingHTTPJSON ProtocolBinding = "HTTP+JSON"
 )
 

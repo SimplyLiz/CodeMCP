@@ -13,14 +13,7 @@
       "line": 0,
       "moduleId": "src",
       "name": "main().(input)"
-    },
-    {
-      "file": "src/main.ts",
-      "kind": "property",
-      "line": 0,
-      "moduleId": "src",
-      "name": ""
     }
   ],
-  "total": 3
+  "total": 2
 }

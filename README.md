@@ -5,6 +5,8 @@
 [![npm version](https://img.shields.io/npm/v/@tastehub/ckb.svg)](https://www.npmjs.com/package/@tastehub/ckb)
 [![Website](https://img.shields.io/badge/website-codeknowledge.dev-teal.svg)](https://codeknowledge.dev)
 [![Documentation](https://img.shields.io/badge/docs-codeknowledge.dev-blue.svg)](https://codeknowledge.dev/docs)
+[![LIP](https://img.shields.io/crates/v/lip-cli.svg?label=LIP&color=orange)](https://crates.io/crates/lip-cli)
+[![LIP docs](https://img.shields.io/badge/LIP-docs-blue.svg)](https://lip-sigma.vercel.app/docs)
 
 CKB transforms your codebase into a queryable knowledge base. Ask questions, understand impact, find owners, detect dead code—all through CLI, API, or AI assistants.
 
@@ -142,7 +144,7 @@ claude mcp add --transport stdio ckb -- npx @tastehub/ckb mcp
 
 **Token efficiency shown at startup:**
 ```
-CKB MCP Server v8.0.0
+CKB MCP Server v9.0.0
   Active tools: 14 / 76 (18%)
   Estimated context: ~1k tokens
   Preset: core
@@ -299,7 +301,7 @@ ckb ownership        # File/path ownership
 ckb mcp              # Start MCP server
 ```
 
-**v8.0 Compound Operations (via MCP):**
+**v9.0 Compound Operations (via MCP):**
 ```bash
 # These tools combine multiple queries into single calls
 explore      # Area exploration: symbols, dependencies, hotspots
@@ -572,8 +574,11 @@ CKB orchestrates multiple code intelligence backends:
 - **SCIP** — Precise, pre-indexed symbol data (fastest)
 - **LSP** — Real-time language server queries
 - **Git** — Blame, history, churn analysis, ownership
+- **LIP** — Semantic embedding daemon for nearest-neighbour search and re-ranking (optional, recommended)
 
 Results are merged intelligently and compressed for LLM context limits.
+
+> **LIP enhances semantic search, PR novelty detection, test discovery, file boundary analysis, and architecture coupling signals.** When LIP is running alongside CKB, search quality improves significantly — especially for natural-language queries that don't match symbol names literally. See [Hybrid Retrieval](https://github.com/SimplyLiz/CodeMCP/wiki/Hybrid-Retrieval) for details, or the [LIP documentation](https://lip-sigma.vercel.app/docs).
 
 Persistent knowledge survives across sessions:
 - **Module Registry** — Boundaries, responsibilities, tags
@@ -642,6 +647,11 @@ See the **[Full Documentation Wiki](https://github.com/SimplyLiz/CodeMCP/wiki)**
 
 **Optional (for enhanced analysis):**
 - SCIP indexer for your language (scip-go, scip-typescript, etc.) — run `ckb index` to auto-install
+- [LIP v2.0](https://lip-sigma.vercel.app) semantic embedding daemon (requires Rust/cargo) — strongly recommended for best search quality ([docs](https://lip-sigma.vercel.app/docs), [crates.io](https://crates.io/crates/lip-cli)):
+  ```bash
+  cargo install lip-cli
+  lip daemon --socket ~/.local/share/lip/lip.sock
+  ```
 
 ## License
 

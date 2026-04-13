@@ -216,35 +216,7 @@
       "line": 0,
       "moduleId": "src/pkg",
       "name": "newHandler().(service)"
-    },
-    {
-      "file": "src/pkg/service.ts",
-      "kind": "property",
-      "line": 0,
-      "moduleId": "src/pkg",
-      "name": ""
-    },
-    {
-      "file": "src/main.ts",
-      "kind": "unknown",
-      "line": 0,
-      "moduleId": "src",
-      "name": ""
-    },
-    {
-      "file": "src/pkg/model.ts",
-      "kind": "unknown",
-      "line": 0,
-      "moduleId": "src/pkg",
-      "name": ""
-    },
-    {
-      "file": "src/pkg/service.ts",
-      "kind": "unknown",
-      "line": 0,
-      "moduleId": "src/pkg",
-      "name": ""
     }
   ],
-  "total": 35
+  "total": 31
 }

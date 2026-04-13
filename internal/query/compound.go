@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
 	"github.com/SimplyLiz/CodeMCP/internal/complexity"
 	"github.com/SimplyLiz/CodeMCP/internal/coupling"
 	"github.com/SimplyLiz/CodeMCP/internal/errors"
@@ -58,16 +59,17 @@ type ExploreResponse struct {
 
 // ExploreOverview provides high-level information about the target.
 type ExploreOverview struct {
-	TargetType     string `json:"targetType"` // file, directory, module
-	Path           string `json:"path"`
-	Name           string `json:"name"`
-	Description    string `json:"description,omitempty"`
-	FileCount      int    `json:"fileCount,omitempty"`
-	SymbolCount    int    `json:"symbolCount,omitempty"`
-	LineCount      int    `json:"lineCount,omitempty"`
-	Language       string `json:"language,omitempty"`
-	Role           string `json:"role,omitempty"` // core, glue, test, config
-	Responsibility string `json:"responsibility,omitempty"`
+	TargetType     string         `json:"targetType"` // file, directory, module
+	Path           string         `json:"path"`
+	Name           string         `json:"name"`
+	Description    string         `json:"description,omitempty"`
+	FileCount      int            `json:"fileCount,omitempty"`
+	SymbolCount    int            `json:"symbolCount,omitempty"`
+	LineCount      int            `json:"lineCount,omitempty"`
+	Language       string         `json:"language,omitempty"`
+	Languages      map[string]int `json:"languages,omitempty"` // file count per language; populated by Cartographer
+	Role           string         `json:"role,omitempty"`      // core, glue, test, config
+	Responsibility string         `json:"responsibility,omitempty"`
 }
 
 // ExploreSymbol represents a key symbol in the explored area.
@@ -370,23 +372,48 @@ func (e *Engine) buildExploreOverview(ctx context.Context, targetType, absPath, 
 		overview.LineCount = countFileLines(absPath)
 		overview.SymbolCount = 0 // Will be updated by symbol search
 	} else {
-		// Directory overview - skip large generated directories
-		fileCount := 0
-		//nolint:errcheck // intentionally ignore walk errors to count accessible files
-		_ = filepath.Walk(absPath, func(path string, info os.FileInfo, walkErr error) error {
-			if walkErr != nil {
-				return nil //nolint:nilerr // skip inaccessible files, continue walk
-			}
-			if info.IsDir() {
-				if skipExploreDirectory(info.Name()) {
-					return filepath.SkipDir
+		// Directory overview.
+		// Try Cartographer first — it has a pre-built, ignore-aware file list with
+		// language metadata. Fall back to an OS walk when it's not available.
+		cartographerUsed := false
+		if cartographer.Available() {
+			if graph, cerr := cartographer.MapProject(e.repoRoot); cerr == nil {
+				cartographerUsed = true
+				langs := make(map[string]int)
+				fileCount := 0
+				prefix := relTarget + "/"
+				for _, node := range graph.Nodes {
+					if strings.HasPrefix(node.Path, prefix) || node.Path == relTarget {
+						fileCount++
+						if node.Language != "" {
+							langs[node.Language]++
+						}
+					}
 				}
-				return nil
+				overview.FileCount = fileCount
+				if len(langs) > 0 {
+					overview.Languages = langs
+				}
 			}
-			fileCount++
-			return nil
-		})
-		overview.FileCount = fileCount
+		}
+		if !cartographerUsed {
+			fileCount := 0
+			//nolint:errcheck // intentionally ignore walk errors to count accessible files
+			_ = filepath.Walk(absPath, func(path string, info os.FileInfo, walkErr error) error {
+				if walkErr != nil {
+					return nil //nolint:nilerr // skip inaccessible files, continue walk
+				}
+				if info.IsDir() {
+					if skipExploreDirectory(info.Name()) {
+						return filepath.SkipDir
+					}
+					return nil
+				}
+				fileCount++
+				return nil
+			})
+			overview.FileCount = fileCount
+		}
 
 		// Get module overview if available
 		modResp, err := e.GetModuleOverview(ctx, ModuleOverviewOptions{Path: relTarget})
@@ -1393,6 +1420,10 @@ type PrepareChangeResponse struct {
 	RenameDetail     *RenameDetail        `json:"renameDetail,omitempty"`
 	ExtractDetail    *ExtractDetail       `json:"extractDetail,omitempty"`
 	MoveDetail       *MoveDetail          `json:"moveDetail,omitempty"`
+	// ArchImpact is Cartographer's module-level impact simulation: predicted affected
+	// modules, cycle risk, layer violations, and health delta. Only populated when the
+	// binary is built with -tags cartographer.
+	ArchImpact *cartographer.ImpactAnalysis `json:"archImpact,omitempty"`
 }
 
 // PrepareChangeTarget describes what will be changed.
@@ -1434,6 +1465,7 @@ type PrepareCoChange struct {
 	File        string  `json:"file"`
 	Correlation float64 `json:"correlation"`
 	CoChanges   int     `json:"coChanges"`
+	IsHidden    bool    `json:"isHidden,omitempty"` // true = co-changes without any import edge
 }
 
 // PrepareRisk assesses the risk of the change.
@@ -1479,6 +1511,7 @@ func (e *Engine) PrepareChange(ctx context.Context, opts PrepareChangeOptions) (
 	var moveDetail *MoveDetail
 	var riskFactors []string
 	var warnings []string
+	var archImpact *cartographer.ImpactAnalysis
 
 	// Get impact analysis
 	wg.Add(1)
@@ -1572,6 +1605,26 @@ func (e *Engine) PrepareChange(ctx context.Context, opts PrepareChangeOptions) (
 		}()
 	}
 
+	// Architectural impact simulation via Cartographer (module-level cascade,
+	// cycle risk, layer violations). Falls through silently if not compiled in.
+	if cartographer.Available() && target.Path != "" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if ai, cerr := cartographer.SimulateChange(e.repoRoot, target.Path, "", ""); cerr == nil {
+				mu.Lock()
+				archImpact = ai
+				if ai.PredictedImpact.WillCreateCycle {
+					riskFactors = append(riskFactors, "Change may introduce a dependency cycle")
+				}
+				if len(ai.PredictedImpact.LayerViolations) > 0 {
+					riskFactors = append(riskFactors, fmt.Sprintf("Change may create %d layer violation(s)", len(ai.PredictedImpact.LayerViolations)))
+				}
+				mu.Unlock()
+			}
+		}()
+	}
+
 	wg.Wait()
 
 	// Calculate risk assessment
@@ -1616,6 +1669,7 @@ func (e *Engine) PrepareChange(ctx context.Context, opts PrepareChangeOptions) (
 		RenameDetail:     renameDetail,
 		ExtractDetail:    extractDetail,
 		MoveDetail:       moveDetail,
+		ArchImpact:       archImpact,
 	}, nil
 }
 
@@ -1767,10 +1821,52 @@ func (e *Engine) getPrepareTests(ctx context.Context, target *PrepareChangeTarge
 }
 
 // getPrepareCoChanges finds files that historically change together.
+// When Cartographer is available, uses a single git-log pass (bot-filtered) and
+// marks pairs that have no import edge as IsHidden. Falls back to the per-file
+// coupling analyzer otherwise.
 func (e *Engine) getPrepareCoChanges(ctx context.Context, path string) ([]PrepareCoChange, error) {
-	// Use coupling package directly
-	analyzer := coupling.NewAnalyzer(e.repoRoot, e.logger)
+	if cartographer.Available() {
+		// Single pass over git history — much faster than O(n) subprocess approach.
+		pairs, err := cartographer.GitCochange(e.repoRoot, 0, 2)
+		if err == nil {
+			// Build hidden-coupling set for annotation (pairs with no import edge).
+			hiddenPairs, _ := cartographer.HiddenCoupling(e.repoRoot, 0, 2)
+			hiddenSet := make(map[string]bool, len(hiddenPairs)*2)
+			for _, h := range hiddenPairs {
+				hiddenSet[h.FileA+"\x00"+h.FileB] = true
+				hiddenSet[h.FileB+"\x00"+h.FileA] = true
+			}
 
+			var coChanges []PrepareCoChange
+			for _, p := range pairs {
+				partner := ""
+				if p.FileA == path {
+					partner = p.FileB
+				} else if p.FileB == path {
+					partner = p.FileA
+				}
+				if partner == "" {
+					continue
+				}
+				coChanges = append(coChanges, PrepareCoChange{
+					File:        partner,
+					Correlation: p.CouplingScore,
+					CoChanges:   p.Count,
+					IsHidden:    hiddenSet[path+"\x00"+partner],
+				})
+			}
+			sort.Slice(coChanges, func(i, j int) bool {
+				return coChanges[i].Correlation > coChanges[j].Correlation
+			})
+			if len(coChanges) > 10 {
+				coChanges = coChanges[:10]
+			}
+			return coChanges, nil
+		}
+	}
+
+	// Fallback: per-file coupling analyzer (O(1) git subprocess, regex-based).
+	analyzer := coupling.NewAnalyzer(e.repoRoot, e.logger)
 	result, err := analyzer.Analyze(ctx, coupling.AnalyzeOptions{
 		Target:         path,
 		MinCorrelation: 0.3,
@@ -1790,7 +1886,6 @@ func (e *Engine) getPrepareCoChanges(ctx context.Context, path string) ([]Prepar
 			CoChanges:   cf.CoChangeCount,
 		})
 	}
-
 	return coChanges, nil
 }
 

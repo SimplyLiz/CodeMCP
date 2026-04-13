@@ -1,0 +1,535 @@
+openapi: 3.0.3
+info:
+  title: Project Cartographer API
+  description: |
+    HTTP API for Project Cartographer - Semantic Workspace Mapping.
+    Provides endpoints for AI tools like ShellAI to query module context and project graphs.
+  version: 1.0.0
+  contact:
+    name: Project Cartographer Team
+
+servers:
+  - url: http://localhost:8080
+    description: Development server
+  - url: https://api.cartographer.dev
+    description: Production server
+
+paths:
+  /api/v1/module-context:
+    get:
+      summary: Get module context
+      description: |
+        Retrieve the public API surface of a specific module with optional dependencies.
+        Supports different detail levels for varying token efficiency needs.
+      operationId: getModuleContext
+      parameters:
+        - name: module_id
+          in: query
+          required: true
+          description: Unique identifier for the module (file path or module name)
+          schema:
+            type: string
+            example: "src/auth/user.rs"
+        - name: depth
+          in: query
+          required: false
+          description: |
+            Depth of transitive dependencies to include.
+            0 = module only, 1 = direct dependencies, etc.
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+            maximum: 10
+            example: 1
+        - name: detail_level
+          in: query
+          required: false
+          description: |
+            Level of detail for the response.
+            - minimal: Signatures only (most compressed)
+            - standard: Signatures + parameter descriptions + return types
+            - extended: All of above + docstrings + enum definitions
+          schema:
+            type: string
+            enum: [minimal, standard, extended]
+            default: standard
+        - name: include
+          in: query
+          required: false
+          description: Specific elements to include (imports, exports, types)
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [imports, exports, types]
+            example: ["imports", "exports"]
+        - name: format
+          in: query
+          required: false
+          description: Output format
+          schema:
+            type: string
+            enum: [compressed-ai-lang, json]
+            default: compressed-ai-lang
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModuleContextResponse'
+        '404':
+          description: Module not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/symbol-context:
+    get:
+      summary: Get symbol-level context
+      description: |
+        Retrieve context for a specific symbol within a module.
+        Returns the symbol's definition and its immediate dependencies/references.
+      operationId: getSymbolContext
+      parameters:
+        - name: module_id
+          in: query
+          required: true
+          description: Module containing the symbol
+          schema:
+            type: string
+            example: "src/auth/user.rs"
+        - name: symbol_name
+          in: query
+          required: true
+          description: Name of the symbol to retrieve
+          schema:
+            type: string
+            example: "UserService"
+        - name: detail_level
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [minimal, standard, extended]
+            default: standard
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SymbolContextResponse'
+        '404':
+          description: Symbol not found
+
+  /api/v1/graph:
+    get:
+      summary: Get project graph
+      description: Retrieve the full project dependency graph
+      operationId: getProjectGraph
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectGraphResponse'
+
+  /api/v1/graph/dependencies:
+    get:
+      summary: Get module dependencies
+      description: Get direct/transitive dependencies of a specific module
+      operationId: getDependencies
+      parameters:
+        - name: module_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: depth
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DependencyInfo'
+
+  /api/v1/graph/dependents:
+    get:
+      summary: Get module dependents
+      description: Get modules that depend on a given module
+      operationId: getDependents
+      parameters:
+        - name: module_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DependencyInfo'
+
+  /api/v1/graph/search:
+    get:
+      summary: Search graph
+      description: Search for nodes or edges matching a pattern
+      operationId: searchGraph
+      parameters:
+        - name: query
+          in: query
+          required: true
+          description: Search pattern
+          schema:
+            type: string
+        - name: type
+          in: query
+          required: false
+          description: Type of search (node, edge)
+          schema:
+            type: string
+            enum: [node, edge]
+            default: node
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GraphNode'
+
+  /api/v1/blast-radius:
+    get:
+      summary: Get blast radius context
+      description: |
+        Given a file or symbol, return related files/symbols and their compressed context.
+        Useful for understanding the impact of changes.
+      operationId: getBlastRadius
+      parameters:
+        - name: target
+          in: query
+          required: true
+          description: File path or symbol name
+          schema:
+            type: string
+            example: "src/auth/user.rs"
+        - name: max_related
+          in: query
+          required: false
+          description: Maximum number of related items to return
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlastRadiusResponse'
+
+  /api/v1/config/compression:
+    put:
+      summary: Set compression level
+      description: Configure the compression level for API responses
+      operationId: setCompressionLevel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - level
+              properties:
+                level:
+                  type: string
+                  enum: [minimal, standard, aggressive]
+      responses:
+        '200':
+          description: Compression level updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigResponse'
+
+  /api/v1/webhooks:
+    post:
+      summary: Register webhook
+      description: Register a webhook for project graph updates
+      operationId: registerWebhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - url
+              properties:
+                url:
+                  type: string
+                  format: uri
+                events:
+                  type: array
+                  items:
+                    type: string
+                    enum: [graph_updated, module_changed, dependencies_changed]
+                  description: Events to subscribe to
+      responses:
+        '201':
+          description: Webhook registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookResponse'
+    delete:
+      summary: Unregister webhook
+      description: Remove a registered webhook
+      operationId: unregisterWebhook
+      parameters:
+        - name: webhook_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Webhook removed
+
+  /health:
+    get:
+      summary: Health check
+      description: Check API server health
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+components:
+  schemas:
+    ModuleContextResponse:
+      type: object
+      properties:
+        module_id:
+          type: string
+        path:
+          type: string
+        imports:
+          type: array
+          items:
+            type: string
+        signatures:
+          type: array
+          items:
+            type: string
+        docstrings:
+          type: array
+          items:
+            type: string
+          nullable: true
+        parameters:
+          type: array
+          items:
+            type: string
+          nullable: true
+        return_types:
+          type: array
+          items:
+            type: string
+          nullable: true
+        dependencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/DependencyInfo'
+          nullable: true
+        detail_level:
+          type: string
+
+    SymbolContextResponse:
+      type: object
+      properties:
+        symbol_name:
+          type: string
+        module_id:
+          type: string
+        definition:
+          type: string
+        references:
+          type: array
+          items:
+            type: string
+        dependencies:
+          type: array
+          items:
+            type: string
+
+    ProjectGraphResponse:
+      type: object
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphNode'
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphEdge'
+        metadata:
+          $ref: '#/components/schemas/GraphMetadata'
+
+    GraphNode:
+      type: object
+      properties:
+        module_id:
+          type: string
+        path:
+          type: string
+        language:
+          type: string
+        signature_count:
+          type: integer
+        complexity:
+          type: integer
+          nullable: true
+
+    GraphEdge:
+      type: object
+      properties:
+        source:
+          type: string
+        target:
+          type: string
+        edge_type:
+          type: string
+
+    GraphMetadata:
+      type: object
+      properties:
+        total_files:
+          type: integer
+        total_edges:
+          type: integer
+        languages:
+          type: object
+          additionalProperties:
+            type: integer
+        generated_at:
+          type: string
+          format: timestamp
+
+    DependencyInfo:
+      type: object
+      properties:
+        module_id:
+          type: string
+        path:
+          type: string
+        signature_count:
+          type: integer
+
+    BlastRadiusResponse:
+      type: object
+      properties:
+        target:
+          type: string
+        related:
+          type: array
+          items:
+            $ref: '#/components/schemas/RelatedItem'
+
+    RelatedItem:
+      type: object
+      properties:
+        module_id:
+          type: string
+        path:
+          type: string
+        relation_type:
+          type: string
+          enum: [caller, callee, co_module, recently_changed]
+        context:
+          type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        code:
+          type: integer
+
+    ConfigResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        level:
+          type: string
+
+    WebhookResponse:
+      type: object
+      properties:
+        webhook_id:
+          type: string
+        url:
+          type: string
+        events:
+          type: array
+          items:
+            type: string
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        version:
+          type: string
+        uptime_seconds:
+          type: integer
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+security:
+  - BearerAuth: []
+  - ApiKeyAuth: []
