@@ -739,8 +739,27 @@ func (e *Engine) checkLIP(_ context.Context) DoctorCheck {
 	if status.Pending > 0 {
 		pending = fmt.Sprintf(", %d pending", status.Pending)
 	}
+
+	// Embedding coverage and staleness (best-effort; skipped if LIP has no embeddings).
+	coverageMsg := ""
+	if cov, _ := lip.Coverage(e.repoRoot); cov != nil && cov.TotalFiles > 0 {
+		pct := int(cov.CoverageFraction * 100)
+		coverageMsg = fmt.Sprintf("; %d%% embedded (%d/%d files)", pct, cov.EmbeddedFiles, cov.TotalFiles)
+	}
+
+	staleMsg := ""
+	if stale, _ := lip.StaleEmbeddings(e.repoRoot); len(stale) > 0 {
+		staleMsg = fmt.Sprintf("; %d stale embeddings", len(stale))
+	}
+
+	mixedMsg := ""
+	if status.MixedModels {
+		mixedMsg = fmt.Sprintf(" ⚠ mixed models: %s", strings.Join(status.ModelsInIndex, ", "))
+	}
+
 	check.Status = "pass"
-	check.Message = fmt.Sprintf("LIP daemon running — %d files indexed%s", status.IndexedFiles, pending)
+	check.Message = fmt.Sprintf("LIP daemon running — %d files indexed%s%s%s%s",
+		status.IndexedFiles, pending, coverageMsg, staleMsg, mixedMsg)
 	return check
 }
 

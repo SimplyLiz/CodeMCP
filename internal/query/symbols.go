@@ -516,7 +516,7 @@ func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (
 	const lipFallbackThreshold = 3
 	if len(results) < lipFallbackThreshold {
 		lipSymLimit := opts.Limit * 3
-		lipResults := SemanticSearchWithLIP(opts.Query, 20, func(fileURIs []string) map[string][]SearchResultItem {
+		lipResults := SemanticSearchWithLIP(opts.Query, 20, "", 0, func(fileURIs []string) map[string][]SearchResultItem {
 			// Convert file:// URIs back to repo-relative paths for the batch query.
 			relPaths := make([]string, len(fileURIs))
 			for i, uri := range fileURIs {

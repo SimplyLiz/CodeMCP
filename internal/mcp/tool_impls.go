@@ -896,6 +896,45 @@ func (s *MCPServer) toolGetArchitecture(params map[string]interface{}) (*envelop
 		data["limitations"] = archResp.Limitations
 	}
 
+	// Augment with LIP semantic coupling (best-effort). Collect one representative
+	// file URI per module, compute pairwise similarity, and surface the matrix so
+	// callers can see which modules are semantically related regardless of structural
+	// dependencies.
+	if repoRoot := s.engine().GetRepoRoot(); repoRoot != "" {
+		type semCoupling struct {
+			Modules []string    `json:"modules"`
+			Matrix  [][]float32 `json:"matrix"`
+		}
+		// Build URI list from module paths (use first file of each module if available).
+		var moduleURIs []string
+		var moduleNames []string
+		for _, m := range archResp.Modules {
+			if m.Path != "" {
+				moduleURIs = append(moduleURIs, "file://"+repoRoot+"/"+m.Path)
+				moduleNames = append(moduleNames, m.ModuleId)
+			}
+		}
+		if len(moduleURIs) >= 2 {
+			includedURIs, matrix, _ := lipClient.SimilarityMatrix(moduleURIs)
+			if len(includedURIs) >= 2 {
+				// Map back to module names using URI→index.
+				uriIdx := make(map[string]int, len(moduleURIs))
+				for i, u := range moduleURIs {
+					uriIdx[u] = i
+				}
+				includedNames := make([]string, len(includedURIs))
+				for i, u := range includedURIs {
+					if idx, ok := uriIdx[u]; ok && idx < len(moduleNames) {
+						includedNames[i] = moduleNames[idx]
+					} else {
+						includedNames[i] = u
+					}
+				}
+				data["semantic_coupling"] = semCoupling{Modules: includedNames, Matrix: matrix}
+			}
+		}
+	}
+
 	resp := NewToolResponse().
 		Data(data).
 		WithProvenance(archResp.Provenance).
@@ -1320,8 +1359,23 @@ func (s *MCPServer) toolExplainFile(params map[string]interface{}) (*envelope.Re
 		return nil, errors.NewOperationError("explain file", err)
 	}
 
+	// Augment with LIP semantic boundaries when available (best-effort).
+	// Boundaries show where the file shifts topic — useful for large files
+	// or when deciding how to split refactoring work.
+	type augmented struct {
+		*query.ExplainFileResponse
+		SemanticBoundaries []lipClient.BoundaryRange `json:"semantic_boundaries,omitempty"`
+	}
+	aug := augmented{ExplainFileResponse: resp}
+	if repoRoot := s.engine().GetRepoRoot(); repoRoot != "" {
+		fileURI := "file://" + repoRoot + "/" + filePath
+		if boundaries, _ := lipClient.FindBoundaries(fileURI, 0, 0, ""); len(boundaries) > 0 {
+			aug.SemanticBoundaries = boundaries
+		}
+	}
+
 	return NewToolResponse().
-		Data(resp).
+		Data(aug).
 		WithProvenance(resp.Provenance).
 		WithDrilldowns(resp.Drilldowns).
 		Build(), nil

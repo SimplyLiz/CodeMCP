@@ -17,6 +17,7 @@ import (
 	"github.com/SimplyLiz/CodeMCP/internal/diff"
 	"github.com/SimplyLiz/CodeMCP/internal/errors"
 	"github.com/SimplyLiz/CodeMCP/internal/impact"
+	"github.com/SimplyLiz/CodeMCP/internal/lip"
 	"github.com/SimplyLiz/CodeMCP/internal/output"
 	"github.com/SimplyLiz/CodeMCP/internal/telemetry"
 )
@@ -1451,6 +1452,33 @@ func (e *Engine) GetAffectedTests(ctx context.Context, opts GetAffectedTestsOpti
 	}
 
 	// Note: coverage-based test mapping not implemented yet (requires parsing coverage files)
+
+	// 3. LIP semantic pass: for each changed production file, find semantically
+	// similar test files. This catches tests that cover the changed code but don't
+	// follow naming conventions (e.g. integration tests, table-driven suites).
+	for _, sym := range changeSet.ChangedSymbols {
+		if isTestFilePathEnhanced(sym.File) {
+			continue
+		}
+		fileURI := "file://" + filepath.Join(e.repoRoot, sym.File)
+		// Filter to *_test.go files only; require at least 0.6 cosine similarity.
+		const lipTestMinScore = float32(0.6)
+		neighbors, _ := lip.NearestByFileFiltered(fileURI, 5, "*_test.go", lipTestMinScore)
+		for _, n := range neighbors {
+			relPath := strings.TrimPrefix(strings.TrimPrefix(n.URI, "file://"+e.repoRoot), "/")
+			if relPath == "" || relPath == sym.File {
+				continue
+			}
+			if _, ok := testFileMap[relPath]; !ok {
+				testFileMap[relPath] = &AffectedTest{
+					FilePath:   relPath,
+					Reason:     "semantic-proximity",
+					AffectedBy: []string{sym.SymbolID},
+					Confidence: float64(n.Score),
+				}
+			}
+		}
+	}
 
 	// Convert map to slice
 	tests := make([]AffectedTest, 0, len(testFileMap))

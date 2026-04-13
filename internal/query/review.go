@@ -14,6 +14,7 @@ import (
 	"github.com/SimplyLiz/CodeMCP/internal/backends/git"
 	"github.com/SimplyLiz/CodeMCP/internal/config"
 	"github.com/SimplyLiz/CodeMCP/internal/diff"
+	"github.com/SimplyLiz/CodeMCP/internal/lip"
 	"github.com/SimplyLiz/CodeMCP/internal/secrets"
 	"github.com/SimplyLiz/CodeMCP/internal/version"
 )
@@ -586,6 +587,21 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 			Severity: "info",
 			Summary:  fmt.Sprintf("%d generated files detected and excluded", len(generatedFiles)),
 		})
+	}
+
+	// Check: Semantic novelty (LIP-powered, best-effort — silently skipped when LIP
+	// is unavailable). Flags files whose embeddings are far from the rest of the
+	// codebase; high novelty often correlates with missing test coverage.
+	if checkEnabled("semantic-novelty") {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, ff := e.checkSemanticNovelty(ctx, changedFiles)
+			if c.Name != "" {
+				addCheck(c)
+				addFindings(ff)
+			}
+		}()
 	}
 
 	wg.Wait()
@@ -1693,6 +1709,60 @@ func filterByChangedLines(findings []ReviewFinding, changedLines map[string]map[
 		}
 	}
 	return filtered
+}
+
+// checkSemanticNovelty uses LIP embeddings to flag PR files that are semantically
+// far from the existing codebase. High novelty (score > 0.7) often means the code
+// introduces genuinely new concepts that may lack test coverage or documentation.
+// Returns a zero-value ReviewCheck (Name=="") when LIP is unavailable.
+func (e *Engine) checkSemanticNovelty(_ context.Context, changedFiles []string) (ReviewCheck, []ReviewFinding) {
+	if len(changedFiles) == 0 {
+		return ReviewCheck{}, nil
+	}
+
+	// Build file:// URIs from repo-relative paths.
+	uris := make([]string, 0, len(changedFiles))
+	for _, f := range changedFiles {
+		if f != "" {
+			uris = append(uris, "file://"+filepath.Join(e.repoRoot, f))
+		}
+	}
+	if len(uris) == 0 {
+		return ReviewCheck{}, nil
+	}
+
+	info, _ := lip.NoveltyScore(uris)
+	if info == nil {
+		return ReviewCheck{}, nil // LIP unavailable — silent degradation
+	}
+
+	const highNoveltyThreshold = float32(0.7)
+	var findings []ReviewFinding
+	for _, item := range info.PerFile {
+		if item.Score >= highNoveltyThreshold {
+			relPath := strings.TrimPrefix(item.URI, "file://"+e.repoRoot+"/")
+			findings = append(findings, ReviewFinding{
+				Check:    "semantic-novelty",
+				Severity: "warn",
+				File:     relPath,
+				Message:  fmt.Sprintf("semantically novel (score %.2f) — verify test coverage and documentation", item.Score),
+			})
+		}
+	}
+
+	status := "pass"
+	summary := fmt.Sprintf("semantic novelty: mean %.2f across %d files", info.Score, len(uris))
+	if len(findings) > 0 {
+		status = "warn"
+		summary = fmt.Sprintf("%d semantically novel files (mean score %.2f)", len(findings), info.Score)
+	}
+
+	return ReviewCheck{
+		Name:     "semantic-novelty",
+		Status:   status,
+		Severity: "warn",
+		Summary:  summary,
+	}, findings
 }
 
 // reconcileCheckSummaries updates check summaries to reflect post-filtered

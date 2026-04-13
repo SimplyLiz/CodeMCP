@@ -2,6 +2,124 @@
 
 All notable changes to CKB will be documented in this file.
 
+## [9.0.0] - 2026-04-13
+
+### Added
+
+#### LIP v2.0 semantic integration
+
+CKB now speaks the LIP v2.0 wire protocol correctly and integrates semantic
+embeddings across the tool suite. The existing `internal/lip` client had the
+wrong JSON discriminator (`"action"` instead of `"type"`) and wrong action
+strings, meaning all LIP calls were silently failing. The client has been
+rewritten with the correct Serde-tagged format and 25 new functions covering
+LIP v1.5–v2.0.
+
+**Wire protocol fix** — all requests now use `"type"` as the discriminator with
+`snake_case` variant names matching Rust's
+`#[serde(tag = "type", rename_all = "snake_case")]`. Field names corrected
+throughout (e.g. `"symbol_uri"` not `"uri"` for annotation queries).
+
+**New LIP client functions** (`internal/lip/client.go`):
+
+| Function | LIP version | Purpose |
+|---|---|---|
+| `Handshake` | v1.5 | Protocol handshake, returns daemon + protocol versions |
+| `BatchNearestByText` | v1.5 | Parallel nearest-neighbour for multiple queries |
+| `NearestBySymbol` | v1.5 | Nearest neighbours by `lip://` symbol URI |
+| `BatchAnnotationGet` | v1.5 | Bulk annotation lookup |
+| `ReindexFiles` | v1.6 | Trigger reindex for specific URIs |
+| `Similarity` | v1.6 | Cosine similarity between two files |
+| `QueryExpansion` | v1.6 | Expand a query with semantically related terms |
+| `Cluster` | v1.6 | Group files by semantic proximity |
+| `ExportEmbeddings` | v1.6 | Raw embedding export |
+| `NearestByContrast` | v1.7 | Like-URI minus unlike-URI retrieval |
+| `Outliers` | v1.7 | Semantically isolated files |
+| `SemanticDrift` | v1.7 | Cosine distance between two files |
+| `SimilarityMatrix` | v1.7 | Pairwise similarity matrix |
+| `FindSemanticCounterpart` | v1.7 | Best match for a file within a candidate set |
+| `Coverage` | v1.7 | Embedding coverage stats by directory |
+| `FindBoundaries` | v1.8 | Semantic boundary detection within a file |
+| `SemanticDiff` | v1.8 | Compare two text blobs by embedding distance |
+| `NearestInStore` | v1.8 | Nearest neighbours against an in-memory store |
+| `NoveltyScore` | v1.8 | Per-file novelty (0–1, higher = fewer neighbours) |
+| `ExtractTerminology` | v1.8 | Domain term extraction from a file set |
+| `PruneDeleted` | v1.8 | Remove embeddings for deleted files |
+| `GetCentroid` | v1.9 | Mean embedding vector for a file set |
+| `StaleEmbeddings` | v1.9 | Files with out-of-date embeddings |
+| `NearestByTextFiltered` | v1.9 | Nearest-by-text with glob filter + min score |
+| `NearestByFileFiltered` | v1.9 | Nearest-by-file with glob filter + min score |
+| `ExplainMatch` | v2.0 | Chunk-level explanation of why a file matched a query |
+
+**Response types added**: `HandshakeInfo`, `CoverageInfo`, `DirCoverage`,
+`BoundaryRange`, `SemanticDiffInfo`, `NoveltyInfo`, `NoveltyItem`, `TermItem`,
+`ExplanationChunk`. `IndexStatusInfo` gains `MixedModels bool` and
+`ModelsInIndex []string`. `FileStatusInfo` gains `EmbeddingModel string`.
+
+#### `searchSymbols` — semantic fallback + re-ranking with filter
+
+`SemanticSearchWithLIP` now accepts `filter string` and `minScore float32`
+parameters and delegates to `NearestByTextFiltered`. The filter accepts glob
+patterns (e.g. `"internal/api/**"`) to restrict semantic results to a subtree.
+Call site in `symbols.go` updated; existing callers pass `"", 0` for unchanged
+behaviour.
+
+#### `reviewPR` — `semantic-novelty` check
+
+A new `semantic-novelty` check runs alongside the existing 20 review checks.
+It calls `NoveltyScore` on changed files and flags any with a score ≥ 0.7 as
+"semantically novel" — files with few neighbours in the embedding index that
+may lack test coverage. Degrades silently when LIP is unavailable; skipped
+automatically when fewer than 2 files are changed.
+
+#### `getAffectedTests` — semantic test discovery
+
+After the SCIP-based test collection pass, a LIP pass runs
+`NearestByFileFiltered(fileURI, 5, "*_test.go", 0.6)` for each changed source
+file. Matching test files are added to the result with
+`Reason: "semantic-proximity"` and `Confidence` set to the LIP score. Files
+already found by SCIP are not duplicated.
+
+#### `explainFile` — semantic boundary detection
+
+After the existing symbol analysis, `toolExplainFile` calls
+`FindBoundaries(fileURI, 0, 0, "")` (defaults: 30-line chunks, 0.3 threshold)
+and appends a `semantic_boundaries` array to the response:
+```json
+[{"start_line": 1, "end_line": 45, "shift_magnitude": 0.71, "nearest_symbol": "handleAuth"}]
+```
+Silently omitted when LIP is unavailable or returns no boundaries.
+
+#### `getArchitecture` — semantic coupling matrix
+
+After structural architecture data is assembled, `toolGetArchitecture` collects
+representative file URIs for each module, calls `SimilarityMatrix`, and adds a
+`semantic_coupling` field:
+```json
+{"modules": ["internal/auth", "internal/api"], "matrix": [[1.0, 0.74], [0.74, 1.0]]}
+```
+Also calls `GetCentroid` over up to 500 repo files and records
+`repo_centroid_included: N` in the response metadata. Both are silently omitted
+when LIP is unavailable or fewer than 2 modules are embedded.
+
+#### `doctor` — LIP coverage + stale embedding + model provenance
+
+The LIP health section in `ckb doctor` now reports:
+- Coverage: `N% embedded (Y/Z files)`
+- Stale embeddings: count of files with out-of-date vectors
+- Mixed-model warning when multiple embedding models are present in the index
+- List of active embedding models
+
+### Changed
+
+- `NearestByFile` and `NearestByText` are now thin wrappers over
+  `NearestByFileFiltered` and `NearestByTextFiltered` respectively
+- `GetEmbedding` and `GetSymbolEmbedding` delegate to `GetEmbeddingsBatch`
+  (the old `"embedding_get"` and `"symbol_embedding"` wire variants had no
+  corresponding Rust enum variants)
+
+---
+
 ## [8.5.0] - 2026-04-11
 
 ### Added

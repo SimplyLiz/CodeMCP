@@ -124,6 +124,9 @@ func RerankWithLIP(_ context.Context, results []SearchResultItem, repoRoot, _ st
 // where FTS5 matches symbol names lexically, this finds semantically related
 // files even when the query terms don't appear literally in the code.
 //
+// filter is an optional glob pattern to restrict candidates (e.g. "*_test.go");
+// minScore is an optional minimum cosine similarity threshold (0 = disabled).
+//
 // fn receives the full slice of URIs returned by LIP in a single call and should
 // return a map from URI to SearchResultItems for that file. This allows callers to
 // batch all symbol lookups into one round-trip instead of N.
@@ -132,8 +135,8 @@ func RerankWithLIP(_ context.Context, results []SearchResultItem, repoRoot, _ st
 // symbol ID.
 //
 // Returns nil (not an error) when LIP is unavailable or returns no results.
-func SemanticSearchWithLIP(query string, topK int, fn func(fileURIs []string) map[string][]SearchResultItem) []SearchResultItem {
-	hits, _ := lip.NearestByText(query, topK)
+func SemanticSearchWithLIP(query string, topK int, filter string, minScore float32, fn func(fileURIs []string) map[string][]SearchResultItem) []SearchResultItem {
+	hits, _ := lip.NearestByTextFiltered(query, topK, filter, minScore, "")
 	if len(hits) == 0 {
 		return nil
 	}
