@@ -2138,7 +2138,12 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 					"checks": map[string]interface{}{
 						"type":        "array",
 						"items":       map[string]interface{}{"type": "string"},
-						"description": "Limit to specific checks: breaking, secrets, tests, complexity, coupling, hotspots, risk, critical, generated, classify, split, health, traceability, independence, dead-code, test-gaps, blast-radius, comment-drift, format-consistency, bug-patterns",
+						"description": "Run only these checks (allowlist): breaking, secrets, tests, complexity, coupling, hotspots, risk, critical, generated, classify, split, health, traceability, independence, dead-code, test-gaps, blast-radius, comment-drift, format-consistency, bug-patterns",
+					},
+					"skip": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "Skip these checks (denylist) — complement of 'checks'. Useful on large repos where a full SCIP re-index is expensive: skip=[\"dead-code\",\"blast-radius\",\"unwired\"] runs everything else at full accuracy.",
 					},
 					"staged": map[string]interface{}{
 						"type":        "boolean",

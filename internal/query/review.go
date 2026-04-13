@@ -25,6 +25,7 @@ type ReviewPROptions struct {
 	HeadBranch string        `json:"headBranch"` // default: HEAD
 	Policy     *ReviewPolicy `json:"policy"`     // Quality gates (or from .ckb/review.json)
 	Checks     []string      `json:"checks"`     // Filter which checks to run (default: all)
+	SkipChecks []string      `json:"skipChecks"` // Checks to exclude (complement of Checks)
 	MaxInline  int           `json:"maxInline"`  // Max inline suggestions (default: 10)
 	Staged     bool          `json:"staged"`     // Review staged changes instead of branch diff
 	Scope      string        `json:"scope"`      // Filter to path prefix or symbol name
@@ -318,6 +319,13 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 
 	// Run checks in parallel
 	checkEnabled := func(name string) bool {
+		// SkipChecks is evaluated first — explicit exclusion wins.
+		for _, c := range opts.SkipChecks {
+			if c == name {
+				return false
+			}
+		}
+		// Checks allowlist: if non-empty, only listed checks run.
 		if len(opts.Checks) == 0 {
 			return true
 		}

@@ -220,7 +220,7 @@ func runSetup(cmd *cobra.Command, args []string) error {
 	// Post-setup hint: LIP semantic search (optional, non-interactive)
 	fmt.Println()
 	fmt.Println("Optional: enable semantic search with LIP v2.0 (requires Rust/cargo):")
-	fmt.Println("  cargo install lip-cli && lip daemon start && lip index .")
+	fmt.Println("  cargo install lip-cli && lip daemon --socket ~/.local/share/lip/lip.sock && lip index .")
 	fmt.Println("  https://lip-sigma.vercel.app  —  once running, CKB picks it up automatically.")
 
 	return nil
