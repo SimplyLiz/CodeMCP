@@ -213,10 +213,12 @@ func TestComputeRepoState(t *testing.T) {
 			t.Fatalf("ComputeRepoState failed: %v", err)
 		}
 
-		// Verify dirty flag is consistent with diff hashes
+		// Verify dirty flag is consistent with diff hashes.
+		// Untracked files are intentionally excluded from Dirty — they don't
+		// affect the SCIP index and should not trigger freshness warnings
+		// (editor swap files, temp binaries, etc. would cause false positives).
 		expectedDirty := state.StagedDiffHash != EmptyHash ||
-			state.WorkingTreeDiffHash != EmptyHash ||
-			state.UntrackedListHash != EmptyHash
+			state.WorkingTreeDiffHash != EmptyHash
 
 		if state.Dirty != expectedDirty {
 			t.Errorf("Dirty=%v but expected %v based on hashes", state.Dirty, expectedDirty)
