@@ -77,7 +77,7 @@ func (d *testDaemon) serve() {
 		return // listener closed by cleanup
 	}
 	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(2 * time.Second))
+	_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
 
 	// Read length-prefixed request.
 	var lenBuf [4]byte
@@ -346,7 +346,7 @@ func TestWireProtocol_NearestByTextFiltered_Omitempty(t *testing.T) {
 	// filter, min_score, model are all zero — must NOT appear in the request.
 	d := newTestDaemon(t, nearestResp{})
 
-	NearestByTextFiltered("query", 5, "", 0, "")
+	_, _ = NearestByTextFiltered("query", 5, "", 0, "")
 	d.waitHandled(t)
 
 	req := d.req()
@@ -378,7 +378,7 @@ func TestWireProtocol_NearestByFileFiltered(t *testing.T) {
 func TestWireProtocol_NearestByFile_Delegates(t *testing.T) {
 	d := newTestDaemon(t, nearestResp{})
 
-	NearestByFile("file://x.go", 3)
+	_, _ = NearestByFile("file://x.go", 3)
 	d.waitHandled(t)
 
 	req := d.req()
@@ -563,7 +563,7 @@ func TestWireProtocol_FindBoundaries(t *testing.T) {
 func TestWireProtocol_FindBoundaries_Omitempty(t *testing.T) {
 	d := newTestDaemon(t, boundariesResp{})
 
-	FindBoundaries("file://x.go", 0, 0, "")
+	_, _ = FindBoundaries("file://x.go", 0, 0, "")
 	d.waitHandled(t)
 
 	req := d.req()
@@ -716,7 +716,7 @@ func TestWireProtocol_Handshake(t *testing.T) {
 func TestWireProtocol_Handshake_NoVersion(t *testing.T) {
 	d := newTestDaemon(t, handshakeResp{})
 
-	Handshake("")
+	_, _ = Handshake("")
 	d.waitHandled(t)
 
 	req := d.req()
@@ -752,7 +752,7 @@ func TestWireProtocol_ExplainMatch(t *testing.T) {
 func TestWireProtocol_ExplainMatch_Omitempty(t *testing.T) {
 	d := newTestDaemon(t, explainMatchResp{})
 
-	ExplainMatch("q", "file://x.go", 0, 0, "")
+	_, _, _ = ExplainMatch("q", "file://x.go", 0, 0, "")
 	d.waitHandled(t)
 
 	req := d.req()
@@ -844,7 +844,7 @@ func TestWireProtocol_SemanticDiff(t *testing.T) {
 func TestWireProtocol_SemanticDiff_Omitempty(t *testing.T) {
 	d := newTestDaemon(t, semanticDiffResp{})
 
-	SemanticDiff("a", "b", 0, "")
+	_, _ = SemanticDiff("a", "b", 0, "")
 	d.waitHandled(t)
 
 	req := d.req()
@@ -910,19 +910,19 @@ func TestResponseSizeGuard(t *testing.T) {
 			return
 		}
 		defer conn.Close()
-		conn.SetDeadline(time.Now().Add(2 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
 
 		// Drain the request.
 		var lenBuf [4]byte
-		io.ReadFull(conn, lenBuf[:])
+		_, _ = io.ReadFull(conn, lenBuf[:])
 		reqLen := binary.BigEndian.Uint32(lenBuf[:])
-		io.ReadFull(conn, make([]byte, reqLen))
+		_, _ = io.ReadFull(conn, make([]byte, reqLen))
 
 		// Send a response that claims to be 8192 bytes — over the 4096 limit.
 		oversized := uint32(8192)
 		var respLen [4]byte
 		binary.BigEndian.PutUint32(respLen[:], oversized)
-		conn.Write(respLen[:])
+		_, _ = conn.Write(respLen[:])
 		// Don't send the body — client should bail after reading the length.
 	}()
 

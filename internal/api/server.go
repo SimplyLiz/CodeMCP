@@ -91,8 +91,8 @@ func NewServer(addr string, engine *query.Engine, logger *slog.Logger, config Se
 	// Create HTTP server with configured router and middleware
 	handler := s.applyMiddleware(s.router)
 	s.server = &http.Server{
-		Addr:         addr,
-		Handler:      handler,
+		Addr:        addr,
+		Handler:     handler,
 		ReadTimeout: 15 * time.Second,
 		// WriteTimeout must accommodate long-running endpoints like /review/pr
 		// and /architecture/refresh which can take several minutes on large repos.
