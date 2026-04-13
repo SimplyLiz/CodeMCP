@@ -1921,10 +1921,6 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"repo_path": map[string]interface{}{
-						"type":        "string",
-						"description": "Absolute path to the repository root",
-					},
 					"limit": map[string]interface{}{
 						"type":        "integer",
 						"description": "Max number of commits to analyse (default 100)",
@@ -1934,7 +1930,6 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 						"description": "Minimum co-change partner count to qualify as a suspect (default 3)",
 					},
 				},
-				"required": []string{"repo_path"},
 			},
 		},
 		{
@@ -1943,16 +1938,11 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"repo_path": map[string]interface{}{
-						"type":        "string",
-						"description": "Absolute path to the repository root",
-					},
 					"days": map[string]interface{}{
 						"type":        "integer",
 						"description": "Number of days of git history to scan (default 90)",
 					},
 				},
-				"required": []string{"repo_path"},
 			},
 		},
 		{
@@ -1961,10 +1951,6 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"repo_path": map[string]interface{}{
-						"type":        "string",
-						"description": "Absolute path to the repository root",
-					},
 					"target": map[string]interface{}{
 						"type":        "string",
 						"description": "Repo-relative file path or module ID to analyse",
@@ -1974,7 +1960,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 						"description": "Maximum related modules to return (default 50)",
 					},
 				},
-				"required": []string{"repo_path", "target"},
+				"required": []string{"target"},
 			},
 		},
 		{

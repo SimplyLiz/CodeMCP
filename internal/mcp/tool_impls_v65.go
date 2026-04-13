@@ -9,6 +9,7 @@ import (
 	"github.com/SimplyLiz/CodeMCP/internal/errors"
 	"github.com/SimplyLiz/CodeMCP/internal/explain"
 	"github.com/SimplyLiz/CodeMCP/internal/export"
+	"github.com/SimplyLiz/CodeMCP/internal/output"
 )
 
 // v6.5 Developer Intelligence tool implementations
@@ -94,8 +95,21 @@ func (s *MCPServer) toolAnalyzeCoupling(params map[string]interface{}) (*envelop
 		return nil, errors.NewOperationError("analyze coupling", err)
 	}
 
+	var drilldowns []output.Drilldown
+	for _, c := range result.Correlations {
+		if c.Level == "high" {
+			drilldowns = append(drilldowns, output.Drilldown{
+				Label:          "Detect shotgun surgery smell across the repo",
+				Query:          "detectShotgunSurgery",
+				RelevanceScore: 0.85,
+			})
+			break
+		}
+	}
+
 	return NewToolResponse().
 		Data(result).
+		WithDrilldowns(drilldowns).
 		Build(), nil
 }
 

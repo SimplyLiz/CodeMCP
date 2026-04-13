@@ -75,11 +75,6 @@ func (s *MCPServer) toolDetectShotgunSurgery(params map[string]interface{}) (*en
 		return nil, errors.NewOperationError("detect shotgun surgery", cartographer.ErrUnavailable)
 	}
 
-	repoPath, ok := params["repo_path"].(string)
-	if !ok || repoPath == "" {
-		return nil, errors.NewInvalidParameterError("repo_path", "required")
-	}
-
 	var limit, minPartners uint32
 	if v, ok := params["limit"].(float64); ok && v > 0 {
 		limit = uint32(v)
@@ -88,7 +83,8 @@ func (s *MCPServer) toolDetectShotgunSurgery(params map[string]interface{}) (*en
 		minPartners = uint32(v)
 	}
 
-	entries, err := cartographer.ShotgunSurgery(repoPath, limit, minPartners)
+	repoRoot := s.engine().GetRepoRoot()
+	entries, err := cartographer.ShotgunSurgery(repoRoot, limit, minPartners)
 	if err != nil {
 		return nil, errors.NewOperationError("detect shotgun surgery", err)
 	}
@@ -102,17 +98,13 @@ func (s *MCPServer) toolGetArchitecturalEvolution(params map[string]interface{})
 		return nil, errors.NewOperationError("get architectural evolution", cartographer.ErrUnavailable)
 	}
 
-	repoPath, ok := params["repo_path"].(string)
-	if !ok || repoPath == "" {
-		return nil, errors.NewInvalidParameterError("repo_path", "required")
-	}
-
 	var days uint32
 	if v, ok := params["days"].(float64); ok && v > 0 {
 		days = uint32(v)
 	}
 
-	result, err := cartographer.Evolution(repoPath, days)
+	repoRoot := s.engine().GetRepoRoot()
+	result, err := cartographer.Evolution(repoRoot, days)
 	if err != nil {
 		return nil, errors.NewOperationError("get architectural evolution", err)
 	}
@@ -126,11 +118,6 @@ func (s *MCPServer) toolGetBlastRadius(params map[string]interface{}) (*envelope
 		return nil, errors.NewOperationError("get blast radius", cartographer.ErrUnavailable)
 	}
 
-	repoPath, ok := params["repo_path"].(string)
-	if !ok || repoPath == "" {
-		return nil, errors.NewInvalidParameterError("repo_path", "required")
-	}
-
 	target, ok := params["target"].(string)
 	if !ok || target == "" {
 		return nil, errors.NewInvalidParameterError("target", "required")
@@ -141,7 +128,8 @@ func (s *MCPServer) toolGetBlastRadius(params map[string]interface{}) (*envelope
 		maxRelated = uint32(v)
 	}
 
-	result, err := cartographer.BlastRadius(repoPath, target, maxRelated)
+	repoRoot := s.engine().GetRepoRoot()
+	result, err := cartographer.BlastRadius(repoRoot, target, maxRelated)
 	if err != nil {
 		return nil, errors.NewOperationError("get blast radius", err)
 	}
