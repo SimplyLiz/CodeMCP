@@ -456,15 +456,18 @@ func normalizeSearchResults(resp *SearchSymbolsResponse) map[string]any {
 	// results can appear in different order between runs.
 	sort.Slice(results, func(i, j int) bool {
 		ai, aj := results[i], results[j]
-		ni, nj := ai["name"].(string), aj["name"].(string)
+		ni, _ := ai["name"].(string)
+		nj, _ := aj["name"].(string)
 		if ni != nj {
 			return ni < nj
 		}
-		ki, kj := ai["kind"].(string), aj["kind"].(string)
+		ki, _ := ai["kind"].(string)
+		kj, _ := aj["kind"].(string)
 		if ki != kj {
 			return ki < kj
 		}
-		fi, fj := ai["file"].(string), aj["file"].(string)
+		fi, _ := ai["file"].(string)
+		fj, _ := aj["file"].(string)
 		return fi < fj
 	})
 

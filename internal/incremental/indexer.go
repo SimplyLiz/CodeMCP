@@ -233,9 +233,10 @@ func (i *IncrementalIndexer) GetIndexState() IndexState {
 // dominates, and streaming's lower peak heap wins decisively.
 //
 // Measured crossover (Apple M4 Pro, synthetic benchmark):
-//   small  1k docs  /  4 MB  → old path faster (+14%)
-//   medium 10k docs / 80 MB  → old path faster (+20%)
-//   large  50k docs / 738MB  → streaming faster (-4% warm, -83% cold GC)
+//
+//	small  1k docs  /  4 MB  → old path faster (+14%)
+//	medium 10k docs / 80 MB  → old path faster (+20%)
+//	large  50k docs / 738MB  → streaming faster (-4% warm, -83% cold GC)
 const scipStreamingThresholdBytes = 200 << 20 // 200 MB
 
 // PopulateAfterFullIndex populates tracking tables after a full reindex

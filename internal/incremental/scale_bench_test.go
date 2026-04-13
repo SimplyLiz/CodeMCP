@@ -255,9 +255,9 @@ func populateSynthetic(updater *IndexUpdater, delta *SymbolDelta, symbolToFile m
 // cost shows up here.
 func BenchmarkExtractFileDeltaScale(b *testing.B) {
 	scenarios := []struct {
-		name        string
-		nSyms       int
-		nOccs       int
+		name  string
+		nSyms int
+		nOccs int
 	}{
 		{"10syms_50occs", 10, 50},
 		{"30syms_200occs", 30, 200},

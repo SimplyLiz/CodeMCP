@@ -32,25 +32,25 @@ type AnalyzeImpactOptions struct {
 
 // AnalyzeImpactResponse is the response for analyzeImpact.
 type AnalyzeImpactResponse struct {
-	Symbol            *SymbolInfo           `json:"symbol"`
-	Visibility        *VisibilityInfo       `json:"visibility"`
-	RiskScore         *RiskScore            `json:"riskScore"`
-	BlastRadius       *BlastRadiusSummary   `json:"blastRadius,omitempty"`
-	DirectImpact      []ImpactItem          `json:"directImpact"`
-	TransitiveImpact  []ImpactItem          `json:"transitiveImpact,omitempty"`
-	ModulesAffected   []ModuleImpact        `json:"modulesAffected"`
-	ObservedUsage     *ObservedUsageSummary `json:"observedUsage,omitempty"`
-	RelatedDecisions  []RelatedDecision     `json:"relatedDecisions,omitempty"` // v6.5: ADRs affecting impacted modules
-	DocsToUpdate      []DocToUpdate         `json:"docsToUpdate,omitempty"`     // v7.3: Docs that mention this symbol
+	Symbol           *SymbolInfo           `json:"symbol"`
+	Visibility       *VisibilityInfo       `json:"visibility"`
+	RiskScore        *RiskScore            `json:"riskScore"`
+	BlastRadius      *BlastRadiusSummary   `json:"blastRadius,omitempty"`
+	DirectImpact     []ImpactItem          `json:"directImpact"`
+	TransitiveImpact []ImpactItem          `json:"transitiveImpact,omitempty"`
+	ModulesAffected  []ModuleImpact        `json:"modulesAffected"`
+	ObservedUsage    *ObservedUsageSummary `json:"observedUsage,omitempty"`
+	RelatedDecisions []RelatedDecision     `json:"relatedDecisions,omitempty"` // v6.5: ADRs affecting impacted modules
+	DocsToUpdate     []DocToUpdate         `json:"docsToUpdate,omitempty"`     // v7.3: Docs that mention this symbol
 	// ArchImpact is Cartographer's architectural simulation for the symbol's file:
 	// predicted affected modules, cycle risk, layer violations, and health delta.
 	// Only populated when the binary is built with -tags cartographer.
 	ArchImpact        *cartographer.ImpactAnalysis `json:"archImpact,omitempty"`
-	BlendedConfidence float64               `json:"blendedConfidence,omitempty"`
-	Truncated         bool                  `json:"truncated,omitempty"`
-	TruncationInfo    *TruncationInfo       `json:"truncationInfo,omitempty"`
-	Provenance        *Provenance           `json:"provenance"`
-	Drilldowns        []output.Drilldown    `json:"drilldowns,omitempty"`
+	BlendedConfidence float64                      `json:"blendedConfidence,omitempty"`
+	Truncated         bool                         `json:"truncated,omitempty"`
+	TruncationInfo    *TruncationInfo              `json:"truncationInfo,omitempty"`
+	Provenance        *Provenance                  `json:"provenance"`
+	Drilldowns        []output.Drilldown           `json:"drilldowns,omitempty"`
 }
 
 // DocToUpdate represents documentation that may need updating when a symbol changes.
@@ -468,7 +468,7 @@ func (e *Engine) AnalyzeImpact(ctx context.Context, opts AnalyzeImpactOptions) (
 	// Augment with Cartographer architectural simulation for the symbol's file.
 	// Uses the file path as the module ID — gives predicted affected modules, cycle
 	// risk, layer violations, and health delta. Gracefully skipped when unavailable.
-	if cartographer.Available() && symbolInfo != nil && symbolInfo.Location != nil {
+	if cartographer.Available() && symbolInfo.Location != nil {
 		filePath := symbolInfo.Location.FileId
 		if archImpact, cerr := cartographer.SimulateChange(e.repoRoot, filePath, symbolInfo.Signature, ""); cerr == nil {
 			resp.ArchImpact = archImpact

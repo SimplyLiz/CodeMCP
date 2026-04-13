@@ -1411,19 +1411,19 @@ type PrepareChangeOptions struct {
 // PrepareChangeResponse provides comprehensive pre-change analysis.
 type PrepareChangeResponse struct {
 	AINavigationMeta
-	Target           *PrepareChangeTarget         `json:"target"`
-	DirectDependents []PrepareDependent            `json:"directDependents"`
-	TransitiveImpact *PrepareTransitive            `json:"transitiveImpact"`
-	RelatedTests     []PrepareTest                 `json:"relatedTests"`
-	CoChangeFiles    []PrepareCoChange             `json:"coChangeFiles,omitempty"`
-	RiskAssessment   *PrepareRisk                  `json:"riskAssessment"`
-	RenameDetail     *RenameDetail                 `json:"renameDetail,omitempty"`
-	ExtractDetail    *ExtractDetail                `json:"extractDetail,omitempty"`
-	MoveDetail       *MoveDetail                   `json:"moveDetail,omitempty"`
+	Target           *PrepareChangeTarget `json:"target"`
+	DirectDependents []PrepareDependent   `json:"directDependents"`
+	TransitiveImpact *PrepareTransitive   `json:"transitiveImpact"`
+	RelatedTests     []PrepareTest        `json:"relatedTests"`
+	CoChangeFiles    []PrepareCoChange    `json:"coChangeFiles,omitempty"`
+	RiskAssessment   *PrepareRisk         `json:"riskAssessment"`
+	RenameDetail     *RenameDetail        `json:"renameDetail,omitempty"`
+	ExtractDetail    *ExtractDetail       `json:"extractDetail,omitempty"`
+	MoveDetail       *MoveDetail          `json:"moveDetail,omitempty"`
 	// ArchImpact is Cartographer's module-level impact simulation: predicted affected
 	// modules, cycle risk, layer violations, and health delta. Only populated when the
 	// binary is built with -tags cartographer.
-	ArchImpact       *cartographer.ImpactAnalysis  `json:"archImpact,omitempty"`
+	ArchImpact *cartographer.ImpactAnalysis `json:"archImpact,omitempty"`
 }
 
 // PrepareChangeTarget describes what will be changed.

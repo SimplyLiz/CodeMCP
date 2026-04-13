@@ -522,7 +522,7 @@ func (u *IndexUpdater) PopulateFromFullIndexStreaming(extractor *SCIPExtractor) 
 	// Pass 1: lightweight scan to build symbolToFile.
 	// Uses StreamDocuments (raw proto) to avoid convertDocument allocations.
 	// Only looks at definition occurrences; ignores everything else.
-	const defRole = int32(1) // scippb.SymbolRole_Definition == 1
+	const defRole = int32(1)                       // scippb.SymbolRole_Definition == 1
 	symbolToFile := make(map[string]string, 1<<17) // pre-alloc 128k
 	if err := scip.StreamDocuments(extractor.indexPath, func(pbDoc *scippb.Document) error {
 		if pbDoc.Language != "go" && pbDoc.Language != "" {

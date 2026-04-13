@@ -147,17 +147,17 @@ func (e *Engine) getBackendStatuses(ctx context.Context) []BackendStatus {
 		Id:        "cartographer",
 		Available: cartographer.Available(),
 		Capabilities: []string{
-			"layer-analysis",       // CheckLayers in PR review
-			"health-scoring",       // MapProject in getArchitecture, Health in review pipeline
-			"hidden-coupling",      // HiddenCoupling in PR coupling check
-			"churn-analysis",       // GitChurn in blast-radius check
-			"cochange-analysis",    // GitCochange in getHotspots
-			"dead-code-detection",  // UnreferencedSymbols in PR dead-code check
-			"simulate-change",      // SimulateChange in analyzeImpact
-			"semidiff",             // Semidiff in summarizeDiff
-			"module-skeleton",      // GetModuleContext in getModuleOverview
-			"skeleton-extraction",  // SkeletonMap in exportForLLM
-			"ranked-skeleton",      // RankedSkeleton in exportForLLM (tokenBudget)
+			"layer-analysis",      // CheckLayers in PR review
+			"health-scoring",      // MapProject in getArchitecture, Health in review pipeline
+			"hidden-coupling",     // HiddenCoupling in PR coupling check
+			"churn-analysis",      // GitChurn in blast-radius check
+			"cochange-analysis",   // GitCochange in getHotspots
+			"dead-code-detection", // UnreferencedSymbols in PR dead-code check
+			"simulate-change",     // SimulateChange in analyzeImpact
+			"semidiff",            // Semidiff in summarizeDiff
+			"module-skeleton",     // GetModuleContext in getModuleOverview
+			"skeleton-extraction", // SkeletonMap in exportForLLM
+			"ranked-skeleton",     // RankedSkeleton in exportForLLM (tokenBudget)
 		},
 	}
 	if cartographer.Available() {

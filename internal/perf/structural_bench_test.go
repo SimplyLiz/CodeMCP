@@ -147,11 +147,11 @@ func BenchmarkCallSitePipeline(b *testing.B) {
 	}
 
 	callSites := []struct {
-		line      int
-		callText  string
-		loopType  string
-		churn     int
-		nearEP    bool
+		line     int
+		callText string
+		loopType string
+		churn    int
+		nearEP   bool
 	}{
 		{12, "db.QueryContext(ctx, query)", "for/range", 15, true},
 		{34, "http.Get(url)", "for", 8, false},

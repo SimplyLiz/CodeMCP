@@ -73,7 +73,7 @@ type Meta struct {
 	Provenance *Provenance `json:"provenance,omitempty"`
 	Freshness  *Freshness  `json:"freshness,omitempty"`
 	Truncation *Truncation `json:"truncation,omitempty"`
-	Cache      *CacheInfo  `json:"cache,omitempty"` // v8.0: cache status
+	Cache      *CacheInfo  `json:"cache,omitempty"`    // v8.0: cache status
 	Backend    string      `json:"backend,omitempty"`  // "scip" | "lsp" | "tree-sitter" | "git"
 	Accuracy   string      `json:"accuracy,omitempty"` // "high" | "medium" | "low"
 }

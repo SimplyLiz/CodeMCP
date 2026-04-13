@@ -1,8 +1,6 @@
 // Package cartographer provides CGo bindings to the Rust Cartographer library.
 package cartographer
 
-import "encoding/json"
-
 // ---------------------------------------------------------------------------
 // Public types (shared between real bridge and stub builds)
 // ---------------------------------------------------------------------------
@@ -180,23 +178,23 @@ type SemidiffFile struct {
 
 // SearchContentOptions configures a content search request (mirrors Rust SearchOptions).
 type SearchContentOptions struct {
-	Literal            bool     `json:"literal,omitempty"`
-	CaseSensitive      *bool    `json:"caseSensitive,omitempty"` // default true
-	ContextLines       int      `json:"contextLines,omitempty"`
-	BeforeContext      int      `json:"beforeContext,omitempty"`
-	AfterContext       int      `json:"afterContext,omitempty"`
-	MaxResults         int      `json:"maxResults,omitempty"`
-	FileGlob           string   `json:"fileGlob,omitempty"`
-	ExcludeGlob        string   `json:"excludeGlob,omitempty"`
-	ExtraPatterns      []string `json:"extraPatterns,omitempty"`
-	InvertMatch        bool     `json:"invertMatch,omitempty"`
-	WordRegexp         bool     `json:"wordRegexp,omitempty"`
-	OnlyMatching       bool     `json:"onlyMatching,omitempty"`
-	FilesWithMatches   bool     `json:"filesWithMatches,omitempty"`
-	FilesWithoutMatch  bool     `json:"filesWithoutMatch,omitempty"`
-	CountOnly          bool     `json:"countOnly,omitempty"`
-	NoIgnore           bool     `json:"noIgnore,omitempty"`
-	SearchPath         string   `json:"searchPath,omitempty"`
+	Literal           bool     `json:"literal,omitempty"`
+	CaseSensitive     *bool    `json:"caseSensitive,omitempty"` // default true
+	ContextLines      int      `json:"contextLines,omitempty"`
+	BeforeContext     int      `json:"beforeContext,omitempty"`
+	AfterContext      int      `json:"afterContext,omitempty"`
+	MaxResults        int      `json:"maxResults,omitempty"`
+	FileGlob          string   `json:"fileGlob,omitempty"`
+	ExcludeGlob       string   `json:"excludeGlob,omitempty"`
+	ExtraPatterns     []string `json:"extraPatterns,omitempty"`
+	InvertMatch       bool     `json:"invertMatch,omitempty"`
+	WordRegexp        bool     `json:"wordRegexp,omitempty"`
+	OnlyMatching      bool     `json:"onlyMatching,omitempty"`
+	FilesWithMatches  bool     `json:"filesWithMatches,omitempty"`
+	FilesWithoutMatch bool     `json:"filesWithoutMatch,omitempty"`
+	CountOnly         bool     `json:"countOnly,omitempty"`
+	NoIgnore          bool     `json:"noIgnore,omitempty"`
+	SearchPath        string   `json:"searchPath,omitempty"`
 }
 
 // FindOptions configures a file-find request (mirrors Rust FindOptions).
@@ -233,13 +231,13 @@ type FileCount struct {
 
 // SearchResult is returned by SearchContent.
 type SearchResult struct {
-	Matches            []ContentMatch `json:"matches"`
-	TotalMatches       int            `json:"totalMatches"`
-	FilesSearched      int            `json:"filesSearched"`
-	Truncated          bool           `json:"truncated"`
-	FilesWithMatches   []string       `json:"filesWithMatches,omitempty"`
-	FilesWithoutMatch  []string       `json:"filesWithoutMatch,omitempty"`
-	FileCounts         []FileCount    `json:"fileCounts,omitempty"`
+	Matches           []ContentMatch `json:"matches"`
+	TotalMatches      int            `json:"totalMatches"`
+	FilesSearched     int            `json:"filesSearched"`
+	Truncated         bool           `json:"truncated"`
+	FilesWithMatches  []string       `json:"filesWithMatches,omitempty"`
+	FilesWithoutMatch []string       `json:"filesWithoutMatch,omitempty"`
+	FileCounts        []FileCount    `json:"fileCounts,omitempty"`
 }
 
 // FindFile is one file returned by FindFiles.
@@ -263,24 +261,24 @@ type FindResult struct {
 
 // ReplaceOptions controls replace_content behaviour.
 type ReplaceOptions struct {
-	Literal      bool    `json:"literal,omitempty"`
+	Literal       bool   `json:"literal,omitempty"`
 	CaseSensitive *bool  `json:"caseSensitive,omitempty"`
-	WordRegexp   bool    `json:"wordRegexp,omitempty"`
-	DryRun       bool    `json:"dryRun,omitempty"`
-	Backup       bool    `json:"backup,omitempty"`
-	ContextLines *int    `json:"contextLines,omitempty"`
-	FileGlob     string  `json:"fileGlob,omitempty"`
-	ExcludeGlob  string  `json:"excludeGlob,omitempty"`
-	SearchPath   string  `json:"searchPath,omitempty"`
-	NoIgnore     bool    `json:"noIgnore,omitempty"`
-	MaxPerFile   int     `json:"maxPerFile,omitempty"`
+	WordRegexp    bool   `json:"wordRegexp,omitempty"`
+	DryRun        bool   `json:"dryRun,omitempty"`
+	Backup        bool   `json:"backup,omitempty"`
+	ContextLines  *int   `json:"contextLines,omitempty"`
+	FileGlob      string `json:"fileGlob,omitempty"`
+	ExcludeGlob   string `json:"excludeGlob,omitempty"`
+	SearchPath    string `json:"searchPath,omitempty"`
+	NoIgnore      bool   `json:"noIgnore,omitempty"`
+	MaxPerFile    int    `json:"maxPerFile,omitempty"`
 }
 
 // DiffLine is one line in a contextual diff produced by ReplaceContent.
 type DiffLine struct {
-	Kind        string `json:"kind"`       // "context", "removed", "added", "separator"
-	LineNumber  int    `json:"lineNumber"`
-	Content     string `json:"content"`
+	Kind       string `json:"kind"` // "context", "removed", "added", "separator"
+	LineNumber int    `json:"lineNumber"`
+	Content    string `json:"content"`
 }
 
 // FileChange describes the replacements made (or previewed) in one file.
@@ -304,18 +302,18 @@ type ReplaceResult struct {
 
 // ExtractOptions controls extract_content behaviour.
 type ExtractOptions struct {
-	Groups        []int   `json:"groups,omitempty"`
-	Separator     string  `json:"separator,omitempty"`
-	Format        string  `json:"format,omitempty"` // "text", "json", "csv", "tsv"
-	Count         bool    `json:"count,omitempty"`
-	Dedup         bool    `json:"dedup,omitempty"`
-	Sort          bool    `json:"sort,omitempty"`
-	CaseSensitive *bool   `json:"caseSensitive,omitempty"`
-	FileGlob      string  `json:"fileGlob,omitempty"`
-	ExcludeGlob   string  `json:"excludeGlob,omitempty"`
-	SearchPath    string  `json:"searchPath,omitempty"`
-	NoIgnore      bool    `json:"noIgnore,omitempty"`
-	Limit         int     `json:"limit,omitempty"`
+	Groups        []int  `json:"groups,omitempty"`
+	Separator     string `json:"separator,omitempty"`
+	Format        string `json:"format,omitempty"` // "text", "json", "csv", "tsv"
+	Count         bool   `json:"count,omitempty"`
+	Dedup         bool   `json:"dedup,omitempty"`
+	Sort          bool   `json:"sort,omitempty"`
+	CaseSensitive *bool  `json:"caseSensitive,omitempty"`
+	FileGlob      string `json:"fileGlob,omitempty"`
+	ExcludeGlob   string `json:"excludeGlob,omitempty"`
+	SearchPath    string `json:"searchPath,omitempty"`
+	NoIgnore      bool   `json:"noIgnore,omitempty"`
+	Limit         int    `json:"limit,omitempty"`
 }
 
 // ExtractMatch is one extracted row.
@@ -363,25 +361,25 @@ type ContextHealthOpts struct {
 
 // MetricBreakdown holds the individual normalized (0–1) metric scores.
 type MetricBreakdown struct {
-	SignalDensity      float64 `json:"signal_density"`
-	CompressionDensity float64 `json:"compression_density"`
-	PositionHealth     float64 `json:"position_health"`
-	EntityDensity      float64 `json:"entity_density"`
+	SignalDensity       float64 `json:"signal_density"`
+	CompressionDensity  float64 `json:"compression_density"`
+	PositionHealth      float64 `json:"position_health"`
+	EntityDensity       float64 `json:"entity_density"`
 	UtilizationHeadroom float64 `json:"utilization_headroom"`
-	DedupRatio         float64 `json:"dedup_ratio"`
+	DedupRatio          float64 `json:"dedup_ratio"`
 }
 
 // ContextHealthReport is returned by ContextHealth.
 type ContextHealthReport struct {
-	TokenCount     int             `json:"token_count"`
-	CharCount      int             `json:"char_count"`
-	WindowSize     int             `json:"window_size"`
-	UtilizationPct float64         `json:"utilization_pct"`
-	Metrics        MetricBreakdown `json:"metrics"`
-	Score          float64         `json:"score"`   // 0–100
-	Grade          string          `json:"grade"`   // A / B / C / D / F
-	Warnings       []string        `json:"warnings"`
-	Recommendations []string       `json:"recommendations"`
+	TokenCount      int             `json:"token_count"`
+	CharCount       int             `json:"char_count"`
+	WindowSize      int             `json:"window_size"`
+	UtilizationPct  float64         `json:"utilization_pct"`
+	Metrics         MetricBreakdown `json:"metrics"`
+	Score           float64         `json:"score"` // 0–100
+	Grade           string          `json:"grade"` // A / B / C / D / F
+	Warnings        []string        `json:"warnings"`
+	Recommendations []string        `json:"recommendations"`
 }
 
 // CartographerError is returned when a Cartographer FFI call fails.
@@ -505,12 +503,3 @@ type BlastRadiusRelated struct {
 }
 
 // ---------------------------------------------------------------------------
-// Internal: response envelope (used by real bridge only, but kept here so
-// bridge.go doesn't need its own import of encoding/json for this type)
-// ---------------------------------------------------------------------------
-
-type ffiResponse struct {
-	OK    bool            `json:"ok"`
-	Error string          `json:"error,omitempty"`
-	Data  json.RawMessage `json:"data,omitempty"`
-}

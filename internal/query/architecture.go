@@ -60,10 +60,10 @@ type GetArchitectureResponse struct {
 	DetectionMethod string `json:"detectionMethod"` // "manifest", "convention", "inferred", "fallback", "import-scan"
 
 	// Optional Cartographer-augmented data (only when built with -tags cartographer)
-	ArchHealth      *CartographerHealthSummary `json:"archHealth,omitempty"`
-	ArchCycles      []cartographer.CycleInfo   `json:"archCycles,omitempty"`
+	ArchHealth      *CartographerHealthSummary   `json:"archHealth,omitempty"`
+	ArchCycles      []cartographer.CycleInfo     `json:"archCycles,omitempty"`
 	ArchGodModules  []cartographer.GodModuleInfo `json:"archGodModules,omitempty"`
-	ArchBridgeNodes []string                   `json:"archBridgeNodes,omitempty"` // high-centrality bottleneck modules
+	ArchBridgeNodes []string                     `json:"archBridgeNodes,omitempty"` // high-centrality bottleneck modules
 
 	// Standard envelope fields
 	Truncated       bool                  `json:"truncated,omitempty"`

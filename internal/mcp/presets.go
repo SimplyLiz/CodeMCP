@@ -121,15 +121,15 @@ var Presets = map[string][]string{
 		"compareAPI",         // v7.6: Breaking change detection
 		"auditRisk",
 		"explainOrigin",
-		"scanSecrets",         // v8.0: Secret detection for security audits
-		"analyzeTestGaps",     // v8.1: Test gap analysis
-		"planRefactor",        // v8.1: Unified refactor planning
-		"findCycles",          // v8.1: Dependency cycle detection
-		"suggestRefactorings", // v8.1: Proactive refactoring suggestions
-		"getFileComplexity",   // v8.3: File complexity for health pipeline
-		"listSymbols",              // v8.3: Bulk symbol listing with complexity
-		"getSymbolGraph",           // v8.3: Batch call graph
-		"analyzeStructuralPerf",    // v8.5: Loop call sites in hot files
+		"scanSecrets",           // v8.0: Secret detection for security audits
+		"analyzeTestGaps",       // v8.1: Test gap analysis
+		"planRefactor",          // v8.1: Unified refactor planning
+		"findCycles",            // v8.1: Dependency cycle detection
+		"suggestRefactorings",   // v8.1: Proactive refactoring suggestions
+		"getFileComplexity",     // v8.3: File complexity for health pipeline
+		"listSymbols",           // v8.3: Bulk symbol listing with complexity
+		"getSymbolGraph",        // v8.3: Batch call graph
+		"analyzeStructuralPerf", // v8.5: Loop call sites in hot files
 	},
 
 	// Federation: core + federation + contract tools

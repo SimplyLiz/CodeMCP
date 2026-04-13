@@ -96,9 +96,9 @@ func TestFindEnclosingFunction(t *testing.T) {
 		line int
 		want string
 	}{
-		{5, "outer"},      // inside outer only
-		{15, "inner"},     // both match — inner wins (smaller range)
-		{55, "<global>"},  // gap between functions
+		{5, "outer"},     // inside outer only
+		{15, "inner"},    // both match — inner wins (smaller range)
+		{55, "<global>"}, // gap between functions
 		{70, "other"},
 		{100, "<global>"},
 	}

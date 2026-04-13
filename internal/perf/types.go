@@ -89,7 +89,7 @@ type StructuralPerfOptions struct {
 // O(n²) hidden costs that do not appear in profiling until production load.
 type LoopCallSite struct {
 	File           string `json:"file"`           // repo-relative path
-	Line           int    `json:"line"`            // 1-indexed line of the call expression
+	Line           int    `json:"line"`           // 1-indexed line of the call expression
 	FunctionName   string `json:"functionName"`   // enclosing function/method name
 	CallText       string `json:"callText"`       // call expression text (truncated to 120 chars)
 	LoopType       string `json:"loopType"`       // "for", "range", "while", "do-while", "loop"

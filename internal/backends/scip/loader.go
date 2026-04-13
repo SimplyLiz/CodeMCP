@@ -498,15 +498,6 @@ func convertMetadata(meta *scippb.Metadata) *Metadata {
 	}
 }
 
-// convertDocuments converts protobuf documents to internal representation
-func convertDocuments(docs []*scippb.Document) []*Document {
-	result := make([]*Document, len(docs))
-	for i, doc := range docs {
-		result[i] = convertDocument(doc)
-	}
-	return result
-}
-
 // convertDocument converts a single protobuf document
 func convertDocument(doc *scippb.Document) *Document {
 	occurrences := make([]*Occurrence, len(doc.Occurrences))

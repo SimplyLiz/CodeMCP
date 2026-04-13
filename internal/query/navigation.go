@@ -173,14 +173,14 @@ type ModuleOverviewOptions struct {
 // ModuleOverviewResponse returns coarse module facts.
 type ModuleOverviewResponse struct {
 	AINavigationMeta
-	Module           ModuleOverviewModule         `json:"module"`
-	Size             ModuleSize                   `json:"size"`
-	RecentCommits    []string                     `json:"recentCommits,omitempty"`
-	Annotations      *ModuleAnnotations           `json:"annotations,omitempty"`      // v6.5: Declared module metadata
-	RelatedDecisions []RelatedDecision            `json:"relatedDecisions,omitempty"` // v6.5: ADRs affecting this module
+	Module           ModuleOverviewModule `json:"module"`
+	Size             ModuleSize           `json:"size"`
+	RecentCommits    []string             `json:"recentCommits,omitempty"`
+	Annotations      *ModuleAnnotations   `json:"annotations,omitempty"`      // v6.5: Declared module metadata
+	RelatedDecisions []RelatedDecision    `json:"relatedDecisions,omitempty"` // v6.5: ADRs affecting this module
 	// Skeleton provides Cartographer's skeleton (signatures + imports + deps) for the module.
 	// Only populated when the binary is built with -tags cartographer.
-	Skeleton         *cartographer.ModuleContext  `json:"skeleton,omitempty"`
+	Skeleton *cartographer.ModuleContext `json:"skeleton,omitempty"`
 }
 
 // ModuleOverviewModule contains module identity.
@@ -1896,19 +1896,19 @@ type TimeWindowSelector struct {
 // SummarizeDiffResponse provides a compressed summary of changes.
 type SummarizeDiffResponse struct {
 	AINavigationMeta
-	Selector        DiffSelector          `json:"selector"`
-	ChangedFiles    []DiffFileChange      `json:"changedFiles"`
-	SymbolsAffected []DiffSymbolAffected  `json:"symbolsAffected"`
-	RiskSignals     []DiffRiskSignal      `json:"riskSignals"`
-	SuggestedTests  []SuggestedTest       `json:"suggestedTests,omitempty"`
-	Summary         DiffSummaryText       `json:"summary"`
-	Commits         []DiffCommitInfo      `json:"commits,omitempty"`
+	Selector        DiffSelector         `json:"selector"`
+	ChangedFiles    []DiffFileChange     `json:"changedFiles"`
+	SymbolsAffected []DiffSymbolAffected `json:"symbolsAffected"`
+	RiskSignals     []DiffRiskSignal     `json:"riskSignals"`
+	SuggestedTests  []SuggestedTest      `json:"suggestedTests,omitempty"`
+	Summary         DiffSummaryText      `json:"summary"`
+	Commits         []DiffCommitInfo     `json:"commits,omitempty"`
 	// FunctionChanges provides function-level diff from Cartographer semidiff
 	// (added/removed function signatures per file). Only populated for commitRange
 	// selectors when the binary is built with -tags cartographer.
 	FunctionChanges []cartographer.SemidiffFile `json:"functionChanges,omitempty"`
 	Confidence      float64                     `json:"confidence"`
-	ConfidenceBasis []ConfidenceBasisItem        `json:"confidenceBasis"`
+	ConfidenceBasis []ConfidenceBasisItem       `json:"confidenceBasis"`
 	Limitations     []string                    `json:"limitations,omitempty"`
 }
 

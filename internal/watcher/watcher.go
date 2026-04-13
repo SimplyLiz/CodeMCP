@@ -272,9 +272,11 @@ func (w *Watcher) checkRepoChanges(rw *repoWatcher) {
 // the delta was applied. Unacked events are not retried — this is informational.
 func (w *Watcher) Ack(ack DeltaAck) {
 	if ch, ok := w.pendingAcks.Load(ack.Seq); ok {
-		select {
-		case ch.(chan DeltaAck) <- ack:
-		default:
+		if ackCh, ok2 := ch.(chan DeltaAck); ok2 {
+			select {
+			case ackCh <- ack:
+			default:
+			}
 		}
 		w.pendingAcks.Delete(ack.Seq)
 	}

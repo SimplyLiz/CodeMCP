@@ -14,8 +14,8 @@ import (
 
 func TestCorrelationLevel(t *testing.T) {
 	tests := []struct {
-		corr  float64
-		want  string
+		corr float64
+		want string
 	}{
 		{1.0, "high"},
 		{0.8, "high"},
@@ -306,8 +306,8 @@ func TestScan_SkipsPairWithImportEdge(t *testing.T) {
 	// They co-change 3 times — should NOT be flagged as hidden coupling.
 	for i := 0; i < 3; i++ {
 		writeAndCommit(t, dir, map[string]string{
-			"main.go":         `package main` + "\n" + `import "testmodule/util"` + "\n// v" + string(rune('0'+i)),
-			"util/helper.go":  "package util\n// v" + string(rune('0'+i)),
+			"main.go":        `package main` + "\n" + `import "testmodule/util"` + "\n// v" + string(rune('0'+i)),
+			"util/helper.go": "package util\n// v" + string(rune('0'+i)),
 		}, "update main and util")
 	}
 
@@ -450,8 +450,8 @@ func TestScan_FilterTestdataPaths(t *testing.T) {
 	// testdata files co-change with a real file; they should be invisible.
 	for i := 0; i < 3; i++ {
 		writeAndCommit(t, dir, map[string]string{
-			"internal/service.go":    "package internal\n// v" + string(rune('0'+i)),
-			"testdata/fixture.json":  `{"v":` + string(rune('0'+i)) + `}`,
+			"internal/service.go":   "package internal\n// v" + string(rune('0'+i)),
+			"testdata/fixture.json": `{"v":` + string(rune('0'+i)) + `}`,
 		}, "update service and fixture")
 	}
 

@@ -332,7 +332,11 @@ func normalizeIdentifier(s string) string {
 		return ""
 	}
 
-	bp := normBufPool.Get().(*[]byte)
+	bp, _ := normBufPool.Get().(*[]byte) //nolint:errcheck // sync.Pool.New always returns *[]byte
+	if bp == nil {
+		b := make([]byte, 0, 64)
+		bp = &b
+	}
 	buf := (*bp)[:0]
 	n := len(s)
 

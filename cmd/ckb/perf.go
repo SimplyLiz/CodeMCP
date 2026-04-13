@@ -136,11 +136,11 @@ func printPerfCouplingResult(result *perf.PerfScanResult) {
 // ─── ckb perf structural ──────────────────────────────────────────────────────
 
 var (
-	perfStructuralWindowDays   int
-	perfStructuralMinChurn     int
-	perfStructuralLimit        int
-	perfStructuralScope        []string
-	perfStructuralFormat       string
+	perfStructuralWindowDays int
+	perfStructuralMinChurn   int
+	perfStructuralLimit      int
+	perfStructuralScope      []string
+	perfStructuralFormat     string
 )
 
 var perfStructuralCmd = &cobra.Command{

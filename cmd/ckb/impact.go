@@ -149,7 +149,8 @@ func runPrepareChange(cmd *cobra.Command, args []string) {
 	if prepareChangeFormat == "compact" {
 		activeBackend := eng.ActiveBackendName()
 		compact := buildCompactPrepareChange(target, result, activeBackend)
-		out, err := json.MarshalIndent(compact, "", "  ")
+		var out []byte
+		out, err = json.MarshalIndent(compact, "", "  ")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error serializing output: %v\n", err)
 			os.Exit(1)

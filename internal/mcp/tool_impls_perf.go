@@ -4,8 +4,8 @@ import (
 	"context"
 	"path/filepath"
 
-	"github.com/SimplyLiz/CodeMCP/internal/errors"
 	"github.com/SimplyLiz/CodeMCP/internal/envelope"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
 	"github.com/SimplyLiz/CodeMCP/internal/perf"
 	"github.com/SimplyLiz/CodeMCP/internal/query"
 )

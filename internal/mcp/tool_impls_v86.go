@@ -2,8 +2,8 @@ package mcp
 
 import (
 	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
-	"github.com/SimplyLiz/CodeMCP/internal/errors"
 	"github.com/SimplyLiz/CodeMCP/internal/envelope"
+	"github.com/SimplyLiz/CodeMCP/internal/errors"
 )
 
 // v8.6 Cartographer context tool implementations.

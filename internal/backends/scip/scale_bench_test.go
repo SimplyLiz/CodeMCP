@@ -171,7 +171,8 @@ func encodeVarint(buf []byte, v uint64) int {
 // pre-written file (I/O is mmap'd so subsequent reads are OS page-cache hits).
 //
 // To measure cold-cache I/O cost, run with:
-//   sudo purge && go test -bench=BenchmarkLoadSCIPIndexScale/large -count=1 ...
+//
+//	sudo purge && go test -bench=BenchmarkLoadSCIPIndexScale/large -count=1 ...
 func BenchmarkLoadSCIPIndexScale(b *testing.B) {
 	scenarios := []struct {
 		name        string
@@ -214,10 +215,10 @@ func BenchmarkLoadSCIPIndexScale(b *testing.B) {
 // BenchmarkLoadSCIPIndexPhases runs the three internal phases individually so
 // bottlenecks can be isolated.
 //
-//   Phase1: protowire streaming parse only (no index building)
-//   Phase2: document conversion + RefIndex build (worker fan-out)
-//   Phase3: symbol conversion + NameIndex sort (currently measured together
-//           with Phase2 by subtracting Phase2-only time)
+//	Phase1: protowire streaming parse only (no index building)
+//	Phase2: document conversion + RefIndex build (worker fan-out)
+//	Phase3: symbol conversion + NameIndex sort (currently measured together
+//	        with Phase2 by subtracting Phase2-only time)
 //
 // Implementation note: Phase1 alone isn't directly accessible without
 // modifying loader internals, so this benchmark approximates isolation by

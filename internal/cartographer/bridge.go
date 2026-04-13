@@ -28,6 +28,13 @@ import (
 	"unsafe"
 )
 
+// ffiResponse is the JSON envelope returned by all Cartographer FFI functions.
+type ffiResponse struct {
+	OK    bool            `json:"ok"`
+	Error string          `json:"error,omitempty"`
+	Data  json.RawMessage `json:"data,omitempty"`
+}
+
 // Available reports whether the Cartographer library is linked into this binary.
 func Available() bool { return true }
 

@@ -212,32 +212,6 @@ func (e *Engine) GetFTSStats(ctx context.Context) (map[string]interface{}, error
 	return ftsManager.GetStats(ctx)
 }
 
-// symbolsForFile returns all symbols defined in the given file path (relative to
-// repo root) from the FTS content table. Used by the LIP semantic search fallback
-// to resolve file URIs returned by NearestByText into symbol results.
-func (e *Engine) symbolsForFile(_ context.Context, filePath string, limit int) []storage.FTSSearchResult {
-	if e.db == nil {
-		return nil
-	}
-	rows, err := e.db.Query(
-		`SELECT id, name, kind, COALESCE(documentation,''), COALESCE(signature,''), file_path, COALESCE(language,'')
-		 FROM symbols_fts_content WHERE file_path = ? LIMIT ?`,
-		filePath, limit)
-	if err != nil {
-		return nil
-	}
-	defer rows.Close() //nolint:errcheck
-	var out []storage.FTSSearchResult
-	for rows.Next() {
-		var r storage.FTSSearchResult
-		if err := rows.Scan(&r.ID, &r.Name, &r.Kind, &r.Documentation, &r.Signature, &r.FilePath, &r.Language); err != nil {
-			continue
-		}
-		out = append(out, r)
-	}
-	return out
-}
-
 // symbolsForFiles returns symbols defined in any of the given file paths, grouped
 // by file path. A single WHERE file_path IN (…) query replaces N individual round-
 // trips, which matters when SemanticSearchWithLIP returns up to 20 file URIs.
