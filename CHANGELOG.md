@@ -2,6 +2,268 @@
 
 All notable changes to CKB will be documented in this file.
 
+## [9.0.0] - 2026-04-13
+
+### Added
+
+#### LIP v2.0 semantic integration
+
+CKB now speaks the LIP v2.0 wire protocol correctly and integrates semantic
+embeddings across the tool suite. The existing `internal/lip` client had the
+wrong JSON discriminator (`"action"` instead of `"type"`) and wrong action
+strings, meaning all LIP calls were silently failing. The client has been
+rewritten with the correct Serde-tagged format and 25 new functions covering
+LIP v1.5–v2.0.
+
+**Wire protocol fix** — all requests now use `"type"` as the discriminator with
+`snake_case` variant names matching Rust's
+`#[serde(tag = "type", rename_all = "snake_case")]`. Field names corrected
+throughout (e.g. `"symbol_uri"` not `"uri"` for annotation queries).
+
+**New LIP client functions** (`internal/lip/client.go`):
+
+| Function | LIP version | Purpose |
+|---|---|---|
+| `Handshake` | v1.5 | Protocol handshake, returns daemon + protocol versions |
+| `BatchNearestByText` | v1.5 | Parallel nearest-neighbour for multiple queries |
+| `NearestBySymbol` | v1.5 | Nearest neighbours by `lip://` symbol URI |
+| `BatchAnnotationGet` | v1.5 | Bulk annotation lookup |
+| `ReindexFiles` | v1.6 | Trigger reindex for specific URIs |
+| `Similarity` | v1.6 | Cosine similarity between two files |
+| `QueryExpansion` | v1.6 | Expand a query with semantically related terms |
+| `Cluster` | v1.6 | Group files by semantic proximity |
+| `ExportEmbeddings` | v1.6 | Raw embedding export |
+| `NearestByContrast` | v1.7 | Like-URI minus unlike-URI retrieval |
+| `Outliers` | v1.7 | Semantically isolated files |
+| `SemanticDrift` | v1.7 | Cosine distance between two files |
+| `SimilarityMatrix` | v1.7 | Pairwise similarity matrix |
+| `FindSemanticCounterpart` | v1.7 | Best match for a file within a candidate set |
+| `Coverage` | v1.7 | Embedding coverage stats by directory |
+| `FindBoundaries` | v1.8 | Semantic boundary detection within a file |
+| `SemanticDiff` | v1.8 | Compare two text blobs by embedding distance |
+| `NearestInStore` | v1.8 | Nearest neighbours against an in-memory store |
+| `NoveltyScore` | v1.8 | Per-file novelty (0–1, higher = fewer neighbours) |
+| `ExtractTerminology` | v1.8 | Domain term extraction from a file set |
+| `PruneDeleted` | v1.8 | Remove embeddings for deleted files |
+| `GetCentroid` | v1.9 | Mean embedding vector for a file set |
+| `StaleEmbeddings` | v1.9 | Files with out-of-date embeddings |
+| `NearestByTextFiltered` | v1.9 | Nearest-by-text with glob filter + min score |
+| `NearestByFileFiltered` | v1.9 | Nearest-by-file with glob filter + min score |
+| `ExplainMatch` | v2.0 | Chunk-level explanation of why a file matched a query |
+
+**Response types added**: `HandshakeInfo`, `CoverageInfo`, `DirCoverage`,
+`BoundaryRange`, `SemanticDiffInfo`, `NoveltyInfo`, `NoveltyItem`, `TermItem`,
+`ExplanationChunk`. `IndexStatusInfo` gains `MixedModels bool` and
+`ModelsInIndex []string`. `FileStatusInfo` gains `EmbeddingModel string`.
+
+#### `searchSymbols` — semantic fallback + re-ranking with filter
+
+`SemanticSearchWithLIP` now accepts `filter string` and `minScore float32`
+parameters and delegates to `NearestByTextFiltered`. The filter accepts glob
+patterns (e.g. `"internal/api/**"`) to restrict semantic results to a subtree.
+Call site in `symbols.go` updated; existing callers pass `"", 0` for unchanged
+behaviour.
+
+#### `reviewPR` — `semantic-novelty` check
+
+A new `semantic-novelty` check runs alongside the existing 20 review checks.
+It calls `NoveltyScore` on changed files and flags any with a score ≥ 0.7 as
+"semantically novel" — files with few neighbours in the embedding index that
+may lack test coverage. Degrades silently when LIP is unavailable; skipped
+automatically when fewer than 2 files are changed.
+
+#### `getAffectedTests` — semantic test discovery
+
+After the SCIP-based test collection pass, a LIP pass runs
+`NearestByFileFiltered(fileURI, 5, "*_test.go", 0.6)` for each changed source
+file. Matching test files are added to the result with
+`Reason: "semantic-proximity"` and `Confidence` set to the LIP score. Files
+already found by SCIP are not duplicated.
+
+#### `explainFile` — semantic boundary detection
+
+After the existing symbol analysis, `toolExplainFile` calls
+`FindBoundaries(fileURI, 0, 0, "")` (defaults: 30-line chunks, 0.3 threshold)
+and appends a `semantic_boundaries` array to the response:
+```json
+[{"start_line": 1, "end_line": 45, "shift_magnitude": 0.71, "nearest_symbol": "handleAuth"}]
+```
+Silently omitted when LIP is unavailable or returns no boundaries.
+
+#### `getArchitecture` — semantic coupling matrix
+
+After structural architecture data is assembled, `toolGetArchitecture` collects
+representative file URIs for each module, calls `SimilarityMatrix`, and adds a
+`semantic_coupling` field:
+```json
+{"modules": ["internal/auth", "internal/api"], "matrix": [[1.0, 0.74], [0.74, 1.0]]}
+```
+Also calls `GetCentroid` over up to 500 repo files and records
+`repo_centroid_included: N` in the response metadata. Both are silently omitted
+when LIP is unavailable or fewer than 2 modules are embedded.
+
+#### `doctor` — LIP coverage + stale embedding + model provenance
+
+The LIP health section in `ckb doctor` now reports:
+- Coverage: `N% embedded (Y/Z files)`
+- Stale embeddings: count of files with out-of-date vectors
+- Mixed-model warning when multiple embedding models are present in the index
+- List of active embedding models
+
+### Changed
+
+- `NearestByFile` and `NearestByText` are now thin wrappers over
+  `NearestByFileFiltered` and `NearestByTextFiltered` respectively
+- `GetEmbedding` and `GetSymbolEmbedding` delegate to `GetEmbeddingsBatch`
+  (the old `"embedding_get"` and `"symbol_embedding"` wire variants had no
+  corresponding Rust enum variants)
+
+---
+
+## [8.5.0] - 2026-04-11
+
+### Added
+
+#### Cartographer bundled as git subtree (`third_party/cartographer/`)
+
+Cartographer is now vendored directly into the repo instead of requiring a
+sibling directory at `../../../../Cartographer/`. Contributors no longer need
+two repos co-located. Update via:
+
+```bash
+git subtree pull --prefix third_party/cartographer \
+  https://github.com/SimplyLiz/Cartographer.git master --squash
+```
+
+#### Three new MCP tools (Cartographer-backed)
+
+**`detectShotgunSurgery`** — Detect files that historically required simultaneous
+edits across many unrelated files. Ranked by co-change dispersion score.
+```
+detectShotgunSurgery(repo_path: "/path/to/repo", min_partners: 3, limit: 100)
+```
+
+**`getArchitecturalEvolution`** — Architectural health snapshots over git history.
+Returns health score trend (improving/stable/degrading), debt indicators, and
+recommendations.
+```
+getArchitecturalEvolution(repo_path: "/path/to/repo", days: 90)
+```
+
+**`getBlastRadius`** — Graph-theoretic blast radius for a file or module. Works
+without a SCIP index; complements `analyzeImpact` for unindexed repos.
+```
+getBlastRadius(repo_path: "/path/to/repo", target: "src/core/engine.go", max_related: 50)
+```
+
+#### LIP semantic search (`GetEmbedding`)
+
+`internal/lip` now exposes `GetEmbedding(uri, model)` — requests a
+TurboQuant-quantized embedding vector from the LIP daemon for a given file URI.
+Returns `[]float32` suitable for direct dot-product similarity ranking without
+dequantization. Degrades silently when LIP is not running.
+
+### Performance
+
+#### SCIP loader: lazy CallerIndex — eliminates load-time regression on small indexes
+
+The caller inverted index (`CallerIndex`) is now built on the first `FindCallers`
+call rather than at `LoadIndex` time. This removes ~22k persistent heap objects
+from the initial SCIP load on small indexes (1k docs), which were causing elevated
+GC pressure and a measurable load-time regression. Medium/large indexes are
+unaffected — the index is built once and cached thereafter.
+
+**Benchmark impact vs v8.4.0 (small, 1k docs):** load alloc count is unchanged
+(~375.6k in both versions — the CallerIndex for 1k docs is not large enough to
+register in alloc counts). The win is GC liveness: ~22k heap objects that would
+have been promoted to old-gen are no longer live after load. No change for
+medium/large.
+
+#### SCIP loader: `DiscardUnknown` proto decode
+
+Both `proto.Unmarshal` calls in the document stream parser now use
+`proto.UnmarshalOptions{DiscardUnknown: true}`. This skips the reflection-based
+unknown-field accumulator, reducing allocations during SCIP file decode.
+
+**Measured vs v8.4.0 (medium, 10k docs):**
+- `B/op`: **909 MiB → 781 MiB (-14.10%)**
+- `allocs/op`: **6.94M → 6.64M (-4.27%)**
+
+Small and large indexes show no measurable change (unknown-field savings are
+proportionally smaller there).
+
+#### CallerIndex builder: generation-counter deduplication
+
+`buildCallerIndex` now reuses the `ivs` interval slice across documents (resliced
+to zero, grown only when needed) and replaces the per-document `map[edge]bool`
+with a generation counter (`map[edge]uint64`). Eliminates ~2k per-load allocs on
+the 1k-doc case and removes all per-document map allocs on medium/large.
+
+#### `PopulateFromFullIndexStreaming`: two-pass streaming to prevent OOM on large repos
+
+`PopulateFromFullIndex` has always called `LoadSCIPIndex` which materialises the
+entire `*SCIPIndex` in memory before processing a single file. On a 50k-doc
+monorepo this peaks at ~15 GB and causes sustained GC pressure (observed: 485s
+first run vs a consistent 83s with streaming).
+
+`PopulateFromFullIndexStreaming` replaces this with a two-pass strategy over
+the on-disk SCIP file (via `scip.StreamDocuments`), never materialising the full
+index:
+
+- **Pass 1**: build the `symbol→file` map — one `*scippb.Document` live at a time,
+  freed by GC before the next arrives. Peak live heap ≈ the symbolToFile map alone.
+- **Pass 2**: stream documents again, extract deltas via the new proto-native
+  `extractFileDeltaFromProto` (skips all `convertDocument` allocations), write SQL
+  in 1000-file batches.
+
+`extractFileDeltaFromProto` works directly on `*scippb.Document` so there are no
+intermediate `*scip.Document` / `*scip.Occurrence` / `*scip.SymbolInformation`
+allocations per document per pass.
+
+**Benchmark vs `PopulateFromFullIndex` (50k docs, Apple M4 Pro, -count=2):**
+
+| | current | streaming | delta |
+|---|---|---|---|
+| B/op | 15.69 GB | 15.23 GB | -2.9% |
+| allocs/op | 166.4M | 181.8M | +9.3% |
+| time (cold) | **485s** | **83s** | **-83%** |
+| time (warm) | 122s | 83s | -32% |
+
+The extra allocs/op come from two proto-unmarshal passes vs one (plus
+`convertDocument` in the current path). The time improvement reflects reduced
+GC pressure: streaming never has more than one document live at a time, so GC
+never needs to scan or collect the 15 GB of live SCIPIndex data.
+
+#### Incremental write path: major throughput improvements (landed in v8.4.0)
+
+The following improvements shipped in v8.4.0 and are reflected in the v8.4.0
+benchmark baseline. Documented here for completeness:
+
+- **Parallel `extractFileDelta`**: GOMAXPROCS worker goroutines extract file
+  deltas concurrently during `PopulateFromFullIndex`. Cuts large-repo population
+  time by the number of available cores.
+- **Batched transactions** (1000 files/tx): WAL stays bounded on 50k-file indexes
+  instead of growing to multi-GB. Eliminates the 10h+ timeout on large repos.
+- **`PRAGMA synchronous=OFF`** during bulk load: safe because a failed full index
+  is always re-run from scratch.
+- **Bulk INSERT for `file_symbols`**: 499-row multi-value `INSERT` batches reduce
+  round-trips from 50k to ~100 for large repos.
+- **Hoisted prepared statements** in `ApplyDelta`: `symbol`, `callgraph`, and
+  `file_deps` statements prepared once per delta instead of once per file.
+
+**Benchmark vs v8.2.1 (v8.4.0 baseline):**
+- `ApplyDelta/large` (50k files): **50s → 42s (-16%)**
+- `ExtractFileDelta/50syms`: **109µs → 90µs (-17%)**
+- `GetDependencies/1000files`: **7.0ms → 6.3ms (-10%)**
+- SCIP allocs geomean: **-12%** (backing-slice OccurrenceRef optimization)
+
+#### SCIP loader: O(1) `FindCallers` via CallerIndex (landed in v8.4.0)
+
+`FindCallers` was O(docs × funcs × occs). It now uses an inverted map built from
+Documents, making every caller lookup O(1). The index uses a sorted interval scan
+with early-break for function containment and a generation-counter for
+cross-document edge deduplication.
+
 ## [8.3.0] - 2026-03-27
 
 ### Added

@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 
+	scippb "github.com/sourcegraph/scip/bindings/go/scip"
+
 	"github.com/SimplyLiz/CodeMCP/internal/backends/scip"
 	"github.com/SimplyLiz/CodeMCP/internal/project"
 )
@@ -467,6 +469,155 @@ func isCallable(symbolID string, symbolInfo map[string]*scip.SymbolInformation) 
 	}
 
 	// Tier 2: Go-specific heuristic (primary path for scip-go)
+	return isFunctionSymbol(symbolID)
+}
+
+// extractFileDeltaFromProto is the proto-native equivalent of extractFileDelta.
+// It operates directly on *scippb.Document, avoiding all intermediate
+// *scip.Document / *scip.Occurrence / *scip.SymbolInformation allocations
+// that convertDocument would create. Used by PopulateFromFullIndexStreaming.
+func (e *SCIPExtractor) extractFileDeltaFromProto(pbDoc *scippb.Document, change ChangedFile) FileDelta {
+	delta := FileDelta{
+		Path:       change.Path,
+		OldPath:    change.OldPath,
+		ChangeType: change.ChangeType,
+	}
+	if delta.OldPath == "" {
+		delta.OldPath = delta.Path
+	}
+
+	if change.Hash != "" {
+		delta.Hash = change.Hash
+	} else {
+		fullPath := filepath.Join(e.repoRoot, change.Path)
+		if h, err := hashFile(fullPath); err == nil {
+			delta.Hash = h
+		}
+	}
+
+	// Build symbol info map — values are pointers into the proto message; no new allocs.
+	symbolInfo := make(map[string]*scippb.SymbolInformation, len(pbDoc.Symbols))
+	for _, sym := range pbDoc.Symbols {
+		symbolInfo[sym.Symbol] = sym
+	}
+
+	const defRole = int32(1) // scippb.SymbolRole_Definition == 1
+
+	// Extract definitions
+	for _, occ := range pbDoc.Occurrences {
+		if occ.SymbolRoles&defRole == 0 {
+			continue
+		}
+		if isLocalSymbol(occ.Symbol) {
+			continue
+		}
+		sym := Symbol{
+			ID:       occ.Symbol,
+			FilePath: change.Path,
+		}
+		if len(occ.Range) >= 1 {
+			sym.StartLine = int(occ.Range[0]) + 1 // #nosec G115
+		}
+		if len(occ.Range) >= 3 {
+			sym.EndLine = int(occ.Range[2]) + 1 // #nosec G115
+		} else {
+			sym.EndLine = sym.StartLine
+		}
+		if info, ok := symbolInfo[occ.Symbol]; ok {
+			sym.Name = extractSymbolName(occ.Symbol, info.DisplayName)
+			sym.Kind = mapSymbolKind(int32(info.Kind))
+			if len(info.Documentation) > 0 {
+				sym.Documentation = info.Documentation[0]
+			}
+		} else {
+			sym.Name = extractSymbolName(occ.Symbol, "")
+			sym.Kind = "unknown"
+		}
+		delta.Symbols = append(delta.Symbols, sym)
+	}
+
+	// Extract references
+	for _, occ := range pbDoc.Occurrences {
+		if occ.SymbolRoles&defRole != 0 {
+			continue
+		}
+		if isLocalSymbol(occ.Symbol) {
+			continue
+		}
+		ref := Reference{
+			FromFile:   change.Path,
+			ToSymbolID: occ.Symbol,
+			Kind:       "reference",
+		}
+		if len(occ.Range) >= 1 {
+			ref.FromLine = int(occ.Range[0]) + 1 // #nosec G115
+		}
+		delta.Refs = append(delta.Refs, ref)
+	}
+
+	// Extract call edges
+	for _, occ := range pbDoc.Occurrences {
+		if occ.SymbolRoles&defRole != 0 {
+			continue
+		}
+		if isLocalSymbol(occ.Symbol) {
+			continue
+		}
+		if !isCallableFromProto(occ.Symbol, symbolInfo) {
+			continue
+		}
+		edge := CallEdge{
+			CallerFile: change.Path,
+			CalleeID:   occ.Symbol,
+		}
+		if len(occ.Range) >= 1 {
+			edge.Line = int(occ.Range[0]) + 1 // #nosec G115
+		}
+		if len(occ.Range) >= 2 {
+			edge.Column = int(occ.Range[1]) + 1 // #nosec G115
+		}
+		if len(occ.Range) >= 4 {
+			edge.EndColumn = int(occ.Range[3]) + 1 // #nosec G115
+		}
+		edge.CallerID = e.resolveCallerSymbol(delta.Symbols, edge.Line)
+		delta.CallEdges = append(delta.CallEdges, edge)
+	}
+
+	delta.SCIPDocumentHash = computeDocHashProto(pbDoc)
+	delta.SymbolCount = len(delta.Symbols)
+	return delta
+}
+
+// computeDocHashProto is the proto-native equivalent of computeDocHash.
+func computeDocHashProto(pbDoc *scippb.Document) string {
+	h := sha256.New()
+	h.Write([]byte(pbDoc.RelativePath))
+	var buf [4]byte
+	for _, occ := range pbDoc.Occurrences {
+		h.Write([]byte(occ.Symbol))
+		for _, r := range occ.Range {
+			binary.LittleEndian.PutUint32(buf[:], uint32(r)) // #nosec G115 //nolint:gosec
+			h.Write(buf[:])
+		}
+		binary.LittleEndian.PutUint32(buf[:], uint32(occ.SymbolRoles)) // #nosec G115 //nolint:gosec
+		h.Write(buf[:])
+	}
+	for _, sym := range pbDoc.Symbols {
+		h.Write([]byte(sym.Symbol))
+		binary.LittleEndian.PutUint32(buf[:], uint32(sym.Kind)) // #nosec G115 //nolint:gosec
+		h.Write(buf[:])
+		for _, d := range sym.Documentation {
+			h.Write([]byte(d))
+		}
+	}
+	return fmt.Sprintf("%x", h.Sum(nil))[:16]
+}
+
+// isCallableFromProto is the proto-native equivalent of isCallable.
+func isCallableFromProto(symbolID string, symbolInfo map[string]*scippb.SymbolInformation) bool {
+	if info, ok := symbolInfo[symbolID]; ok && info.Kind != 0 {
+		return isCallableKind(int32(info.Kind))
+	}
 	return isFunctionSymbol(symbolID)
 }
 

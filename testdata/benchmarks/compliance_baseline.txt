@@ -1,0 +1,76 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/SimplyLiz/CodeMCP/internal/compliance
+cpu: Apple M4 Pro
+BenchmarkScannerPipeline/500lines-14 	     645	   1830742 ns/op	   8.34 MB/s	  210059 B/op	    6989 allocs/op
+BenchmarkScannerPipeline/500lines-14 	     656	   1836488 ns/op	   8.31 MB/s	  209662 B/op	    6989 allocs/op
+BenchmarkScannerPipeline/500lines-14 	     655	   1826608 ns/op	   8.36 MB/s	  209951 B/op	    6989 allocs/op
+BenchmarkScannerPipeline/500lines-14 	     654	   1861142 ns/op	   8.20 MB/s	  210132 B/op	    6989 allocs/op
+BenchmarkScannerPipeline/500lines-14 	     644	   1926624 ns/op	   7.92 MB/s	  209662 B/op	    6989 allocs/op
+BenchmarkScannerPipeline/5klines-14  	      63	  18519511 ns/op	   8.26 MB/s	 2091584 B/op	   69843 allocs/op
+BenchmarkScannerPipeline/5klines-14  	      67	  18502799 ns/op	   8.27 MB/s	 2099593 B/op	   69845 allocs/op
+BenchmarkScannerPipeline/5klines-14  	      66	  18422335 ns/op	   8.30 MB/s	 2100661 B/op	   69845 allocs/op
+BenchmarkScannerPipeline/5klines-14  	      62	  18624304 ns/op	   8.21 MB/s	 2106954 B/op	   69846 allocs/op
+BenchmarkScannerPipeline/5klines-14  	      62	  18530287 ns/op	   8.25 MB/s	 2096738 B/op	   69844 allocs/op
+BenchmarkScannerPipeline/50klines-14 	       6	 184423160 ns/op	   8.30 MB/s	20894746 B/op	  698383 allocs/op
+BenchmarkScannerPipeline/50klines-14 	       6	 185850889 ns/op	   8.23 MB/s	20870013 B/op	  698379 allocs/op
+BenchmarkScannerPipeline/50klines-14 	       6	 185548354 ns/op	   8.25 MB/s	20882282 B/op	  698380 allocs/op
+BenchmarkScannerPipeline/50klines-14 	       6	 185806500 ns/op	   8.23 MB/s	20857565 B/op	  698377 allocs/op
+BenchmarkScannerPipeline/50klines-14 	       6	 185640062 ns/op	   8.24 MB/s	20931866 B/op	  698389 allocs/op
+BenchmarkAuditFileSet/100files-14    	       9	 111902995 ns/op	   8.20 MB/s	12624744 B/op	  419043 allocs/op
+BenchmarkAuditFileSet/100files-14    	      10	 111503704 ns/op	   8.23 MB/s	12647728 B/op	  419045 allocs/op
+BenchmarkAuditFileSet/100files-14    	      10	 111453333 ns/op	   8.24 MB/s	12647692 B/op	  419044 allocs/op
+BenchmarkAuditFileSet/100files-14    	      10	 111900321 ns/op	   8.20 MB/s	12603189 B/op	  419038 allocs/op
+BenchmarkAuditFileSet/100files-14    	      10	 111119621 ns/op	   8.26 MB/s	12640131 B/op	  419044 allocs/op
+BenchmarkAuditFileSet/1kfiles-14     	       1	1121741291 ns/op	   8.18 MB/s	126218200 B/op	 4190422 allocs/op
+BenchmarkAuditFileSet/1kfiles-14     	       1	1119688416 ns/op	   8.20 MB/s	126289888 B/op	 4190426 allocs/op
+BenchmarkAuditFileSet/1kfiles-14     	       1	1121963250 ns/op	   8.18 MB/s	126326896 B/op	 4190421 allocs/op
+BenchmarkAuditFileSet/1kfiles-14     	       1	1117371209 ns/op	   8.22 MB/s	126030144 B/op	 4190382 allocs/op
+BenchmarkAuditFileSet/1kfiles-14     	       1	1118682500 ns/op	   8.21 MB/s	125732592 B/op	 4190336 allocs/op
+BenchmarkAuditFileSet/5kfiles-14     	       1	5632744291 ns/op	   8.15 MB/s	630626880 B/op	20951989 allocs/op
+BenchmarkAuditFileSet/5kfiles-14     	       1	5593441208 ns/op	   8.21 MB/s	631183392 B/op	20952051 allocs/op
+BenchmarkAuditFileSet/5kfiles-14     	       1	5605507291 ns/op	   8.19 MB/s	630820096 B/op	20952067 allocs/op
+BenchmarkAuditFileSet/5kfiles-14     	       1	5579149000 ns/op	   8.23 MB/s	631929568 B/op	20952175 allocs/op
+BenchmarkAuditFileSet/5kfiles-14     	       1	5572288209 ns/op	   8.24 MB/s	631782784 B/op	20952173 allocs/op
+BenchmarkMatchPII_PatternScale/default_~80patterns-14         	  929112	      1174 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/default_~80patterns-14         	 1000000	      1168 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/default_~80patterns-14         	  938006	      1173 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/default_~80patterns-14         	 1000000	      1176 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/default_~80patterns-14         	 1000000	      1178 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/100patterns-14                 	  849153	      1367 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/100patterns-14                 	  856905	      1363 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/100patterns-14                 	  832766	      1360 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/100patterns-14                 	  876855	      1370 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/100patterns-14                 	  833648	      1366 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/200patterns-14                 	  518193	      2350 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/200patterns-14                 	  507830	      2340 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/200patterns-14                 	  532461	      2294 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/200patterns-14                 	  501237	      2359 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/200patterns-14                 	  495274	      2344 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/500patterns-14                 	  227150	      5270 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/500patterns-14                 	  227121	      5272 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/500patterns-14                 	  230577	      5236 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/500patterns-14                 	  226662	      5300 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchPII_PatternScale/500patterns-14                 	  234432	      5234 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/SimplyLiz/CodeMCP/internal/compliance	84.549s
+?   	github.com/SimplyLiz/CodeMCP/internal/compliance/ccpa	[no test files]
+?   	github.com/SimplyLiz/CodeMCP/internal/compliance/do178c	[no test files]
+?   	github.com/SimplyLiz/CodeMCP/internal/compliance/dora	[no test files]
+?   	github.com/SimplyLiz/CodeMCP/internal/compliance/euaiact	[no test files]
+?   	github.com/SimplyLiz/CodeMCP/internal/compliance/eucra	[no test files]
+?   	github.com/SimplyLiz/CodeMCP/internal/compliance/fda21cfr11	[no test files]
+?   	github.com/SimplyLiz/CodeMCP/internal/compliance/gdpr	[no test files]
+?   	github.com/SimplyLiz/CodeMCP/internal/compliance/hipaa	[no test files]
+?   	github.com/SimplyLiz/CodeMCP/internal/compliance/iec61508	[no test files]
+?   	github.com/SimplyLiz/CodeMCP/internal/compliance/iec62443	[no test files]
+?   	github.com/SimplyLiz/CodeMCP/internal/compliance/iso26262	[no test files]
+?   	github.com/SimplyLiz/CodeMCP/internal/compliance/iso27001	[no test files]
+?   	github.com/SimplyLiz/CodeMCP/internal/compliance/iso27701	[no test files]
+?   	github.com/SimplyLiz/CodeMCP/internal/compliance/misra	[no test files]
+?   	github.com/SimplyLiz/CodeMCP/internal/compliance/nis2	[no test files]
+?   	github.com/SimplyLiz/CodeMCP/internal/compliance/nist80053	[no test files]
+?   	github.com/SimplyLiz/CodeMCP/internal/compliance/owaspasvs	[no test files]
+?   	github.com/SimplyLiz/CodeMCP/internal/compliance/pcidss	[no test files]
+?   	github.com/SimplyLiz/CodeMCP/internal/compliance/sbom	[no test files]
+?   	github.com/SimplyLiz/CodeMCP/internal/compliance/soc2	[no test files]

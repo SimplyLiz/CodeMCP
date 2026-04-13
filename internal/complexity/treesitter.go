@@ -5,6 +5,7 @@ package complexity
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/golang"
@@ -18,7 +19,9 @@ import (
 )
 
 // Parser wraps tree-sitter for multi-language parsing.
+// The underlying sitter.Parser is not thread-safe; mu serializes concurrent calls.
 type Parser struct {
+	mu     sync.Mutex
 	parser *sitter.Parser
 }
 
@@ -35,6 +38,9 @@ func (p *Parser) Parse(ctx context.Context, source []byte, lang Language) (*sitt
 	if err != nil {
 		return nil, err
 	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
 	p.parser.SetLanguage(tsLang)
 	tree, err := p.parser.ParseCtx(ctx, nil, source)

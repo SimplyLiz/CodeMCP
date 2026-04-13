@@ -304,28 +304,29 @@ func TestNewSCIPSymbolIndex(t *testing.T) {
 }
 
 func TestSCIPSymbolIndex_GetDocument(t *testing.T) {
-	// Create a minimal SCIP index with test data
-	idx := &scip.SCIPIndex{
-		Documents: []*scip.Document{
+	// Create a minimal SCIP index with test data.
+	// DocumentsByPath must be populated — GetDocument uses the map, not the slice.
+	doc := &scip.Document{
+		RelativePath: "internal/foo.go",
+		Language:     "go",
+		Occurrences: []*scip.Occurrence{
 			{
-				RelativePath: "internal/foo.go",
-				Language:     "go",
-				Occurrences: []*scip.Occurrence{
-					{
-						Symbol:      "test#Foo",
-						SymbolRoles: scip.SymbolRoleDefinition,
-						Range:       []int32{10, 5, 20},
-					},
-				},
-				Symbols: []*scip.SymbolInformation{
-					{
-						Symbol:      "test#Foo",
-						DisplayName: "Foo",
-						Kind:        12,
-					},
-				},
+				Symbol:      "test#Foo",
+				SymbolRoles: scip.SymbolRoleDefinition,
+				Range:       []int32{10, 5, 20},
 			},
 		},
+		Symbols: []*scip.SymbolInformation{
+			{
+				Symbol:      "test#Foo",
+				DisplayName: "Foo",
+				Kind:        12,
+			},
+		},
+	}
+	idx := &scip.SCIPIndex{
+		Documents:       []*scip.Document{doc},
+		DocumentsByPath: map[string]*scip.Document{"internal/foo.go": doc},
 	}
 
 	wrapper := NewSCIPSymbolIndex(idx)

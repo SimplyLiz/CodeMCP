@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/SimplyLiz/CodeMCP/internal/audit"
+	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
 	"github.com/SimplyLiz/CodeMCP/internal/version"
 )
 
@@ -57,8 +58,9 @@ type PlanRefactorTests struct {
 
 // PlanRefactorCoupling describes co-change coupling for the target.
 type PlanRefactorCoupling struct {
-	CoChangeFiles  int    `json:"coChangeFiles"`
-	HighestCoupled string `json:"highestCoupled,omitempty"`
+	CoChangeFiles       int      `json:"coChangeFiles"`
+	HighestCoupled      string   `json:"highestCoupled,omitempty"`
+	HiddenCouplingFiles []string `json:"hiddenCouplingFiles,omitempty"` // co-change without import edge
 }
 
 // RefactoringStep is an ordered action in the refactoring plan.
@@ -195,13 +197,47 @@ func (e *Engine) PlanRefactor(ctx context.Context, opts PlanRefactorOptions) (*P
 			resp.ImpactAnalysis.RenamePreview = FormatRenamePreview(prepareResult.RenameDetail)
 		}
 
-		// Coupling
+		// Coupling — include explicit co-change count and highest coupled file.
 		if len(prepareResult.CoChangeFiles) > 0 {
 			resp.CouplingAnalysis = &PlanRefactorCoupling{
 				CoChangeFiles: len(prepareResult.CoChangeFiles),
 			}
 			if len(prepareResult.CoChangeFiles) > 0 {
 				resp.CouplingAnalysis.HighestCoupled = prepareResult.CoChangeFiles[0].File
+			}
+			// Collect hidden-coupling files (co-change without import edge) from the
+			// PrepareCoChange results — these are the highest-risk implicit dependencies
+			// for a refactoring because they will cascade without any static signal.
+			for _, cc := range prepareResult.CoChangeFiles {
+				if cc.IsHidden {
+					resp.CouplingAnalysis.HiddenCouplingFiles = append(
+						resp.CouplingAnalysis.HiddenCouplingFiles, cc.File,
+					)
+				}
+			}
+		}
+
+		// Augment with Cartographer hidden coupling when not already captured above
+		// (e.g. when Cartographer was unavailable during PrepareChange but is now).
+		if cartographer.Available() && resp.CouplingAnalysis != nil && len(resp.CouplingAnalysis.HiddenCouplingFiles) == 0 {
+			filePath := opts.Target
+			if prepareResult.Target != nil && prepareResult.Target.Path != "" {
+				filePath = prepareResult.Target.Path
+			}
+			if hidden, err := cartographer.HiddenCoupling(e.repoRoot, 0, 2); err == nil {
+				for _, p := range hidden {
+					partner := ""
+					if p.FileA == filePath {
+						partner = p.FileB
+					} else if p.FileB == filePath {
+						partner = p.FileA
+					}
+					if partner != "" {
+						resp.CouplingAnalysis.HiddenCouplingFiles = append(
+							resp.CouplingAnalysis.HiddenCouplingFiles, partner,
+						)
+					}
+				}
 			}
 		}
 	}

@@ -52,6 +52,7 @@ var (
 	reviewTestGapLines       int
 	reviewLLM                bool
 	reviewPost               string
+	reviewSkipChecks         []string
 )
 
 var reviewCmd = &cobra.Command{
@@ -83,7 +84,8 @@ Examples:
   ckb review --base=develop               # Custom base branch
   ckb review --staged                     # Review staged changes only
   ckb review internal/query/              # Scope to path prefix
-  ckb review --checks=breaking,secrets    # Only specific checks
+  ckb review --checks=breaking,secrets    # Only specific checks (allowlist)
+  ckb review --skip=dead-code,blast-radius,unwired  # All checks except these (denylist)
   ckb review --checks=dead-code,test-gaps,blast-radius  # New analyzers
   ckb review --checks=bug-patterns                      # AST bug pattern detection
   ckb review --llm                                      # AI-powered narrative summary
@@ -93,7 +95,24 @@ Examples:
   ckb review --format=github-actions      # GitHub Actions annotations
   ckb review --critical-paths=drivers/**,protocol/**  # Safety-critical paths
   ckb review baseline save --tag=v1.0     # Save finding baseline
-  ckb review baseline diff                # Compare against baseline`,
+  ckb review baseline diff                # Compare against baseline
+
+Large-repo incremental workflow (when full SCIP takes > 30 min):
+
+  # One-time: build the full index (do this nightly in CI or as needed)
+  ckb index --force
+
+  # On each PR: incremental update (seconds, not minutes)
+  ckb index
+
+  # Review — skip the 3 checks that need fresh full SCIP for accuracy:
+  #   dead-code:    reference graphs stale for changed symbols
+  #   blast-radius: caller index stale for new/moved functions
+  #   unwired:      entrypoint reachability stale for new exports
+  ckb review --skip=dead-code,blast-radius,unwired
+
+  # Or run those checks separately when you have time for a fresh full index:
+  ckb review --checks=dead-code,blast-radius,unwired`,
 	Args: cobra.MaximumNArgs(1),
 	Run:  runReview,
 }
@@ -102,7 +121,8 @@ func init() {
 	reviewCmd.Flags().StringVar(&reviewFormat, "format", "human", "Output format (human, json, markdown, github-actions, sarif, codeclimate, compliance)")
 	reviewCmd.Flags().StringVar(&reviewBaseBranch, "base", "main", "Base branch to compare against")
 	reviewCmd.Flags().StringVar(&reviewHeadBranch, "head", "", "Head branch (default: current branch)")
-	reviewCmd.Flags().StringSliceVar(&reviewChecks, "checks", nil, "Comma-separated list of checks (breaking,secrets,tests,complexity,coupling,hotspots,risk,critical,generated,classify,split,health,traceability,independence,dead-code,test-gaps,blast-radius,comment-drift,format-consistency,bug-patterns)")
+	reviewCmd.Flags().StringSliceVar(&reviewChecks, "checks", nil, "Comma-separated list of checks to run (breaking,secrets,tests,complexity,coupling,hotspots,risk,critical,generated,classify,split,health,traceability,independence,dead-code,test-gaps,blast-radius,comment-drift,format-consistency,bug-patterns)")
+	reviewCmd.Flags().StringSliceVar(&reviewSkipChecks, "skip", nil, "Comma-separated list of checks to skip (complement of --checks; useful to exclude SCIP-heavy checks on large repos)")
 	reviewCmd.Flags().BoolVar(&reviewCI, "ci", false, "CI mode: exit 1 on fail, exit 2 on warn")
 	reviewCmd.Flags().StringVar(&reviewFailOn, "fail-on", "", "Override fail level (error, warning, none)")
 
@@ -204,6 +224,7 @@ func runReview(cmd *cobra.Command, args []string) {
 		HeadBranch: reviewHeadBranch,
 		Policy:     policy,
 		Checks:     reviewChecks,
+		SkipChecks: reviewSkipChecks,
 		Staged:     reviewStaged,
 		Scope:      scope,
 		LLM:        reviewLLM,

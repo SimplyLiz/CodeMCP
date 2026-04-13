@@ -45,6 +45,14 @@ func (s *Server) handleReviewPR(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		// skip as comma-separated
+		if skip := r.URL.Query().Get("skip"); skip != "" {
+			for _, c := range parseCommaSeparated(skip) {
+				if c != "" {
+					opts.SkipChecks = append(opts.SkipChecks, c)
+				}
+			}
+		}
 		// criticalPaths as comma-separated
 		if paths := r.URL.Query().Get("criticalPaths"); paths != "" {
 			for _, p := range parseCommaSeparated(paths) {
@@ -58,6 +66,7 @@ func (s *Server) handleReviewPR(w http.ResponseWriter, r *http.Request) {
 			BaseBranch    string   `json:"baseBranch"`
 			HeadBranch    string   `json:"headBranch"`
 			Checks        []string `json:"checks"`
+			SkipChecks    []string `json:"skipChecks"`
 			FailOnLevel   string   `json:"failOnLevel"`
 			CriticalPaths []string `json:"criticalPaths"`
 			// Policy overrides
@@ -83,6 +92,9 @@ func (s *Server) handleReviewPR(w http.ResponseWriter, r *http.Request) {
 		}
 		if len(req.Checks) > 0 {
 			opts.Checks = req.Checks
+		}
+		if len(req.SkipChecks) > 0 {
+			opts.SkipChecks = req.SkipChecks
 		}
 		if req.FailOnLevel != "" {
 			opts.Policy.FailOnLevel = req.FailOnLevel

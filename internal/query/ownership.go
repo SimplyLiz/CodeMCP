@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
 	"github.com/SimplyLiz/CodeMCP/internal/errors"
 	"github.com/SimplyLiz/CodeMCP/internal/output"
 	"github.com/SimplyLiz/CodeMCP/internal/ownership"
@@ -67,6 +68,10 @@ type GetOwnershipResponse struct {
 	Limitations     []string                `json:"limitations,omitempty"`
 	Provenance      *Provenance             `json:"provenance,omitempty"`
 	Drilldowns      []output.Drilldown      `json:"drilldowns,omitempty"`
+	// CoChangePartners lists files that frequently change together with this path
+	// (from Cartographer temporal coupling). Implicitly relevant for ownership/review.
+	// Only populated when the binary is built with -tags cartographer.
+	CoChangePartners []string `json:"coChangePartners,omitempty"`
 }
 
 // GetOwnership returns ownership information for a file or path.
@@ -237,19 +242,42 @@ func (e *Engine) GetOwnership(ctx context.Context, opts GetOwnershipOptions) (*G
 		})
 	}
 
+	// Augment with Cartographer co-change partners — files that frequently change
+	// together with this path. These are implicit co-owners even if not in CODEOWNERS.
+	var coChangePartners []string
+	if cartographer.Available() {
+		if pairs, err := cartographer.GitCochange(e.repoRoot, 0, 3); err == nil {
+			for _, p := range pairs {
+				partner := ""
+				if p.FileA == normalizedPath {
+					partner = p.FileB
+				} else if p.FileB == normalizedPath {
+					partner = p.FileA
+				}
+				if partner != "" && !isCouplingNoiseFile(partner) {
+					coChangePartners = append(coChangePartners, partner)
+				}
+				if len(coChangePartners) >= 5 {
+					break
+				}
+			}
+		}
+	}
+
 	return &GetOwnershipResponse{
-		CkbVersion:      "6.0",
-		SchemaVersion:   "6.0",
-		Tool:            "getOwnership",
-		Path:            normalizedPath,
-		Owners:          allOwners,
-		BlameOwnership:  blameOwnership,
-		History:         history,
-		Confidence:      confidence,
-		ConfidenceBasis: confidenceBasis,
-		Limitations:     limitations,
-		Provenance:      provenance,
-		Drilldowns:      drilldowns,
+		CkbVersion:       "6.0",
+		SchemaVersion:    "6.0",
+		Tool:             "getOwnership",
+		Path:             normalizedPath,
+		Owners:           allOwners,
+		BlameOwnership:   blameOwnership,
+		History:          history,
+		Confidence:       confidence,
+		ConfidenceBasis:  confidenceBasis,
+		Limitations:      limitations,
+		Provenance:       provenance,
+		Drilldowns:       drilldowns,
+		CoChangePartners: coChangePartners,
 	}, nil
 }
 

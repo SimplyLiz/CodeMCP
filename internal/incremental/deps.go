@@ -35,37 +35,41 @@ func NewDependencyTracker(db *storage.DB, store *Store, config *TransitiveConfig
 // File Dependency Operations
 // ============================================================================
 
-// UpdateFileDeps updates file_deps for a changed file based on its references
-// definingFiles maps referenced symbol IDs to their defining file paths
-// Only stores dependencies to internal files (not external/stdlib)
+// UpdateFileDeps updates file_deps for a single file. Prepares and closes its
+// own statement — use this for one-off updates (incremental path, tests).
+// For bulk inserts (full index population) use updateFileDepsWithStmt to share
+// a single prepared statement across all files.
 func (t *DependencyTracker) UpdateFileDeps(tx *sql.Tx, dependentFile string, refs []Reference, symbolToFile map[string]string) error {
-	// Delete old deps for this file
-	if _, err := tx.Exec(`DELETE FROM file_deps WHERE dependent_file = ?`, dependentFile); err != nil {
-		return fmt.Errorf("delete old file_deps: %w", err)
-	}
-
-	// Collect unique defining files
-	definingFiles := make(map[string]bool)
-	for _, ref := range refs {
-		if defFile, ok := symbolToFile[ref.ToSymbolID]; ok {
-			// Skip self-references
-			if defFile != dependentFile {
-				definingFiles[defFile] = true
-			}
-		}
-		// Skip if symbol not found - likely external/stdlib
-	}
-
-	if len(definingFiles) == 0 {
-		return nil
-	}
-
-	// Insert new deps
 	stmt, err := tx.Prepare(`INSERT OR IGNORE INTO file_deps (dependent_file, defining_file) VALUES (?, ?)`)
 	if err != nil {
 		return fmt.Errorf("prepare file_deps insert: %w", err)
 	}
 	defer stmt.Close() //nolint:errcheck
+	return t.updateFileDepsWithStmt(tx, stmt, dependentFile, refs, symbolToFile, false)
+}
+
+// updateFileDepsWithStmt is the hot-path core shared by both the incremental
+// and full-index paths.
+//
+// skipDelete must be true when the caller has already cleared the file_deps
+// table (PopulateFromFullIndex), avoiding a redundant per-file DELETE on every
+// one of the 50k files.
+func (t *DependencyTracker) updateFileDepsWithStmt(tx *sql.Tx, stmt *sql.Stmt, dependentFile string, refs []Reference, symbolToFile map[string]string, skipDelete bool) error {
+	if !skipDelete {
+		if _, err := tx.Exec(`DELETE FROM file_deps WHERE dependent_file = ?`, dependentFile); err != nil {
+			return fmt.Errorf("delete old file_deps: %w", err)
+		}
+	}
+
+	// Collect unique defining files.
+	definingFiles := make(map[string]bool)
+	for _, ref := range refs {
+		if defFile, ok := symbolToFile[ref.ToSymbolID]; ok {
+			if defFile != dependentFile {
+				definingFiles[defFile] = true
+			}
+		}
+	}
 
 	for defFile := range definingFiles {
 		if _, err := stmt.Exec(dependentFile, defFile); err != nil {

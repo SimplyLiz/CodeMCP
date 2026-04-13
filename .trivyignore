@@ -1,0 +1,6 @@
+# CVE-2026-34040: docker/docker authorization bypass
+# Affects github.com/docker/docker < v29.3.1, pulled in transitively by
+# bufbuild/buf → bufplugindocker. The fixed version (v29.3.1) has not been
+# published to the Go module proxy yet. Revisit when buf ships a release
+# that depends on docker/docker >= v29.3.1.
+CVE-2026-34040

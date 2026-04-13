@@ -59,6 +59,16 @@ func (s *MCPServer) toolReviewPR(params map[string]interface{}) (*envelope.Respo
 		compact = v
 	}
 
+	// Parse skip (denylist — complement of checks)
+	var skipChecks []string
+	if v, ok := params["skip"].([]interface{}); ok {
+		for _, c := range v {
+			if cs, ok := c.(string); ok {
+				skipChecks = append(skipChecks, cs)
+			}
+		}
+	}
+
 	// Parse critical paths
 	var criticalPaths []string
 	if v, ok := params["criticalPaths"].([]interface{}); ok {
@@ -91,6 +101,7 @@ func (s *MCPServer) toolReviewPR(params map[string]interface{}) (*envelope.Respo
 		HeadBranch: headBranch,
 		Policy:     policy,
 		Checks:     checks,
+		SkipChecks: skipChecks,
 		Staged:     staged,
 		Scope:      scope,
 	})

@@ -55,6 +55,9 @@ func (s *Server) registerRoutes() {
 	// v8.2 Unified PR Review
 	s.router.HandleFunc("/review/pr", s.handleReviewPR) // GET/POST
 
+	// Unwired module detection
+	s.router.HandleFunc("/unwired", s.handleUnwired) // GET /unwired?scope=...&minConfidence=...&limit=...
+
 	// v6.2 Federation endpoints
 	s.router.HandleFunc("/federations", s.handleListFederations)   // GET
 	s.router.HandleFunc("/federations/", s.handleFederationRoutes) // /federations/:name/*

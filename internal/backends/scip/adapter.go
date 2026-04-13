@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -21,6 +22,7 @@ type SCIPAdapter struct {
 	logger       *slog.Logger
 	queryTimeout time.Duration
 	repoRoot     string
+	cacheRoot    string // optional override for the derived-cache directory
 	cfg          *config.Config
 
 	// Mutex for thread-safe access to index
@@ -108,6 +110,22 @@ func (s *SCIPAdapter) Priority() int {
 	return 1 // SCIP has highest priority
 }
 
+// derivedCachePath returns the path for the derived-index cache file.
+// It lives alongside the .ckb database in <repoRoot>/.ckb/.
+func (s *SCIPAdapter) derivedCachePath() string {
+	root := s.repoRoot
+	if s.cacheRoot != "" {
+		root = s.cacheRoot
+	}
+	return filepath.Join(root, ".ckb", "scip_derived.gob")
+}
+
+// SetCacheRoot overrides the directory used for the derived-index cache.
+// Useful in tests to isolate cache state per test instead of sharing the fixture dir.
+func (s *SCIPAdapter) SetCacheRoot(dir string) {
+	s.cacheRoot = dir
+}
+
 // LoadIndex loads or reloads the SCIP index
 func (s *SCIPAdapter) LoadIndex() error {
 	s.mu.Lock()
@@ -117,12 +135,23 @@ func (s *SCIPAdapter) LoadIndex() error {
 		"path", s.indexPath,
 	)
 
-	index, err := LoadSCIPIndex(s.indexPath)
+	index, err := loadSCIPIndexInternal(s.indexPath, s.derivedCachePath())
 	if err != nil {
 		return err
 	}
 
 	s.index = index
+
+	// Pre-warm CallerIndex in background so the first FindCallers / getCallGraph
+	// call is instant instead of blocking for several seconds on a large repo.
+	// callerIndexOnce guarantees no duplicate work if FindCallers is called
+	// before this goroutine finishes.
+	idx := index
+	go func() {
+		idx.callerIndexOnce.Do(func() {
+			idx.CallerIndex = buildCallerIndex(idx.Documents)
+		})
+	}()
 
 	s.logger.Info("SCIP index loaded successfully",
 		"documents", len(index.Documents),

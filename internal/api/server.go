@@ -93,8 +93,11 @@ func NewServer(addr string, engine *query.Engine, logger *slog.Logger, config Se
 	s.server = &http.Server{
 		Addr:         addr,
 		Handler:      handler,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		ReadTimeout: 15 * time.Second,
+		// WriteTimeout must accommodate long-running endpoints like /review/pr
+		// and /architecture/refresh which can take several minutes on large repos.
+		// Individual handlers enforce their own context deadlines.
+		WriteTimeout: 10 * time.Minute,
 		IdleTimeout:  60 * time.Second,
 	}
 

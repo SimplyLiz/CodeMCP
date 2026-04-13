@@ -48,7 +48,15 @@ golangci-lint run
 # Start MCP server (for AI tool integration)
 ./ckb mcp
 
-# Run PR review (20 quality checks)
+# Start A2A protocol server (for agent-to-agent communication)
+./ckb a2a --port 8081
+
+# Find exported symbols not reachable from entrypoints
+./ckb unwired
+./ckb unwired --scope internal/cost,internal/multisampling
+./ckb unwired --format json
+
+# Run PR review (21 quality checks)
 ./ckb review
 ./ckb review --base=develop --format=markdown
 ./ckb review --checks=breaking,secrets,health --ci
@@ -121,7 +129,7 @@ claude mcp add ckb -- npx @tastehub/ckb mcp
 
 **Intelligence (v6.5):** `explainOrigin`, `analyzeCoupling`, `exportForLLM`, `auditRisk`
 
-**Code Analysis (v7.6):** `findDeadCode` (static dead code detection), `getAffectedTests`, `compareAPI`
+**Code Analysis (v7.6):** `findDeadCode` (static dead code detection), `findUnwiredModules` (entrypoint reachability — detects "built but never plugged in" modules), `getAffectedTests`, `compareAPI`
 
 **Compound Operations (v8.0):** `explore`, `understand`, `prepareChange`, `batchGet`, `batchSearch`
 
@@ -129,16 +137,35 @@ claude mcp add ckb -- npx @tastehub/ckb mcp
 
 **Index Management (v8.0):** `reindex` (trigger index refresh), enhanced `getStatus` with health tiers
 
-**PR Review (v8.2):** `reviewPR` — unified review with 20 quality checks (breaking, secrets, tests, complexity, health, coupling, hotspots, risk, critical-path, traceability, independence, generated, classify, split, dead-code, test-gaps, blast-radius, comment-drift, format-consistency, bug-patterns); optional `--llm` flag for Claude-powered narrative
+**PR Review (v8.2):** `reviewPR` — unified review with 21 quality checks (breaking, secrets, tests, complexity, health, coupling, hotspots, risk, critical-path, traceability, independence, generated, classify, split, dead-code, unwired, test-gaps, blast-radius, comment-drift, format-consistency, bug-patterns); optional `--llm` flag for Claude-powered narrative
+
+## A2A Integration
+
+CKB also supports the A2A (Agent-to-Agent) protocol v0.3, enabling agent-to-agent communication over HTTP. All 80+ MCP tools are exposed as A2A skills.
+
+```bash
+# Start the A2A server
+ckb a2a --port 8081
+
+# Agent card (discovery)
+curl http://localhost:8081/.well-known/agent-card.json
+
+# Health with index freshness
+curl http://localhost:8081/health
+
+# Invoke a skill
+curl -X POST http://localhost:8081/message:send \
+  -d '{"message":{"role":"ROLE_USER","parts":[{"text":"{\"skill\":\"getStatus\",\"params\":{}}"}]}}'
+```
 
 ## Architecture Overview
 
-CKB is a code intelligence orchestration layer with three interfaces (CLI, HTTP API, MCP) that all flow through a central query engine.
+CKB is a code intelligence orchestration layer with four interfaces (CLI, HTTP API, MCP, A2A) that all flow through a central query engine.
 
 ### Layer Structure
 
 ```
-Interfaces (cmd/ckb/, internal/api/, internal/mcp/)
+Interfaces (cmd/ckb/, internal/api/, internal/mcp/, internal/a2a/)
     ↓
 Query Engine (internal/query/)
     ↓
@@ -157,6 +184,7 @@ Storage Layer (internal/storage/) - SQLite for caching and symbol mappings
 - **internal/compression/**: Response budget enforcement for LLM-optimized output.
 - **internal/impact/**: Change impact analysis with visibility detection and risk scoring.
 - **internal/mcp/**: Model Context Protocol server (80+ tools).
+- **internal/a2a/**: Agent-to-Agent protocol server (v0.3). Wraps MCP tools as A2A skills with task persistence, SSE streaming, push notifications.
 - **internal/ownership/**: CODEOWNERS parsing + git-blame analysis with time decay.
 - **internal/responsibilities/**: Module responsibility extraction from READMEs and code.
 - **internal/hotspots/**: Churn tracking with trend analysis and projections.

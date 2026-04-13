@@ -295,6 +295,17 @@ func (b *Builder) WithCacheInfo(cache *CacheInfo) *Builder {
 	return b
 }
 
+// WithBackend sets the active backend name and derives accuracy from it.
+// Call this when SCIP is unavailable and the system falls back to LSP or tree-sitter.
+func (b *Builder) WithBackend(backend string) *Builder {
+	if b.resp.Meta == nil {
+		b.resp.Meta = &Meta{}
+	}
+	b.resp.Meta.Backend = backend
+	b.resp.Meta.Accuracy = AccuracyForBackend(backend)
+	return b
+}
+
 // Build returns the completed response envelope.
 func (b *Builder) Build() *Response {
 	return b.resp

@@ -2,11 +2,75 @@ package mcp
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/SimplyLiz/CodeMCP/internal/envelope"
 	"github.com/SimplyLiz/CodeMCP/internal/errors"
 	"github.com/SimplyLiz/CodeMCP/internal/query"
 )
+
+// CompactPrepareChange is a token-budget-friendly view of prepareChange results.
+type CompactPrepareChange struct {
+	Target        string   `json:"target"`
+	Risk          string   `json:"risk"`
+	AffectedCount int      `json:"affected_count"`
+	AffectedFiles []string `json:"affected_files"` // top 10
+	TestsNeeded   []string `json:"tests_needed"`   // top 5
+	OwnerSuggest  string   `json:"owner_suggest,omitempty"`
+	Summary       string   `json:"summary"`
+	Backend       string   `json:"backend"`
+	Accuracy      string   `json:"accuracy"`
+}
+
+// buildMCPCompactPrepareChange converts a PrepareChangeResponse into compact form.
+func buildMCPCompactPrepareChange(target string, r *query.PrepareChangeResponse, activeBackend string) CompactPrepareChange {
+	risk := "unknown"
+	if r.RiskAssessment != nil {
+		risk = r.RiskAssessment.Level
+	}
+
+	seen := make(map[string]bool)
+	var affectedFiles []string
+	for _, dep := range r.DirectDependents {
+		if dep.File != "" && !seen[dep.File] {
+			seen[dep.File] = true
+			affectedFiles = append(affectedFiles, dep.File)
+		}
+		if len(affectedFiles) >= 10 {
+			break
+		}
+	}
+
+	affectedCount := len(r.DirectDependents)
+	if r.TransitiveImpact != nil {
+		affectedCount += r.TransitiveImpact.TotalCallers
+	}
+
+	var testsNeeded []string
+	for i, t := range r.RelatedTests {
+		if i >= 5 {
+			break
+		}
+		name := t.File
+		if t.Name != "" {
+			name = t.Name
+		}
+		testsNeeded = append(testsNeeded, name)
+	}
+
+	summary := fmt.Sprintf("Changing %s affects %d files with %s risk.", target, len(affectedFiles), risk)
+
+	return CompactPrepareChange{
+		Target:        target,
+		Risk:          risk,
+		AffectedCount: affectedCount,
+		AffectedFiles: affectedFiles,
+		TestsNeeded:   testsNeeded,
+		Summary:       summary,
+		Backend:       activeBackend,
+		Accuracy:      envelope.AccuracyForBackend(activeBackend),
+	}
+}
 
 // v8.0 Compound tool implementations
 // These tools aggregate multiple granular queries to reduce AI tool calls by 60-70%
@@ -162,7 +226,21 @@ func (s *MCPServer) toolPrepareChange(params map[string]interface{}) (*envelope.
 		return nil, s.enrichNotFoundError(err)
 	}
 
-	resp := NewToolResponse().Data(result)
+	activeBackend := engine.ActiveBackendName()
+
+	// Support compact format
+	format := "full"
+	if v, ok := params["format"].(string); ok && v != "" {
+		format = v
+	}
+
+	if format == "compact" {
+		compact := buildMCPCompactPrepareChange(target, result, activeBackend)
+		resp := NewToolResponse().Data(compact).WithBackend(activeBackend, s.logger)
+		return resp.Build(), nil
+	}
+
+	resp := NewToolResponse().Data(result).WithBackend(activeBackend, s.logger)
 	for _, dw := range engine.GetDegradationWarnings() {
 		resp.Warning(dw.Message)
 	}

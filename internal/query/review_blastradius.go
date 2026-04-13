@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
 )
 
 // checkBlastRadius checks if changed symbols have high fan-out (many callers).
@@ -15,6 +17,15 @@ func (e *Engine) checkBlastRadius(ctx context.Context, changedFiles []string, op
 
 	maxFanOut := opts.Policy.MaxFanOut
 	informationalMode := maxFanOut <= 0
+
+	// Fetch git churn map from Cartographer to identify hotspot files.
+	// Used to escalate blast-radius findings for high-churn files from info → warning.
+	var churnMap map[string]int
+	if cartographer.Available() {
+		if churn, err := cartographer.GitChurn(e.repoRoot, 0); err == nil {
+			churnMap = churn
+		}
+	}
 
 	// Collect symbols from changed files, cap at 30 total.
 	// Only include functions and methods — variable references are typically
@@ -83,9 +94,15 @@ func (e *Engine) checkBlastRadius(ctx context.Context, changedFiles []string, op
 				if sym.name != "" {
 					hint = fmt.Sprintf("→ ckb explain %s", sym.name)
 				}
+				// Escalate from info → warning for hotspot files (high git churn).
+				// A frequently-changing file with many callers is higher risk.
+				severity := "info"
+				if churnMap[sym.file] >= 15 {
+					severity = "warning"
+				}
 				findings = append(findings, ReviewFinding{
 					Check:    "blast-radius",
-					Severity: "info",
+					Severity: severity,
 					File:     sym.file,
 					Message:  fmt.Sprintf("Fan-out: %s has %d callers", sym.name, callerCount),
 					Category: "risk",

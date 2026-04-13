@@ -25,6 +25,11 @@ import (
 	"github.com/SimplyLiz/CodeMCP/internal/tier"
 )
 
+// scipLargeRepoThreshold is the source file count above which automatic SCIP
+// index generation is skipped. Above this size indexers typically take > 30 min
+// and CKB falls back to FTS + LSP + LIP for search. Use --scip to override.
+const scipLargeRepoThreshold = 50_000
+
 var (
 	indexForce         bool
 	indexDryRun        bool
@@ -35,6 +40,7 @@ var (
 	indexShowTier      bool          // Show tier summary after indexing
 	indexWatch         bool          // Watch for changes and auto-reindex
 	indexWatchInterval time.Duration // Watch mode polling interval
+	indexSCIP          bool          // Force SCIP generation even for large repos
 )
 
 var indexCmd = &cobra.Command{
@@ -44,6 +50,11 @@ var indexCmd = &cobra.Command{
 
 This command enables enhanced code intelligence features like findReferences,
 getCallGraph, and analyzeImpact.
+
+For repos with more than 50,000 source files, SCIP generation is skipped
+automatically — indexers can take over an hour at that scale. CKB uses
+FTS + LSP + LIP semantic search instead, which covers most queries.
+Run with --scip to generate the SCIP index anyway.
 
 Supported languages:
   - Go (scip-go)
@@ -83,6 +94,8 @@ func init() {
 	indexCmd.Flags().BoolVar(&indexWatch, "watch", false, "Watch for changes and auto-reindex")
 	indexCmd.Flags().DurationVar(&indexWatchInterval, "watch-interval", 30*time.Second,
 		"Watch mode polling interval (min 5s, max 5m)")
+	indexCmd.Flags().BoolVar(&indexSCIP, "scip", false,
+		fmt.Sprintf("Generate SCIP index even if repo exceeds the %d-file threshold (may take > 30 min)", scipLargeRepoThreshold))
 	rootCmd.AddCommand(indexCmd)
 }
 
@@ -198,6 +211,21 @@ func runIndex(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Printf("Detected %s project (from %s)\n", project.LanguageDisplayName(lang), manifest)
+
+	// Large-repo gate: count source files and skip SCIP if above threshold.
+	// SCIP indexers take 30–90 min on large monorepos; CKB falls back to
+	// FTS + LSP + LIP which handles most queries without the index.
+	fileCount := countSourceFiles(repoRoot, lang)
+	if fileCount >= scipLargeRepoThreshold {
+		if indexSCIP || indexForce {
+			fmt.Printf("Warning: %d source files detected — SCIP generation may take 30–90 min.\n", fileCount)
+			fmt.Println("         Proceeding because --scip / --force was specified.")
+			fmt.Println()
+		} else {
+			printLargeRepoNotice(lang, fileCount, indexPath)
+			os.Exit(0)
+		}
+	}
 
 	// Get indexer info (for install/check commands)
 	indexer := project.GetIndexerInfo(lang)
@@ -654,6 +682,44 @@ func shortHash(hash string) string {
 		return hash[:7]
 	}
 	return hash
+}
+
+// printLargeRepoNotice is printed when countSourceFiles exceeds scipLargeRepoThreshold.
+// It explains what tier is active, what's missing, and how to opt in to SCIP.
+func printLargeRepoNotice(lang project.Language, fileCount int, indexPath string) {
+	indexer := project.GetIndexerInfo(lang)
+
+	fmt.Println()
+	fmt.Printf("⚠  Repo too large for automatic SCIP indexing (%d files, threshold %d)\n",
+		fileCount, scipLargeRepoThreshold)
+	fmt.Println()
+	fmt.Println("SCIP generation is disabled — indexers take 30–90 min at this scale.")
+	fmt.Println("CKB will use FTS + LSP + LIP semantic search instead.")
+	fmt.Println()
+	fmt.Println("Available without SCIP:")
+	fmt.Println("  ✓  Symbol search (FTS + semantic re-ranking via LIP)")
+	fmt.Println("  ✓  Go-to-definition, find references (via LSP)")
+	fmt.Println("  ✓  Semantic search when symbol names don't match (via LIP nearest-by-text)")
+	fmt.Println()
+	fmt.Println("Requires SCIP:")
+	fmt.Println("  ✗  Cross-file call graph (getCallGraph)")
+	fmt.Println("  ✗  Change impact analysis (analyzeImpact)")
+	fmt.Println("  ✗  Dependency tracking (getHotspots, analyzeCoupling)")
+	fmt.Println()
+
+	if indexer != nil {
+		fmt.Println("To generate SCIP manually (then run ckb index --scip to register it):")
+		fmt.Printf("  %s\n", indexer.Command)
+		fmt.Println()
+		fmt.Println("Or force automatic generation (may take a long time):")
+	} else {
+		fmt.Println("To force SCIP generation regardless of repo size:")
+	}
+	fmt.Println("  ckb index --scip")
+	fmt.Println()
+	fmt.Printf("Index will be written to: %s\n", indexPath)
+	fmt.Println()
+	fmt.Println("Run 'ckb doctor' to confirm the active tier.")
 }
 
 // countSourceFiles counts source files in the repository for the given language.

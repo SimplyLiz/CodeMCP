@@ -26,15 +26,7 @@ func (e *Engine) PopulateFTSFromSCIP(ctx context.Context) error {
 		return nil
 	}
 
-	// Convert SCIP symbols to FTS records
-	var records []storage.SymbolFTSRecord
-	for _, symInfo := range index.Symbols {
-		// Convert SymbolInformation to FTS record
-		record := convertSymbolToFTSRecord(symInfo, index)
-		records = append(records, record)
-	}
-
-	if len(records) == 0 {
+	if len(index.Symbols) == 0 {
 		e.logger.Debug("No symbols to index for FTS")
 		return nil
 	}
@@ -50,17 +42,37 @@ func (e *Engine) PopulateFTSFromSCIP(ctx context.Context) error {
 		return err
 	}
 
-	// Bulk insert symbols
-	if err := ftsManager.BulkInsert(ctx, records); err != nil {
+	// Stream symbols in 10k chunks so we never materialise the full ~400MB
+	// []SymbolFTSRecord slice for a 50k-file repo.
+	const ftsChunkSize = 10_000
+	symbolCount := 0
+	if err := ftsManager.BulkInsertFunc(ctx, func(flush func([]storage.SymbolFTSRecord) error) error {
+		chunk := make([]storage.SymbolFTSRecord, 0, ftsChunkSize)
+		for _, sym := range index.Symbols {
+			chunk = append(chunk, convertSymbolToFTSRecord(sym, index))
+			if len(chunk) >= ftsChunkSize {
+				if err := flush(chunk); err != nil {
+					return err
+				}
+				symbolCount += len(chunk)
+				chunk = chunk[:0]
+			}
+		}
+		if len(chunk) > 0 {
+			symbolCount += len(chunk)
+			return flush(chunk)
+		}
+		return nil
+	}); err != nil {
 		e.logger.Warn("Failed to populate FTS index",
 			"error", err.Error(),
-			"symbol_count", len(records),
+			"symbol_count", symbolCount,
 		)
 		return err
 	}
 
 	e.logger.Info("FTS index populated from SCIP",
-		"symbol_count", len(records),
+		"symbol_count", symbolCount,
 		"duration_ms", time.Since(start).Milliseconds(),
 	)
 
@@ -84,19 +96,29 @@ func convertSymbolToFTSRecord(symInfo *scip.SymbolInformation, index *scip.SCIPI
 	// Get documentation
 	documentation := strings.Join(symInfo.Documentation, "\n")
 
-	// Get file path from definition location
+	// Get file path from definition location using RefIndex for O(1) lookup.
 	filePath := ""
 	language := ""
-	for _, doc := range index.Documents {
-		for _, occ := range doc.Occurrences {
-			if occ.Symbol == symInfo.Symbol && occ.SymbolRoles&scip.SymbolRoleDefinition != 0 {
-				filePath = doc.RelativePath
-				language = doc.Language
+	if index.RefIndex != nil {
+		for _, ref := range index.RefIndex[symInfo.Symbol] {
+			if ref.Occ.SymbolRoles&scip.SymbolRoleDefinition != 0 {
+				filePath = ref.Doc.RelativePath
+				language = ref.Doc.Language
 				break
 			}
 		}
-		if filePath != "" {
-			break
+	} else {
+		for _, doc := range index.Documents {
+			for _, occ := range doc.Occurrences {
+				if occ.Symbol == symInfo.Symbol && occ.SymbolRoles&scip.SymbolRoleDefinition != 0 {
+					filePath = doc.RelativePath
+					language = doc.Language
+					break
+				}
+			}
+			if filePath != "" {
+				break
+			}
 		}
 	}
 
@@ -188,4 +210,44 @@ func (e *Engine) RefreshFTS(ctx context.Context) error {
 func (e *Engine) GetFTSStats(ctx context.Context) (map[string]interface{}, error) {
 	ftsManager := storage.NewFTSManager(e.db.Conn(), storage.DefaultFTSConfig())
 	return ftsManager.GetStats(ctx)
+}
+
+// symbolsForFiles returns symbols defined in any of the given file paths, grouped
+// by file path. A single WHERE file_path IN (…) query replaces N individual round-
+// trips, which matters when SemanticSearchWithLIP returns up to 20 file URIs.
+// limitPerFile is enforced per file in Go after the batch query returns.
+func (e *Engine) symbolsForFiles(_ context.Context, filePaths []string, limitPerFile int) map[string][]storage.FTSSearchResult {
+	if e.db == nil || len(filePaths) == 0 {
+		return nil
+	}
+
+	// Build IN clause placeholders.
+	placeholders := strings.Repeat("?,", len(filePaths))
+	placeholders = placeholders[:len(placeholders)-1] // trim trailing comma
+	args := make([]interface{}, len(filePaths))
+	for i, p := range filePaths {
+		args[i] = p
+	}
+
+	rows, err := e.db.Query(
+		`SELECT id, name, kind, COALESCE(documentation,''), COALESCE(signature,''), file_path, COALESCE(language,'')
+		 FROM symbols_fts_content WHERE file_path IN (`+placeholders+`)`,
+		args...)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close() //nolint:errcheck
+
+	out := make(map[string][]storage.FTSSearchResult, len(filePaths))
+	for rows.Next() {
+		var r storage.FTSSearchResult
+		if err := rows.Scan(&r.ID, &r.Name, &r.Kind, &r.Documentation, &r.Signature, &r.FilePath, &r.Language); err != nil {
+			continue
+		}
+		existing := out[r.FilePath]
+		if limitPerFile <= 0 || len(existing) < limitPerFile {
+			out[r.FilePath] = append(existing, r)
+		}
+	}
+	return out
 }

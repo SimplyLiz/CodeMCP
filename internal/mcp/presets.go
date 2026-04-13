@@ -88,17 +88,18 @@ var Presets = map[string][]string{
 		"getOwnership",
 		"getOwnershipDrift",
 		"recentlyRelevant",
-		"scanSecrets",       // Secret detection for PR reviews
-		"reviewPR",          // Unified PR review with quality gates
-		"getAffectedTests",  // Tests covering changed code
-		"analyzeTestGaps",   // Untested functions in changed files
-		"compareAPI",        // Breaking API changes
-		"findDeadCode",      // Dead code in changes
-		"auditRisk",         // Multi-factor risk scoring
-		"analyzeChange",     // Change analysis
-		"getFileComplexity", // File complexity for review
-		"listEntrypoints",   // Key entry points in changed code
-		"auditCompliance",   // Regulatory compliance audit
+		"scanSecrets",        // Secret detection for PR reviews
+		"reviewPR",           // Unified PR review with quality gates
+		"getAffectedTests",   // Tests covering changed code
+		"analyzeTestGaps",    // Untested functions in changed files
+		"compareAPI",         // Breaking API changes
+		"findDeadCode",       // Dead code in changes
+		"findUnwiredModules", // Exported symbols not reachable from entrypoints
+		"auditRisk",          // Multi-factor risk scoring
+		"analyzeChange",      // Change analysis
+		"getFileComplexity",  // File complexity for review
+		"listEntrypoints",    // Key entry points in changed code
+		"auditCompliance",    // Regulatory compliance audit
 	},
 
 	// Refactor: core + refactoring analysis tools
@@ -114,19 +115,21 @@ var Presets = map[string][]string{
 		"justifySymbol",
 		"analyzeCoupling",
 		"findDeadCodeCandidates",
-		"findDeadCode",     // v7.6: Static dead code detection (no telemetry needed)
-		"getAffectedTests", // v7.6: Find tests affected by changes
-		"compareAPI",       // v7.6: Breaking change detection
+		"findDeadCode",       // v7.6: Static dead code detection (no telemetry needed)
+		"findUnwiredModules", // Exported symbols not reachable from entrypoints
+		"getAffectedTests",   // v7.6: Find tests affected by changes
+		"compareAPI",         // v7.6: Breaking change detection
 		"auditRisk",
 		"explainOrigin",
-		"scanSecrets",         // v8.0: Secret detection for security audits
-		"analyzeTestGaps",     // v8.1: Test gap analysis
-		"planRefactor",        // v8.1: Unified refactor planning
-		"findCycles",          // v8.1: Dependency cycle detection
-		"suggestRefactorings", // v8.1: Proactive refactoring suggestions
-		"getFileComplexity",   // v8.3: File complexity for health pipeline
-		"listSymbols",         // v8.3: Bulk symbol listing with complexity
-		"getSymbolGraph",      // v8.3: Batch call graph
+		"scanSecrets",           // v8.0: Secret detection for security audits
+		"analyzeTestGaps",       // v8.1: Test gap analysis
+		"planRefactor",          // v8.1: Unified refactor planning
+		"findCycles",            // v8.1: Dependency cycle detection
+		"suggestRefactorings",   // v8.1: Proactive refactoring suggestions
+		"getFileComplexity",     // v8.3: File complexity for health pipeline
+		"listSymbols",           // v8.3: Bulk symbol listing with complexity
+		"getSymbolGraph",        // v8.3: Batch call graph
+		"analyzeStructuralPerf", // v8.5: Loop call sites in hot files
 	},
 
 	// Federation: core + federation + contract tools
