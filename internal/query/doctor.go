@@ -210,6 +210,13 @@ func (e *Engine) checkScip(ctx context.Context) DoctorCheck {
 	}
 
 	if info.Freshness != nil && info.Freshness.IsStale() {
+		// Dirty-only staleness (index is at HEAD, only uncommitted changes exist)
+		// is expected during active development — report as info, not warn.
+		if !info.Freshness.StaleAgainstHead && info.Freshness.StaleAgainstRepoState {
+			check.Status = "info"
+			check.Message = "SCIP index at HEAD — uncommitted changes may not be reflected"
+			return check
+		}
 		check.Status = "warn"
 		check.Message = fmt.Sprintf("SCIP index is stale: %s", info.Freshness.Warning)
 		check.SuggestedFixes = []FixAction{
@@ -273,7 +280,6 @@ func (e *Engine) checkLsp(ctx context.Context) DoctorCheck {
 		check.Message = fmt.Sprintf("LSP ready: %s (starts on-demand)",
 			strings.Join(available, ", "))
 	} else {
-		check.Status = "warn"
 		var parts []string
 		for _, lang := range missing {
 			cfg := relevantServers[lang]
@@ -288,6 +294,27 @@ func (e *Engine) checkLsp(ctx context.Context) DoctorCheck {
 		}
 		check.Message = strings.Join(parts, "; ")
 		check.SuggestedFixes = fixes
+
+		// Downgrade to info when the primary language has LSP coverage and only
+		// secondary/incidental languages are missing.
+		primaryLang, _, _ := project.DetectLanguage(e.repoRoot)
+		primaryServerKey := langToLspServer[primaryLang]
+		if primaryServerKey != "" {
+			primaryAvailable := false
+			for _, lang := range available {
+				if lang == primaryServerKey {
+					primaryAvailable = true
+					break
+				}
+			}
+			if primaryAvailable {
+				check.Status = "info"
+			} else {
+				check.Status = "warn"
+			}
+		} else {
+			check.Status = "warn"
+		}
 	}
 
 	return check
@@ -415,17 +442,21 @@ func (e *Engine) checkStorage(ctx context.Context) DoctorCheck {
 		return check
 	}
 
-	// Try a simple query to check DB is working
-	var count int
-	row := e.db.QueryRow("SELECT COUNT(*) FROM symbols")
-	if err := row.Scan(&count); err != nil {
+	// Try a simple query to check DB is working (schema_version is always present)
+	var schemaVersion int
+	row := e.db.QueryRow("SELECT version FROM schema_version LIMIT 1")
+	if err := row.Scan(&schemaVersion); err != nil {
 		check.Status = "warn"
-		check.Message = "Database tables not initialized"
+		check.Message = "Database schema not initialized — run 'ckb index' to populate"
 		return check
 	}
 
+	// Count symbols in FTS index as a health indicator
+	var count int
+	_ = e.db.QueryRow("SELECT COUNT(*) FROM symbols_fts_content").Scan(&count)
+
 	check.Status = "pass"
-	check.Message = fmt.Sprintf("Database OK (%d symbols)", count)
+	check.Message = fmt.Sprintf("Database OK (schema v%d, %d symbols indexed)", schemaVersion, count)
 	return check
 }
 
