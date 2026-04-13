@@ -137,8 +137,8 @@ type outliersResp struct {
 
 type indexStatusResp struct {
 	IndexedFiles  int      `json:"indexed_files"`
-	Pending       int      `json:"pending"`
-	LastUpdated   string   `json:"last_updated"`
+	Pending       int      `json:"pending_embedding_files"`
+	LastUpdatedMs *int64   `json:"last_updated_ms"`
 	MixedModels   bool     `json:"mixed_models"`
 	ModelsInIndex []string `json:"models_in_index"`
 }
@@ -665,10 +665,14 @@ func IndexStatus() (*IndexStatusInfo, error) {
 		map[string]any{"type": "query_index_status"},
 		200*time.Millisecond, 4<<10,
 		func(r indexStatusResp) *IndexStatusInfo {
+			lastUpdated := ""
+			if r.LastUpdatedMs != nil {
+				lastUpdated = time.UnixMilli(*r.LastUpdatedMs).UTC().Format(time.RFC3339)
+			}
 			return &IndexStatusInfo{
 				IndexedFiles:  r.IndexedFiles,
 				Pending:       r.Pending,
-				LastUpdated:   r.LastUpdated,
+				LastUpdated:   lastUpdated,
 				MixedModels:   r.MixedModels,
 				ModelsInIndex: r.ModelsInIndex,
 			}

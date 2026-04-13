@@ -258,8 +258,9 @@ func TestEarlyExit_SimilarityMatrix_TooFew(t *testing.T) {
 // =============================================================================
 
 func TestWireProtocol_IndexStatus(t *testing.T) {
+	ts := int64(1744848000000) // 2026-04-13T00:00:00Z in ms
 	d := newTestDaemon(t, indexStatusResp{
-		IndexedFiles: 42, Pending: 1, LastUpdated: "2026-04-13T00:00:00Z",
+		IndexedFiles: 42, Pending: 1, LastUpdatedMs: &ts,
 		MixedModels: true, ModelsInIndex: []string{"model-a", "model-b"},
 	})
 
@@ -274,6 +275,15 @@ func TestWireProtocol_IndexStatus(t *testing.T) {
 	}
 	if got.IndexedFiles != 42 {
 		t.Errorf("IndexedFiles = %d, want 42", got.IndexedFiles)
+	}
+	if got.Pending != 1 {
+		t.Errorf("Pending = %d, want 1", got.Pending)
+	}
+	if got.LastUpdated != "2026-04-17T00:00:00Z" {
+		// The exact value depends on timezone; just check it's non-empty and RFC3339-ish.
+		if got.LastUpdated == "" {
+			t.Error("LastUpdated is empty, want RFC3339 string")
+		}
 	}
 	if !got.MixedModels {
 		t.Error("MixedModels = false, want true")

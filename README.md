@@ -650,7 +650,7 @@ See the **[Full Documentation Wiki](https://github.com/SimplyLiz/CodeMCP/wiki)**
 - [LIP v2.0](https://lip-sigma.vercel.app) semantic embedding daemon (requires Rust/cargo) — strongly recommended for best search quality ([docs](https://lip-sigma.vercel.app/docs), [crates.io](https://crates.io/crates/lip-cli)):
   ```bash
   cargo install lip-cli
-  lip daemon start
+  lip daemon --socket ~/.local/share/lip/lip.sock
   ```
 
 ## License
