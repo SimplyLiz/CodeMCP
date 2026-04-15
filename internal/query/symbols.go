@@ -514,7 +514,7 @@ func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (
 	// content table. The threshold of 3 mirrors the PPR/LIP re-ranking gate — below
 	// that the lexical results aren't trustworthy enough to stand alone.
 	const lipFallbackThreshold = 3
-	if len(results) < lipFallbackThreshold {
+	if len(results) < lipFallbackThreshold && e.lipSemanticAvailable() {
 		lipSymLimit := opts.Limit * 3
 		lipResults := SemanticSearchWithLIP(opts.Query, 20, "", 0, func(fileURIs []string) map[string][]SearchResultItem {
 			// Convert file:// URIs back to repo-relative paths for the batch query.
@@ -639,7 +639,7 @@ func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (
 				results = reranked
 			}
 		}
-	} else if len(results) > 3 && !lipRanked {
+	} else if len(results) > 3 && !lipRanked && e.lipSemanticAvailable() {
 		// Fast tier: use LIP file embeddings as a semantic re-ranking signal.
 		// Skip when results already came from LIP semantic search (lipRanked=true) —
 		// they're already ordered by similarity, a second pass would be redundant.
