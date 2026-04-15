@@ -64,11 +64,15 @@ type Engine struct {
 	cachedState     *RepoState
 	stateComputedAt time.Time
 
-	// LIP health (cached; refreshed on a short TTL to avoid per-query RPCs).
+	// LIP health, maintained by a background subscriber that keeps a long-lived
+	// connection open and receives `index_changed` pushes plus per-ping health
+	// snapshots. `lipHealthCheckedAt` is zero until the first frame arrives —
+	// callers check it before trusting the flags.
 	lipHealthMu        sync.RWMutex
 	cachedLipMixed     bool
 	cachedLipAvailable bool
 	lipHealthCheckedAt time.Time
+	lipSubCancel       context.CancelFunc
 
 	// Cache stats
 	cacheStatsMu sync.RWMutex
@@ -135,6 +139,8 @@ func NewEngine(repoRoot string, db *storage.DB, logger *slog.Logger, cfg *config
 		logger.Warn("Failed to initialize job runner", "error", err.Error())
 		// Don't fail - async operations will be unavailable
 	}
+
+	engine.startLipSubscriber()
 
 	return engine, nil
 }
@@ -439,6 +445,10 @@ func (e *Engine) DB() *storage.DB {
 // Close shuts down the query engine.
 func (e *Engine) Close() error {
 	var lastErr error
+
+	if e.lipSubCancel != nil {
+		e.lipSubCancel()
+	}
 
 	// Stop job runner first
 	if e.jobRunner != nil {
