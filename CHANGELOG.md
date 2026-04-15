@@ -4,6 +4,17 @@ All notable changes to CKB will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **LIP health: push-driven, not polled** — the Engine now opens a long-lived
+  connection to the LIP daemon at startup (`internal/lip/subscribe.go`) and
+  receives `index_changed` frames plus per-ping `index_status` snapshots
+  instead of issuing a fresh `IndexStatus` RPC on a 60 s TTL. Worst-case
+  staleness for the mixed-models gate drops from 60 s to ~3 s, the hot query
+  path is lock-free (no RPC, no dial, no TTL check), and the subscriber
+  reconnects with exponential backoff when the daemon restarts. The old
+  `lipHealthTTL` constant is gone; callers read the cached flag directly.
+
 ### Added
 
 - Troubleshooting section in `docs/plans/review-cicd.md` covering shallow
