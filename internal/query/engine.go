@@ -64,6 +64,12 @@ type Engine struct {
 	cachedState     *RepoState
 	stateComputedAt time.Time
 
+	// LIP health (cached; refreshed on a short TTL to avoid per-query RPCs).
+	lipHealthMu        sync.RWMutex
+	cachedLipMixed     bool
+	cachedLipAvailable bool
+	lipHealthCheckedAt time.Time
+
 	// Cache stats
 	cacheStatsMu sync.RWMutex
 	cacheHits    int64

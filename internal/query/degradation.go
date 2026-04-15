@@ -59,5 +59,23 @@ func (e *Engine) GetDegradationWarnings() []DegradationWarning {
 		}
 	}
 
-	return GenerateDegradationWarnings(scipAvailable, gitAvailable, scipStale, commitsBehind)
+	warnings := GenerateDegradationWarnings(scipAvailable, gitAvailable, scipStale, commitsBehind)
+
+	// LIP mixed-models warning: cosine similarity across different vector spaces
+	// is meaningless, so semantic rerank/search is gated off when this is set.
+	// Only emitted once lipSemanticAvailable has probed the daemon — otherwise
+	// we would falsely claim a mixed-model state before any query has run.
+	e.lipHealthMu.RLock()
+	lipMixed := e.cachedLipMixed
+	lipChecked := !e.lipHealthCheckedAt.IsZero()
+	e.lipHealthMu.RUnlock()
+	if lipChecked && lipMixed {
+		warnings = append(warnings, DegradationWarning{
+			Code:              "lip_mixed_models",
+			Message:           "LIP index contains vectors from multiple embedding models — semantic ranking disabled until re-index.",
+			CapabilityPercent: 70,
+		})
+	}
+
+	return warnings
 }
