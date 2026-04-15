@@ -102,7 +102,12 @@ func (e *Engine) SummarizePR(ctx context.Context, opts SummarizePROptions) (*Sum
 	if headRef == "" {
 		headRef = "HEAD"
 	}
-	diffStats, err := e.gitAdapter.GetCommitRangeDiff(opts.BaseBranch, headRef)
+	baseRef, err := e.gitAdapter.EnsureRef(opts.BaseBranch)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve base ref %q: %w", opts.BaseBranch, err)
+	}
+	opts.BaseBranch = baseRef
+	diffStats, err := e.gitAdapter.GetCommitRangeDiff(baseRef, headRef)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get diff: %w", err)
 	}
