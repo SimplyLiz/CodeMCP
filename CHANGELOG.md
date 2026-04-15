@@ -6,6 +6,11 @@ All notable changes to CKB will be documented in this file.
 
 ### Added
 
+- `ckb review --no-auto-fetch` flag disables the automatic fetch of a
+  missing base ref introduced in 9.0.1. Also exposed on `ReviewPROptions`
+  as `noAutoFetch` for MCP / HTTP callers. Useful in air-gapped pipelines
+  where network activity outside the checkout step is forbidden; review
+  fails with a clear "ref not present locally" error instead.
 - Test coverage for `GitAdapter.EnsureRef` — happy path, missing-ref
   auto-fetch, unreachable origin, and empty-input guard — using isolated
   bare+clone repo pairs in temp dirs.

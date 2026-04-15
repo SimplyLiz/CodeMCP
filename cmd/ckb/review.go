@@ -45,6 +45,7 @@ var (
 	reviewMinReviewers       int
 	// New analyzer flags
 	reviewStaged             bool
+	reviewNoAutoFetch        bool
 	reviewScope              string
 	reviewMaxBlastRadius     int
 	reviewMaxFanOut          int
@@ -146,6 +147,7 @@ func init() {
 
 	// New analyzers
 	reviewCmd.Flags().BoolVar(&reviewStaged, "staged", false, "Review staged changes instead of branch diff")
+	reviewCmd.Flags().BoolVar(&reviewNoAutoFetch, "no-auto-fetch", false, "Disable automatic fetch of the base ref from origin when missing locally (for air-gapped CI)")
 	reviewCmd.Flags().StringVar(&reviewScope, "scope", "", "Filter to path prefix or symbol name")
 	reviewCmd.Flags().IntVar(&reviewMaxBlastRadius, "max-blast-radius", 0, "Maximum blast radius delta (0 = disabled)")
 	reviewCmd.Flags().IntVar(&reviewMaxFanOut, "max-fanout", 0, "Maximum fan-out / caller count (0 = disabled)")
@@ -225,9 +227,10 @@ func runReview(cmd *cobra.Command, args []string) {
 		Policy:     policy,
 		Checks:     reviewChecks,
 		SkipChecks: reviewSkipChecks,
-		Staged:     reviewStaged,
-		Scope:      scope,
-		LLM:        reviewLLM,
+		Staged:      reviewStaged,
+		Scope:       scope,
+		LLM:         reviewLLM,
+		NoAutoFetch: reviewNoAutoFetch,
 	}
 
 	response, err := engine.ReviewPR(ctx, opts)

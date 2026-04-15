@@ -120,6 +120,18 @@ func (g *GitAdapter) Capabilities() []string {
 	}
 }
 
+// VerifyRef returns nil iff ref resolves to a commit in the local repo.
+// Unlike EnsureRef it never fetches. Use when auto-fetch is disabled.
+func (g *GitAdapter) VerifyRef(ref string) error {
+	if ref == "" {
+		return fmt.Errorf("empty ref")
+	}
+	if _, err := g.executeGitCommand("rev-parse", "--verify", "--quiet", ref+"^{commit}"); err != nil {
+		return fmt.Errorf("ref %q not present locally (auto-fetch disabled)", ref)
+	}
+	return nil
+}
+
 // EnsureRef returns a locally-resolvable form of the given ref, fetching
 // from origin if needed. Handles shallow CI clones that only fetch the PR
 // branch (Azure Pipelines, GitHub Actions defaults, GitLab default, etc.) —
