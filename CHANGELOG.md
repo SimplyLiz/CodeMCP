@@ -2,6 +2,35 @@
 
 All notable changes to CKB will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- Test coverage for `GitAdapter.EnsureRef` — happy path, missing-ref
+  auto-fetch, unreachable origin, and empty-input guard — using isolated
+  bare+clone repo pairs in temp dirs.
+- **LIP rerank: coherence gate + position-weighted seeding** (#209) — the
+  Fast-tier semantic rerank (`internal/query/lip_ranker.go`) used to average the
+  top-5 seed embeddings with uniform weight and always apply the result. When
+  the top-5 pointed in different directions the centroid collapsed toward zero
+  and amplified noise; when the top seed was strong the blend still diluted it.
+  Seeds are now L2-normalised and position-weighted (`1/(rank+1)`), the
+  resulting centroid norm is read as a coherence score in `[0, 1]`, and the
+  rerank falls back to pure lexical order when coherence is below
+  `MinCoherence` (default `0.35`). Blend weights, seed count, and threshold are
+  surfaced as `RerankConfig` so future tuning does not need to touch call
+  sites. Injected `embedBatchFn` makes the ranker unit-testable without a
+  running daemon.
+- **LIP rerank: gate on `!MixedModels`** (#208) — when the LIP index contains
+  vectors from more than one embedding model (e.g. partial re-index during a
+  model upgrade), cosine similarity across those vectors is mathematically
+  meaningless. `RerankWithLIP` and `SemanticSearchWithLIP` now consult a
+  cached `Engine.lipSemanticAvailable()` check (60 s TTL, single `IndexStatus`
+  RPC) and fall back to lexical ranking when the daemon is down or reports
+  `mixed_models`. A new `lip_mixed_models` degradation warning (70% capability)
+  surfaces in response metadata so users learn *why* results look weaker
+  instead of silently ranking on garbage.
+
 ## [9.0.1] - 2026-04-15
 
 ### Fixed

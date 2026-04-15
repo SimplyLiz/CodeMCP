@@ -4,7 +4,9 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/SimplyLiz/CodeMCP/internal/config"
@@ -242,4 +244,123 @@ func TestGitAdapter_GetDiffSummary(t *testing.T) {
 	}
 
 	t.Logf("Diff Summary: %+v", summary)
+}
+
+// setupRepoPair builds a bare "origin" repo with one commit on main, and a
+// clone of it, returning (origin bare dir, clone dir). Isolates EnsureRef
+// tests from the host repo's network/credentials.
+func setupRepoPair(t *testing.T) (string, string) {
+	t.Helper()
+	root := t.TempDir()
+	originBare := filepath.Join(root, "origin.git")
+	work := filepath.Join(root, "work")
+	clone := filepath.Join(root, "clone")
+
+	runGit := func(dir string, args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t",
+			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t",
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+
+	runGit(root, "init", "--bare", "-b", "main", originBare)
+	runGit(root, "init", "-b", "main", work)
+	if err := os.WriteFile(filepath.Join(work, "f.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(work, "add", ".")
+	runGit(work, "commit", "-m", "init")
+	runGit(work, "remote", "add", "origin", originBare)
+	runGit(work, "push", "origin", "main")
+	runGit(root, "clone", originBare, clone)
+	return originBare, clone
+}
+
+func adapterFor(t *testing.T, repoRoot string) *GitAdapter {
+	t.Helper()
+	cfg := &config.Config{
+		RepoRoot: repoRoot,
+		Backends: config.BackendsConfig{Git: config.GitConfig{Enabled: true}},
+		QueryPolicy: config.QueryPolicyConfig{
+			TimeoutMs: map[string]int{"git": 10000},
+		},
+	}
+	a, err := NewGitAdapter(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("NewGitAdapter: %v", err)
+	}
+	return a
+}
+
+func TestEnsureRef_EmptyInput(t *testing.T) {
+	a := setupTestAdapter(t)
+	if _, err := a.EnsureRef(""); err == nil {
+		t.Fatal("expected error for empty ref")
+	}
+}
+
+func TestEnsureRef_AlreadyLocal(t *testing.T) {
+	_, clone := setupRepoPair(t)
+	a := adapterFor(t, clone)
+	// main is a local branch in a fresh clone; no fetch should be needed.
+	got, err := a.EnsureRef("main")
+	if err != nil {
+		t.Fatalf("EnsureRef(main): %v", err)
+	}
+	if got != "main" {
+		t.Errorf("expected input returned unchanged; got %q", got)
+	}
+}
+
+func TestEnsureRef_FetchesMissingFromOrigin(t *testing.T) {
+	_, clone := setupRepoPair(t)
+	a := adapterFor(t, clone)
+
+	// Simulate shallow-clone state: remove remote-tracking ref for main so
+	// only the local 'main' branch remains. Then delete local main too —
+	// now neither 'main' nor 'origin/main' resolves locally.
+	if _, err := a.executeGitCommand("update-ref", "-d", "refs/remotes/origin/main"); err != nil {
+		t.Fatalf("delete origin/main: %v", err)
+	}
+	// Can't delete the currently checked-out branch — detach first.
+	if _, err := a.executeGitCommand("checkout", "--detach", "HEAD"); err != nil {
+		t.Fatalf("detach: %v", err)
+	}
+	if _, err := a.executeGitCommand("branch", "-D", "main"); err != nil {
+		t.Fatalf("delete local main: %v", err)
+	}
+
+	got, err := a.EnsureRef("refs/heads/main")
+	if err != nil {
+		t.Fatalf("EnsureRef: %v", err)
+	}
+	if got != "origin/main" {
+		t.Errorf("expected origin/main after fetch, got %q", got)
+	}
+	// Verify the fetch actually populated the remote-tracking ref.
+	if _, err := a.executeGitCommand("rev-parse", "--verify", "origin/main^{commit}"); err != nil {
+		t.Errorf("origin/main still missing after EnsureRef: %v", err)
+	}
+}
+
+func TestEnsureRef_UnreachableOriginSurfacesError(t *testing.T) {
+	_, clone := setupRepoPair(t)
+	a := adapterFor(t, clone)
+
+	// Point origin at a nonexistent path.
+	if _, err := a.executeGitCommand("remote", "set-url", "origin", filepath.Join(t.TempDir(), "does-not-exist.git")); err != nil {
+		t.Fatalf("set-url: %v", err)
+	}
+	_, err := a.EnsureRef("refs/heads/totally-made-up")
+	if err == nil {
+		t.Fatal("expected error when origin unreachable")
+	}
+	if !strings.Contains(err.Error(), "totally-made-up") {
+		t.Errorf("error should name the ref; got: %v", err)
+	}
 }
