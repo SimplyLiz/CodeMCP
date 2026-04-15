@@ -799,8 +799,22 @@ type ExplainFileFacts struct {
 	Imports    []string              `json:"imports"`  // Key imports
 	Exports    []string              `json:"exports"`  // Key exports/public symbols
 	Hotspots   []ExplainFileHotspot  `json:"hotspots"` // Local hotspots
+	Related    []ExplainFileRelated  `json:"related,omitempty"`
 	Confidence float64               `json:"confidence"`
 	Basis      []ConfidenceBasisItem `json:"confidenceBasis"`
+}
+
+// ExplainFileRelated is a semantically-related symbol surfaced by LIP's
+// `stream_context` RPC. The ranking is relevance to the whole file as a
+// cursor region, token-budgeted so callers can feed it straight into an
+// LLM prompt. Returns an empty list when the daemon is unavailable or
+// predates v2.1.
+type ExplainFileRelated struct {
+	URI         string  `json:"uri"`
+	DisplayName string  `json:"displayName"`
+	Kind        string  `json:"kind"`
+	Relevance   float32 `json:"relevance"`
+	TokenCost   uint32  `json:"tokenCost"`
 }
 
 // ExplainFileSymbol represents a symbol defined in the file.
@@ -952,6 +966,18 @@ func (e *Engine) ExplainFile(ctx context.Context, opts ExplainFileOptions) (*Exp
 		})
 	}
 
+	// Pull related symbols via LIP's stream_context RPC. Ranked by the
+	// daemon's semantic relevance to the whole file, token-budgeted so a
+	// caller can paste the list straight into an LLM prompt. Silent no-op
+	// when the daemon is unavailable or older than v2.1.
+	related := e.relatedViaStreamContext(relPath, lineCount)
+	if len(related) > 0 {
+		confidenceBasis = append(confidenceBasis, ConfidenceBasisItem{
+			Backend: "lip",
+			Status:  "available",
+		})
+	}
+
 	// Compute confidence based on available backends
 	confidence := computeExplainFileConfidence(confidenceBasis)
 
@@ -983,6 +1009,7 @@ func (e *Engine) ExplainFile(ctx context.Context, opts ExplainFileOptions) (*Exp
 			Imports:    imports,
 			Exports:    exports,
 			Hotspots:   hotspots,
+			Related:    related,
 			Confidence: confidence,
 			Basis:      confidenceBasis,
 		},

@@ -68,10 +68,17 @@ type Engine struct {
 	// connection open and receives `index_changed` pushes plus per-ping health
 	// snapshots. `lipHealthCheckedAt` is zero until the first frame arrives —
 	// callers check it before trusting the flags.
+	//
+	// `lipSupported` is the set of `type` tags the daemon advertised in its
+	// handshake. It gates calls to newer RPCs (StreamContext, ExplainMatch,
+	// ...) on clients talking to an older daemon, instead of letting them
+	// dispatch and get back an UnknownMessage. Empty when the handshake has
+	// not yet completed or the daemon predates `supported_messages`.
 	lipHealthMu        sync.RWMutex
 	cachedLipMixed     bool
 	cachedLipAvailable bool
 	lipHealthCheckedAt time.Time
+	lipSupported       map[string]struct{}
 	lipSubCancel       context.CancelFunc
 
 	// Cache stats

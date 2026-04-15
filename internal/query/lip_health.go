@@ -26,6 +26,25 @@ func (e *Engine) lipSemanticAvailable() bool {
 	return e.cachedLipAvailable && !e.cachedLipMixed
 }
 
+// lipSupports reports whether the connected LIP daemon advertised support
+// for a given `type` tag in its handshake. Used to gate calls to v2.0+
+// RPCs (ExplainMatch, StreamContext, ...) so we don't dispatch messages
+// an older daemon will reject as UnknownMessage.
+//
+// Returns false when the handshake has not completed yet OR the daemon
+// predates `supported_messages` (v1.5). Callers should treat false as
+// "fall back to the legacy path" rather than as a hard error — the feature
+// is advisory, not guaranteed.
+func (e *Engine) lipSupports(msgType string) bool {
+	e.lipHealthMu.RLock()
+	defer e.lipHealthMu.RUnlock()
+	if e.lipSupported == nil {
+		return false
+	}
+	_, ok := e.lipSupported[msgType]
+	return ok
+}
+
 // engineLipSubscriber is the adapter between `lip.Subscribe` and the
 // Engine's cached health flags. A dedicated type (instead of binding methods
 // to Engine) keeps the handler interface invisible to the rest of the
@@ -51,8 +70,40 @@ func (s engineLipSubscriber) OnIndexChanged(_ lip.IndexChangedEvent) {
 // no-op-safe — if the daemon is absent, Subscribe backs off and retries
 // until Close is called. The first health frame lands within `pingInterval`
 // of daemon availability.
+//
+// Before starting the subscriber we probe `Handshake` once: it's the only
+// RPC that returns `supported_messages`, which we need to gate v2.0+ calls
+// on older daemons. Handshake failures are non-fatal (the daemon is likely
+// down; Subscribe will retry), and the resulting empty `lipSupported` map
+// makes `lipSupports` return false everywhere — callers then fall back to
+// their legacy paths.
 func (e *Engine) startLipSubscriber() {
+	e.probeHandshake()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	e.lipSubCancel = cancel
 	go lip.Subscribe(ctx, engineLipSubscriber{e: e})
+}
+
+// probeHandshake runs the one-shot handshake and stashes the result on the
+// Engine. Split out so tests and re-connect paths can call it.
+func (e *Engine) probeHandshake() {
+	info, _ := lip.Handshake("ckb")
+	if info == nil {
+		return
+	}
+	supported := make(map[string]struct{}, len(info.SupportedMessages))
+	for _, m := range info.SupportedMessages {
+		supported[m] = struct{}{}
+	}
+	e.lipHealthMu.Lock()
+	e.lipSupported = supported
+	e.lipHealthMu.Unlock()
+	if e.logger != nil {
+		e.logger.Info("LIP handshake",
+			"daemon_version", info.DaemonVersion,
+			"protocol_version", info.ProtocolVersion,
+			"supported_count", len(info.SupportedMessages),
+		)
+	}
 }

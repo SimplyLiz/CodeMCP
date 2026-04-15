@@ -4,6 +4,44 @@ All notable changes to CKB will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **`explainFile` surfaces semantically-related symbols** via LIP v2.1's
+  `stream_context` RPC (`internal/query/lip_stream_context.go`). The daemon
+  ranks symbols across the whole file within a 2048-token budget; CKB
+  returns the top 10 in the new `facts.related` field with per-symbol
+  relevance and token cost. Gated on the handshake's `supported_messages`
+  — older daemons fall through and the field is absent. New streaming
+  transport `internal/lip/stream_context.go` reads the daemon's N
+  `symbol_info` frames plus the `end_stream` terminator; previous LIP
+  client was unary-only.
+- **`searchSymbols` expands short queries** via LIP's `query_expansion`
+  RPC (`internal/query/query_expansion.go`). Queries of ≤ 2 tokens get up
+  to 5 related terms appended before hitting FTS5, recovering recall on
+  vocabulary-mismatch misses ("auth" → "authenticate authorization
+  principal…"). Gated on the handshake and on the same mixed-models flag
+  that protects the rerank path. Longer queries are passed through
+  unchanged — the expansion is a rescue, not a rewrite.
+- **Semantic hits carry evidence chunks** when LIP v2.0+'s `explain_match`
+  is advertised (`SemanticSearchWithLIPExplained` in
+  `internal/query/lip_ranker.go`). Each hit returned by the semantic
+  fallback path now includes up to two ranked chunks with line ranges,
+  text, and per-chunk scores — the caller can cite specific lines instead
+  of a bare file URL. Capped at the top-5 hits to bound round-trip cost.
+- **`lip.Handshake` runs on engine startup** and the daemon's
+  `supported_messages` list is stashed for feature gating
+  (`Engine.lipSupports`). The daemon version and supported-count are
+  logged on connect.
+
+### Changed
+
+- **`lipFileURI` path normalisation** — the helper that builds
+  `file://`-URIs for LIP requests used to naive-`filepath.Join` whatever
+  `Location.FileId` a backend supplied. Now handles absolute paths and
+  already-prefixed `file://` URIs without producing malformed results
+  like `file:///repo//abs/path`. Backends today return relative paths, so
+  this is a hardening fix for contracts that are nominally open.
+
 ### Changed
 
 - **LIP health: push-driven, not polled** — the Engine now opens a long-lived
