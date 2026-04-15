@@ -9,41 +9,80 @@ import (
 	"github.com/SimplyLiz/CodeMCP/internal/lip"
 )
 
-// lipSeedN is the number of top-ranked results used to build the query centroid.
-// More seeds → more stable centroid; fewer → faster. Five is the sweet spot for
-// typical search result sets (10–50 candidates).
-const lipSeedN = 5
+// RerankConfig controls the LIP semantic re-ranking blend. The zero value is
+// not valid — use DefaultRerankConfig. Surfaced as a struct so future empirical
+// tuning (golden-query harness, per-repo overrides) does not require changing
+// call sites.
+type RerankConfig struct {
+	// LexicalWeight is the weight on the 1/rank position score.
+	LexicalWeight float64
+	// SemanticWeight is the weight on the centroid cosine similarity.
+	SemanticWeight float64
+	// SeedCount is the number of top results used to build the query centroid.
+	SeedCount int
+	// MinCoherence is the minimum centroid-norm required to trust the semantic
+	// signal. Each seed vector is L2-normalised, so the position-weighted
+	// centroid norm lies in [0, 1]: 1.0 means seeds point the same direction,
+	// near-0 means they cancel. Below this threshold we fall back to lexical
+	// ranking to avoid amplifying noise when top lexical results are
+	// semantically scattered.
+	MinCoherence float64
+}
+
+// DefaultRerankConfig returns the current production defaults. These values
+// predate an empirical tuning pass — treat them as a starting point, not a
+// proven optimum.
+func DefaultRerankConfig() RerankConfig {
+	return RerankConfig{
+		LexicalWeight:  0.6,
+		SemanticWeight: 0.4,
+		SeedCount:      5,
+		MinCoherence:   0.35,
+	}
+}
 
 // RerankWithLIP re-ranks results using semantic similarity from LIP embeddings.
 // It is the Fast-tier counterpart of RerankWithPPR: where PPR uses graph
 // proximity over the SCIP symbol graph, this function uses file embedding
-// dot-product similarity as the second ranking signal.
+// cosine similarity as the second ranking signal.
 //
 // Algorithm:
 //  1. Fetch embeddings for all candidate files in a single batch RPC.
-//  2. Average the top-lipSeedN seed vectors → L2-normalised query centroid.
-//  3. Score every candidate: 0.6 * lexical_position + 0.4 * dot_product(vec, centroid).
-//  4. Re-sort by combined score.
+//  2. Build a position-weighted, L2-normalised seed centroid from the top
+//     SeedCount candidates (weight 1/(rank+1) so top-1 dominates softly).
+//  3. Measure centroid coherence; if seeds disagree, return results unchanged.
+//  4. Score every candidate: LexicalWeight * 1/rank + SemanticWeight * cosine.
+//  5. Re-sort by combined score.
 //
-// Degrades silently when LIP is unavailable — the original results are returned
-// unchanged, so callers never need to handle the failure path specially.
-func RerankWithLIP(_ context.Context, results []SearchResultItem, repoRoot, _ string) ([]SearchResultItem, error) {
+// Degrades silently when LIP is unavailable or the signal is weak — the
+// original results are returned unchanged.
+func RerankWithLIP(ctx context.Context, results []SearchResultItem, repoRoot, query string) ([]SearchResultItem, error) {
+	return rerankWithLIP(ctx, results, repoRoot, query, DefaultRerankConfig(), lip.GetEmbeddingsBatch)
+}
+
+// embedBatchFn matches lip.GetEmbeddingsBatch and exists so tests can inject
+// synthetic embeddings without a running daemon.
+type embedBatchFn func(uris []string, model string) ([][]float32, error)
+
+func rerankWithLIP(
+	_ context.Context,
+	results []SearchResultItem,
+	repoRoot, _ string,
+	cfg RerankConfig,
+	embed embedBatchFn,
+) ([]SearchResultItem, error) {
 	if len(results) <= 3 {
 		return results, nil
 	}
 
-	// Build URI list, preserving index correspondence with results.
 	uris := make([]string, len(results))
 	for i, r := range results {
 		uris[i] = lipFileURI(repoRoot, r)
 	}
 
-	// Single batch RPC instead of N individual round-trips.
-	batchVecs, _ := lip.GetEmbeddingsBatch(uris, "")
-	vecs := batchVecs
+	vecs, _ := embed(uris, "")
 	if vecs == nil {
-		// LIP not running — allocate a nil slice so the rest of the function is uniform.
-		vecs = make([][]float32, len(results))
+		return results, nil
 	}
 
 	dims := 0
@@ -57,35 +96,10 @@ func RerankWithLIP(_ context.Context, results []SearchResultItem, repoRoot, _ st
 		return results, nil
 	}
 
-	// Build centroid from the top-N seeds (lexical ordering).
-	seedN := min(lipSeedN, len(results))
-	centroid := make([]float64, dims)
-	nSeeds := 0
-	for i := 0; i < seedN; i++ {
-		if vecs[i] == nil {
-			continue
-		}
-		for d, x := range vecs[i] {
-			centroid[d] += float64(x)
-		}
-		nSeeds++
-	}
-	if nSeeds < 2 {
-		// Not enough seed embeddings to form a meaningful centroid.
+	centroid, coherence := buildSeedCentroid(vecs, cfg.SeedCount, dims)
+	if centroid == nil || coherence < cfg.MinCoherence {
+		// Seeds too scattered (or too few) to trust the semantic signal.
 		return results, nil
-	}
-	for d := range centroid {
-		centroid[d] /= float64(nSeeds)
-	}
-	// L2-normalise so dot products are cosine similarities.
-	var norm float64
-	for _, x := range centroid {
-		norm += x * x
-	}
-	if norm = math.Sqrt(norm); norm > 0 {
-		for d := range centroid {
-			centroid[d] /= norm
-		}
 	}
 
 	// Score every candidate and re-sort.
@@ -95,18 +109,9 @@ func RerankWithLIP(_ context.Context, results []SearchResultItem, repoRoot, _ st
 	}
 	out := make([]scored, len(results))
 	for i, r := range results {
-		// Lexical position score: decays as 1/rank (same shape as PPR's positionScore).
 		posScore := 1.0 / (float64(i) + 1.0)
-
-		// Semantic similarity: dot product with normalised centroid.
-		semScore := 0.0
-		if vecs[i] != nil {
-			for d, x := range vecs[i] {
-				semScore += float64(x) * centroid[d]
-			}
-		}
-
-		out[i] = scored{item: r, score: 0.6*posScore + 0.4*semScore}
+		semScore := cosine(vecs[i], centroid)
+		out[i] = scored{item: r, score: cfg.LexicalWeight*posScore + cfg.SemanticWeight*semScore}
 	}
 
 	sort.Slice(out, func(i, j int) bool { return out[i].score > out[j].score })
@@ -116,6 +121,85 @@ func RerankWithLIP(_ context.Context, results []SearchResultItem, repoRoot, _ st
 		reranked[i] = s.item
 	}
 	return reranked, nil
+}
+
+// buildSeedCentroid builds a position-weighted centroid from the top-N seed
+// vectors. Each seed is L2-normalised before weighting so the resulting
+// centroid norm is a direct coherence measure in [0, 1] — 1.0 when seeds
+// point the same direction, near-0 when they cancel.
+//
+// Returns (nil, 0) when fewer than two seeds have embeddings.
+func buildSeedCentroid(vecs [][]float32, seedN, dims int) ([]float64, float64) {
+	if seedN > len(vecs) {
+		seedN = len(vecs)
+	}
+
+	centroid := make([]float64, dims)
+	totalW := 0.0
+	nSeeds := 0
+	for i := 0; i < seedN; i++ {
+		if len(vecs[i]) == 0 {
+			continue
+		}
+		// L2-normalise the seed so every contribution has unit magnitude.
+		var norm float64
+		for _, x := range vecs[i] {
+			norm += float64(x) * float64(x)
+		}
+		norm = math.Sqrt(norm)
+		if norm == 0 {
+			continue
+		}
+		w := 1.0 / float64(i+1)
+		totalW += w
+		for d, x := range vecs[i] {
+			centroid[d] += w * float64(x) / norm
+		}
+		nSeeds++
+	}
+	if nSeeds < 2 || totalW == 0 {
+		return nil, 0
+	}
+
+	// Normalise by total weight so the centroid lives in the unit ball.
+	// With each seed a unit vector and weights summing to totalW, the
+	// unweighted-normalised centroid norm is bounded by 1 — that's our
+	// coherence metric.
+	for d := range centroid {
+		centroid[d] /= totalW
+	}
+	var coherence float64
+	for _, x := range centroid {
+		coherence += x * x
+	}
+	coherence = math.Sqrt(coherence)
+
+	// Re-normalise centroid to unit length for cosine similarity scoring.
+	if coherence > 0 {
+		for d := range centroid {
+			centroid[d] /= coherence
+		}
+	}
+	return centroid, coherence
+}
+
+// cosine returns the cosine similarity between a float32 vector and a
+// unit-length float64 centroid. Returns 0 when v has no length.
+func cosine(v []float32, centroid []float64) float64 {
+	if len(v) == 0 || len(v) != len(centroid) {
+		return 0
+	}
+	var dot, norm float64
+	for d, x := range v {
+		f := float64(x)
+		dot += f * centroid[d]
+		norm += f * f
+	}
+	norm = math.Sqrt(norm)
+	if norm == 0 {
+		return 0
+	}
+	return dot / norm
 }
 
 // SemanticSearchWithLIP queries LIP's nearest-neighbour index for files matching
