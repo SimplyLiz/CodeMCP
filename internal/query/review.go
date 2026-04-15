@@ -242,6 +242,13 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 	if opts.Staged {
 		diffStats, err = e.gitAdapter.GetStagedDiff()
 	} else {
+		// Resolve base ref — shallow CI clones often lack it locally; EnsureRef
+		// fetches from origin and returns a resolvable form (e.g. "origin/main").
+		resolved, rerr := e.gitAdapter.EnsureRef(opts.BaseBranch)
+		if rerr != nil {
+			return nil, fmt.Errorf("failed to resolve base ref %q: %w", opts.BaseBranch, rerr)
+		}
+		opts.BaseBranch = resolved
 		diffStats, err = e.gitAdapter.GetCommitRangeDiff(opts.BaseBranch, opts.HeadBranch)
 	}
 	if err != nil {

@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os/exec"
 	"strings"
@@ -119,6 +120,43 @@ func (g *GitAdapter) Capabilities() []string {
 	}
 }
 
+// EnsureRef returns a locally-resolvable form of the given ref, fetching
+// from origin if needed. Handles shallow CI clones that only fetch the PR
+// branch (Azure Pipelines, GitHub Actions defaults, GitLab default, etc.) —
+// without this, `ckb review --base=main` fails with exit 128 because main
+// isn't present locally.
+//
+// Returns the input ref if it already resolves; otherwise returns
+// "origin/<branch>" after fetching. Never writes to local branches.
+func (g *GitAdapter) EnsureRef(ref string) (string, error) {
+	if ref == "" {
+		return "", fmt.Errorf("empty ref")
+	}
+	if _, err := g.executeGitCommand("rev-parse", "--verify", "--quiet", ref+"^{commit}"); err == nil {
+		return ref, nil
+	}
+
+	branch := strings.TrimPrefix(ref, "refs/heads/")
+	branch = strings.TrimPrefix(branch, "refs/remotes/origin/")
+	branch = strings.TrimPrefix(branch, "origin/")
+	if branch == "" {
+		return "", fmt.Errorf("ref %q not found locally and could not derive branch name to fetch", ref)
+	}
+
+	g.logger.Info("Base ref not found locally; fetching from origin", "ref", ref, "branch", branch)
+	if _, err := g.executeGitCommand("fetch", "--no-tags", "origin", branch); err != nil {
+		return "", fmt.Errorf("ref %q not found locally and `git fetch origin %s` failed: %w", ref, branch, err)
+	}
+
+	if _, err := g.executeGitCommand("rev-parse", "--verify", "--quiet", "origin/"+branch+"^{commit}"); err == nil {
+		return "origin/" + branch, nil
+	}
+	if _, err := g.executeGitCommand("rev-parse", "--verify", "--quiet", ref+"^{commit}"); err == nil {
+		return ref, nil
+	}
+	return "", fmt.Errorf("ref %q still not resolvable after fetch from origin", ref)
+}
+
 // GetHeadAuthorEmail returns the author email of the HEAD commit.
 func (g *GitAdapter) GetHeadAuthorEmail() (string, error) {
 	output, err := g.executeGitCommand("log", "-1", "--format=%ae", "HEAD")
@@ -155,10 +193,14 @@ func (g *GitAdapter) executeGitCommand(args ...string) (string, error) {
 
 		// Check if it's an exit error with stderr
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			stderr := string(exitErr.Stderr)
+			stderr := strings.TrimSpace(string(exitErr.Stderr))
+			msg := fmt.Sprintf("git %s: %s", strings.Join(args, " "), err)
+			if stderr != "" {
+				msg = fmt.Sprintf("git %s: %s: %s", strings.Join(args, " "), err, stderr)
+			}
 			return "", errors.NewCkbError(
 				errors.InternalError,
-				"Git command failed",
+				msg,
 				err,
 				nil,
 				nil,
