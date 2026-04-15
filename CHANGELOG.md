@@ -2,6 +2,21 @@
 
 All notable changes to CKB will be documented in this file.
 
+## [9.0.1] - 2026-04-15
+
+### Fixed
+
+- **`ckb review` in shallow CI clones** — Azure Pipelines, GitHub Actions, and
+  GitLab default to shallow single-branch checkouts, so `ckb review --base=main`
+  failed with `exit 128` because the base ref was not present locally. The
+  review path (and `summarizePr` / `summarizeDiff`) now auto-fetch the base ref
+  from `origin` when it is missing, falling through to `origin/<branch>`. No
+  pipeline changes required. No cost for full clones.
+- **Opaque git errors** — `GitAdapter.executeGitCommand` previously wrapped git
+  failures as "Git command failed: exit status 128" with git's actual stderr
+  hidden in a details map. The stderr (e.g. `fatal: bad revision`) is now part
+  of the error message, making CI failures diagnosable without reproduction.
+
 ## [9.0.0] - 2026-04-13
 
 ### Added
