@@ -6,6 +6,13 @@ All notable changes to CKB will be documented in this file.
 
 ### Added
 
+- Auth-error detection on auto-fetch: when `git fetch` fails with
+  `Authentication failed`, `could not read Username`, `terminal prompts
+  disabled`, `401 Unauthorized`, `403 Forbidden`, `Permission denied
+  (publickey)`, or `repository ... not found`, the review error now names
+  the root cause (stripped CI credentials) and points at
+  `persistCredentials` / `--no-auto-fetch` as remediations, instead of
+  dumping raw git stderr.
 - `ckb review --no-auto-fetch` flag disables the automatic fetch of a
   missing base ref introduced in 9.0.1. Also exposed on `ReviewPROptions`
   as `noAutoFetch` for MCP / HTTP callers. Useful in air-gapped pipelines

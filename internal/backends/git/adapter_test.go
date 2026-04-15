@@ -1,6 +1,7 @@
 package git
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -345,6 +346,31 @@ func TestEnsureRef_FetchesMissingFromOrigin(t *testing.T) {
 	// Verify the fetch actually populated the remote-tracking ref.
 	if _, err := a.executeGitCommand("rev-parse", "--verify", "origin/main^{commit}"); err != nil {
 		t.Errorf("origin/main still missing after EnsureRef: %v", err)
+	}
+}
+
+func TestIsAuthError(t *testing.T) {
+	cases := []struct {
+		msg  string
+		want bool
+	}{
+		{"fatal: Authentication failed for 'https://github.com/foo/bar'", true},
+		{"fatal: could not read Username for 'https://github.com': terminal prompts disabled", true},
+		{"remote: HTTP 401 Unauthorized", true},
+		{"fatal: repository 'https://github.com/foo/bar' not found", true},
+		{"Permission denied (publickey).", true},
+		{"fatal: couldn't find remote ref nonexistent", false},
+		{"fatal: bad revision 'xyz'", false},
+		{"", false},
+	}
+	for _, c := range cases {
+		var err error
+		if c.msg != "" {
+			err = fmt.Errorf("%s", c.msg)
+		}
+		if got := isAuthError(err); got != c.want {
+			t.Errorf("isAuthError(%q) = %v, want %v", c.msg, got, c.want)
+		}
 	}
 }
 

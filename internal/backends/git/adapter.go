@@ -120,6 +120,34 @@ func (g *GitAdapter) Capabilities() []string {
 	}
 }
 
+// isAuthError returns true if the error looks like git failed to authenticate
+// against the remote. Used to give the user an actionable message instead of
+// a raw git stderr dump.
+func isAuthError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"authentication failed",
+		"could not read username",
+		"could not read password",
+		"terminal prompts disabled",
+		"403 forbidden",
+		"401 unauthorized",
+		"permission denied (publickey)",
+	} {
+		if strings.Contains(s, marker) {
+			return true
+		}
+	}
+	// "repository '...' not found" is typically an auth failure on private repos.
+	if strings.Contains(s, "repository") && strings.Contains(s, "not found") {
+		return true
+	}
+	return false
+}
+
 // VerifyRef returns nil iff ref resolves to a commit in the local repo.
 // Unlike EnsureRef it never fetches. Use when auto-fetch is disabled.
 func (g *GitAdapter) VerifyRef(ref string) error {
@@ -157,6 +185,11 @@ func (g *GitAdapter) EnsureRef(ref string) (string, error) {
 
 	g.logger.Info("Base ref not found locally; fetching from origin", "ref", ref, "branch", branch)
 	if _, err := g.executeGitCommand("fetch", "--no-tags", "origin", branch); err != nil {
+		if isAuthError(err) {
+			return "", fmt.Errorf("ref %q not found locally and fetching from origin failed due to missing credentials. "+
+				"Your CI checkout likely stripped the auth token — enable persistCredentials (Azure Pipelines, GitHub Actions) "+
+				"or run `ckb review --no-auto-fetch` with a pre-fetched base ref. Underlying error: %w", ref, err)
+		}
 		return "", fmt.Errorf("ref %q not found locally and `git fetch origin %s` failed: %w", ref, branch, err)
 	}
 
