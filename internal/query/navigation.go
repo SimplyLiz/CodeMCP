@@ -1879,6 +1879,7 @@ type SummarizeDiffOptions struct {
 	CommitRange *CommitRangeSelector `json:"commitRange,omitempty"`
 	Commit      string               `json:"commit,omitempty"`
 	TimeWindow  *TimeWindowSelector  `json:"timeWindow,omitempty"`
+	NoAutoFetch bool                 `json:"noAutoFetch,omitempty"` // Disable auto-fetch of missing refs (see ReviewPROptions)
 }
 
 // CommitRangeSelector specifies a base..head range.
@@ -2026,11 +2027,13 @@ func (e *Engine) SummarizeDiff(ctx context.Context, opts SummarizeDiffOptions) (
 		selector = DiffSelector{Type: "commitRange", Value: opts.CommitRange.Base + ".." + opts.CommitRange.Head}
 		base = opts.CommitRange.Base
 		head = opts.CommitRange.Head
-		if resolved, rerr := e.gitAdapter.EnsureRef(base); rerr == nil {
-			base = resolved
-		}
-		if resolved, rerr := e.gitAdapter.EnsureRef(head); rerr == nil {
-			head = resolved
+		if !opts.NoAutoFetch {
+			if resolved, rerr := e.gitAdapter.EnsureRef(base); rerr == nil {
+				base = resolved
+			}
+			if resolved, rerr := e.gitAdapter.EnsureRef(head); rerr == nil {
+				head = resolved
+			}
 		}
 		diffStats, err = e.gitAdapter.GetCommitRangeDiff(base, head)
 		if err != nil {

@@ -17,6 +17,10 @@ All notable changes to CKB will be documented in this file.
 
 ### Added
 
+- `NoAutoFetch` option on `SummarizePROptions` and `SummarizeDiffOptions`
+  for parity with `ReviewPROptions`. Previously the air-gapped opt-out
+  applied only to `ckb review`; MCP/HTTP callers of `summarizePr` and
+  `summarizeDiff` had no way to disable auto-fetch.
 - Troubleshooting section in `docs/plans/review-cicd.md` covering shallow
   CI clones, auth-failure remediation (`persistCredentials`), air-gapped
   pipelines, and depth-0 checkout alternatives.
