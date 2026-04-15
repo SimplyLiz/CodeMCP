@@ -6,6 +6,9 @@ All notable changes to CKB will be documented in this file.
 
 ### Added
 
+- Troubleshooting section in `docs/plans/review-cicd.md` covering shallow
+  CI clones, auth-failure remediation (`persistCredentials`), air-gapped
+  pipelines, and depth-0 checkout alternatives.
 - Auth-error detection on auto-fetch: when `git fetch` fails with
   `Authentication failed`, `could not read Username`, `terminal prompts
   disabled`, `401 Unauthorized`, `403 Forbidden`, `Permission denied

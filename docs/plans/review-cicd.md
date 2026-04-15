@@ -673,6 +673,51 @@ jobs:
           sarif: true
 ```
 
+### Troubleshooting: Shallow CI Clones
+
+Azure Pipelines, GitHub Actions und GitLab machen standardmäßig einen
+**shallow, single-branch Checkout** — nur der PR-Branch landet lokal, der
+Base-Branch (z.B. `main`) fehlt. Vor 9.0.1 scheiterte `ckb review --base=main`
+dann mit `git command failed: exit status 128`.
+
+**Ab 9.0.1:** `ckb review` holt den fehlenden Base-Ref automatisch per
+`git fetch origin <branch>` von origin, sobald er lokal nicht auflösbar ist.
+In den meisten Pipelines funktioniert das ohne Änderung — der Auth-Token aus
+dem Checkout-Step wird wiederverwendet.
+
+**Wenn der Auto-Fetch fehlschlägt:**
+
+| Fehlermeldung | Ursache | Fix |
+|---|---|---|
+| `Authentication failed` / `could not read Username` / `401` / `403` | Checkout hat den Token nach dem Clone entfernt | Checkout-Step mit `persistCredentials: true` (Azure) oder `persist-credentials: true` (GitHub Actions) konfigurieren |
+| `Permission denied (publickey)` | SSH-Key nicht im Agent | SSH-Key zum CI-Agent hinzufügen oder HTTPS-Remote verwenden |
+| `couldn't find remote ref <X>` | Branch auf origin gelöscht oder falsch geschrieben | `--base` prüfen |
+
+**Air-gapped Pipelines:** In Umgebungen, wo Netzwerk-Calls ausserhalb des
+Checkout-Steps verboten sind, Auto-Fetch deaktivieren:
+
+```bash
+# Vor dem Review: Base-Ref explizit holen
+git fetch origin main:refs/heads/main
+ckb review --no-auto-fetch --base=main
+```
+
+**Alternative:** Shallow-Checkout ganz vermeiden. Für GitHub Actions:
+
+```yaml
+- uses: actions/checkout@v4
+  with:
+    fetch-depth: 0
+```
+
+Für Azure Pipelines:
+
+```yaml
+- checkout: self
+  fetchDepth: 0
+  persistCredentials: true
+```
+
 ## Phase 7: Baseline & Finding Lifecycle — `ckb review baseline`
 
 Inspiriert von Qodana, PVS-Studio und Trunk: Findings werden nicht nur als "da/nicht da" behandelt, sondern haben einen Lifecycle.
