@@ -8,8 +8,10 @@ bin/
 /ckb
 /ckb-test
 /ckb-bench
+/ckb_fresh
 coverage.out
 *_test
+*.test
 *.scip
 
 # Registry / credential tokens
