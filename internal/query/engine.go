@@ -64,11 +64,28 @@ type Engine struct {
 	cachedState     *RepoState
 	stateComputedAt time.Time
 
-	// LIP health (cached; refreshed on a short TTL to avoid per-query RPCs).
+	// LIP health, maintained by a background subscriber that keeps a long-lived
+	// connection open and receives `index_changed` pushes plus per-ping health
+	// snapshots. `lipHealthCheckedAt` is zero until the first frame arrives —
+	// callers check it before trusting the flags.
+	//
+	// `lipSupported` is the set of `type` tags the daemon advertised in its
+	// handshake. It gates calls to newer RPCs (StreamContext, ExplainMatch,
+	// ...) on clients talking to an older daemon, instead of letting them
+	// dispatch and get back an UnknownMessage. Empty when the handshake has
+	// not yet completed or the daemon predates `supported_messages`.
 	lipHealthMu        sync.RWMutex
 	cachedLipMixed     bool
 	cachedLipAvailable bool
 	lipHealthCheckedAt time.Time
+	lipSupported       map[string]struct{}
+	lipSubCancel       context.CancelFunc
+	// lipIndexProbed is true once probeHandshake has attempted an IndexStatus
+	// call. lipIndexedFiles==0 with lipIndexProbed==true means the daemon is
+	// reachable but has nothing indexed — surface this to the user so semantic
+	// enrichment silence doesn't look like a bug.
+	lipIndexProbed  bool
+	lipIndexedFiles int
 
 	// Cache stats
 	cacheStatsMu sync.RWMutex
@@ -135,6 +152,8 @@ func NewEngine(repoRoot string, db *storage.DB, logger *slog.Logger, cfg *config
 		logger.Warn("Failed to initialize job runner", "error", err.Error())
 		// Don't fail - async operations will be unavailable
 	}
+
+	engine.startLipSubscriber()
 
 	return engine, nil
 }
@@ -439,6 +458,10 @@ func (e *Engine) DB() *storage.DB {
 // Close shuts down the query engine.
 func (e *Engine) Close() error {
 	var lastErr error
+
+	if e.lipSubCancel != nil {
+		e.lipSubCancel()
+	}
 
 	// Stop job runner first
 	if e.jobRunner != nil {

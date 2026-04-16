@@ -2,6 +2,82 @@
 
 All notable changes to CKB will be documented in this file.
 
+## [Unreleased]
+
+## [9.1.0] - 2026-04-16
+
+### Added
+
+- **LIP v2.1 utilisation** — three high-ROI LIP RPCs wired into the query
+  engine, gated on the handshake's `supported_messages`:
+  - `stream_context` (v2.1) → `explainFile` attaches up to 10
+    semantically-related symbols (2048-token budget) in `facts.related`.
+    New streaming transport reads N `symbol_info` frames + `end_stream`.
+  - `query_expansion` (v1.6) → `searchSymbols` expands ≤ 2-token queries
+    with up to 5 related terms before FTS5, recovering vocabulary-mismatch
+    recall without touching precision on compound queries.
+  - `explain_match` (v2.0) → semantic search hits carry up to two ranked
+    evidence chunks with line ranges, text, and per-chunk scores (top-5
+    hits, bounded round-trip cost).
+- **`lip.Handshake` runs on engine startup** and the daemon's
+  `supported_messages` list is stashed for feature gating
+  (`Engine.lipSupports`). Daemon version and supported-count logged.
+- **LIP index status probing** — `probeHandshake` now follows up with
+  `IndexStatus` and caches the result. New `Engine.LIPStatus()` returns
+  `{Reachable, IndexedFiles}` so consumers can distinguish "daemon down"
+  from "daemon up, nothing indexed."
+- **`ckb review` warns when LIP index is empty** — stderr advisory with
+  `lip index <repo>` command when daemon is reachable but has no content.
+  Suppressed in `--ci` to keep CI logs clean.
+- `NoAutoFetch` option on `SummarizePROptions` and `SummarizeDiffOptions`
+  for parity with `ReviewPROptions`.
+- Troubleshooting section in `docs/plans/review-cicd.md` covering shallow
+  CI clones, auth-failure remediation, air-gapped pipelines, and depth-0
+  checkout alternatives.
+- Auth-error detection on auto-fetch with clear remediation guidance.
+- `ckb review --no-auto-fetch` flag for air-gapped pipelines.
+- Test coverage for `GitAdapter.EnsureRef` — happy path, missing-ref
+  auto-fetch, unreachable origin, and empty-input guard.
+### Changed
+
+- **LIP health: push-driven, not polled** — Engine opens a long-lived
+  connection to the daemon at startup (`internal/lip/subscribe.go`) with
+  `index_changed` frames and per-ping `index_status` snapshots instead of
+  60 s TTL polling. Worst-case staleness drops from 60 s to ~3 s.
+- **`lipFileURI` path normalisation** — handles absolute paths and
+  already-prefixed `file://` URIs without producing malformed results.
+
+### Fixed
+
+- **Bug-pattern false positive on `sync.Mutex.Lock()`** — removed `"Lock"`
+  from `LikelyReturnsError` heuristic patterns; `sync.Mutex.Lock` returns
+  nothing and dominated real-world matches with false positives.
+- **`err` shadowing in `subscribe.go`** — four shadow sites eliminated by
+  reusing outer `err` or renaming to `pingErr`/`readErr` where scope
+  isolation requires it.
+
+- **LIP rerank: coherence gate + position-weighted seeding** (#209) — the
+  Fast-tier semantic rerank (`internal/query/lip_ranker.go`) used to average the
+  top-5 seed embeddings with uniform weight and always apply the result. When
+  the top-5 pointed in different directions the centroid collapsed toward zero
+  and amplified noise; when the top seed was strong the blend still diluted it.
+  Seeds are now L2-normalised and position-weighted (`1/(rank+1)`), the
+  resulting centroid norm is read as a coherence score in `[0, 1]`, and the
+  rerank falls back to pure lexical order when coherence is below
+  `MinCoherence` (default `0.35`). Blend weights, seed count, and threshold are
+  surfaced as `RerankConfig` so future tuning does not need to touch call
+  sites. Injected `embedBatchFn` makes the ranker unit-testable without a
+  running daemon.
+- **LIP rerank: gate on `!MixedModels`** (#208) — when the LIP index contains
+  vectors from more than one embedding model (e.g. partial re-index during a
+  model upgrade), cosine similarity across those vectors is mathematically
+  meaningless. `RerankWithLIP` and `SemanticSearchWithLIP` now consult a
+  cached `Engine.lipSemanticAvailable()` check (60 s TTL, single `IndexStatus`
+  RPC) and fall back to lexical ranking when the daemon is down or reports
+  `mixed_models`. A new `lip_mixed_models` degradation warning (70% capability)
+  surfaces in response metadata so users learn *why* results look weaker
+  instead of silently ranking on garbage.
+
 ## [9.0.1] - 2026-04-15
 
 ### Fixed

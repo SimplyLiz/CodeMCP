@@ -317,6 +317,20 @@ type SearchResultItem struct {
 	Lines      int `json:"lines,omitempty"`      // body line count
 	Cyclomatic int `json:"cyclomatic,omitempty"` // cyclomatic complexity
 	Cognitive  int `json:"cognitive,omitempty"`  // cognitive complexity
+	// Evidence attached by the LIP semantic path — ranked chunks from the
+	// file that best explain why it matched the query. Only populated when
+	// the result came from SemanticSearchWithLIP with ExplainMatch enabled.
+	SemanticEvidence []SemanticEvidenceChunk `json:"semanticEvidence,omitempty"`
+}
+
+// SemanticEvidenceChunk is a single ranked snippet returned by LIP's
+// `explain_match` RPC, pinning a semantic hit to the specific lines that
+// drove the score. Makes semantic results auditable instead of opaque.
+type SemanticEvidenceChunk struct {
+	StartLine uint32  `json:"startLine"`
+	EndLine   uint32  `json:"endLine"`
+	Text      string  `json:"text,omitempty"`
+	Score     float32 `json:"score"`
 }
 
 // generateCacheKey creates a deterministic cache key for search options.
@@ -389,7 +403,12 @@ func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (
 	if len(opts.ExcludePatterns) > 0 || opts.MinLines > 0 || opts.MinComplexity > 0 {
 		ftsMultiplier = 10
 	}
-	ftsResults, ftsErr := e.SearchSymbolsFTS(ctx, opts.Query, opts.Limit*ftsMultiplier)
+	// Expand short queries via LIP before hitting FTS — "auth" broadens to
+	// "auth authenticate authorization principal..." which lifts recall on
+	// vocabulary-mismatch misses. Falls back to the raw query when LIP is
+	// unavailable or returns nothing.
+	ftsQuery := e.expandQueryViaLIP(opts.Query)
+	ftsResults, ftsErr := e.SearchSymbolsFTS(ctx, ftsQuery, opts.Limit*ftsMultiplier)
 	if ftsErr == nil && len(ftsResults) > 0 {
 		for _, r := range ftsResults {
 			// Skip symbols with no name — they can match via documentation/signature
@@ -516,7 +535,14 @@ func (e *Engine) SearchSymbols(ctx context.Context, opts SearchSymbolsOptions) (
 	const lipFallbackThreshold = 3
 	if len(results) < lipFallbackThreshold && e.lipSemanticAvailable() {
 		lipSymLimit := opts.Limit * 3
-		lipResults := SemanticSearchWithLIP(opts.Query, 20, "", 0, func(fileURIs []string) map[string][]SearchResultItem {
+		// Attach explain_match evidence when the daemon supports it
+		// (v2.0+). Gives the caller specific matching chunks per hit
+		// instead of a bare file URL.
+		search := SemanticSearchWithLIP
+		if e.lipSupports("explain_match") {
+			search = SemanticSearchWithLIPExplained
+		}
+		lipResults := search(opts.Query, 20, "", 0, func(fileURIs []string) map[string][]SearchResultItem {
 			// Convert file:// URIs back to repo-relative paths for the batch query.
 			relPaths := make([]string, len(fileURIs))
 			for i, uri := range fileURIs {

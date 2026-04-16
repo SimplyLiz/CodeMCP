@@ -5,6 +5,7 @@ import (
 	"math"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/SimplyLiz/CodeMCP/internal/lip"
 )
@@ -220,6 +221,33 @@ func cosine(v []float32, centroid []float64) float64 {
 //
 // Returns nil (not an error) when LIP is unavailable or returns no results.
 func SemanticSearchWithLIP(query string, topK int, filter string, minScore float32, fn func(fileURIs []string) map[string][]SearchResultItem) []SearchResultItem {
+	return semanticSearchWithLIP(query, topK, filter, minScore, false, fn)
+}
+
+// SemanticSearchWithLIPExplained is SemanticSearchWithLIP plus evidence
+// attachment: for the top `explainTopK` hits, it calls LIP's `explain_match`
+// RPC and attaches the returned chunks to every SearchResultItem sourced
+// from that file. Makes semantic hits auditable — the caller can surface
+// "matched at lines 42–60 with cosine 0.71" instead of a bare file URL.
+//
+// Gate this on `Engine.lipSupports("explain_match")` — older daemons will
+// return UnknownMessage, which `ExplainMatch` silently swallows but costs
+// a round-trip per hit regardless.
+func SemanticSearchWithLIPExplained(query string, topK int, filter string, minScore float32, fn func(fileURIs []string) map[string][]SearchResultItem) []SearchResultItem {
+	return semanticSearchWithLIP(query, topK, filter, minScore, true, fn)
+}
+
+// explainTopK bounds how many semantic hits get a follow-up `explain_match`
+// round-trip. Explanation is pure overhead for hits the caller never reads,
+// so we only explain the top few — matching the realistic display budget.
+const explainTopK = 5
+
+// explainChunkLines caps the lines-per-chunk the daemon returns. 40 is
+// enough to carry a function body or small block without bloating the
+// response.
+const explainChunkLines = 40
+
+func semanticSearchWithLIP(query string, topK int, filter string, minScore float32, explain bool, fn func(fileURIs []string) map[string][]SearchResultItem) []SearchResultItem {
 	hits, _ := lip.NearestByTextFiltered(query, topK, filter, minScore, "")
 	if len(hits) == 0 {
 		return nil
@@ -231,6 +259,29 @@ func SemanticSearchWithLIP(query string, topK int, filter string, minScore float
 		uris[i] = h.URI
 	}
 	byURI := fn(uris)
+
+	// Optionally fetch explanations for the top hits in parallel — one RPC
+	// per URI, but bounded by explainTopK and only when requested.
+	evidence := map[string][]SemanticEvidenceChunk{}
+	if explain {
+		limit := min(len(hits), explainTopK)
+		for i := 0; i < limit; i++ {
+			chunks, _, _ := lip.ExplainMatch(query, hits[i].URI, 2, explainChunkLines, "")
+			if len(chunks) == 0 {
+				continue
+			}
+			out := make([]SemanticEvidenceChunk, len(chunks))
+			for j, c := range chunks {
+				out[j] = SemanticEvidenceChunk{
+					StartLine: c.StartLine,
+					EndLine:   c.EndLine,
+					Text:      c.ChunkText,
+					Score:     c.Score,
+				}
+			}
+			evidence[hits[i].URI] = out
+		}
+	}
 
 	seen := make(map[string]struct{}, topK*4)
 	var out []SearchResultItem
@@ -246,6 +297,9 @@ func SemanticSearchWithLIP(query string, topK int, filter string, minScore float
 			seen[id] = struct{}{}
 			// Blend LIP score into result Score so downstream re-ranking has a signal.
 			item.Score = float64(h.Score)
+			if chunks, ok := evidence[h.URI]; ok {
+				item.SemanticEvidence = chunks
+			}
 			out = append(out, item)
 		}
 	}
@@ -254,9 +308,25 @@ func SemanticSearchWithLIP(query string, topK int, filter string, minScore float
 
 // lipFileURI returns the file:// URI for a result's source file, suitable for
 // LIP embedding requests. Returns "" when the result has no location.
+//
+// Handles three input shapes for `FileId`:
+//   - repo-relative path (the common case): joined onto repoRoot.
+//   - absolute filesystem path: used as-is, repoRoot ignored.
+//   - already a `file://` URI: returned unchanged.
+//
+// Backends today return relative paths, but the SearchResultItem contract does
+// not forbid the other two shapes — this guard keeps a misbehaving backend
+// from producing malformed URIs like `file:///repo//abs/path`.
 func lipFileURI(repoRoot string, r SearchResultItem) string {
 	if r.Location == nil || r.Location.FileId == "" {
 		return ""
 	}
-	return "file://" + filepath.Join(repoRoot, r.Location.FileId)
+	id := r.Location.FileId
+	if strings.HasPrefix(id, "file://") {
+		return id
+	}
+	if filepath.IsAbs(id) {
+		return "file://" + id
+	}
+	return "file://" + filepath.Join(repoRoot, id)
 }

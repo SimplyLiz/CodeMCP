@@ -30,6 +30,11 @@ type ReviewPROptions struct {
 	Staged     bool          `json:"staged"`     // Review staged changes instead of branch diff
 	Scope      string        `json:"scope"`      // Filter to path prefix or symbol name
 	LLM        bool          `json:"llm"`        // Use LLM for narrative generation
+
+	// NoAutoFetch disables the automatic `git fetch origin <base>` fallback
+	// when the base ref is missing locally. Useful in air-gapped CI or when
+	// the pipeline forbids network activity outside the checkout step.
+	NoAutoFetch bool `json:"noAutoFetch"`
 }
 
 // ReviewPolicy defines quality gates and behavior.
@@ -244,11 +249,17 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 	} else {
 		// Resolve base ref — shallow CI clones often lack it locally; EnsureRef
 		// fetches from origin and returns a resolvable form (e.g. "origin/main").
-		resolved, rerr := e.gitAdapter.EnsureRef(opts.BaseBranch)
-		if rerr != nil {
-			return nil, fmt.Errorf("failed to resolve base ref %q: %w", opts.BaseBranch, rerr)
+		if opts.NoAutoFetch {
+			if verr := e.gitAdapter.VerifyRef(opts.BaseBranch); verr != nil {
+				return nil, fmt.Errorf("failed to resolve base ref %q: %w", opts.BaseBranch, verr)
+			}
+		} else {
+			resolved, rerr := e.gitAdapter.EnsureRef(opts.BaseBranch)
+			if rerr != nil {
+				return nil, fmt.Errorf("failed to resolve base ref %q: %w", opts.BaseBranch, rerr)
+			}
+			opts.BaseBranch = resolved
 		}
-		opts.BaseBranch = resolved
 		diffStats, err = e.gitAdapter.GetCommitRangeDiff(opts.BaseBranch, opts.HeadBranch)
 	}
 	if err != nil {

@@ -16,6 +16,7 @@ type SummarizePROptions struct {
 	BaseBranch       string `json:"baseBranch"`       // Base branch to compare against (default: "main")
 	HeadBranch       string `json:"headBranch"`       // Head branch (default: current branch)
 	IncludeOwnership bool   `json:"includeOwnership"` // Include ownership analysis (default: true)
+	NoAutoFetch      bool   `json:"noAutoFetch"`      // Disable auto-fetch of missing base ref (see ReviewPROptions)
 }
 
 // SummarizePRResponse is the response for summarize-pr.
@@ -102,11 +103,20 @@ func (e *Engine) SummarizePR(ctx context.Context, opts SummarizePROptions) (*Sum
 	if headRef == "" {
 		headRef = "HEAD"
 	}
-	baseRef, err := e.gitAdapter.EnsureRef(opts.BaseBranch)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve base ref %q: %w", opts.BaseBranch, err)
+	var baseRef string
+	if opts.NoAutoFetch {
+		if verr := e.gitAdapter.VerifyRef(opts.BaseBranch); verr != nil {
+			return nil, fmt.Errorf("failed to resolve base ref %q: %w", opts.BaseBranch, verr)
+		}
+		baseRef = opts.BaseBranch
+	} else {
+		resolved, rerr := e.gitAdapter.EnsureRef(opts.BaseBranch)
+		if rerr != nil {
+			return nil, fmt.Errorf("failed to resolve base ref %q: %w", opts.BaseBranch, rerr)
+		}
+		baseRef = resolved
+		opts.BaseBranch = resolved
 	}
-	opts.BaseBranch = baseRef
 	diffStats, err := e.gitAdapter.GetCommitRangeDiff(baseRef, headRef)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get diff: %w", err)

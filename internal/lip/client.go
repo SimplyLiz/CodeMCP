@@ -41,6 +41,10 @@ type NearestResult struct {
 type HandshakeInfo struct {
 	DaemonVersion   string `json:"daemon_version"`
 	ProtocolVersion int    `json:"protocol_version"`
+	// SupportedMessages is the snake_case `type` tag list the daemon
+	// understands. Empty when talking to a pre-v1.5 daemon that omits the
+	// field — callers should fall back to ProtocolVersion comparisons.
+	SupportedMessages []string `json:"supported_messages"`
 }
 
 // IndexStatusInfo is the public view of LIP index health.
@@ -158,8 +162,9 @@ type batchAnnotationResp struct {
 }
 
 type handshakeResp struct {
-	DaemonVersion   string `json:"daemon_version"`
-	ProtocolVersion int    `json:"protocol_version"`
+	DaemonVersion     string   `json:"daemon_version"`
+	ProtocolVersion   int      `json:"protocol_version"`
+	SupportedMessages []string `json:"supported_messages"`
 }
 
 type similarityResp struct {
@@ -790,7 +795,11 @@ func Handshake(clientVersion string) (*HandshakeInfo, error) {
 	}
 	return lipRPC(req, 200*time.Millisecond, 4<<10,
 		func(r handshakeResp) *HandshakeInfo {
-			return &HandshakeInfo{DaemonVersion: r.DaemonVersion, ProtocolVersion: r.ProtocolVersion}
+			return &HandshakeInfo{
+				DaemonVersion:     r.DaemonVersion,
+				ProtocolVersion:   r.ProtocolVersion,
+				SupportedMessages: r.SupportedMessages,
+			}
 		})
 }
 

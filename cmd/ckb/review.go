@@ -45,6 +45,7 @@ var (
 	reviewMinReviewers       int
 	// New analyzer flags
 	reviewStaged             bool
+	reviewNoAutoFetch        bool
 	reviewScope              string
 	reviewMaxBlastRadius     int
 	reviewMaxFanOut          int
@@ -146,6 +147,7 @@ func init() {
 
 	// New analyzers
 	reviewCmd.Flags().BoolVar(&reviewStaged, "staged", false, "Review staged changes instead of branch diff")
+	reviewCmd.Flags().BoolVar(&reviewNoAutoFetch, "no-auto-fetch", false, "Disable automatic fetch of the base ref from origin when missing locally (for air-gapped CI)")
 	reviewCmd.Flags().StringVar(&reviewScope, "scope", "", "Filter to path prefix or symbol name")
 	reviewCmd.Flags().IntVar(&reviewMaxBlastRadius, "max-blast-radius", 0, "Maximum blast radius delta (0 = disabled)")
 	reviewCmd.Flags().IntVar(&reviewMaxFanOut, "max-fanout", 0, "Maximum fan-out / caller count (0 = disabled)")
@@ -225,10 +227,13 @@ func runReview(cmd *cobra.Command, args []string) {
 		Policy:     policy,
 		Checks:     reviewChecks,
 		SkipChecks: reviewSkipChecks,
-		Staged:     reviewStaged,
-		Scope:      scope,
-		LLM:        reviewLLM,
+		Staged:      reviewStaged,
+		Scope:       scope,
+		LLM:         reviewLLM,
+		NoAutoFetch: reviewNoAutoFetch,
 	}
+
+	warnIfLIPIndexEmpty(engine, repoRoot)
 
 	response, err := engine.ReviewPR(ctx, opts)
 	if err != nil {
@@ -309,6 +314,27 @@ func runReview(cmd *cobra.Command, args []string) {
 			os.Exit(2)
 		}
 	}
+}
+
+// warnIfLIPIndexEmpty prints a stderr advisory when the LIP daemon is
+// reachable but has no content indexed. Semantic enrichment (stream_context,
+// query_expansion, explain_match) silently returns empty in that case, which
+// is indistinguishable from "feature disabled" from the user's side — so we
+// tell them and show the exact command to build the index.
+//
+// The warning goes to stderr so it doesn't pollute JSON/SARIF stdout that
+// CI pipelines parse. Suppressed in --ci mode to keep CI logs tight.
+func warnIfLIPIndexEmpty(engine *query.Engine, repoRoot string) {
+	if reviewCI {
+		return
+	}
+	s := engine.LIPStatus()
+	if !s.Reachable || s.IndexedFiles > 0 {
+		return
+	}
+	fmt.Fprintln(os.Stderr, "⚠ LIP daemon reachable but has no index for this workspace.")
+	fmt.Fprintln(os.Stderr, "  Semantic enrichment (related symbols, query expansion, explain-match) will be skipped.")
+	fmt.Fprintf(os.Stderr, "  Run:  lip index %s\n\n", repoRoot)
 }
 
 // --- Output Formatters ---
