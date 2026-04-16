@@ -80,6 +80,12 @@ type Engine struct {
 	lipHealthCheckedAt time.Time
 	lipSupported       map[string]struct{}
 	lipSubCancel       context.CancelFunc
+	// lipIndexProbed is true once probeHandshake has attempted an IndexStatus
+	// call. lipIndexedFiles==0 with lipIndexProbed==true means the daemon is
+	// reachable but has nothing indexed — surface this to the user so semantic
+	// enrichment silence doesn't look like a bug.
+	lipIndexProbed  bool
+	lipIndexedFiles int
 
 	// Cache stats
 	cacheStatsMu sync.RWMutex

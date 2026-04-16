@@ -96,14 +96,58 @@ func (e *Engine) probeHandshake() {
 	for _, m := range info.SupportedMessages {
 		supported[m] = struct{}{}
 	}
+
+	// Follow up with a cheap IndexStatus probe so callers can distinguish
+	// "daemon down" from "daemon up but has no content for this workspace".
+	// Failures here are non-fatal — we just leave lipIndexProbed=false and
+	// consumers treat that as "unknown, don't warn".
+	status, _ := lip.IndexStatus()
+
 	e.lipHealthMu.Lock()
 	e.lipSupported = supported
+	if status != nil {
+		e.lipIndexProbed = true
+		e.lipIndexedFiles = status.IndexedFiles
+	}
 	e.lipHealthMu.Unlock()
+
 	if e.logger != nil {
+		files := -1
+		if status != nil {
+			files = status.IndexedFiles
+		}
 		e.logger.Info("LIP handshake",
 			"daemon_version", info.DaemonVersion,
 			"protocol_version", info.ProtocolVersion,
 			"supported_count", len(info.SupportedMessages),
+			"indexed_files", files,
 		)
+	}
+}
+
+// LIPIndexStatus is a UX-facing snapshot of LIP daemon reachability and
+// workspace coverage. Consumers (e.g. `ckb review`, `ckb status`) call this
+// after engine startup to decide whether to show a "no LIP index" warning.
+//
+//   - Reachable=false: daemon not running or handshake didn't complete.
+//     Silence is expected; no warning.
+//   - Reachable=true, IndexedFiles=0: daemon up, nothing indexed. Semantic
+//     enrichment will silently return empty — warn the user and offer the
+//     `lip index` command.
+//   - Reachable=true, IndexedFiles>0: happy path.
+type LIPIndexStatus struct {
+	Reachable     bool
+	IndexedFiles  int
+	DaemonVersion string
+}
+
+// LIPStatus returns the cached handshake + IndexStatus snapshot captured at
+// engine startup. Cheap — no RPC on the hot path.
+func (e *Engine) LIPStatus() LIPIndexStatus {
+	e.lipHealthMu.RLock()
+	defer e.lipHealthMu.RUnlock()
+	return LIPIndexStatus{
+		Reachable:    e.lipIndexProbed,
+		IndexedFiles: e.lipIndexedFiles,
 	}
 }

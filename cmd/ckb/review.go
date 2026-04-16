@@ -233,6 +233,8 @@ func runReview(cmd *cobra.Command, args []string) {
 		NoAutoFetch: reviewNoAutoFetch,
 	}
 
+	warnIfLIPIndexEmpty(engine, repoRoot)
+
 	response, err := engine.ReviewPR(ctx, opts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error running review: %v\n", err)
@@ -312,6 +314,27 @@ func runReview(cmd *cobra.Command, args []string) {
 			os.Exit(2)
 		}
 	}
+}
+
+// warnIfLIPIndexEmpty prints a stderr advisory when the LIP daemon is
+// reachable but has no content indexed. Semantic enrichment (stream_context,
+// query_expansion, explain_match) silently returns empty in that case, which
+// is indistinguishable from "feature disabled" from the user's side — so we
+// tell them and show the exact command to build the index.
+//
+// The warning goes to stderr so it doesn't pollute JSON/SARIF stdout that
+// CI pipelines parse. Suppressed in --ci mode to keep CI logs tight.
+func warnIfLIPIndexEmpty(engine *query.Engine, repoRoot string) {
+	if reviewCI {
+		return
+	}
+	s := engine.LIPStatus()
+	if !s.Reachable || s.IndexedFiles > 0 {
+		return
+	}
+	fmt.Fprintln(os.Stderr, "⚠ LIP daemon reachable but has no index for this workspace.")
+	fmt.Fprintln(os.Stderr, "  Semantic enrichment (related symbols, query expansion, explain-match) will be skipped.")
+	fmt.Fprintf(os.Stderr, "  Run:  lip index %s\n\n", repoRoot)
 }
 
 // --- Output Formatters ---

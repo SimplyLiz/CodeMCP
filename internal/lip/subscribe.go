@@ -110,7 +110,7 @@ func runSession(ctx context.Context, h SubscribeHandler) error {
 		defer writeMu.Unlock()
 		return writeFrame(conn, map[string]any{"type": "index_status"})
 	}
-	if err := ping(); err != nil {
+	if err = ping(); err != nil {
 		return err
 	}
 
@@ -123,7 +123,7 @@ func runSession(ctx context.Context, h SubscribeHandler) error {
 			case <-sessCtx.Done():
 				return
 			case <-t.C:
-				if err := ping(); err != nil {
+				if pingErr := ping(); pingErr != nil {
 					cancel()
 					return
 				}
@@ -136,11 +136,11 @@ func runSession(ctx context.Context, h SubscribeHandler) error {
 		if sessCtx.Err() != nil {
 			break
 		}
-		frame, err := readFrame(conn)
-		if err != nil {
+		frame, readErr := readFrame(conn)
+		if readErr != nil {
 			cancel()
 			wg.Wait()
-			return err
+			return readErr
 		}
 		dispatchFrame(frame, h)
 	}
@@ -206,7 +206,7 @@ func writeFrame(conn net.Conn, payload any) error {
 	lenBuf := make([]byte, 4)
 	binary.BigEndian.PutUint32(lenBuf, uint32(len(b)))
 	_ = conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
-	if _, err := conn.Write(append(lenBuf, b...)); err != nil {
+	if _, err = conn.Write(append(lenBuf, b...)); err != nil {
 		return err
 	}
 	return nil

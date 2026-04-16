@@ -4,79 +4,58 @@ All notable changes to CKB will be documented in this file.
 
 ## [Unreleased]
 
+## [9.1.0] - 2026-04-16
+
 ### Added
 
-- **`explainFile` surfaces semantically-related symbols** via LIP v2.1's
-  `stream_context` RPC (`internal/query/lip_stream_context.go`). The daemon
-  ranks symbols across the whole file within a 2048-token budget; CKB
-  returns the top 10 in the new `facts.related` field with per-symbol
-  relevance and token cost. Gated on the handshake's `supported_messages`
-  — older daemons fall through and the field is absent. New streaming
-  transport `internal/lip/stream_context.go` reads the daemon's N
-  `symbol_info` frames plus the `end_stream` terminator; previous LIP
-  client was unary-only.
-- **`searchSymbols` expands short queries** via LIP's `query_expansion`
-  RPC (`internal/query/query_expansion.go`). Queries of ≤ 2 tokens get up
-  to 5 related terms appended before hitting FTS5, recovering recall on
-  vocabulary-mismatch misses ("auth" → "authenticate authorization
-  principal…"). Gated on the handshake and on the same mixed-models flag
-  that protects the rerank path. Longer queries are passed through
-  unchanged — the expansion is a rescue, not a rewrite.
-- **Semantic hits carry evidence chunks** when LIP v2.0+'s `explain_match`
-  is advertised (`SemanticSearchWithLIPExplained` in
-  `internal/query/lip_ranker.go`). Each hit returned by the semantic
-  fallback path now includes up to two ranked chunks with line ranges,
-  text, and per-chunk scores — the caller can cite specific lines instead
-  of a bare file URL. Capped at the top-5 hits to bound round-trip cost.
+- **LIP v2.1 utilisation** — three high-ROI LIP RPCs wired into the query
+  engine, gated on the handshake's `supported_messages`:
+  - `stream_context` (v2.1) → `explainFile` attaches up to 10
+    semantically-related symbols (2048-token budget) in `facts.related`.
+    New streaming transport reads N `symbol_info` frames + `end_stream`.
+  - `query_expansion` (v1.6) → `searchSymbols` expands ≤ 2-token queries
+    with up to 5 related terms before FTS5, recovering vocabulary-mismatch
+    recall without touching precision on compound queries.
+  - `explain_match` (v2.0) → semantic search hits carry up to two ranked
+    evidence chunks with line ranges, text, and per-chunk scores (top-5
+    hits, bounded round-trip cost).
 - **`lip.Handshake` runs on engine startup** and the daemon's
   `supported_messages` list is stashed for feature gating
-  (`Engine.lipSupports`). The daemon version and supported-count are
-  logged on connect.
-
-### Changed
-
-- **`lipFileURI` path normalisation** — the helper that builds
-  `file://`-URIs for LIP requests used to naive-`filepath.Join` whatever
-  `Location.FileId` a backend supplied. Now handles absolute paths and
-  already-prefixed `file://` URIs without producing malformed results
-  like `file:///repo//abs/path`. Backends today return relative paths, so
-  this is a hardening fix for contracts that are nominally open.
-
-### Changed
-
-- **LIP health: push-driven, not polled** — the Engine now opens a long-lived
-  connection to the LIP daemon at startup (`internal/lip/subscribe.go`) and
-  receives `index_changed` frames plus per-ping `index_status` snapshots
-  instead of issuing a fresh `IndexStatus` RPC on a 60 s TTL. Worst-case
-  staleness for the mixed-models gate drops from 60 s to ~3 s, the hot query
-  path is lock-free (no RPC, no dial, no TTL check), and the subscriber
-  reconnects with exponential backoff when the daemon restarts. The old
-  `lipHealthTTL` constant is gone; callers read the cached flag directly.
-
-### Added
-
+  (`Engine.lipSupports`). Daemon version and supported-count logged.
+- **LIP index status probing** — `probeHandshake` now follows up with
+  `IndexStatus` and caches the result. New `Engine.LIPStatus()` returns
+  `{Reachable, IndexedFiles}` so consumers can distinguish "daemon down"
+  from "daemon up, nothing indexed."
+- **`ckb review` warns when LIP index is empty** — stderr advisory with
+  `lip index <repo>` command when daemon is reachable but has no content.
+  Suppressed in `--ci` to keep CI logs clean.
 - `NoAutoFetch` option on `SummarizePROptions` and `SummarizeDiffOptions`
-  for parity with `ReviewPROptions`. Previously the air-gapped opt-out
-  applied only to `ckb review`; MCP/HTTP callers of `summarizePr` and
-  `summarizeDiff` had no way to disable auto-fetch.
+  for parity with `ReviewPROptions`.
 - Troubleshooting section in `docs/plans/review-cicd.md` covering shallow
-  CI clones, auth-failure remediation (`persistCredentials`), air-gapped
-  pipelines, and depth-0 checkout alternatives.
-- Auth-error detection on auto-fetch: when `git fetch` fails with
-  `Authentication failed`, `could not read Username`, `terminal prompts
-  disabled`, `401 Unauthorized`, `403 Forbidden`, `Permission denied
-  (publickey)`, or `repository ... not found`, the review error now names
-  the root cause (stripped CI credentials) and points at
-  `persistCredentials` / `--no-auto-fetch` as remediations, instead of
-  dumping raw git stderr.
-- `ckb review --no-auto-fetch` flag disables the automatic fetch of a
-  missing base ref introduced in 9.0.1. Also exposed on `ReviewPROptions`
-  as `noAutoFetch` for MCP / HTTP callers. Useful in air-gapped pipelines
-  where network activity outside the checkout step is forbidden; review
-  fails with a clear "ref not present locally" error instead.
+  CI clones, auth-failure remediation, air-gapped pipelines, and depth-0
+  checkout alternatives.
+- Auth-error detection on auto-fetch with clear remediation guidance.
+- `ckb review --no-auto-fetch` flag for air-gapped pipelines.
 - Test coverage for `GitAdapter.EnsureRef` — happy path, missing-ref
-  auto-fetch, unreachable origin, and empty-input guard — using isolated
-  bare+clone repo pairs in temp dirs.
+  auto-fetch, unreachable origin, and empty-input guard.
+### Changed
+
+- **LIP health: push-driven, not polled** — Engine opens a long-lived
+  connection to the daemon at startup (`internal/lip/subscribe.go`) with
+  `index_changed` frames and per-ping `index_status` snapshots instead of
+  60 s TTL polling. Worst-case staleness drops from 60 s to ~3 s.
+- **`lipFileURI` path normalisation** — handles absolute paths and
+  already-prefixed `file://` URIs without producing malformed results.
+
+### Fixed
+
+- **Bug-pattern false positive on `sync.Mutex.Lock()`** — removed `"Lock"`
+  from `LikelyReturnsError` heuristic patterns; `sync.Mutex.Lock` returns
+  nothing and dominated real-world matches with false positives.
+- **`err` shadowing in `subscribe.go`** — four shadow sites eliminated by
+  reusing outer `err` or renaming to `pingErr`/`readErr` where scope
+  isolation requires it.
+
 - **LIP rerank: coherence gate + position-weighted seeding** (#209) — the
   Fast-tier semantic rerank (`internal/query/lip_ranker.go`) used to average the
   top-5 seed embeddings with uniform weight and always apply the result. When

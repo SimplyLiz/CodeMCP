@@ -513,14 +513,17 @@ func LikelyReturnsError(symbolName string) bool {
 		return false
 	}
 
-	// Common Go stdlib/convention patterns for error-returning functions
+	// Common Go stdlib/convention patterns for error-returning functions.
+	// "Lock" is deliberately absent: sync.{Mutex,RWMutex}.Lock dominates real
+	// code and returns nothing, so the rule produces far more false positives
+	// than the rare file-lock true positive it would catch.
 	errorPatterns := []string{
 		"Open", "Read", "Write", "Close", "Create",
 		"Dial", "Listen", "Accept", "Connect",
 		"Parse", "Unmarshal", "Marshal", "Decode", "Encode",
 		"Execute", "Exec", "Query",
 		"Send", "Recv", "Flush",
-		"Lock", "Acquire",
+		"Acquire",
 		"Start", "Stop", "Init", "Setup",
 	}
 
