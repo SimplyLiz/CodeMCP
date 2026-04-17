@@ -740,6 +740,75 @@ func PruneDeleted() (int, int, error) {
 }
 
 // =============================================================================
+// Blast radius
+// =============================================================================
+
+// BlastRadiusItem is a static caller from LIP's blast radius response.
+type BlastRadiusItem struct {
+	FileURI    string  `json:"file_uri"`
+	SymbolURI  string  `json:"symbol_uri"`
+	Distance   int     `json:"distance"`
+	Confidence float64 `json:"confidence"`
+}
+
+// BlastRadiusSemanticItem is a semantically coupled symbol from LIP.
+type BlastRadiusSemanticItem struct {
+	FileURI    string  `json:"file_uri"`
+	SymbolURI  string  `json:"symbol_uri"`
+	Similarity float32 `json:"similarity"`
+	Source     string  `json:"source"` // "semantic" or "both"
+}
+
+// BlastRadiusEntry is a single symbol's blast radius from LIP.
+type BlastRadiusEntry struct {
+	SymbolURI            string                    `json:"symbol_uri"`
+	DirectDependents     int                       `json:"direct_dependents"`
+	TransitiveDependents int                       `json:"transitive_dependents"`
+	AffectedFiles        []string                  `json:"affected_files"`
+	DirectItems          []BlastRadiusItem         `json:"direct_items"`
+	TransitiveItems      []BlastRadiusItem         `json:"transitive_items"`
+	RiskLevel            string                    `json:"risk_level"`
+	Truncated            bool                      `json:"truncated"`
+	SemanticItems        []BlastRadiusSemanticItem `json:"semantic_items"`
+}
+
+type blastRadiusBatchResp struct {
+	Results []BlastRadiusEntry `json:"results"`
+}
+
+// QueryBlastRadiusBatch asks LIP for blast radius of all symbols in the given
+// changed files. One round-trip. Returns a map keyed by symbol_uri.
+// Returns nil when LIP is unavailable.
+//
+// min_score is the cosine similarity threshold for semantic hits. Pass 0 to
+// get static-only results (no semantic items). Typical values: 0.6–0.8.
+func QueryBlastRadiusBatch(changedFileURIs []string, minScore float32) (map[string]BlastRadiusEntry, error) {
+	if len(changedFileURIs) == 0 {
+		return nil, nil
+	}
+	req := map[string]any{
+		"type":              "query_blast_radius_batch",
+		"changed_file_uris": changedFileURIs,
+	}
+	if minScore > 0 {
+		req["min_score"] = minScore
+	}
+	// Budget: generous timeout — LIP needs to resolve symbols + compute embeddings
+	timeout := max(time.Duration(len(changedFileURIs)+1)*200*time.Millisecond, 3*time.Second)
+	result, _ := lipRPC(req, timeout, 8<<20,
+		func(r blastRadiusBatchResp) *[]BlastRadiusEntry { return &r.Results })
+	if result == nil {
+		return nil, nil
+	}
+	// Index by symbol_uri for O(1) lookup in the merge path
+	out := make(map[string]BlastRadiusEntry, len(*result))
+	for _, entry := range *result {
+		out[entry.SymbolURI] = entry
+	}
+	return out, nil
+}
+
+// =============================================================================
 // Annotations
 // =============================================================================
 

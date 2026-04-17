@@ -113,8 +113,23 @@ type ModuleImpact struct {
 type BlastRadiusSummary struct {
 	ModuleCount       int    `json:"moduleCount"`
 	FileCount         int    `json:"fileCount"`
-	UniqueCallerCount int    `json:"uniqueCallerCount"`
-	RiskLevel         string `json:"riskLevel"` // "low", "medium", "high"
+	UniqueCallerCount int    `json:"uniqueCallerCount"` // SCIP static callers only (drives thresholds)
+	RiskLevel         string `json:"riskLevel"`         // "low", "medium", "high"
+
+	// LIP semantic enrichment (omitted when LIP is unavailable)
+	StaticCallerCount   int               `json:"staticCallerCount,omitempty"`
+	SemanticCallerCount int               `json:"semanticCallerCount,omitempty"`
+	ConfirmedCount      int               `json:"confirmedCount,omitempty"`
+	SemanticCallers     []SemanticCallerInfo `json:"semanticCallers,omitempty"`
+}
+
+// SemanticCallerInfo is an embedding-discovered caller surfaced in the blast radius.
+type SemanticCallerInfo struct {
+	SymbolURI  string  `json:"symbolUri,omitempty"`
+	FileURI    string  `json:"fileUri"`
+	Tier       string  `json:"tier"`                 // "semantic" or "both"
+	Confidence float64 `json:"confidence"`
+	Similarity float32 `json:"similarity,omitempty"`
 }
 
 // scipCallerProvider adapts SCIPAdapter to the TransitiveCallerProvider interface
@@ -441,10 +456,22 @@ func (e *Engine) AnalyzeImpact(ctx context.Context, opts AnalyzeImpactOptions) (
 	var blastRadius *BlastRadiusSummary
 	if result.BlastRadius != nil {
 		blastRadius = &BlastRadiusSummary{
-			ModuleCount:       result.BlastRadius.ModuleCount,
-			FileCount:         result.BlastRadius.FileCount,
-			UniqueCallerCount: result.BlastRadius.UniqueCallerCount,
-			RiskLevel:         result.BlastRadius.RiskLevel,
+			ModuleCount:         result.BlastRadius.ModuleCount,
+			FileCount:           result.BlastRadius.FileCount,
+			UniqueCallerCount:   result.BlastRadius.UniqueCallerCount,
+			RiskLevel:           result.BlastRadius.RiskLevel,
+			StaticCallerCount:   result.BlastRadius.StaticCallerCount,
+			SemanticCallerCount: result.BlastRadius.SemanticCallerCount,
+			ConfirmedCount:      result.BlastRadius.ConfirmedCount,
+		}
+		for _, sc := range result.BlastRadius.SemanticCallers {
+			blastRadius.SemanticCallers = append(blastRadius.SemanticCallers, SemanticCallerInfo{
+				SymbolURI:  sc.SymbolURI,
+				FileURI:    sc.FileURI,
+				Tier:       string(sc.Tier),
+				Confidence: sc.Confidence,
+				Similarity: sc.Similarity,
+			})
 		}
 	}
 
