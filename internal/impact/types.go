@@ -62,9 +62,8 @@ type Reference struct {
 type CouplingTier string
 
 const (
-	CouplingStatic   CouplingTier = "static"   // SCIP call graph — high certainty
-	CouplingSemantic CouplingTier = "semantic"  // LIP embedding similarity — lower certainty
-	CouplingBoth     CouplingTier = "both"      // confirmed by both SCIP and LIP
+	CouplingSemantic CouplingTier = "semantic" // LIP embedding similarity — lower certainty
+	CouplingBoth     CouplingTier = "both"     // confirmed by both SCIP and LIP
 )
 
 // EnrichedCaller is a caller discovered by either static analysis or semantic similarity.
