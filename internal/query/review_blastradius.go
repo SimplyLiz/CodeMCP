@@ -32,13 +32,19 @@ func (e *Engine) checkBlastRadius(ctx context.Context, changedFiles []string, op
 	// Prefetch LIP blast radius for all changed files in a single round-trip.
 	// Returns nil when LIP is unavailable or doesn't support the message — the
 	// rest of the function degrades to SCIP-only blast radius unchanged.
-	var lipBR map[string]lip.BlastRadiusEntry
+	var lipBR map[string]*impact.ExternalBlastRadius
 	if e.lipSupports("query_blast_radius_batch") {
 		lipURIs := make([]string, len(changedFiles))
 		for i, f := range changedFiles {
 			lipURIs[i] = "lip://local/" + f
 		}
-		lipBR, _ = lip.QueryBlastRadiusBatch(lipURIs, 0.6)
+		if raw, _ := lip.QueryBlastRadiusBatch(lipURIs, 0.6); raw != nil {
+			lipBR = make(map[string]*impact.ExternalBlastRadius, len(raw))
+			for k, v := range raw {
+				vCopy := v
+				lipBR[k] = lip.EntryToExternal(&vCopy)
+			}
+		}
 	}
 
 	// Collect symbols from changed files, cap at 30 total.
@@ -102,8 +108,7 @@ func (e *Engine) checkBlastRadius(ctx context.Context, changedFiles []string, op
 		// "lip://local/<file>#<symbol>" convention.
 		semanticCount := 0
 		if lipBR != nil {
-			if entry, ok := lipBRLookup(lipBR, sym.stableId, sym.file, sym.name); ok {
-				enriched := lipEntryToExternal(&entry)
+			if enriched, ok := lip.LookupSymbol(lipBR, sym.file, sym.name); ok {
 				// Convert BlastRadiusSummary → impact.BlastRadius for merge
 				staticBR := &impact.BlastRadius{
 					ModuleCount:       impactResp.BlastRadius.ModuleCount,
@@ -264,56 +269,3 @@ func isFrameworkSymbol(kind, name, file string) bool {
 	return false
 }
 
-// lipBRLookup finds a LIP blast radius entry for a CKB symbol. LIP keys entries
-// by "lip://local/<file>#<symbol_name>" — we try that convention first, then
-// fall back to scanning entries whose file prefix matches.
-func lipBRLookup(lipBR map[string]lip.BlastRadiusEntry, stableId, file, name string) (lip.BlastRadiusEntry, bool) {
-	// Primary: exact match on lip://local/<file>#<name>
-	key := "lip://local/" + file + "#" + name
-	if entry, ok := lipBR[key]; ok {
-		return entry, true
-	}
-	// Fallback: scan for entries whose symbol_uri contains our file path.
-	// This handles cases where LIP's symbol naming diverges from CKB's stable IDs
-	// (common with C++ mangled names, template specialisations).
-	prefix := "lip://local/" + file + "#"
-	for uri, entry := range lipBR {
-		if strings.HasPrefix(uri, prefix) && strings.Contains(uri, name) {
-			return entry, true
-		}
-	}
-	return lip.BlastRadiusEntry{}, false
-}
-
-// lipEntryToExternal converts a LIP BlastRadiusEntry to the impact package's
-// ExternalBlastRadius for use with impact.MergeBlastRadius.
-func lipEntryToExternal(entry *lip.BlastRadiusEntry) *impact.ExternalBlastRadius {
-	ebr := &impact.ExternalBlastRadius{
-		RiskLevel: entry.RiskLevel,
-	}
-	for _, di := range entry.DirectItems {
-		ebr.DirectItems = append(ebr.DirectItems, impact.ExternalItem{
-			FileURI:    di.FileURI,
-			SymbolURI:  di.SymbolURI,
-			Distance:   di.Distance,
-			Confidence: di.Confidence,
-		})
-	}
-	for _, ti := range entry.TransitiveItems {
-		ebr.TransitiveItems = append(ebr.TransitiveItems, impact.ExternalItem{
-			FileURI:    ti.FileURI,
-			SymbolURI:  ti.SymbolURI,
-			Distance:   ti.Distance,
-			Confidence: ti.Confidence,
-		})
-	}
-	for _, si := range entry.SemanticItems {
-		ebr.SemanticItems = append(ebr.SemanticItems, impact.ExternalSemanticItem{
-			FileURI:    si.FileURI,
-			SymbolURI:  si.SymbolURI,
-			Similarity: si.Similarity,
-			Source:     si.Source,
-		})
-	}
-	return ebr
-}

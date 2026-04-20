@@ -452,19 +452,36 @@ func (e *Engine) AnalyzeImpact(ctx context.Context, opts AnalyzeImpactOptions) (
 		docsToUpdate = e.getDocsToUpdate(symbolInfo.StableId, 5)
 	}
 
-	// Convert blast radius
+	// Convert blast radius, then enrich with LIP semantic coupling when available.
 	var blastRadius *BlastRadiusSummary
 	if result.BlastRadius != nil {
-		blastRadius = &BlastRadiusSummary{
-			ModuleCount:         result.BlastRadius.ModuleCount,
-			FileCount:           result.BlastRadius.FileCount,
-			UniqueCallerCount:   result.BlastRadius.UniqueCallerCount,
-			RiskLevel:           result.BlastRadius.RiskLevel,
-			StaticCallerCount:   result.BlastRadius.StaticCallerCount,
-			SemanticCallerCount: result.BlastRadius.SemanticCallerCount,
-			ConfirmedCount:      result.BlastRadius.ConfirmedCount,
+		// LIP enrichment: one round-trip for the symbol's file, keyed by symbol name.
+		// Gated on capability so older daemons see no change.
+		enriched := result.BlastRadius
+		if e.lipSupports("query_blast_radius_batch") && symbolInfo != nil && symbolInfo.Location != nil {
+			fileURI := "lip://local/" + symbolInfo.Location.FileId
+			if lipEntries, _ := lip.QueryBlastRadiusBatch([]string{fileURI}, 0.6); lipEntries != nil {
+				converted := make(map[string]*impact.ExternalBlastRadius, len(lipEntries))
+				for k, v := range lipEntries {
+					vCopy := v
+					converted[k] = lip.EntryToExternal(&vCopy)
+				}
+				if ext, ok := lip.LookupSymbol(converted, symbolInfo.Location.FileId, symbolInfo.Name); ok {
+					enriched = impact.MergeBlastRadius(result.BlastRadius, ext)
+				}
+			}
 		}
-		for _, sc := range result.BlastRadius.SemanticCallers {
+
+		blastRadius = &BlastRadiusSummary{
+			ModuleCount:         enriched.ModuleCount,
+			FileCount:           enriched.FileCount,
+			UniqueCallerCount:   enriched.UniqueCallerCount,
+			RiskLevel:           enriched.RiskLevel,
+			StaticCallerCount:   enriched.StaticCallerCount,
+			SemanticCallerCount: enriched.SemanticCallerCount,
+			ConfirmedCount:      enriched.ConfirmedCount,
+		}
+		for _, sc := range enriched.SemanticCallers {
 			blastRadius.SemanticCallers = append(blastRadius.SemanticCallers, SemanticCallerInfo{
 				SymbolURI:  sc.SymbolURI,
 				FileURI:    sc.FileURI,
