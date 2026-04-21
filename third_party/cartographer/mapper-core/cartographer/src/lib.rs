@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 use rayon::prelude::*;
 
 mod api;
+mod diagram;
 mod extractor;
 mod git_analysis;
 mod layers;
@@ -1171,7 +1172,7 @@ pub extern "C" fn cartographer_search_content(
 ///
 /// Parameters:
 /// - `path`      – absolute path to repo root (UTF-8 C string)
-/// - `pattern`   – glob pattern, e.g. `"*.rs"` or `"src/**/*.go"` (C string)
+/// - `pattern`   – glob pattern, e.g. `"*.rs"` or `"src/subdir/*.go"` (C string)
 /// - `limit`     – max files to return; 0 = unlimited
 /// - `opts_json` – optional JSON `FindOptions` or null for defaults:
 ///   `{ modifiedSinceSecs, newerThan, minSizeBytes, maxSizeBytes, maxDepth, noIgnore }`
@@ -1933,4 +1934,110 @@ pub extern "C" fn cartographer_shotgun_surgery(
     entries.retain(|e| e.partner_count >= min_partners);
 
     result_to_json_ptr(Ok::<_, String>(entries))
+}
+
+// ---------------------------------------------------------------------------
+// FFI: Render Architecture Diagram (Mermaid / DOT)
+// ---------------------------------------------------------------------------
+
+/// Render the project's import graph as a Mermaid or Graphviz (DOT) diagram.
+///
+/// Inputs:
+///   `path`      — project root (C string)
+///   `format`    — "mermaid" or "dot" (C string; may be null → "mermaid")
+///   `focus`     — optional module_id or path to anchor BFS on (C string, may
+///                 be null → top-N by degree)
+///   `depth`     — BFS depth when `focus` is set (0 → 2; ignored without focus)
+///   `max_nodes` — cap on nodes in the output (0 → 40)
+///
+/// Response shape:
+/// ```json
+/// {
+///   "ok": true,
+///   "data": {
+///     "diagram":   "graph TD\n    N0[...] --> N1[...]\n...",
+///     "truncated": false,
+///     "format":    "mermaid",
+///     "nodeCount": 23
+///   }
+/// }
+/// ```
+#[no_mangle]
+pub extern "C" fn cartographer_render_architecture(
+    path: *const c_char,
+    format: *const c_char,
+    focus: *const c_char,
+    depth: u32,
+    max_nodes: u32,
+) -> *mut c_char {
+    let path = match c_str_to_path(path) {
+        Ok(p) => p,
+        Err(e) => return result_to_json_ptr::<serde_json::Value>(Err(e)),
+    };
+
+    let format_str = if format.is_null() {
+        "mermaid".to_string()
+    } else {
+        match unsafe { CStr::from_ptr(format) }.to_str() {
+            Ok(s) => s.to_string(),
+            Err(e) => return result_to_json_ptr::<serde_json::Value>(Err(e.to_string())),
+        }
+    };
+    let fmt = match diagram::DiagramFormat::parse(&format_str) {
+        Ok(f) => f,
+        Err(e) => return result_to_json_ptr::<serde_json::Value>(Err(e)),
+    };
+
+    let focus_str = if focus.is_null() {
+        None
+    } else {
+        match unsafe { CStr::from_ptr(focus) }.to_str() {
+            Ok(s) if !s.is_empty() => Some(s.to_string()),
+            Ok(_) => None,
+            Err(e) => return result_to_json_ptr::<serde_json::Value>(Err(e.to_string())),
+        }
+    };
+
+    let depth = if depth == 0 { 2 } else { depth as usize };
+    let max_nodes = if max_nodes == 0 { 40 } else { max_nodes as usize };
+
+    let mapped_files = match build_mapped_files(&path) {
+        Ok(m) => m,
+        Err(e) => return result_to_json_ptr::<serde_json::Value>(Err(e)),
+    };
+    let state = ApiState::new(path.clone());
+    {
+        let mut files = state.mapped_files.lock().unwrap();
+        *files = mapped_files;
+    }
+
+    let graph = match state.rebuild_graph() {
+        Ok(g) => g,
+        Err(e) => return result_to_json_ptr::<serde_json::Value>(Err(e)),
+    };
+
+    let opts = diagram::RenderOptions {
+        format: fmt,
+        focus: focus_str.as_deref(),
+        depth,
+        max_nodes,
+    };
+    let rendered = match diagram::render(&graph, &opts) {
+        Ok(r) => r,
+        Err(e) => return result_to_json_ptr::<serde_json::Value>(Err(e)),
+    };
+
+    let format_name = match fmt {
+        diagram::DiagramFormat::Mermaid => "mermaid",
+        diagram::DiagramFormat::Dot => "dot",
+    };
+
+    let data = serde_json::json!({
+        "diagram": rendered.diagram,
+        "truncated": rendered.truncated,
+        "format": format_name,
+        "nodeCount": rendered.node_count,
+    });
+
+    result_to_json_ptr::<serde_json::Value>(Ok(data))
 }

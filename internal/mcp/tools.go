@@ -1964,6 +1964,35 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 			},
 		},
 		{
+			Name:        "renderArchitecture",
+			Description: "Render the project's module-level import graph as a Mermaid or Graphviz (DOT) diagram, ready to paste into IDEs that render Mermaid inline (Cursor, Claude Desktop, VS Code markdown preview, GitHub). With `focus` set, returns a BFS neighborhood (both imports and imported-by) around the given module to depth `depth`; without `focus`, returns the top-N most-connected nodes as an at-a-glance shape of the codebase. Response includes `truncated: true` when the node cap kicked in — tighten focus or lower depth to get a complete view.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"format": map[string]interface{}{
+						"type":        "string",
+						"description": "Output diagram format (default mermaid)",
+						"enum":        []string{"mermaid", "dot"},
+						"default":     "mermaid",
+					},
+					"focus": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional anchor: module ID, repo-relative file path, or path suffix (e.g. 'server.rs'). When set, the diagram is a BFS neighborhood around this node; when absent, returns the top-N most-connected nodes.",
+					},
+					"depth": map[string]interface{}{
+						"type":        "integer",
+						"description": "BFS depth from `focus` over undirected import edges (default 2). Ignored when `focus` is absent.",
+						"default":     2,
+					},
+					"max_nodes": map[string]interface{}{
+						"type":        "integer",
+						"description": "Cap on nodes rendered; response sets `truncated: true` if the cap was hit (default 40).",
+						"default":     40,
+					},
+				},
+			},
+		},
+		{
 			Name:        "queryContext",
 			Description: "Retrieve the most relevant code context for a task or question. Runs Cartographer's PKG retrieval pipeline: BM25 content search → personalized PageRank skeleton → context health scoring. Returns a ready-to-use context bundle with token count and A–F quality grade. Use this before starting any non-trivial coding task.",
 			InputSchema: map[string]interface{}{
@@ -2826,6 +2855,7 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["detectShotgunSurgery"] = s.toolDetectShotgunSurgery
 	s.tools["getArchitecturalEvolution"] = s.toolGetArchitecturalEvolution
 	s.tools["getBlastRadius"] = s.toolGetBlastRadius
+	s.tools["renderArchitecture"] = s.toolRenderArchitecture
 	// v9.0 LIP symbol annotations
 	s.tools["annotationSet"] = s.toolAnnotationSet
 	s.tools["annotationGet"] = s.toolAnnotationGet

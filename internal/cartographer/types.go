@@ -1,6 +1,13 @@
 // Package cartographer provides CGo bindings to the Rust Cartographer library.
 package cartographer
 
+import "errors"
+
+// ErrUnavailable is returned by stub builds when Cartographer is not compiled
+// in. Callers check Available() first; under `-tags cartographer` this value
+// is never returned but still needs to be referenceable by tool impls.
+var ErrUnavailable = errors.New("cartographer: not compiled in this build (use -tags cartographer)")
+
 // ---------------------------------------------------------------------------
 // Public types (shared between real bridge and stub builds)
 // ---------------------------------------------------------------------------
@@ -500,6 +507,20 @@ type BlastRadiusRelated struct {
 	ModuleID     string `json:"moduleId"`
 	Path         string `json:"path"`
 	Relationship string `json:"relationship"` // "dependent" | "dependency"
+}
+
+// ---------------------------------------------------------------------------
+// Render architecture types
+// ---------------------------------------------------------------------------
+
+// RenderArchitectureResult is returned by RenderArchitecture.
+// Truncated is true when the node cap kicked in — callers should tighten
+// focus/depth or raise maxNodes to see more.
+type RenderArchitectureResult struct {
+	Diagram   string `json:"diagram"`
+	Truncated bool   `json:"truncated"`
+	Format    string `json:"format"`    // "mermaid" | "dot"
+	NodeCount int    `json:"nodeCount"`
 }
 
 // ---------------------------------------------------------------------------

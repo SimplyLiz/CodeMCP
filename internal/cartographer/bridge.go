@@ -647,3 +647,37 @@ func ContextHealth(content string, opts *ContextHealthOpts) (*ContextHealthRepor
 	}
 	return &result, nil
 }
+
+// RenderArchitecture renders the project's import graph as a Mermaid or
+// Graphviz (DOT) diagram. focus is an optional module_id or path suffix —
+// when set, the diagram is a BFS neighborhood of that module up to `depth`;
+// when empty, it's the top-N nodes by degree. depth=0 → 2, maxNodes=0 → 40.
+func RenderArchitecture(path, format, focus string, depth, maxNodes uint32) (*RenderArchitectureResult, error) {
+	cPath := C.CString(path)
+	defer C.free(unsafe.Pointer(cPath))
+
+	var cFormat *C.char
+	if format != "" {
+		cFormat = C.CString(format)
+		defer C.free(unsafe.Pointer(cFormat))
+	}
+
+	var cFocus *C.char
+	if focus != "" {
+		cFocus = C.CString(focus)
+		defer C.free(unsafe.Pointer(cFocus))
+	}
+
+	resp, err := callFFI(func() *C.char {
+		return C.cartographer_render_architecture(cPath, cFormat, cFocus, C.uint(depth), C.uint(maxNodes))
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var result RenderArchitectureResult
+	if err := json.Unmarshal(resp.Data, &result); err != nil {
+		return nil, &CartographerError{err.Error()}
+	}
+	return &result, nil
+}

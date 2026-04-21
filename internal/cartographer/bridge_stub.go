@@ -5,11 +5,6 @@
 // All functions return ErrUnavailable; callers should check Available() first.
 package cartographer
 
-import "errors"
-
-// ErrUnavailable is returned by all functions when Cartographer is not compiled in.
-var ErrUnavailable = errors.New("cartographer: not compiled in this build (use -tags cartographer)")
-
 // Available reports whether the Cartographer library is linked into this binary.
 func Available() bool { return false }
 
@@ -52,3 +47,6 @@ func QueryContext(_, _ string, _ *QueryContextOpts) (*QueryContextResult, error)
 func ShotgunSurgery(_ string, _, _ uint32) ([]ShotgunSurgeryEntry, error) { return nil, ErrUnavailable }
 func Evolution(_ string, _ uint32) (*EvolutionResult, error)              { return nil, ErrUnavailable }
 func BlastRadius(_, _ string, _ uint32) (*BlastRadiusResult, error)       { return nil, ErrUnavailable }
+func RenderArchitecture(_, _, _ string, _, _ uint32) (*RenderArchitectureResult, error) {
+	return nil, ErrUnavailable
+}

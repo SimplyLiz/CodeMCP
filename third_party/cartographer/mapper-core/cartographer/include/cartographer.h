@@ -378,7 +378,7 @@ char *cartographer_search_content(const char *path, const char *pattern, const c
  *
  * Parameters:
  * - `path`      – absolute path to repo root (UTF-8 C string)
- * - `pattern`   – glob pattern, e.g. `"*.rs"` or `"src/**/*.go"` (C string)
+ * - `pattern`   – glob pattern, e.g. `"*.rs"` or `"src/subdir/*.go"` (C string)
  * - `limit`     – max files to return; 0 = unlimited
  * - `opts_json` – optional JSON `FindOptions` or null for defaults:
  *   `{ modifiedSinceSecs, newerThan, minSizeBytes, maxSizeBytes, maxDepth, noIgnore }`
@@ -640,5 +640,35 @@ char *cartographer_query_context(const char *path, const char *query, const char
  * ```
  */
 char *cartographer_shotgun_surgery(const char *path, uint32_t limit, uint32_t min_partners);
+
+/**
+ * Render the project's import graph as a Mermaid or Graphviz (DOT) diagram.
+ *
+ * Inputs:
+ *   `path`      — project root (C string)
+ *   `format`    — "mermaid" or "dot" (C string; may be null → "mermaid")
+ *   `focus`     — optional module_id or path to anchor BFS on (C string, may
+ *                 be null → top-N by degree)
+ *   `depth`     — BFS depth when `focus` is set (0 → 2; ignored without focus)
+ *   `max_nodes` — cap on nodes in the output (0 → 40)
+ *
+ * Response shape:
+ * ```json
+ * {
+ *   "ok": true,
+ *   "data": {
+ *     "diagram":   "graph TD\n    N0[...] --> N1[...]\n...",
+ *     "truncated": false,
+ *     "format":    "mermaid",
+ *     "nodeCount": 23
+ *   }
+ * }
+ * ```
+ */
+char *cartographer_render_architecture(const char *path,
+                                       const char *format,
+                                       const char *focus,
+                                       uint32_t depth,
+                                       uint32_t max_nodes);
 
 #endif  /* CARTOGRAPHER_H */

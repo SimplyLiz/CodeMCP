@@ -112,6 +112,45 @@ func (s *MCPServer) toolGetArchitecturalEvolution(params map[string]interface{})
 	return NewToolResponse().Data(result).Build(), nil
 }
 
+// toolRenderArchitecture renders the project's import graph as a Mermaid or
+// Graphviz (DOT) diagram, suitable for inline rendering in IDEs that support
+// Mermaid (Cursor, Claude Desktop, VS Code markdown preview, GitHub).
+//
+// With `focus` set, returns a BFS neighborhood of the given module. Without,
+// returns the top-N most-connected nodes. `truncated=true` in the response
+// signals that the node cap kicked in.
+func (s *MCPServer) toolRenderArchitecture(params map[string]interface{}) (*envelope.Response, error) {
+	if !cartographer.Available() {
+		return nil, errors.NewOperationError("render architecture", cartographer.ErrUnavailable)
+	}
+
+	format, _ := params["format"].(string)
+	if format == "" {
+		format = "mermaid"
+	}
+	if format != "mermaid" && format != "dot" {
+		return nil, errors.NewInvalidParameterError("format", "must be \"mermaid\" or \"dot\"")
+	}
+
+	focus, _ := params["focus"].(string)
+
+	var depth, maxNodes uint32
+	if v, ok := params["depth"].(float64); ok && v > 0 {
+		depth = uint32(v)
+	}
+	if v, ok := params["max_nodes"].(float64); ok && v > 0 {
+		maxNodes = uint32(v)
+	}
+
+	repoRoot := s.engine().GetRepoRoot()
+	result, err := cartographer.RenderArchitecture(repoRoot, format, focus, depth, maxNodes)
+	if err != nil {
+		return nil, errors.NewOperationError("render architecture", err)
+	}
+
+	return NewToolResponse().Data(result).Build(), nil
+}
+
 // toolGetBlastRadius returns the graph-theoretic blast radius for a module/file.
 func (s *MCPServer) toolGetBlastRadius(params map[string]interface{}) (*envelope.Response, error) {
 	if !cartographer.Available() {

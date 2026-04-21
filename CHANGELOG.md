@@ -4,6 +4,35 @@ All notable changes to CKB will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **`renderArchitecture` MCP tool** — returns the project's module-level
+  import graph as Mermaid or Graphviz (DOT), ready to paste into IDEs
+  that render Mermaid inline (Cursor, Claude Desktop, VS Code markdown
+  preview, GitHub). With `focus` set, returns an undirected BFS
+  neighborhood around the anchor module to `depth` (default 2); without,
+  returns the top-N most-connected nodes (default cap 40). Response
+  includes `truncated: true` when the node cap kicked in. Backed by the
+  new `cartographer_render_architecture` FFI export; CLI and MCP outputs
+  are produced by the same shared renderer.
+- Go binding `cartographer.RenderArchitecture()` in `internal/cartographer/bridge.go` (+ no-op stub for the no-tag build).
+
+### Fixed
+
+- **Tree-sitter symbol collisions at link time** — `libcartographer.a`
+  previously exported its bundled tree-sitter runtime and grammar
+  symbols, which collided with `go-tree-sitter` when building CKB with
+  `-tags cartographer` (`ld: 246 duplicate symbols`). `make build-cartographer`
+  now post-processes the archive via
+  `scripts/localize-tree-sitter-symbols.sh` (vendored under
+  `third_party/cartographer/mapper-core/cartographer/scripts/`), which
+  partial-links archive members into one combined object and localizes
+  `ts_*` / `tree_sitter_*`. `cartographer_*` FFI exports stay global.
+  Beyond the duplicate-symbol error, this also rules out a silent
+  memory-corruption class of bug where Cartographer's Rust code could
+  have bound to the consumer's tree-sitter copy at global resolution
+  time if the two versions' struct layouts ever drifted.
+
 ## [9.1.0] - 2026-04-16
 
 ### Added
