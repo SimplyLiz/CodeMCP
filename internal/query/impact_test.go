@@ -1,12 +1,138 @@
 package query
 
 import (
+	"math"
 	"testing"
 	"time"
 
+	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
 	"github.com/SimplyLiz/CodeMCP/internal/impact"
 	"github.com/SimplyLiz/CodeMCP/internal/telemetry"
 )
+
+func ptrF64(v float64) *float64 { return &v }
+
+func TestBridgeMultiplierFromGraph(t *testing.T) {
+	tests := []struct {
+		name        string
+		nodes       []cartographer.GraphNode
+		files       []string
+		wantMul     float64
+		wantFactor  bool
+		wantValue   float64 // only checked when wantFactor=true
+	}{
+		{
+			name:       "no nodes",
+			nodes:      nil,
+			files:      []string{"a.go"},
+			wantMul:    1.0,
+			wantFactor: false,
+		},
+		{
+			name:       "no files",
+			nodes:      []cartographer.GraphNode{{Path: "a.go", BridgeScore: ptrF64(500)}},
+			files:      nil,
+			wantMul:    1.0,
+			wantFactor: false,
+		},
+		{
+			name: "no BridgeScore populated",
+			nodes: []cartographer.GraphNode{
+				{Path: "a.go", BridgeScore: nil},
+			},
+			files:      []string{"a.go"},
+			wantMul:    1.0,
+			wantFactor: false,
+		},
+		{
+			name: "file does not match any node",
+			nodes: []cartographer.GraphNode{
+				{Path: "b.go", BridgeScore: ptrF64(500)},
+			},
+			files:      []string{"a.go"},
+			wantMul:    1.0,
+			wantFactor: false,
+		},
+		{
+			name: "match by path yields 1 + score/1000",
+			nodes: []cartographer.GraphNode{
+				{Path: "a.go", BridgeScore: ptrF64(250)},
+			},
+			files:      []string{"a.go"},
+			wantMul:    1.25,
+			wantFactor: true,
+			wantValue:  0.25,
+		},
+		{
+			name: "match by module id",
+			nodes: []cartographer.GraphNode{
+				{ModuleID: "pkg/foo", Path: "", BridgeScore: ptrF64(600)},
+			},
+			files:      []string{"pkg/foo"},
+			wantMul:    1.6,
+			wantFactor: true,
+			wantValue:  0.6,
+		},
+		{
+			name: "multiple files takes max score",
+			nodes: []cartographer.GraphNode{
+				{Path: "low.go", BridgeScore: ptrF64(100)},
+				{Path: "high.go", BridgeScore: ptrF64(800)},
+				{Path: "mid.go", BridgeScore: ptrF64(400)},
+			},
+			files:      []string{"low.go", "high.go", "mid.go"},
+			wantMul:    1.8,
+			wantFactor: true,
+			wantValue:  0.8,
+		},
+		{
+			name: "cap at 2.0 for over-1000 scores",
+			nodes: []cartographer.GraphNode{
+				{Path: "a.go", BridgeScore: ptrF64(1500)},
+			},
+			files:      []string{"a.go"},
+			wantMul:    2.0,
+			wantFactor: true,
+			wantValue:  1.5,
+		},
+		{
+			name: "path match wins over module match for same file",
+			nodes: []cartographer.GraphNode{
+				{Path: "a.go", ModuleID: "a.go", BridgeScore: ptrF64(300)},
+				{Path: "", ModuleID: "a.go", BridgeScore: ptrF64(900)},
+			},
+			files:      []string{"a.go"},
+			wantMul:    1.3,
+			wantFactor: true,
+			wantValue:  0.3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mul, factor := bridgeMultiplierFromGraph(tt.nodes, tt.files)
+			if math.Abs(mul-tt.wantMul) > 1e-9 {
+				t.Errorf("multiplier = %v, want %v", mul, tt.wantMul)
+			}
+			if tt.wantFactor {
+				if factor == nil {
+					t.Fatalf("expected factor, got nil")
+				}
+				if factor.Name != "bridge_centrality" {
+					t.Errorf("factor.Name = %q, want %q", factor.Name, "bridge_centrality")
+				}
+				if factor.Weight != 0 {
+					t.Errorf("factor.Weight = %v, want 0 (informational)", factor.Weight)
+				}
+				if math.Abs(factor.Value-tt.wantValue) > 1e-9 {
+					t.Errorf("factor.Value = %v, want %v", factor.Value, tt.wantValue)
+				}
+			} else if factor != nil {
+				t.Errorf("expected nil factor, got %+v", factor)
+			}
+		})
+	}
+}
 
 func TestFilterTestReferences(t *testing.T) {
 	tests := []struct {

@@ -4,6 +4,22 @@ All notable changes to CKB will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **`analyzeImpact` risk score now weighted by bridge centrality** —
+  `calculateAggregatedRisk` multiplies the weighted-mean score by
+  `1 + max(BridgeScore)/1000` (capped at 2.0) over the changed files, so a
+  change landing on a critical architectural path (high betweenness) is
+  reported as riskier than the same-shape change in a leaf module. Implements
+  the behaviour that `CARTOGRAPHER_STRATEGY.md` had already documented but
+  the code was not actually doing. Bridge lookups match by both `Path` and
+  `ModuleID`; if no changed file matches the graph, the multiplier is 1.0
+  and no informational factor is appended. Only runs when the binary was
+  built with `-tags cartographer` (graph is a no-op otherwise). A new
+  `bridge_centrality` informational factor surfaces in `RiskScore.Factors`
+  when the multiplier fires; its `Weight` is 0 because it applies
+  multiplicatively, not as a weighted-mean input.
+
 ### Added
 
 - **`renderArchitecture` MCP tool** — returns the project's module-level

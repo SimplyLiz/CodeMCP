@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -455,20 +456,34 @@ func (e *Engine) AnalyzeImpact(ctx context.Context, opts AnalyzeImpactOptions) (
 	// Convert blast radius, then enrich with LIP semantic coupling when available.
 	var blastRadius *BlastRadiusSummary
 	if result.BlastRadius != nil {
-		// LIP enrichment: one round-trip for the symbol's file, keyed by symbol name.
-		// Gated on capability so older daemons see no change.
+		// LIP enrichment paths, in preference order:
+		//   1. query_blast_radius_symbol (v2.3+) — direct symbol-URI call, no filtering.
+		//   2. query_blast_radius_batch (v2.2) — fetch all symbols in the file, then LookupSymbol by name.
+		// Both gated on capability so older daemons degrade to SCIP-only.
 		enriched := result.BlastRadius
-		if e.lipSupports("query_blast_radius_batch") && symbolInfo != nil && symbolInfo.Location != nil {
-			fileURI := "lip://local/" + symbolInfo.Location.FileId
-			if lipEntries, _ := lip.QueryBlastRadiusBatch([]string{fileURI}, 0.6); lipEntries != nil {
-				converted := make(map[string]*impact.ExternalBlastRadius, len(lipEntries))
-				for k, v := range lipEntries {
-					vCopy := v
-					converted[k] = lip.EntryToExternal(&vCopy)
+		if symbolInfo != nil && symbolInfo.Location != nil {
+			var ext *impact.ExternalBlastRadius
+			switch {
+			case e.lipSupports("query_blast_radius_symbol"):
+				symURI := "lip://local/" + symbolInfo.Location.FileId + "#" + symbolInfo.Name
+				if entry, _ := lip.QueryBlastRadiusSymbol(symURI, 0.6); entry != nil {
+					ext = lip.EntryToExternal(entry)
 				}
-				if ext, ok := lip.LookupSymbol(converted, symbolInfo.Location.FileId, symbolInfo.Name); ok {
-					enriched = impact.MergeBlastRadius(result.BlastRadius, ext)
+			case e.lipSupports("query_blast_radius_batch"):
+				fileURI := "lip://local/" + symbolInfo.Location.FileId
+				if lipEntries, _ := lip.QueryBlastRadiusBatch([]string{fileURI}, 0.6); lipEntries != nil {
+					converted := make(map[string]*impact.ExternalBlastRadius, len(lipEntries.Entries))
+					for k, v := range lipEntries.Entries {
+						vCopy := v
+						converted[k] = lip.EntryToExternal(&vCopy)
+					}
+					if e, ok := lip.LookupSymbol(converted, symbolInfo.Location.FileId, symbolInfo.Name); ok {
+						ext = e
+					}
 				}
+			}
+			if ext != nil {
+				enriched = impact.MergeBlastRadius(result.BlastRadius, ext)
 			}
 		}
 
@@ -1267,6 +1282,69 @@ func (e *Engine) getGitDiff(staged bool, baseBranch string) (string, error) {
 	return string(out), nil
 }
 
+// bridgeMultiplierFromGraph computes a risk multiplier from Cartographer's
+// betweenness-centrality scores for the changed files. Files on critical
+// architectural paths (high BridgeScore) yield a larger multiplier so that
+// the same textual change is reported as riskier when it lands in a bridge.
+//
+// The multiplier is 1.0 + max(BridgeScore)/1000, capped at 2.0. BridgeScore
+// is betweenness_centrality * 1000 (range 0-1000) per api.rs, so this maps
+// a "perfect bridge" to a 2x risk amplification and a non-bridge to 1x.
+//
+// Matches files by both Path (exact) and ModuleID, to cover the cases where
+// ChangedSymbol.File is either a repo-relative path or a module identifier.
+// Returns (1.0, nil) when no nodes match — callers should treat a nil factor
+// as "no adjustment, skip the factor append".
+func bridgeMultiplierFromGraph(nodes []cartographer.GraphNode, files []string) (float64, *RiskFactor) {
+	if len(nodes) == 0 || len(files) == 0 {
+		return 1.0, nil
+	}
+	byPath := make(map[string]float64, len(nodes))
+	byModule := make(map[string]float64, len(nodes))
+	for _, n := range nodes {
+		if n.BridgeScore == nil {
+			continue
+		}
+		if n.Path != "" {
+			byPath[n.Path] = *n.BridgeScore
+		}
+		if n.ModuleID != "" {
+			byModule[n.ModuleID] = *n.BridgeScore
+		}
+	}
+	if len(byPath) == 0 && len(byModule) == 0 {
+		return 1.0, nil
+	}
+
+	var maxScore float64
+	matched := false
+	for _, f := range files {
+		if s, ok := byPath[f]; ok {
+			if s > maxScore {
+				maxScore = s
+			}
+			matched = true
+			continue
+		}
+		if s, ok := byModule[f]; ok {
+			if s > maxScore {
+				maxScore = s
+			}
+			matched = true
+		}
+	}
+	if !matched {
+		return 1.0, nil
+	}
+
+	multiplier := math.Min(1.0+maxScore/1000.0, 2.0)
+	return multiplier, &RiskFactor{
+		Name:   "bridge_centrality",
+		Value:  maxScore / 1000.0, // 0.0-1.0 informational
+		Weight: 0,                 // applied as multiplier, not weighted mean
+	}
+}
+
 // calculateAggregatedRisk computes an aggregated risk score for the change set.
 func (e *Engine) calculateAggregatedRisk(
 	changedSymbols []impact.ChangedSymbol,
@@ -1356,6 +1434,33 @@ func (e *Engine) calculateAggregatedRisk(
 		score = weightedSum / totalWeight
 	}
 
+	// Bridge-centrality adjustment: if any changed file sits on a critical
+	// architectural path, amplify the score. See bridgeMultiplierFromGraph
+	// for the multiplier shape. The graph is only fetched when the
+	// cartographer build tag is on; under the stub build this is a no-op.
+	bridgeAmplified := false
+	if cartographer.Available() && e.repoRoot != "" {
+		if graph, err := cartographer.MapProject(e.repoRoot); err == nil && graph != nil {
+			files := make([]string, 0, len(changedSymbols))
+			seen := make(map[string]struct{}, len(changedSymbols))
+			for _, s := range changedSymbols {
+				if s.File == "" {
+					continue
+				}
+				if _, dup := seen[s.File]; dup {
+					continue
+				}
+				seen[s.File] = struct{}{}
+				files = append(files, s.File)
+			}
+			if mul, factor := bridgeMultiplierFromGraph(graph.Nodes, files); factor != nil {
+				score = math.Min(score*mul, 1.0)
+				factors = append(factors, *factor)
+				bridgeAmplified = true
+			}
+		}
+	}
+
 	// Determine level
 	var level string
 	switch {
@@ -1372,6 +1477,9 @@ func (e *Engine) calculateAggregatedRisk(
 	// Build explanation
 	explanation := fmt.Sprintf("Change affects %d symbols across %d modules with %d direct and %d transitive impacts.",
 		len(changedSymbols), len(modules), len(directImpact), len(transitiveImpact))
+	if bridgeAmplified {
+		explanation += " Risk amplified by bridge centrality (change lands on a critical architectural path)."
+	}
 
 	return &RiskScore{
 		Level:       level,
