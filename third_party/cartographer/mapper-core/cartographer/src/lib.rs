@@ -16,8 +16,11 @@ use std::path::{Path, PathBuf};
 use rayon::prelude::*;
 
 mod api;
+mod call_graph;
 mod diagram;
+mod diagram_export;
 mod extractor;
+mod html_export;
 mod git_analysis;
 mod layers;
 mod mapper;
@@ -2350,6 +2353,14 @@ pub extern "C" fn cartographer_render_architecture(
         focus: focus_str.as_deref(),
         depth,
         max_nodes,
+        // Co-change + blast-radius overlays aren't plumbed through this FFI
+        // yet — keep the signature stable and expose new overlays via CLI
+        // first. A v2 FFI entry can add them without breaking callers.
+        show_cochange: None,
+        blast_radius: None,
+        docs_only: false,
+        group_by_folder_depth: None,
+        color_by_owner: false,
     };
     let rendered = match diagram::render(&graph, &opts) {
         Ok(r) => r,
@@ -2359,6 +2370,7 @@ pub extern "C" fn cartographer_render_architecture(
     let format_name = match fmt {
         diagram::DiagramFormat::Mermaid => "mermaid",
         diagram::DiagramFormat::Dot => "dot",
+        diagram::DiagramFormat::Ascii => "ascii",
     };
 
     let data = serde_json::json!({

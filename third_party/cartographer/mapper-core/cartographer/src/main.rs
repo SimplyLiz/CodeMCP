@@ -1,7 +1,10 @@
 mod api;
+mod call_graph;
 mod diagram;
+mod diagram_export;
 mod extractor;
 mod formatter;
+mod html_export;
 mod token_metrics;
 mod git_analysis;
 mod global_config;
@@ -241,7 +244,7 @@ enum Commands {
     Dead,
     /// Export dependency graph as a diagram
     Diagram {
-        /// Output format: mermaid or dot
+        /// Output format: mermaid, dot, or ascii (aliases: tree, text)
         #[arg(long, default_value = "mermaid")]
         format: String,
         /// Write output to file instead of stdout
@@ -250,6 +253,42 @@ enum Commands {
         /// Maximum nodes to include (trims least-connected)
         #[arg(long, default_value = "60")]
         max_nodes: usize,
+        /// Anchor the diagram on a module (module_id or path suffix).
+        /// Shows the neighborhood via undirected BFS to `--depth`.
+        #[arg(long, value_name = "MODULE")]
+        focus: Option<String>,
+        /// BFS depth when `--focus` is set
+        #[arg(long, default_value = "2")]
+        depth: usize,
+        /// Render the blast radius of a module: epicenter + direct deps +
+        /// direct dependents. Overrides `--focus` when both are set.
+        #[arg(long, value_name = "MODULE")]
+        blast_radius: Option<String>,
+        /// Overlay co-change edges (dotted purple) for pairs with
+        /// `coupling_score >= THRESHOLD`. Omit to disable.
+        #[arg(long, value_name = "THRESHOLD")]
+        cochange_threshold: Option<f64>,
+        /// Render the documentation subgraph: all doc files
+        /// (Markdown/YAML/TOML/JSON) plus the code they reference. Yields a
+        /// doc-map view distinct from the import-graph top-N default.
+        #[arg(long)]
+        docs_only: bool,
+        /// Collapse the graph to folder granularity at the given path depth.
+        /// `1` groups by top-level folder (src/, tests/, …); `2` groups by
+        /// second-level folder (src/api/, src/db/, …). Drops self-loops from
+        /// intra-folder edges and aggregates inter-folder edges.
+        #[arg(long, value_name = "DEPTH")]
+        group_by_folder: Option<usize>,
+        /// Color nodes by dominant git author (replaces role-based colors).
+        /// Nodes without an `owner` field stay white. Requires git history.
+        #[arg(long)]
+        color_by_owner: bool,
+        /// Render the function-level call graph for a single source file
+        /// (Rust or Python). Nodes are functions/methods; edges are
+        /// caller→callee relations for calls we can resolve to a function
+        /// defined in the same file. External / stdlib calls are dropped.
+        #[arg(long, value_name = "FILE")]
+        call_graph: Option<PathBuf>,
     },
     /// Generate llms.txt index for this project
     Llmstxt {
@@ -674,9 +713,30 @@ fn main() -> Result<()> {
             format,
             output,
             max_nodes,
+            focus,
+            depth,
+            blast_radius,
+            cochange_threshold,
+            docs_only,
+            group_by_folder,
+            color_by_owner,
+            call_graph,
         }) => {
             let root = resolve_path(&cwd, cli.path)?;
-            diagram_mode(&root, &format, output.as_deref(), max_nodes)
+            diagram_mode(
+                &root,
+                &format,
+                output.as_deref(),
+                max_nodes,
+                focus.as_deref(),
+                depth,
+                blast_radius.as_deref(),
+                cochange_threshold,
+                docs_only,
+                group_by_folder,
+                color_by_owner,
+                call_graph.as_deref(),
+            )
         }
         Some(Commands::Llmstxt { output }) => {
             let root = resolve_path(&cwd, cli.path)?;
@@ -2410,6 +2470,17 @@ fn enrich_with_git(graph: &mut crate::api::ProjectGraphResponse, root: &Path) {
             }
         }
     }
+
+    // Dominant-author ownership. One git call, no coupling to churn/cochange
+    // so it stays available even on repos where the other signals are empty.
+    let ownership = crate::git_analysis::git_ownership(root, 500);
+    if !ownership.is_empty() {
+        for node in &mut graph.nodes {
+            if let Some(owner) = ownership.get(&node.path) {
+                node.owner = Some(owner.clone());
+            }
+        }
+    }
 }
 
 // =============================================================================
@@ -2664,10 +2735,89 @@ fn dead_mode(root: &Path) -> Result<()> {
 // DIAGRAM MODE — Export dependency graph as Mermaid or DOT
 // =============================================================================
 
-fn diagram_mode(root: &Path, format: &str, output: Option<&Path>, max_nodes: usize) -> Result<()> {
+#[allow(clippy::too_many_arguments)]
+fn diagram_mode(
+    root: &Path,
+    format: &str,
+    output: Option<&Path>,
+    max_nodes: usize,
+    focus: Option<&str>,
+    depth: usize,
+    blast_radius: Option<&str>,
+    cochange_threshold: Option<f64>,
+    docs_only: bool,
+    group_by_folder_depth: Option<usize>,
+    color_by_owner: bool,
+    call_graph_target: Option<&Path>,
+) -> Result<()> {
     use crate::api::ApiState;
     use crate::mapper::extract_skeleton;
     use crate::scanner::{is_ignored_path, scan_files_with_noise_tracking};
+
+    // Call-graph mode is a completely separate code path: we parse a single
+    // file, build the function-level graph, and hand it to the same renderer
+    // via a shim ProjectGraphResponse. Import-graph options that don't apply
+    // (cochange, docs_only, folder collapse, git enrichment) are silently
+    // ignored — the alternative is a noisy error that blocks `--call-graph
+    // foo.rs --mermaid -o out.mmd`, which is what most callers actually want.
+    if let Some(file) = call_graph_target {
+        let abs = if file.is_absolute() { file.to_path_buf() } else { root.join(file) };
+        let source = std::fs::read_to_string(&abs)
+            .map_err(|e| anyhow::anyhow!("cannot read {}: {}", abs.display(), e))?;
+        let cg = call_graph::build_file_call_graph(&abs, &source)
+            .map_err(|e| anyhow::anyhow!(e))?
+            .ok_or_else(|| anyhow::anyhow!(
+                "call-graph extraction not supported for this file type (expected .rs / .py): {}",
+                abs.display()
+            ))?;
+        let graph = call_graph::to_project_graph(&cg, &abs);
+        let fmt = diagram::DiagramFormat::parse(format).map_err(|e| anyhow::anyhow!(e))?;
+        let opts = diagram::RenderOptions {
+            format: fmt,
+            focus,
+            depth,
+            max_nodes,
+            show_cochange: None,
+            blast_radius,
+            docs_only: false,
+            group_by_folder_depth: None,
+            color_by_owner: false,
+        };
+        let rendered = diagram::render(&graph, &opts).map_err(|e| anyhow::anyhow!(e))?;
+
+        if let Some(out_path) = output {
+            let ext = out_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            if ext.eq_ignore_ascii_case("html") {
+                let html = html_export::render_html(&graph, &rendered.included);
+                fs::write(out_path, &html)?;
+                println!("Interactive call-graph HTML written to: {}", out_path.display());
+            } else {
+                let kind = diagram_export::export_diagram(&rendered.diagram, fmt, out_path)
+                    .map_err(|e| anyhow::anyhow!(e))?;
+                let verb = match kind {
+                    diagram_export::ExportKind::Source => "Call graph written to",
+                    diagram_export::ExportKind::MermaidSvg | diagram_export::ExportKind::DotSvg => {
+                        "Call-graph SVG exported to"
+                    }
+                    diagram_export::ExportKind::MermaidPng | diagram_export::ExportKind::DotPng => {
+                        "Call-graph PNG exported to"
+                    }
+                };
+                println!("{}: {}", verb, out_path.display());
+            }
+        } else {
+            println!("{}", rendered.diagram);
+        }
+
+        eprintln!(
+            "Call graph: {} functions, {} edges, {} unresolved external calls",
+            cg.functions.len(), cg.calls.len(), cg.unresolved_count
+        );
+        if rendered.truncated {
+            eprintln!("(truncated to {} nodes — raise --max-nodes for more)", max_nodes);
+        }
+        return Ok(());
+    }
 
     let result = scan_files_with_noise_tracking(root)?;
     let mapped_files: std::collections::HashMap<String, crate::mapper::MappedFile> = result
@@ -2692,20 +2842,53 @@ fn diagram_mode(root: &Path, format: &str, output: Option<&Path>, max_nodes: usi
         *files = mapped_files;
     }
 
-    let graph = state.rebuild_graph().map_err(|e| anyhow::anyhow!(e))?;
+    let mut graph = state.rebuild_graph().map_err(|e| anyhow::anyhow!(e))?;
+
+    // Git-backed overlays (co-change, owner coloring, hotspot sizing) need
+    // the enrichment pass. Skip it when nothing downstream consumes it — the
+    // git calls run in ~100ms on a warm repo, but there's no reason to pay
+    // the cost for a plain top-N diagram.
+    if cochange_threshold.is_some() || color_by_owner {
+        enrich_with_git(&mut graph, root);
+    }
 
     let fmt = diagram::DiagramFormat::parse(format).map_err(|e| anyhow::anyhow!(e))?;
     let opts = diagram::RenderOptions {
         format: fmt,
-        focus: None,
-        depth: 2,
+        focus,
+        depth,
         max_nodes,
+        show_cochange: cochange_threshold,
+        blast_radius,
+        docs_only,
+        group_by_folder_depth,
+        color_by_owner,
     };
     let rendered = diagram::render(&graph, &opts).map_err(|e| anyhow::anyhow!(e))?;
 
     if let Some(out_path) = output {
-        fs::write(out_path, &rendered.diagram)?;
-        println!("Diagram written to: {}", out_path.display());
+        // `.html` → interactive explorer (self-contained page).
+        // `.svg` / `.png` → shell out to mmdc (Mermaid) or dot (Graphviz).
+        // Anything else → write the diagram source verbatim.
+        let ext = out_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if ext.eq_ignore_ascii_case("html") {
+            let html = html_export::render_html(&graph, &rendered.included);
+            fs::write(out_path, &html)?;
+            println!("Interactive HTML written to: {}", out_path.display());
+        } else {
+            let kind = diagram_export::export_diagram(&rendered.diagram, fmt, out_path)
+                .map_err(|e| anyhow::anyhow!(e))?;
+            let verb = match kind {
+                diagram_export::ExportKind::Source => "Diagram written to",
+                diagram_export::ExportKind::MermaidSvg | diagram_export::ExportKind::DotSvg => {
+                    "SVG exported to"
+                }
+                diagram_export::ExportKind::MermaidPng | diagram_export::ExportKind::DotPng => {
+                    "PNG exported to"
+                }
+            };
+            println!("{}: {}", verb, out_path.display());
+        }
         if rendered.truncated {
             println!("(truncated to {} nodes — raise --max-nodes for more)", max_nodes);
         }

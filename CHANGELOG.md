@@ -30,6 +30,18 @@ All notable changes to CKB will be documented in this file.
 
 ### Fixed
 
+- **Vendored Cartographer `rebuild_graph` deadlock** — upstream
+  `ApiState::rebuild_graph` held the `mapped_files` Mutex across its
+  loop and then called `resolve_import_target`, which re-acquired the
+  same non-reentrant `std::sync::Mutex`. Any project with a resolvable
+  import deadlocked — the `cartographer diagram` / `cartographer health`
+  CLIs hung, and the Go bridge's `cartographer.MapProject` would block
+  any time CKB fed it a repo with imports. Fixed in the vendored tree
+  (and contributed back upstream) by splitting the resolver: a public
+  method that locks, and a private helper that takes the already-held
+  map; `rebuild_graph` now calls the helper. Discovered during
+  end-to-end smoke testing against CKB itself (1093 files). Regression
+  test added upstream.
 - **`localize-tree-sitter-symbols.sh` dropped grammar C parsers** — the
   script extracted archive members via `ar x`, which silently clobbers
   files when multiple members share a name. Cargo emits a `parser.o`

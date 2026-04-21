@@ -118,6 +118,9 @@ pub struct GraphNode {
     pub cochange_partners: Option<usize>,
     /// Shannon entropy of co-change distribution (higher = more scattered changes).
     pub cochange_entropy: Option<f64>,
+    /// Dominant git author by commit count (bot/format commits excluded).
+    /// Populated by `enrich_with_git`. Powers the `--color-by=owner` diagram mode.
+    pub owner: Option<String>,
 }
 
 /// A source position range using LIP semantics: line is 0-based, char is UTF-8 byte offset from line start.
@@ -458,10 +461,14 @@ impl ApiState {
                 fan_out: None,
                 cochange_partners: None,
                 cochange_entropy: None,
+                owner: None,
             });
 
             for import in &file.imports {
-                if let Some(target) = self.resolve_import_target(import, module_id) {
+                // `rebuild_graph` already holds the `mapped_files` lock; call the
+                // map-taking helper directly. Calling `resolve_import_target` here
+                // would re-enter the non-reentrant Mutex and deadlock.
+                if let Some(target) = Self::resolve_import_target_in(&files, import, module_id) {
                     edges.push(GraphEdge {
                         source: module_id.clone(),
                         target,
@@ -1201,7 +1208,17 @@ impl ApiState {
 
     fn resolve_import_target(&self, import: &str, source: &str) -> Option<String> {
         let files = self.mapped_files.lock().ok()?;
+        Self::resolve_import_target_in(&files, import, source)
+    }
 
+    // Same lookup as `resolve_import_target` but takes the already-locked map.
+    // Used by `rebuild_graph` (which holds the lock for the whole rebuild) to
+    // avoid re-entering the non-reentrant Mutex and deadlocking.
+    fn resolve_import_target_in(
+        files: &HashMap<String, MappedFile>,
+        import: &str,
+        source: &str,
+    ) -> Option<String> {
         let (module_path, symbol_hint) = parse_import_parts(import);
         let stem = derive_module_stem(&module_path);
 
@@ -1666,5 +1683,34 @@ mod tests {
         assert_eq!(derive_module_stem("scanner"), "scanner");
         assert_eq!(derive_module_stem("react-dom"), "react");
         assert_eq!(derive_module_stem("src/api/handler"), "handler");
+    }
+
+    // Regression test: before the fix, rebuild_graph held the mapped_files
+    // Mutex across its inner loop and then called resolve_import_target,
+    // which re-acquired the same non-reentrant Mutex → deadlock on any
+    // project with at least one resolvable import. Any resolved edge is
+    // enough to prove the hang is gone; correctness of the graph content
+    // is covered elsewhere.
+    #[test]
+    fn rebuild_graph_does_not_deadlock_on_imports() {
+        let state = ApiState::new(std::path::PathBuf::from("/test"));
+        {
+            let mut files = state.mapped_files.lock().unwrap();
+            files.insert(
+                "a".to_string(),
+                MappedFile::from_minimal("a.rs".to_string(), vec!["b".to_string()]),
+            );
+            files.insert(
+                "b".to_string(),
+                MappedFile::from_minimal("b.rs".to_string(), vec![]),
+            );
+        }
+        let graph = state.rebuild_graph().expect("rebuild_graph must return");
+        assert_eq!(graph.nodes.len(), 2);
+        assert!(
+            graph.edges.iter().any(|e| e.source == "a" && e.target == "b"),
+            "expected resolved a->b edge, got edges: {:?}",
+            graph.edges
+        );
     }
 }
