@@ -49,3 +49,6 @@ testdata/**/pubspec.lock
 
 # Vendored Cartographer Rust build artifacts
 third_party/cartographer/mapper-core/cartographer/target/
+
+# MCP runtime caches (pinned to commit hash, regenerated on startup)
+internal/mcp/.cartographer_cache.json
