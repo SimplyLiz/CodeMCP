@@ -762,6 +762,7 @@ type BlastRadiusSemanticItem struct {
 // BlastRadiusEntry is a single symbol's blast radius from LIP.
 type BlastRadiusEntry struct {
 	SymbolURI            string                    `json:"symbol_uri"`
+	FileURI              string                    `json:"file_uri"` // input file this entry belongs to
 	DirectDependents     int                       `json:"direct_dependents"`
 	TransitiveDependents int                       `json:"transitive_dependents"`
 	AffectedFiles        []string                  `json:"affected_files"`
@@ -772,8 +773,17 @@ type BlastRadiusEntry struct {
 	SemanticItems        []BlastRadiusSemanticItem `json:"semantic_items"`
 }
 
+// BlastRadiusBatchResult is the full response from QueryBlastRadiusBatch.
+// NotIndexedURIs lists input URIs that were absent from the LIP index —
+// callers can distinguish "not indexed" from "indexed but zero callers".
+type BlastRadiusBatchResult struct {
+	Entries        map[string]BlastRadiusEntry // keyed by symbol_uri
+	NotIndexedURIs []string                    // input file URIs not in index (omitted when empty)
+}
+
 type blastRadiusBatchResp struct {
-	Results []BlastRadiusEntry `json:"results"`
+	Results        []BlastRadiusEntry `json:"results"`
+	NotIndexedURIs []string           `json:"not_indexed_uris,omitempty"`
 }
 
 // QueryBlastRadiusBatch asks LIP for blast radius of all symbols in the given
@@ -782,7 +792,7 @@ type blastRadiusBatchResp struct {
 //
 // min_score is the cosine similarity threshold for semantic hits. Pass 0 to
 // get static-only results (no semantic items). Typical values: 0.6–0.8.
-func QueryBlastRadiusBatch(changedFileURIs []string, minScore float32) (map[string]BlastRadiusEntry, error) {
+func QueryBlastRadiusBatch(changedFileURIs []string, minScore float32) (*BlastRadiusBatchResult, error) {
 	if len(changedFileURIs) == 0 {
 		return nil, nil
 	}
@@ -795,17 +805,51 @@ func QueryBlastRadiusBatch(changedFileURIs []string, minScore float32) (map[stri
 	}
 	// Budget: generous timeout — LIP needs to resolve symbols + compute embeddings
 	timeout := max(time.Duration(len(changedFileURIs)+1)*200*time.Millisecond, 3*time.Second)
-	result, _ := lipRPC(req, timeout, 8<<20,
-		func(r blastRadiusBatchResp) *[]BlastRadiusEntry { return &r.Results })
-	if result == nil {
+	raw, _ := lipRPC(req, timeout, 8<<20,
+		func(r blastRadiusBatchResp) *blastRadiusBatchResp { return &r })
+	if raw == nil {
 		return nil, nil
 	}
 	// Index by symbol_uri for O(1) lookup in the merge path
-	out := make(map[string]BlastRadiusEntry, len(*result))
-	for _, entry := range *result {
-		out[entry.SymbolURI] = entry
+	entries := make(map[string]BlastRadiusEntry, len(raw.Results))
+	for _, entry := range raw.Results {
+		entries[entry.SymbolURI] = entry
 	}
-	return out, nil
+	return &BlastRadiusBatchResult{
+		Entries:        entries,
+		NotIndexedURIs: raw.NotIndexedURIs,
+	}, nil
+}
+
+type blastRadiusSymbolResp struct {
+	Result *BlastRadiusEntry `json:"result,omitempty"`
+}
+
+// QueryBlastRadiusSymbol asks LIP for blast radius of a single symbol (v2.3+).
+// Returns (nil, nil) when the symbol's file isn't indexed or LIP is
+// unavailable — callers should treat both identically (fall back to the
+// static SCIP blast radius unchanged).
+//
+// Prefer this over QueryBlastRadiusBatch when you already have a symbol URI:
+// it skips the file-level fetch-and-filter workaround and lets LIP dispatch
+// directly.
+func QueryBlastRadiusSymbol(symbolURI string, minScore float32) (*BlastRadiusEntry, error) {
+	if symbolURI == "" {
+		return nil, nil
+	}
+	req := map[string]any{
+		"type":       "query_blast_radius_symbol",
+		"symbol_uri": symbolURI,
+	}
+	if minScore > 0 {
+		req["min_score"] = minScore
+	}
+	raw, _ := lipRPC(req, 2*time.Second, 2<<20,
+		func(r blastRadiusSymbolResp) *blastRadiusSymbolResp { return &r })
+	if raw == nil {
+		return nil, nil
+	}
+	return raw.Result, nil
 }
 
 // =============================================================================

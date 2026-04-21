@@ -22,13 +22,13 @@ func (e *BlastRadiusEnricher) EnrichBatch(ctx context.Context, changedFileURIs [
 		return nil, nil
 	}
 
-	entries, err := QueryBlastRadiusBatch(changedFileURIs, e.MinScore)
-	if entries == nil {
+	result, err := QueryBlastRadiusBatch(changedFileURIs, e.MinScore)
+	if result == nil {
 		return nil, err
 	}
 
-	out := make(map[string]*impact.ExternalBlastRadius, len(entries))
-	for symbolURI, entry := range entries {
+	out := make(map[string]*impact.ExternalBlastRadius, len(result.Entries))
+	for symbolURI, entry := range result.Entries {
 		out[symbolURI] = EntryToExternal(&entry)
 	}
 	return out, nil

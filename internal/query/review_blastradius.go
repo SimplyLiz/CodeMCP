@@ -39,8 +39,8 @@ func (e *Engine) checkBlastRadius(ctx context.Context, changedFiles []string, op
 			lipURIs[i] = "lip://local/" + f
 		}
 		if raw, _ := lip.QueryBlastRadiusBatch(lipURIs, 0.6); raw != nil {
-			lipBR = make(map[string]*impact.ExternalBlastRadius, len(raw))
-			for k, v := range raw {
+			lipBR = make(map[string]*impact.ExternalBlastRadius, len(raw.Entries))
+			for k, v := range raw.Entries {
 				vCopy := v
 				lipBR[k] = lip.EntryToExternal(&vCopy)
 			}
