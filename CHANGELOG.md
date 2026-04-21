@@ -6,6 +6,17 @@ All notable changes to CKB will be documented in this file.
 
 ### Added
 
+- **Vendored Cartographer fully synced to upstream 3.0.0** — the
+  vendored tree under `third_party/cartographer/mapper-core/cartographer/`
+  was 391 lines behind on `diagram.rs` alone, and 10 `.rs` files plus
+  `Cargo.toml` had drifted. Full sync brings in doc-node graph support
+  (`cartographer_doc_index`, `cartographer_doc_context`, `cartographer_query_docs`
+  FFI entry points — Go bindings can be added as a follow-up),
+  LIP-style `Range` / `at_range` on `GraphEdge`, PascalCase bare-identifier
+  resolution for doc backtick refs, and the overlays feature on diagrams.
+  New `scripts/sync-cartographer.sh` is now the supported path for future
+  syncs — rsync-based, explicit path list, emits next-step commands. No
+  local patches needed against upstream.
 - **Diagram overlays in `renderArchitecture` / `ckb diagram`** — the
   vendored `diagram.rs` was synced from upstream Cartographer, so the
   Mermaid/DOT output now decorates the base import graph with

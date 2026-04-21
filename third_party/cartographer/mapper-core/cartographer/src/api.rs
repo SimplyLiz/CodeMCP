@@ -120,11 +120,21 @@ pub struct GraphNode {
     pub cochange_entropy: Option<f64>,
 }
 
+/// A source position range using LIP semantics: line is 0-based, char is UTF-8 byte offset from line start.
+#[derive(Debug, Clone, Serialize)]
+pub struct Range {
+    pub start_line: usize,
+    pub start_char: usize,
+    pub end_line:   usize,
+    pub end_char:   usize,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct GraphEdge {
     pub source: String,
     pub target: String,
     pub edge_type: String,
+    pub at_range: Option<Range>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -456,6 +466,7 @@ impl ApiState {
                         source: module_id.clone(),
                         target,
                         edge_type: "import".to_string(),
+                        at_range: None,
                     });
                 }
             }
@@ -895,6 +906,13 @@ fn parse_import_parts(import: &str) -> (String, Option<String>) {
     // Fallback: last token
     let last = raw.split_whitespace().last().unwrap_or(raw);
     let last = last.trim_matches('"').trim_matches('\'').trim_end_matches(';');
+    // Bare PascalCase identifier (e.g. from doc backtick refs) → set as symbol hint
+    // so resolve_import_target can match it against symbol definitions.
+    if !last.contains('/') && !last.contains('.') && last.len() >= 4
+        && last.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+    {
+        return (last.to_string(), Some(last.to_string()));
+    }
     (last.to_string(), None)
 }
 
@@ -915,15 +933,18 @@ fn extract_js_import_symbol(lhs: &str) -> Option<String> {
 
 /// Return the last meaningful path component to use as a file-stem candidate.
 fn derive_module_stem(module_path: &str) -> String {
-    module_path
+    let last = module_path
         .split('/')
         .filter(|s| !s.is_empty() && *s != "." && *s != "..")
         .last()
         .unwrap_or(module_path)
-        .trim_start_matches('@')   // strip npm scope prefix
-        .split('-')                // treat kebab-case first word as stem
-        .next()
-        .unwrap_or("")
+        .trim_start_matches('@');  // strip npm scope prefix
+    let kebab_first = last.split('-').next().unwrap_or(last); // treat kebab-case first word as stem
+    // Strip file extension so doc-style imports ("scanner.rs", "api/search.md") resolve correctly
+    Path::new(kebab_first)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(kebab_first)
         .to_string()
 }
 
@@ -959,6 +980,67 @@ fn is_test_path(path: &str) -> bool {
         || lower.contains("/tests/")
         || lower.contains("/spec/")
         || lower.ends_with("_test.go")
+}
+
+// ---------------------------------------------------------------------------
+// Document helpers
+// ---------------------------------------------------------------------------
+
+/// File extensions treated as "documents" (non-code) for doc-oriented tools.
+pub const DOC_EXTENSIONS: &[&str] = &["md", "markdown", "yaml", "yml", "toml", "json"];
+
+pub fn is_doc_path(path: &str) -> bool {
+    path.rsplit('.')
+        .next()
+        .map(|ext| DOC_EXTENSIONS.contains(&ext))
+        .unwrap_or(false)
+}
+
+/// Summary of a document node in the project graph.
+#[derive(Debug, Clone, Serialize)]
+pub struct DocNode {
+    pub path: String,
+    pub module_id: String,
+    pub signatures: Vec<String>,
+    pub imports: Vec<String>,
+    pub edge_count: usize,
+}
+
+impl ApiState {
+    /// Return all document-type nodes from the project graph.
+    pub fn doc_nodes(&self) -> Result<Vec<DocNode>, String> {
+        let graph = self.rebuild_graph()?;
+        let files = self.mapped_files.lock().map_err(|e| e.to_string())?;
+
+        let mut docs = Vec::new();
+        for node in &graph.nodes {
+            if !is_doc_path(&node.path) {
+                continue;
+            }
+            let edge_count = graph.edges.iter()
+                .filter(|e| e.source == node.module_id || e.target == node.module_id)
+                .count();
+
+            let (sigs, imports) = files.get(&node.module_id)
+                .map(|mf| (
+                    mf.signatures.iter().map(|s| s.raw.clone()).collect(),
+                    mf.imports.clone(),
+                ))
+                .unwrap_or_default();
+
+            docs.push(DocNode {
+                path: node.path.clone(),
+                module_id: node.module_id.clone(),
+                signatures: sigs,
+                imports,
+                edge_count,
+            });
+        }
+
+        // Sort: most connected docs first
+        docs.sort_by(|a, b| b.edge_count.cmp(&a.edge_count));
+        Ok(docs)
+    }
 }
 
 struct BridgeAnalysis {
@@ -1143,6 +1225,15 @@ impl ApiState {
                 || file_stem == norm_path
             {
                 return Some(module_id.clone());
+            }
+
+            // 1b. Path-suffix match for relative doc links ("api/search.md" → "docs/api/search.md").
+            // Checked before the loose segment match to return an unambiguous result.
+            if norm_path.contains('/') || norm_path.contains('.') {
+                let suffix = format!("/{}", norm_path.trim_start_matches('/'));
+                if file.path.ends_with(&suffix) {
+                    return Some(module_id.clone());
+                }
             }
 
             // 2. Path segment: file path contains the module stem as a component
@@ -1432,7 +1523,6 @@ impl ApiState {
 
     pub fn get_evolution(&self, days: Option<u32>) -> Result<ArchitectureEvolution, String> {
         let current_graph = self.rebuild_graph()?;
-
         let current_health = current_graph.metadata.health_score.unwrap_or(100.0);
 
         let days = days.unwrap_or(30);
@@ -1441,7 +1531,7 @@ impl ApiState {
             .unwrap_or_default()
             .as_secs();
 
-        let mut snapshots = vec![ArchitectureSnapshot {
+        let current_snapshot = ArchitectureSnapshot {
             timestamp: now,
             health_score: current_health,
             total_files: current_graph.metadata.total_files,
@@ -1456,16 +1546,49 @@ impl ApiState {
                 .iter()
                 .max_by_key(|(_, v)| *v)
                 .map(|(k, _)| k.clone()),
-        }];
+        };
 
-        // Trend requires multiple snapshots; this reflects current state only.
-        // Historical tracking is not yet implemented, so `days` has no effect.
-        let health_trend = if current_health >= 80.0 {
-            "Healthy".to_string()
-        } else if current_health >= 60.0 {
-            "Moderate".to_string()
+        // ── Persist snapshot to history file ──────────────────────────────────
+        let history_path = self.root_path.join(".cartographer_history.json");
+        let mut all_snapshots: Vec<ArchitectureSnapshot> =
+            std::fs::read_to_string(&history_path)
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default();
+        all_snapshots.push(current_snapshot);
+        // Cap history to last 365 snapshots to prevent unbounded growth
+        if all_snapshots.len() > 365 {
+            let drain_count = all_snapshots.len() - 365;
+            all_snapshots.drain(0..drain_count);
+        }
+        if let Ok(json) = serde_json::to_string(&all_snapshots) {
+            let _ = std::fs::write(&history_path, json);
+        }
+
+        // ── Filter to requested window ────────────────────────────────────────
+        let since_epoch = now.saturating_sub(days as u64 * 86_400);
+        let snapshots: Vec<ArchitectureSnapshot> = all_snapshots
+            .into_iter()
+            .filter(|s| s.timestamp >= since_epoch)
+            .collect();
+
+        // ── Compute trend from first vs last snapshot ─────────────────────────
+        let health_trend = if snapshots.len() >= 2 {
+            let first = snapshots.first().unwrap().health_score;
+            let last = snapshots.last().unwrap().health_score;
+            let delta = last - first;
+            if delta > 5.0 {
+                "Improving".to_string()
+            } else if delta < -5.0 {
+                "Degrading".to_string()
+            } else {
+                "Stable".to_string()
+            }
         } else {
-            "At Risk".to_string()
+            // Single snapshot — classify by absolute score
+            if current_health >= 80.0 { "Healthy".to_string() }
+            else if current_health >= 60.0 { "Moderate".to_string() }
+            else { "At Risk".to_string() }
         };
 
         let mut debt_indicators = Vec::new();
@@ -1493,12 +1616,10 @@ impl ApiState {
             recommendations.push("Priority: Break circular dependencies".to_string());
         }
         if current_graph.metadata.god_module_count.unwrap_or(0) > 2 {
-            recommendations
-                .push("Consider splitting large modules to improve cohesion".to_string());
+            recommendations.push("Consider splitting large modules to improve cohesion".to_string());
         }
         if recommendations.is_empty() {
-            recommendations
-                .push("Architecture is healthy - maintain current practices".to_string());
+            recommendations.push("Architecture is healthy - maintain current practices".to_string());
         }
 
         Ok(ArchitectureEvolution {
@@ -1534,5 +1655,16 @@ mod tests {
     fn test_compression_level_default() {
         let level = CompressionLevel::default();
         assert_eq!(level, CompressionLevel::Standard);
+    }
+
+    #[test]
+    fn derive_module_stem_strips_extension() {
+        assert_eq!(derive_module_stem("scanner.rs"), "scanner");
+        assert_eq!(derive_module_stem("api/search.md"), "search");
+        assert_eq!(derive_module_stem("config.yaml"), "config");
+        // Normal code imports (no extension) unchanged
+        assert_eq!(derive_module_stem("scanner"), "scanner");
+        assert_eq!(derive_module_stem("react-dom"), "react");
+        assert_eq!(derive_module_stem("src/api/handler"), "handler");
     }
 }

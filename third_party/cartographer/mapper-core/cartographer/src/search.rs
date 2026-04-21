@@ -4,6 +4,7 @@
 //! block) unless `no_ignore` is set, in which case raw `walkdir` is used.
 
 use crate::scanner::{is_ignored_path, scan_files_with_noise_tracking};
+use rayon::prelude::*;
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -480,100 +481,121 @@ pub fn search_content(
 
     let file_list = enumerate_files(root, opts.no_ignore)?;
 
+    // ── Parallel file processing ─────────────────────────────────────────────
+    // Local result carrier — one per file that passes filters and is readable.
+    enum FileResult {
+        Matches(Vec<ContentMatch>),
+        WithMatch(String),
+        WithoutMatch(String),
+        Count(FileCount),
+        Searched, // read but no matches (keeps files_searched count accurate)
+    }
+
+    let per_file: Vec<FileResult> = file_list
+        .par_iter()
+        .filter_map(|abs_path| {
+            let rel = rel_path(root, abs_path);
+
+            // search_path prefix filter
+            if let Some(ref sp) = opts.search_path {
+                let sp = sp.trim_end_matches('/');
+                if !rel.starts_with(&format!("{}/", sp)) && rel != sp {
+                    return None;
+                }
+            }
+
+            // include/exclude glob
+            if let Some(ref gre) = include_filter {
+                if !gre.is_match(&rel) { return None; }
+            }
+            if let Some(ref gre) = exclude_filter {
+                if gre.is_match(&rel) { return None; }
+            }
+
+            let content = std::fs::read_to_string(abs_path).ok()?;
+            let lines: Vec<&str> = content.lines().collect();
+
+            // ── count_only ───────────────────────────────────────────────────
+            if opts.count_only {
+                let count = lines.iter().filter(|&&l| line_matches(&all_res, l, opts.invert_match)).count();
+                return Some(FileResult::Count(FileCount { path: rel, count }));
+            }
+
+            // ── files_with_matches / files_without_match ─────────────────────
+            if opts.files_with_matches || opts.files_without_match {
+                let has = lines.iter().any(|&l| line_matches(&all_res, l, opts.invert_match));
+                return match (opts.files_with_matches && has, opts.files_without_match && !has) {
+                    (true, _) => Some(FileResult::WithMatch(rel)),
+                    (_, true) => Some(FileResult::WithoutMatch(rel)),
+                    _ => Some(FileResult::Searched),
+                };
+            }
+
+            // ── normal match mode ────────────────────────────────────────────
+            let mut file_matches: Vec<ContentMatch> = Vec::new();
+            for (idx, &line) in lines.iter().enumerate() {
+                if !line_matches(&all_res, line, opts.invert_match) { continue; }
+
+                let spans: Vec<_> = all_res.iter().flat_map(|re| re.find_iter(line)).collect();
+                let matched_texts: Vec<String> = if opts.only_matching {
+                    spans.iter().map(|m| m.as_str().to_string()).collect()
+                } else {
+                    vec![]
+                };
+                let match_ranges: Vec<[usize; 2]> = spans.iter()
+                    .map(|m| [m.start(), m.end()])
+                    .collect();
+
+                file_matches.push(ContentMatch {
+                    path: rel.clone(),
+                    line_number: idx + 1,
+                    line: if opts.only_matching { String::new() } else { line.to_string() },
+                    matched_texts,
+                    match_ranges,
+                    before_context: context_slice(&lines, idx, before_ctx, true),
+                    after_context: context_slice(&lines, idx, after_ctx, false),
+                });
+            }
+
+            if file_matches.is_empty() {
+                Some(FileResult::Searched)
+            } else {
+                Some(FileResult::Matches(file_matches))
+            }
+        })
+        .collect();
+
+    // ── Phase 2: flatten results and enforce hard cap ─────────────────────────
     let mut matches: Vec<ContentMatch> = Vec::new();
     let mut files_with_m: Vec<String> = Vec::new();
     let mut files_without_m: Vec<String> = Vec::new();
     let mut file_counts: Vec<FileCount> = Vec::new();
-    let mut files_searched: usize = 0;
+    let mut files_searched: usize = per_file.len();
     let mut truncated = false;
 
-    'files: for abs_path in &file_list {
-        let rel = rel_path(root, abs_path);
-
-        // search_path prefix filter
-        if let Some(ref sp) = opts.search_path {
-            let sp = sp.trim_end_matches('/');
-            if !rel.starts_with(&format!("{}/", sp)) && rel != sp {
-                continue;
+    for result in per_file {
+        match result {
+            FileResult::Count(fc) => {
+                if file_counts.len() < cap { file_counts.push(fc); }
+                else { truncated = true; }
             }
-        }
-
-        // include/exclude glob
-        if let Some(ref gre) = include_filter {
-            if !gre.is_match(&rel) { continue; }
-        }
-        if let Some(ref gre) = exclude_filter {
-            if gre.is_match(&rel) { continue; }
-        }
-
-        let content = match std::fs::read_to_string(abs_path) {
-            Ok(c) => c,
-            Err(_) => continue, // binary or unreadable — skip silently
-        };
-
-        files_searched += 1;
-        let lines: Vec<&str> = content.lines().collect();
-
-        // ── count_only mode ──────────────────────────────────────────────────
-        if opts.count_only {
-            let count = lines.iter().filter(|&&l| line_matches(&all_res, l, opts.invert_match)).count();
-            file_counts.push(FileCount { path: rel, count });
-            if file_counts.len() >= cap {
-                truncated = true;
-                break 'files;
+            FileResult::WithMatch(path) => {
+                if files_with_m.len() < cap { files_with_m.push(path); }
+                else { truncated = true; }
             }
-            continue;
-        }
-
-        // ── files_with_matches / files_without_match mode ────────────────────
-        if opts.files_with_matches || opts.files_without_match {
-            let has = lines.iter().any(|&l| line_matches(&all_res, l, opts.invert_match));
-            if opts.files_with_matches && has {
-                files_with_m.push(rel.clone());
-                if files_with_m.len() >= cap { truncated = true; break 'files; }
+            FileResult::WithoutMatch(path) => {
+                if files_without_m.len() < cap { files_without_m.push(path); }
+                else { truncated = true; }
             }
-            if opts.files_without_match && !has {
-                files_without_m.push(rel);
-                if files_without_m.len() >= cap { truncated = true; break 'files; }
+            FileResult::Matches(mut file_matches) => {
+                let remaining = cap.saturating_sub(matches.len());
+                if file_matches.len() > remaining {
+                    file_matches.truncate(remaining);
+                    truncated = true;
+                }
+                matches.extend(file_matches);
             }
-            continue;
-        }
-
-        // ── normal match mode ────────────────────────────────────────────────
-        for (idx, &line) in lines.iter().enumerate() {
-            if !line_matches(&all_res, line, opts.invert_match) {
-                continue;
-            }
-
-            // Collect all match spans once — used for both only_matching text and ranges.
-            let spans: Vec<_> = all_res.iter()
-                .flat_map(|re| re.find_iter(line))
-                .collect();
-
-            let matched_texts: Vec<String> = if opts.only_matching {
-                spans.iter().map(|m| m.as_str().to_string()).collect()
-            } else {
-                vec![]
-            };
-
-            let match_ranges: Vec<[usize; 2]> = spans.iter()
-                .map(|m| [m.start(), m.end()])
-                .collect();
-
-            matches.push(ContentMatch {
-                path: rel.clone(),
-                line_number: idx + 1,
-                line: if opts.only_matching { String::new() } else { line.to_string() },
-                matched_texts,
-                match_ranges,
-                before_context: context_slice(&lines, idx, before_ctx, true),
-                after_context: context_slice(&lines, idx, after_ctx, false),
-            });
-
-            if matches.len() >= cap {
-                truncated = true;
-                break 'files;
-            }
+            FileResult::Searched => {}
         }
     }
 

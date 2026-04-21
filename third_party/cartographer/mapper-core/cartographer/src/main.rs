@@ -1,4 +1,5 @@
 mod api;
+mod diagram;
 mod extractor;
 mod formatter;
 mod token_metrics;
@@ -2667,7 +2668,6 @@ fn diagram_mode(root: &Path, format: &str, output: Option<&Path>, max_nodes: usi
     use crate::api::ApiState;
     use crate::mapper::extract_skeleton;
     use crate::scanner::{is_ignored_path, scan_files_with_noise_tracking};
-    use std::collections::HashMap;
 
     let result = scan_files_with_noise_tracking(root)?;
     let mapped_files: std::collections::HashMap<String, crate::mapper::MappedFile> = result
@@ -2694,115 +2694,26 @@ fn diagram_mode(root: &Path, format: &str, output: Option<&Path>, max_nodes: usi
 
     let graph = state.rebuild_graph().map_err(|e| anyhow::anyhow!(e))?;
 
-    // Compute degree per node from edges
-    let mut degree: HashMap<&str, usize> = HashMap::new();
-    for edge in &graph.edges {
-        *degree.entry(edge.source.as_str()).or_insert(0) += 1;
-        *degree.entry(edge.target.as_str()).or_insert(0) += 1;
-    }
-
-    // Pick top max_nodes by degree; exclude zero-edge nodes
-    let mut ranked: Vec<_> = graph
-        .nodes
-        .iter()
-        .filter(|n| degree.get(n.module_id.as_str()).copied().unwrap_or(0) > 0)
-        .collect();
-    ranked.sort_by(|a, b| {
-        let da = degree.get(a.module_id.as_str()).copied().unwrap_or(0);
-        let db = degree.get(b.module_id.as_str()).copied().unwrap_or(0);
-        db.cmp(&da)
-    });
-    ranked.truncate(max_nodes);
-
-    let included: std::collections::HashSet<&str> =
-        ranked.iter().map(|n| n.module_id.as_str()).collect();
-
-    let content = match format.to_lowercase().as_str() {
-        "dot" => {
-            let mut out = String::from("digraph cartographer {\n    rankdir=LR;\n");
-            for node in &ranked {
-                let label = node
-                    .path
-                    .rsplit('/')
-                    .next()
-                    .unwrap_or(&node.path);
-                let color = match node.role.as_deref() {
-                    Some("core") => "#9cf",
-                    Some("bridge") => "#f96",
-                    Some("dead") => "#ccc",
-                    Some("entry") => "#9f9",
-                    _ => "#fff",
-                };
-                out.push_str(&format!(
-                    "    \"{}\" [label=\"{}\\n{} fn\" shape=box style=filled fillcolor=\"{}\"];\n",
-                    node.module_id, label, node.signature_count, color
-                ));
-            }
-            for edge in &graph.edges {
-                if included.contains(edge.source.as_str()) && included.contains(edge.target.as_str()) {
-                    out.push_str(&format!(
-                        "    \"{}\" -> \"{}\";\n",
-                        edge.source, edge.target
-                    ));
-                }
-            }
-            out.push('}');
-            out
-        }
-        _ => {
-            // mermaid (default)
-            let mut out = String::from("graph TD\n");
-            out.push_str("    classDef bridge fill:#f96,stroke:#333\n");
-            out.push_str("    classDef core fill:#9cf,stroke:#333\n");
-            out.push_str("    classDef dead fill:#ccc,stroke:#333\n");
-            out.push_str("    classDef entry fill:#9f9,stroke:#333\n");
-
-            // Build stable numeric IDs
-            let id_map: HashMap<&str, usize> = ranked
-                .iter()
-                .enumerate()
-                .map(|(i, n)| (n.module_id.as_str(), i))
-                .collect();
-
-            for node in &ranked {
-                let i = id_map[node.module_id.as_str()];
-                let label = node
-                    .path
-                    .rsplit('/')
-                    .next()
-                    .unwrap_or(&node.path);
-                let class_suffix = match node.role.as_deref() {
-                    Some("core") => ":::core",
-                    Some("bridge") => ":::bridge",
-                    Some("dead") => ":::dead",
-                    Some("entry") => ":::entry",
-                    _ => "",
-                };
-                out.push_str(&format!(
-                    "    N{}[\"{}\\n{} fn\"]{}\n",
-                    i, label, node.signature_count, class_suffix
-                ));
-            }
-
-            for edge in &graph.edges {
-                if included.contains(edge.source.as_str()) && included.contains(edge.target.as_str()) {
-                    if let (Some(&si), Some(&ti)) = (
-                        id_map.get(edge.source.as_str()),
-                        id_map.get(edge.target.as_str()),
-                    ) {
-                        out.push_str(&format!("    N{} --> N{}\n", si, ti));
-                    }
-                }
-            }
-            out
-        }
+    let fmt = diagram::DiagramFormat::parse(format).map_err(|e| anyhow::anyhow!(e))?;
+    let opts = diagram::RenderOptions {
+        format: fmt,
+        focus: None,
+        depth: 2,
+        max_nodes,
     };
+    let rendered = diagram::render(&graph, &opts).map_err(|e| anyhow::anyhow!(e))?;
 
     if let Some(out_path) = output {
-        fs::write(out_path, &content)?;
+        fs::write(out_path, &rendered.diagram)?;
         println!("Diagram written to: {}", out_path.display());
+        if rendered.truncated {
+            println!("(truncated to {} nodes — raise --max-nodes for more)", max_nodes);
+        }
     } else {
-        println!("{}", content);
+        println!("{}", rendered.diagram);
+        if rendered.truncated {
+            eprintln!("(truncated to {} nodes — raise --max-nodes for more)", max_nodes);
+        }
     }
 
     Ok(())
@@ -3157,32 +3068,76 @@ fn semidiff_mode(root: &Path, commit1: &str, commit2: &str) -> Result<()> {
 }
 
 // =============================================================================
+// SHARED HELPER: parallel file scan + persistent cache
+// =============================================================================
+
+/// Scan and extract skeleton for every project file, with a parallel rayon scan
+/// and a git-HEAD-keyed persistent cache (.cartographer_cache.json).
+fn build_mapped_files_cached(root: &Path) -> anyhow::Result<HashMap<String, MappedFile>> {
+    use rayon::prelude::*;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize, Deserialize)]
+    struct MapCache {
+        head: String,
+        files: HashMap<String, MappedFile>,
+    }
+
+    // Compute git HEAD (empty string if not a git repo)
+    let head: String = std::process::Command::new("git")
+        .args(["-C", &root.to_string_lossy(), "rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .and_then(|o| if o.status.success() { Some(String::from_utf8_lossy(&o.stdout).trim().to_string()) } else { None })
+        .unwrap_or_default();
+
+    let cache_path = root.join(".cartographer_cache.json");
+
+    // Try cache hit
+    if !head.is_empty() {
+        if let Ok(raw) = std::fs::read_to_string(&cache_path) {
+            if let Ok(cached) = serde_json::from_str::<MapCache>(&raw) {
+                if cached.head == head {
+                    return Ok(cached.files);
+                }
+            }
+        }
+    }
+
+    // Parallel scan
+    let scan = scan_files_with_noise_tracking(root).context("file scan failed")?;
+    let result: HashMap<String, MappedFile> = scan.files
+        .par_iter()
+        .filter(|p| !is_ignored_path(p))
+        .filter_map(|p| {
+            let content = std::fs::read_to_string(p).ok()?;
+            let mapped = extract_skeleton(p, &content);
+            let rel = p.strip_prefix(root).unwrap_or(p)
+                .to_string_lossy().replace('\\', "/");
+            Some((rel, mapped))
+        })
+        .collect();
+
+    // Write cache
+    if !head.is_empty() {
+        if let Ok(json) = serde_json::to_string(&MapCache { head, files: result.clone() }) {
+            let _ = std::fs::write(&cache_path, json);
+        }
+    }
+
+    Ok(result)
+}
+
+// =============================================================================
 // MCP SERVE MODE - Start MCP server with stdio JSON-RPC transport
 // =============================================================================
 
 fn mcp_serve_mode(root: &Path) -> Result<()> {
     use crate::api::ApiState;
-    use crate::mapper::extract_skeleton;
     use crate::mcp::McpServer;
-    use crate::scanner::{is_ignored_path, scan_files_with_noise_tracking};
     use std::sync::Arc;
 
-    let result = scan_files_with_noise_tracking(root)?;
-    let mapped_files: std::collections::HashMap<String, crate::mapper::MappedFile> = result
-        .files
-        .iter()
-        .filter(|p| !is_ignored_path(p))
-        .filter_map(|p| {
-            let content = std::fs::read_to_string(p).ok()?;
-            let mapped = extract_skeleton(p, &content);
-            let rel = p
-                .strip_prefix(root)
-                .unwrap_or(p)
-                .to_string_lossy()
-                .replace('\\', "/");
-            Some((rel, mapped))
-        })
-        .collect();
+    let mapped_files = build_mapped_files_cached(root)?;
 
     let state = Arc::new(ApiState::new(root.to_path_buf()));
     {

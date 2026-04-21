@@ -642,6 +642,76 @@ char *cartographer_query_context(const char *path, const char *query, const char
 char *cartographer_shotgun_surgery(const char *path, uint32_t limit, uint32_t min_partners);
 
 /**
+ * Return all document-type nodes from the project graph.
+ *
+ * Input:  `path` — project root (C string)
+ *
+ * Response shape:
+ * ```json
+ * {
+ *   "ok": true,
+ *   "data": [
+ *     {
+ *       "path": "docs/architecture.md",
+ *       "module_id": "docs/architecture.md",
+ *       "signatures": ["# Architecture", "## Overview"],
+ *       "imports": ["src/api.rs"],
+ *       "edge_count": 3
+ *     }
+ *   ]
+ * }
+ * ```
+ */
+char *cartographer_doc_index(const char *path);
+
+/**
+ * Return a single document's structure plus skeletons of referenced code files.
+ *
+ * Inputs:
+ *   `path`     — project root (C string)
+ *   `doc_path` — relative path to the document (C string)
+ *   `budget`   — max tokens for referenced code (0 → 4000)
+ *
+ * Response shape:
+ * ```json
+ * {
+ *   "ok": true,
+ *   "data": {
+ *     "doc": { "path": "...", "moduleId": "...", "signatures": [...], "imports": [...] },
+ *     "referencedFiles": [{ "path": "...", "rank": 0.05, "signatures": [...] }],
+ *     "totalTokens": 2100
+ *   }
+ * }
+ * ```
+ */
+char *cartographer_doc_context(const char *path, const char *doc_path, uint32_t budget);
+
+/**
+ * Doc-biased context retrieval: search docs first, follow cross-refs into code.
+ *
+ * Inputs:
+ *   `path`      — project root (C string)
+ *   `query`     — natural language query (C string)
+ *   `opts_json` — optional JSON: `{ "budget": 8000, "model": "claude" }`
+ *
+ * Response shape:
+ * ```json
+ * {
+ *   "ok": true,
+ *   "data": {
+ *     "context": "## Doc Context for: ...\n\n...",
+ *     "docFiles": [...],
+ *     "codeFiles": [...],
+ *     "focusDocs": ["docs/setup.md"],
+ *     "totalTokens": 5200,
+ *     "health": { "score": 81.0, "grade": "B", ... }
+ *   }
+ * }
+ * ```
+ */
+char *cartographer_query_docs(const char *path, const char *query, const char *opts_json);
+
+/**
  * Render the project's import graph as a Mermaid or Graphviz (DOT) diagram.
  *
  * Inputs:

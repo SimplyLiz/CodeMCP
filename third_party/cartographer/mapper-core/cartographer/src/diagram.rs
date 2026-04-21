@@ -450,15 +450,11 @@ mod tests {
     }
 
     fn edge(src: &str, tgt: &str) -> GraphEdge {
-        // NOTE: upstream Cartographer's GraphEdge has an `at_range: Option<Range>`
-        // field (LIP-style source position for doc references). This vendored copy
-        // predates that field — when syncing diagram.rs, strip that one line to
-        // stay compatible with the vendored api.rs. The overlays feature itself
-        // doesn't touch at_range, so the drop is test-only.
         GraphEdge {
             source: src.into(),
             target: tgt.into(),
             edge_type: "import".into(),
+            at_range: None,
         }
     }
 

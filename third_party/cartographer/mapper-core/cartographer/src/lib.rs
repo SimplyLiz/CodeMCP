@@ -128,7 +128,7 @@ fn save_cache(root: &Path, head: &str, files: &HashMap<String, MappedFile>) {
 // build_mapped_files: parallel scan + optional cache
 // ---------------------------------------------------------------------------
 
-fn build_mapped_files(root: &Path) -> Result<HashMap<String, MappedFile>, String> {
+pub(crate) fn build_mapped_files(root: &Path) -> Result<HashMap<String, MappedFile>, String> {
     // Check persistent cache first
     let head = git_head(root);
     if let Some(cached) = load_cache(root, &head) {
@@ -1934,6 +1934,335 @@ pub extern "C" fn cartographer_shotgun_surgery(
     entries.retain(|e| e.partner_count >= min_partners);
 
     result_to_json_ptr(Ok::<_, String>(entries))
+}
+
+// ---------------------------------------------------------------------------
+// FFI: Doc Index
+// ---------------------------------------------------------------------------
+
+/// Return all document-type nodes from the project graph.
+///
+/// Input:  `path` — project root (C string)
+///
+/// Response shape:
+/// ```json
+/// {
+///   "ok": true,
+///   "data": [
+///     {
+///       "path": "docs/architecture.md",
+///       "module_id": "docs/architecture.md",
+///       "signatures": ["# Architecture", "## Overview"],
+///       "imports": ["src/api.rs"],
+///       "edge_count": 3
+///     }
+///   ]
+/// }
+/// ```
+#[no_mangle]
+pub extern "C" fn cartographer_doc_index(path: *const c_char) -> *mut c_char {
+    let path = match c_str_to_path(path) {
+        Ok(p) => p,
+        Err(e) => return result_to_json_ptr::<serde_json::Value>(Err(e)),
+    };
+
+    let mapped_files = match build_mapped_files(&path) {
+        Ok(m) => m,
+        Err(e) => return result_to_json_ptr::<serde_json::Value>(Err(e)),
+    };
+    let state = ApiState::new(path.clone());
+    {
+        let mut files = state.mapped_files.lock().unwrap();
+        *files = mapped_files;
+    }
+
+    let result = state.doc_nodes();
+    result_to_json_ptr(result)
+}
+
+// ---------------------------------------------------------------------------
+// FFI: Doc Context
+// ---------------------------------------------------------------------------
+
+/// Return a single document's structure plus skeletons of referenced code files.
+///
+/// Inputs:
+///   `path`     — project root (C string)
+///   `doc_path` — relative path to the document (C string)
+///   `budget`   — max tokens for referenced code (0 → 4000)
+///
+/// Response shape:
+/// ```json
+/// {
+///   "ok": true,
+///   "data": {
+///     "doc": { "path": "...", "moduleId": "...", "signatures": [...], "imports": [...] },
+///     "referencedFiles": [{ "path": "...", "rank": 0.05, "signatures": [...] }],
+///     "totalTokens": 2100
+///   }
+/// }
+/// ```
+#[no_mangle]
+pub extern "C" fn cartographer_doc_context(
+    path: *const c_char,
+    doc_path: *const c_char,
+    budget: u32,
+) -> *mut c_char {
+    let path = match c_str_to_path(path) {
+        Ok(p) => p,
+        Err(e) => return result_to_json_ptr::<serde_json::Value>(Err(e)),
+    };
+    if doc_path.is_null() {
+        return result_to_json_ptr::<serde_json::Value>(Err("null doc_path".into()));
+    }
+    let doc_path_str = unsafe {
+        match CStr::from_ptr(doc_path).to_str() {
+            Ok(s) => s.to_string(),
+            Err(e) => return result_to_json_ptr::<serde_json::Value>(Err(e.to_string())),
+        }
+    };
+    let budget = if budget == 0 { 4000 } else { budget as usize };
+
+    let mapped_files = match build_mapped_files(&path) {
+        Ok(m) => m,
+        Err(e) => return result_to_json_ptr::<serde_json::Value>(Err(e)),
+    };
+    let state = ApiState::new(path.clone());
+    {
+        let mut files = state.mapped_files.lock().unwrap();
+        *files = mapped_files;
+    }
+
+    if let Err(e) = state.rebuild_graph() {
+        return result_to_json_ptr::<serde_json::Value>(Err(e));
+    }
+
+    // Find the doc in mapped_files (exact match or substring)
+    let (module_id, doc_sigs, doc_imports, doc_path_owned) = {
+        let files = state.mapped_files.lock().unwrap();
+        match files.iter()
+            .find(|(_, f)| f.path == doc_path_str || f.path.contains(&doc_path_str))
+        {
+            Some((mid, mf)) => (
+                mid.clone(),
+                mf.signatures.iter().map(|s| s.raw.clone()).collect::<Vec<String>>(),
+                mf.imports.clone(),
+                mf.path.clone(),
+            ),
+            None => return result_to_json_ptr::<serde_json::Value>(
+                Err(format!("Document not found: {}", doc_path_str)),
+            ),
+        }
+    };
+
+    // Use doc's imports as focus for ranked skeleton
+    let ranked = if doc_imports.is_empty() {
+        vec![]
+    } else {
+        state.ranked_skeleton(&doc_imports, budget).unwrap_or_default()
+    };
+
+    let total_tokens: usize = ranked.iter().map(|f| f.estimated_tokens).sum();
+
+    let referenced: Vec<serde_json::Value> = ranked.iter().map(|f| {
+        serde_json::json!({
+            "path": f.path,
+            "rank": f.rank,
+            "signatureCount": f.signature_count,
+            "estimatedTokens": f.estimated_tokens,
+            "signatures": f.signatures,
+        })
+    }).collect();
+
+    let data = serde_json::json!({
+        "doc": {
+            "path": doc_path_owned,
+            "moduleId": module_id,
+            "signatures": doc_sigs,
+            "imports": doc_imports,
+        },
+        "referencedFiles": referenced,
+        "totalTokens": total_tokens,
+    });
+
+    result_to_json_ptr::<serde_json::Value>(Ok(data))
+}
+
+// ---------------------------------------------------------------------------
+// FFI: Query Docs (doc-biased context retrieval)
+// ---------------------------------------------------------------------------
+
+/// Doc-biased context retrieval: search docs first, follow cross-refs into code.
+///
+/// Inputs:
+///   `path`      — project root (C string)
+///   `query`     — natural language query (C string)
+///   `opts_json` — optional JSON: `{ "budget": 8000, "model": "claude" }`
+///
+/// Response shape:
+/// ```json
+/// {
+///   "ok": true,
+///   "data": {
+///     "context": "## Doc Context for: ...\n\n...",
+///     "docFiles": [...],
+///     "codeFiles": [...],
+///     "focusDocs": ["docs/setup.md"],
+///     "totalTokens": 5200,
+///     "health": { "score": 81.0, "grade": "B", ... }
+///   }
+/// }
+/// ```
+#[no_mangle]
+pub extern "C" fn cartographer_query_docs(
+    path: *const c_char,
+    query: *const c_char,
+    opts_json: *const c_char,
+) -> *mut c_char {
+    let path = match c_str_to_path(path) {
+        Ok(p) => p,
+        Err(e) => return result_to_json_ptr::<serde_json::Value>(Err(e)),
+    };
+    if query.is_null() {
+        return result_to_json_ptr::<serde_json::Value>(Err("null query".into()));
+    }
+    let q = unsafe {
+        match CStr::from_ptr(query).to_str() {
+            Ok(s) => s.to_string(),
+            Err(e) => return result_to_json_ptr::<serde_json::Value>(Err(e.to_string())),
+        }
+    };
+
+    #[derive(serde::Deserialize, Default)]
+    #[serde(rename_all = "camelCase")]
+    struct QueryDocsOpts {
+        budget: Option<usize>,
+        model: Option<String>,
+    }
+
+    let json_opts: QueryDocsOpts = if !opts_json.is_null() {
+        let raw = unsafe {
+            match CStr::from_ptr(opts_json).to_str() {
+                Ok(s) => s,
+                Err(e) => return result_to_json_ptr::<serde_json::Value>(Err(e.to_string())),
+            }
+        };
+        serde_json::from_str(raw).unwrap_or_default()
+    } else {
+        QueryDocsOpts::default()
+    };
+
+    let budget = json_opts.budget.unwrap_or(8000);
+    let model_str = json_opts.model.unwrap_or_else(|| "claude".to_string());
+
+    // Step 1: BM25 search across all files
+    let bm25_opts = search::BM25Options { max_results: 30, ..Default::default() };
+    let bm25_result = search::bm25_search(&path, &q, &bm25_opts).unwrap_or_default();
+
+    // Step 2: Separate into doc files and code files
+    let mut doc_files: Vec<String> = Vec::new();
+    let mut code_files: Vec<String> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    for m in &bm25_result.matches {
+        if !seen.insert(m.path.clone()) { continue; }
+        if api::is_doc_path(&m.path) {
+            doc_files.push(m.path.clone());
+        } else {
+            code_files.push(m.path.clone());
+        }
+    }
+
+    // Step 3: Build graph + follow doc cross-refs into code
+    let mapped_files = match build_mapped_files(&path) {
+        Ok(m) => m,
+        Err(e) => return result_to_json_ptr::<serde_json::Value>(Err(e)),
+    };
+    let state = ApiState::new(path.clone());
+    { let mut f = state.mapped_files.lock().unwrap(); *f = mapped_files; }
+    if let Err(e) = state.rebuild_graph() {
+        return result_to_json_ptr::<serde_json::Value>(Err(e));
+    }
+
+    {
+        let files = state.mapped_files.lock().unwrap();
+        for doc_path in &doc_files {
+            if let Some(mf) = files.get(doc_path.as_str()) {
+                for imp in &mf.imports {
+                    if !seen.contains(imp) && !api::is_doc_path(imp) {
+                        seen.insert(imp.clone());
+                        code_files.push(imp.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    // Step 4: Ranked skeleton — docs as primary focus, code as secondary
+    let mut all_focus = doc_files.clone();
+    all_focus.extend(code_files.iter().cloned());
+    all_focus.truncate(30);
+
+    let ranked = state.ranked_skeleton(&all_focus, budget).unwrap_or_default();
+
+    // Step 5: Build context text — docs first, then code
+    let mut doc_entries = Vec::new();
+    let mut code_entries = Vec::new();
+    let mut context_text = format!("## Doc Context for: {}\n\n", q);
+    let mut total_tokens = 0usize;
+
+    for f in &ranked {
+        let entry = serde_json::json!({
+            "path": f.path,
+            "rank": f.rank,
+            "signatureCount": f.signature_count,
+            "estimatedTokens": f.estimated_tokens,
+            "signatures": f.signatures,
+        });
+        total_tokens += f.estimated_tokens;
+
+        if api::is_doc_path(&f.path) {
+            context_text.push_str(&format!(
+                "// [DOC] {} (rank: {:.4}, {} tokens)\n", f.path, f.rank, f.estimated_tokens
+            ));
+            doc_entries.push(entry);
+        } else {
+            context_text.push_str(&format!(
+                "// {} (rank: {:.4}, {} tokens)\n", f.path, f.rank, f.estimated_tokens
+            ));
+            code_entries.push(entry);
+        }
+        for sig in &f.signatures {
+            context_text.push_str(&format!("  {}\n", sig));
+        }
+        context_text.push('\n');
+    }
+
+    // Step 6: Health score
+    let sig_count: usize = ranked.iter().map(|f| f.signatures.len()).sum();
+    let model = model_str.parse::<token_metrics::ModelFamily>().unwrap_or_default();
+    let health_opts = token_metrics::HealthOpts {
+        model,
+        window_size: 0,
+        key_positions: token_metrics::key_positions_from_order(
+            &ranked.iter().map(|f| f.path.clone()).collect::<Vec<_>>(),
+            &doc_files,
+        ),
+        signature_count: sig_count,
+        signature_tokens: (total_tokens as f64 * 0.85) as usize,
+    };
+    let health = token_metrics::analyze(&context_text, &health_opts);
+
+    let data = serde_json::json!({
+        "context": context_text,
+        "docFiles": doc_entries,
+        "codeFiles": code_entries,
+        "focusDocs": doc_files,
+        "totalTokens": total_tokens,
+        "health": health,
+    });
+
+    result_to_json_ptr::<serde_json::Value>(Ok(data))
 }
 
 // ---------------------------------------------------------------------------

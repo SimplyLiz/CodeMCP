@@ -148,6 +148,9 @@ pub struct ContextHealthReport {
     // Actionable
     pub warnings:        Vec<String>,
     pub recommendations: Vec<String>,
+
+    // NYX.md [commands] preset names (populated when root path is known)
+    pub nyx_commands: Option<Vec<String>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -418,7 +421,48 @@ pub fn analyze(content: &str, opts: &HealthOpts) -> ContextHealthReport {
         metrics:         m,
         warnings,
         recommendations,
+        nyx_commands:    None,
     }
+}
+
+/// Parse the `[commands]` section from `NYX.md` at `root/NYX.md`.
+///
+/// Scans for a `[commands]` section header, then reads `key = "value"` lines
+/// until the next `[section]` header or EOF. Returns a map of preset name → command string.
+pub fn parse_nyx_commands(root: &std::path::Path) -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
+    let nyx_path = root.join("NYX.md");
+    let text = match std::fs::read_to_string(&nyx_path) {
+        Ok(t) => t,
+        Err(_) => return map,
+    };
+
+    let mut in_commands = false;
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            in_commands = trimmed == "[commands]";
+            continue;
+        }
+        if !in_commands {
+            continue;
+        }
+        // Parse `key = "value"` lines
+        if let Some(eq_pos) = trimmed.find('=') {
+            let key = trimmed[..eq_pos].trim().to_string();
+            let raw_val = trimmed[eq_pos + 1..].trim();
+            // Strip surrounding quotes if present
+            let value = if raw_val.starts_with('"') && raw_val.ends_with('"') && raw_val.len() >= 2 {
+                raw_val[1..raw_val.len() - 1].to_string()
+            } else {
+                raw_val.to_string()
+            };
+            if !key.is_empty() {
+                map.insert(key, value);
+            }
+        }
+    }
+    map
 }
 
 /// Compute key module positions from an ordered list of module IDs and a list of
