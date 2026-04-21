@@ -4,6 +4,33 @@ All notable changes to CKB will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Diagram overlays in `renderArchitecture` / `ckb diagram`** — the
+  vendored `diagram.rs` was synced from upstream Cartographer, so the
+  Mermaid/DOT output now decorates the base import graph with
+  architectural signals: cycle members get a thick red border (pivots
+  dashed), cycle-internal edges a heavy red arrow, layer violations pick
+  up per-type dashed/dotted edge styling, and hot nodes
+  (`hotspot_score ≥ 70`) get an orange border plus DOT size scaling.
+  Mermaid is border-only for hot nodes (no sizing primitive). Cycle red
+  takes precedence over hot orange on the same node — architectural
+  signal wins over performance signal.
+
+### Fixed
+
+- **`localize-tree-sitter-symbols.sh` dropped grammar C parsers** — the
+  script extracted archive members via `ar x`, which silently clobbers
+  files when multiple members share a name. Cargo emits a `parser.o`
+  and `scanner.o` per grammar crate (tree-sitter-c, -cpp, -rust, -go,
+  etc.), so `ar x` left only the *last* grammar's C parser on disk,
+  producing a localized archive missing `_tree_sitter_c` / `_tree_sitter_cpp`.
+  The script now feeds the archive directly to `ld -r` with
+  `-force_load` (Mach-O) / `--whole-archive` (ELF), which pulls every
+  member in without touching the filesystem. The `rust_tree_sitter` C
+  ABI refs to `_tree_sitter_c` and `_tree_sitter_cpp` now resolve
+  inside the combined object as expected.
+
 ### Changed
 
 - **`analyzeImpact` risk score now weighted by bridge centrality** —

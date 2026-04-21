@@ -13,6 +13,12 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::api::ProjectGraphResponse;
+use crate::layers::LayerViolationType;
+
+/// Nodes with `hotspot_score` at or above this threshold get the `hot` overlay
+/// (thick orange stroke in Mermaid, thicker orange border + larger size in DOT).
+/// Picked to match the "top decile" of hotspots on real codebases.
+const HOTSPOT_THRESHOLD: f64 = 70.0;
 
 /// Output format requested by the caller.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,6 +55,53 @@ pub struct RenderedDiagram {
     pub node_count: usize,
 }
 
+/// Precomputed overlays that decorate the base import graph with architectural
+/// signals: cycles (from `graph.cycles`), layer violations (from
+/// `graph.layer_violations`), and hotspot nodes (from `GraphNode.hotspot_score`).
+///
+/// We precompute once per `render()` so both Mermaid and DOT rendering paths
+/// consult the same sets and stay visually consistent.
+struct Overlays<'a> {
+    cycle_nodes: HashSet<&'a str>,
+    pivot_nodes: HashSet<&'a str>,
+    cycle_edges: HashSet<(&'a str, &'a str)>,
+    violations: HashMap<(&'a str, &'a str), &'a LayerViolationType>,
+}
+
+fn compute_overlays(graph: &ProjectGraphResponse) -> Overlays<'_> {
+    let mut cycle_nodes: HashSet<&str> = HashSet::new();
+    let mut pivot_nodes: HashSet<&str> = HashSet::new();
+    let mut cycle_edges: HashSet<(&str, &str)> = HashSet::new();
+
+    for cycle in &graph.cycles {
+        let members: HashSet<&str> = cycle.nodes.iter().map(|s| s.as_str()).collect();
+        for n in &cycle.nodes {
+            cycle_nodes.insert(n.as_str());
+        }
+        if let Some(pivot) = &cycle.pivot_node {
+            pivot_nodes.insert(pivot.as_str());
+        }
+        // An edge participates in this cycle iff both endpoints are cycle members.
+        for edge in &graph.edges {
+            if members.contains(edge.source.as_str()) && members.contains(edge.target.as_str()) {
+                cycle_edges.insert((edge.source.as_str(), edge.target.as_str()));
+            }
+        }
+    }
+
+    let mut violations: HashMap<(&str, &str), &LayerViolationType> = HashMap::new();
+    for v in &graph.layer_violations {
+        // LayerViolation.source_path/target_path are actually module_ids
+        // (they come from edge_tuples in api.rs, which clone edge.source/target).
+        violations.insert(
+            (v.source_path.as_str(), v.target_path.as_str()),
+            &v.violation_type,
+        );
+    }
+
+    Overlays { cycle_nodes, pivot_nodes, cycle_edges, violations }
+}
+
 /// Render an import-graph diagram. Pure over `graph` — no I/O.
 pub fn render(graph: &ProjectGraphResponse, opts: &RenderOptions) -> Result<RenderedDiagram, String> {
     let max_nodes = opts.max_nodes.max(1);
@@ -67,9 +120,11 @@ pub fn render(graph: &ProjectGraphResponse, opts: &RenderOptions) -> Result<Rend
         .map(|n| (n.module_id.as_str(), n))
         .collect();
 
+    let overlays = compute_overlays(graph);
+
     let content = match opts.format {
-        DiagramFormat::Dot => render_dot(&included, &included_set, &node_by_id, graph),
-        DiagramFormat::Mermaid => render_mermaid(&included, &included_set, &node_by_id, graph),
+        DiagramFormat::Dot => render_dot(&included, &included_set, &node_by_id, graph, &overlays),
+        DiagramFormat::Mermaid => render_mermaid(&included, &included_set, &node_by_id, graph, &overlays),
     };
 
     Ok(RenderedDiagram { diagram: content, truncated, node_count: included.len() })
@@ -165,21 +220,68 @@ fn render_dot(
     included_set: &HashSet<&str>,
     node_by_id: &HashMap<&str, &crate::api::GraphNode>,
     graph: &ProjectGraphResponse,
+    overlays: &Overlays,
 ) -> String {
     let mut out = String::from("digraph cartographer {\n    rankdir=LR;\n");
     for module_id in included {
         let Some(node) = node_by_id.get(module_id.as_str()) else { continue };
         let label = node.path.rsplit('/').next().unwrap_or(&node.path);
-        let color = role_color_dot(node.role.as_deref());
+        let fill = role_color_dot(node.role.as_deref());
+
+        let mid = module_id.as_str();
+        let is_pivot = overlays.pivot_nodes.contains(mid);
+        let in_cycle = overlays.cycle_nodes.contains(mid);
+        let score = node.hotspot_score.unwrap_or(0.0).clamp(0.0, 100.0);
+        let hot = score >= HOTSPOT_THRESHOLD;
+
+        // Border: pivot > cycle > hot > default. Pivot is dashed to distinguish
+        // it inside a red-bordered cycle.
+        let (border_color, pen_width, extra_style) = if is_pivot {
+            ("#cc0000", 3.0, ",dashed")
+        } else if in_cycle {
+            ("#cc0000", 3.0, "")
+        } else if hot {
+            ("#ff6600", 3.0, "")
+        } else {
+            ("#333333", 1.0, "")
+        };
+
+        // Hotspot-driven sizing. score ∈ [0,100] → width ∈ [0.75, 1.80],
+        // height ∈ [0.50, 0.90], fontsize ∈ [10, 16]. Nodes without a score
+        // render at the default size.
+        let width = 0.75 + (score / 100.0) * 1.05;
+        let height = 0.50 + (score / 100.0) * 0.40;
+        let fontsize = 10 + ((score / 100.0) * 6.0) as u32;
+
         out.push_str(&format!(
-            "    \"{}\" [label=\"{}\\n{} fn\" shape=box style=filled fillcolor=\"{}\"];\n",
-            node.module_id, label, node.signature_count, color
+            "    \"{}\" [label=\"{}\\n{} fn\" shape=box style=\"filled{}\" fillcolor=\"{}\" color=\"{}\" penwidth={:.1} width={:.2} height={:.2} fontsize={}];\n",
+            node.module_id, label, node.signature_count,
+            extra_style, fill, border_color, pen_width, width, height, fontsize
         ));
     }
     for edge in &graph.edges {
-        if included_set.contains(edge.source.as_str()) && included_set.contains(edge.target.as_str()) {
-            out.push_str(&format!("    \"{}\" -> \"{}\";\n", edge.source, edge.target));
+        if !(included_set.contains(edge.source.as_str())
+            && included_set.contains(edge.target.as_str()))
+        {
+            continue;
         }
+        let key = (edge.source.as_str(), edge.target.as_str());
+        let viol = overlays.violations.get(&key).copied();
+        let in_cycle = overlays.cycle_edges.contains(&key);
+
+        let (color, style, pen) = match viol {
+            Some(LayerViolationType::BackCall)
+            | Some(LayerViolationType::CircularCrossLayer) => ("#cc0000", "dashed", 2.5),
+            Some(LayerViolationType::SkipCall) => ("#ff9900", "dotted", 2.0),
+            Some(LayerViolationType::DirectForeignImport) => ("#cccc00", "dotted", 1.5),
+            None if in_cycle => ("#cc0000", "solid", 2.5),
+            None => ("#666666", "solid", 1.0),
+        };
+
+        out.push_str(&format!(
+            "    \"{}\" -> \"{}\" [color=\"{}\" style={} penwidth={:.1}];\n",
+            edge.source, edge.target, color, style, pen
+        ));
     }
     out.push('}');
     out
@@ -190,12 +292,16 @@ fn render_mermaid(
     included_set: &HashSet<&str>,
     node_by_id: &HashMap<&str, &crate::api::GraphNode>,
     graph: &ProjectGraphResponse,
+    overlays: &Overlays,
 ) -> String {
     let mut out = String::from("graph TD\n");
     out.push_str("    classDef bridge fill:#f96,stroke:#333\n");
     out.push_str("    classDef core fill:#9cf,stroke:#333\n");
     out.push_str("    classDef dead fill:#ccc,stroke:#333\n");
     out.push_str("    classDef entry fill:#9f9,stroke:#333\n");
+    out.push_str("    classDef cycle stroke:#c00,stroke-width:3px\n");
+    out.push_str("    classDef pivot stroke:#c00,stroke-width:3px,stroke-dasharray:5 5\n");
+    out.push_str("    classDef hot stroke:#f60,stroke-width:3px\n");
 
     let id_map: HashMap<&str, usize> = included
         .iter()
@@ -203,6 +309,9 @@ fn render_mermaid(
         .map(|(i, m)| (m.as_str(), i))
         .collect();
 
+    // Node declarations carry the inline role class (:::core / :::bridge / etc).
+    // Overlay classes (cycle/pivot/hot) are applied via separate `class` statements
+    // below so a node can wear multiple classes without relying on inline chaining.
     for module_id in included {
         let Some(node) = node_by_id.get(module_id.as_str()) else { continue };
         let i = id_map[module_id.as_str()];
@@ -214,15 +323,78 @@ fn render_mermaid(
         ));
     }
 
-    for edge in &graph.edges {
-        if included_set.contains(edge.source.as_str()) && included_set.contains(edge.target.as_str()) {
-            if let (Some(&si), Some(&ti)) = (
-                id_map.get(edge.source.as_str()),
-                id_map.get(edge.target.as_str()),
-            ) {
-                out.push_str(&format!("    N{} --> N{}\n", si, ti));
-            }
+    // Overlay class assignments. Pivot takes precedence over cycle so a pivot
+    // node gets the dashed border that distinguishes it inside a cycle.
+    for module_id in included {
+        let Some(node) = node_by_id.get(module_id.as_str()) else { continue };
+        let i = id_map[module_id.as_str()];
+        let mid = module_id.as_str();
+        let mut extras: Vec<&str> = Vec::new();
+        if overlays.pivot_nodes.contains(mid) {
+            extras.push("pivot");
+        } else if overlays.cycle_nodes.contains(mid) {
+            extras.push("cycle");
         }
+        if node.hotspot_score.unwrap_or(0.0) >= HOTSPOT_THRESHOLD {
+            extras.push("hot");
+        }
+        if !extras.is_empty() {
+            out.push_str(&format!("    class N{} {};\n", i, extras.join(",")));
+        }
+    }
+
+    // Edges. We emit them in source order and remember each edge's index so we
+    // can append `linkStyle` directives for cycle/violation edges at the end.
+    let mut edge_index: usize = 0;
+    let mut link_styles: Vec<(usize, &'static str)> = Vec::new();
+    for edge in &graph.edges {
+        if !(included_set.contains(edge.source.as_str())
+            && included_set.contains(edge.target.as_str()))
+        {
+            continue;
+        }
+        let (Some(&si), Some(&ti)) = (
+            id_map.get(edge.source.as_str()),
+            id_map.get(edge.target.as_str()),
+        ) else {
+            continue;
+        };
+        let key = (edge.source.as_str(), edge.target.as_str());
+        let viol = overlays.violations.get(&key).copied();
+        let in_cycle = overlays.cycle_edges.contains(&key);
+
+        // Arrow: `==>` for plain cycles, `-.->` for any violation (dotted
+        // Mermaid arrow covers both back-calls and skip-calls visually;
+        // linkStyle below distinguishes them by colour/dash).
+        let arrow = match (viol, in_cycle) {
+            (Some(_), _) => "-.->",
+            (None, true) => "==>",
+            (None, false) => "-->",
+        };
+        out.push_str(&format!("    N{} {} N{}\n", si, arrow, ti));
+
+        let style: Option<&'static str> = match viol {
+            Some(LayerViolationType::BackCall)
+            | Some(LayerViolationType::CircularCrossLayer) => {
+                Some("stroke:#c00,stroke-width:2.5px,stroke-dasharray:6 3")
+            }
+            Some(LayerViolationType::SkipCall) => {
+                Some("stroke:#f90,stroke-width:2px,stroke-dasharray:3 3")
+            }
+            Some(LayerViolationType::DirectForeignImport) => {
+                Some("stroke:#cc0,stroke-width:1.5px,stroke-dasharray:2 2")
+            }
+            None if in_cycle => Some("stroke:#c00,stroke-width:2.5px"),
+            None => None,
+        };
+        if let Some(s) = style {
+            link_styles.push((edge_index, s));
+        }
+        edge_index += 1;
+    }
+
+    for (idx, style) in link_styles {
+        out.push_str(&format!("    linkStyle {} {}\n", idx, style));
     }
     out
 }
@@ -250,7 +422,8 @@ fn role_class_suffix(role: Option<&str>) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::{GraphEdge, GraphMetadata, GraphNode, ProjectGraphResponse};
+    use crate::api::{CycleInfo, GraphEdge, GraphMetadata, GraphNode, ProjectGraphResponse};
+    use crate::layers::{LayerViolation, LayerViolationType};
     use std::collections::HashMap;
 
     fn node(id: &str, role: Option<&str>) -> GraphNode {
@@ -277,6 +450,11 @@ mod tests {
     }
 
     fn edge(src: &str, tgt: &str) -> GraphEdge {
+        // NOTE: upstream Cartographer's GraphEdge has an `at_range: Option<Range>`
+        // field (LIP-style source position for doc references). This vendored copy
+        // predates that field — when syncing diagram.rs, strip that one line to
+        // stay compatible with the vendored api.rs. The overlays feature itself
+        // doesn't touch at_range, so the drop is test-only.
         GraphEdge {
             source: src.into(),
             target: tgt.into(),
@@ -477,5 +655,222 @@ mod tests {
         // Role-tagged nodes carry their class suffix.
         assert!(r.diagram.contains(":::core"));
         assert!(r.diagram.contains(":::bridge"));
+        // Overlay classes are always declared so later `class` statements resolve.
+        assert!(r.diagram.contains("classDef cycle"));
+        assert!(r.diagram.contains("classDef pivot"));
+        assert!(r.diagram.contains("classDef hot"));
+    }
+
+    fn cycle(nodes: &[&str], pivot: Option<&str>) -> CycleInfo {
+        CycleInfo {
+            nodes: nodes.iter().map(|s| s.to_string()).collect(),
+            pivot_node: pivot.map(String::from),
+            severity: "high".into(),
+        }
+    }
+
+    fn violation(src: &str, tgt: &str, vt: LayerViolationType) -> LayerViolation {
+        LayerViolation {
+            source_path: src.into(),
+            target_path: tgt.into(),
+            source_layer: "x".into(),
+            target_layer: "y".into(),
+            violation_type: vt,
+            severity: "CRITICAL".into(),
+        }
+    }
+
+    #[test]
+    fn mermaid_marks_cycle_nodes_edges_and_pivot() {
+        let mut g = fixture();
+        g.edges.push(edge("c", "a")); // closes a → b → c → a
+        g.cycles.push(cycle(&["a", "b", "c"], Some("b")));
+
+        let r = render(&g, &RenderOptions {
+            format: DiagramFormat::Mermaid,
+            focus: None,
+            depth: 2,
+            max_nodes: 10,
+        }).unwrap();
+
+        // Cycle edges use thick arrow and pick up a linkStyle.
+        assert!(r.diagram.contains("==>"), "expected cycle edges to use ==>:\n{}", r.diagram);
+        assert!(r.diagram.contains("linkStyle"), "expected linkStyle for cycle edges");
+
+        // Pivot takes precedence over cycle — node b gets the pivot class.
+        assert!(
+            r.diagram.lines().any(|l| l.trim_start().starts_with("class N") && l.contains("pivot")),
+            "expected a class statement assigning pivot:\n{}", r.diagram
+        );
+        // Non-pivot cycle members still get the cycle class.
+        assert!(
+            r.diagram.lines().any(|l| l.trim_start().starts_with("class N") && l.contains("cycle")),
+            "expected a class statement assigning cycle:\n{}", r.diagram
+        );
+    }
+
+    #[test]
+    fn dot_marks_cycle_edges_red() {
+        let mut g = fixture();
+        g.edges.push(edge("c", "a"));
+        g.cycles.push(cycle(&["a", "b", "c"], None));
+
+        let r = render(&g, &RenderOptions {
+            format: DiagramFormat::Dot,
+            focus: None,
+            depth: 2,
+            max_nodes: 10,
+        }).unwrap();
+
+        // At least one cycle edge must carry the red colour and solid style.
+        let cycle_edge_line = r
+            .diagram
+            .lines()
+            .find(|l| l.contains("\"a\" -> \"b\"") || l.contains("\"b\" -> \"c\"") || l.contains("\"c\" -> \"a\""))
+            .expect("cycle edge should be rendered");
+        assert!(cycle_edge_line.contains("#cc0000"), "cycle edge missing red colour: {}", cycle_edge_line);
+
+        // Non-cycle edges stay grey.
+        assert!(r.diagram.contains("#666666") || !g.edges.iter().any(|e| {
+            let members = ["a", "b", "c"];
+            !members.contains(&e.source.as_str()) || !members.contains(&e.target.as_str())
+        }));
+    }
+
+    #[test]
+    fn mermaid_marks_layer_violations() {
+        let mut g = fixture();
+        g.layer_violations.push(violation("a", "b", LayerViolationType::BackCall));
+        g.layer_violations.push(violation("b", "c", LayerViolationType::SkipCall));
+
+        let r = render(&g, &RenderOptions {
+            format: DiagramFormat::Mermaid,
+            focus: None,
+            depth: 2,
+            max_nodes: 10,
+        }).unwrap();
+
+        // Both violations use the dotted-violation arrow.
+        assert!(r.diagram.contains("-.->"), "expected dotted arrow for violations:\n{}", r.diagram);
+        // linkStyle distinguishes the two by colour.
+        assert!(r.diagram.contains("stroke:#c00"), "expected red stroke for BackCall");
+        assert!(r.diagram.contains("stroke:#f90"), "expected orange stroke for SkipCall");
+    }
+
+    #[test]
+    fn dot_marks_layer_violations_with_style_and_colour() {
+        let mut g = fixture();
+        g.layer_violations.push(violation("a", "b", LayerViolationType::BackCall));
+        g.layer_violations.push(violation("b", "c", LayerViolationType::SkipCall));
+
+        let r = render(&g, &RenderOptions {
+            format: DiagramFormat::Dot,
+            focus: None,
+            depth: 2,
+            max_nodes: 10,
+        }).unwrap();
+
+        let back = r.diagram.lines().find(|l| l.contains("\"a\" -> \"b\"")).unwrap();
+        assert!(back.contains("#cc0000"), "BackCall edge missing red: {}", back);
+        assert!(back.contains("style=dashed"), "BackCall edge missing dashed: {}", back);
+
+        let skip = r.diagram.lines().find(|l| l.contains("\"b\" -> \"c\"")).unwrap();
+        assert!(skip.contains("#ff9900"), "SkipCall edge missing orange: {}", skip);
+        assert!(skip.contains("style=dotted"), "SkipCall edge missing dotted: {}", skip);
+    }
+
+    #[test]
+    fn dot_sizes_hot_nodes_and_applies_orange_border() {
+        let mut g = fixture();
+        if let Some(n) = g.nodes.iter_mut().find(|n| n.module_id == "a") {
+            n.hotspot_score = Some(90.0);
+        }
+
+        let r = render(&g, &RenderOptions {
+            format: DiagramFormat::Dot,
+            focus: None,
+            depth: 2,
+            max_nodes: 10,
+        }).unwrap();
+
+        let hot_line = r.diagram.lines().find(|l| l.trim_start().starts_with("\"a\" [")).unwrap();
+        // width at score=90 ≈ 0.75 + 0.9 * 1.05 = 1.695 → formatted as 1.70
+        assert!(hot_line.contains("width=1.70"), "hot node width wrong: {}", hot_line);
+        assert!(hot_line.contains("#ff6600"), "hot node missing orange border: {}", hot_line);
+
+        // A cold node stays at default width.
+        let cold_line = r.diagram.lines().find(|l| l.trim_start().starts_with("\"b\" [")).unwrap();
+        assert!(cold_line.contains("width=0.75"), "cold node width wrong: {}", cold_line);
+    }
+
+    #[test]
+    fn mermaid_marks_hot_nodes_with_class() {
+        let mut g = fixture();
+        if let Some(n) = g.nodes.iter_mut().find(|n| n.module_id == "a") {
+            n.hotspot_score = Some(90.0);
+        }
+        let r = render(&g, &RenderOptions {
+            format: DiagramFormat::Mermaid,
+            focus: None,
+            depth: 2,
+            max_nodes: 10,
+        }).unwrap();
+
+        // `a` should get a class statement including `hot`.
+        assert!(
+            r.diagram.lines().any(|l| l.trim_start().starts_with("class N") && l.contains("hot")),
+            "expected class statement assigning hot:\n{}", r.diagram
+        );
+    }
+
+    #[test]
+    fn cycle_border_takes_precedence_over_hot_border_in_dot() {
+        // A node that's both hot and in a cycle wears the cycle red border,
+        // not the hot orange border — architectural signal wins.
+        let mut g = fixture();
+        g.edges.push(edge("c", "a"));
+        g.cycles.push(cycle(&["a", "b", "c"], None));
+        if let Some(n) = g.nodes.iter_mut().find(|n| n.module_id == "a") {
+            n.hotspot_score = Some(95.0);
+        }
+
+        let r = render(&g, &RenderOptions {
+            format: DiagramFormat::Dot,
+            focus: None,
+            depth: 2,
+            max_nodes: 10,
+        }).unwrap();
+
+        let a_line = r.diagram.lines().find(|l| l.trim_start().starts_with("\"a\" [")).unwrap();
+        // Expect the cycle red colour, not the hot orange.
+        assert!(a_line.contains("color=\"#cc0000\""), "expected cycle red border: {}", a_line);
+        assert!(!a_line.contains("color=\"#ff6600\""), "hot border should not win over cycle: {}", a_line);
+    }
+
+    #[test]
+    fn overlays_respect_max_nodes_truncation() {
+        // Cycle spans a,b,c but max_nodes=2 cuts the graph — the renderer must
+        // not reference excluded nodes in linkStyle / class statements.
+        let mut g = fixture();
+        g.edges.push(edge("c", "a"));
+        g.cycles.push(cycle(&["a", "b", "c"], Some("c")));
+
+        let r = render(&g, &RenderOptions {
+            format: DiagramFormat::Mermaid,
+            focus: None,
+            depth: 2,
+            max_nodes: 2,
+        }).unwrap();
+        assert!(r.truncated);
+        assert_eq!(r.node_count, 2);
+
+        // No linkStyle index should exceed the count of emitted edges.
+        let edge_count = r.diagram.lines().filter(|l| {
+            l.contains(" --> ") || l.contains(" ==> ") || l.contains(" -.-> ")
+        }).count();
+        for line in r.diagram.lines().filter(|l| l.trim_start().starts_with("linkStyle")) {
+            let idx: usize = line.split_whitespace().nth(1).unwrap().parse().unwrap();
+            assert!(idx < edge_count, "linkStyle {} refers to an edge that wasn't emitted", idx);
+        }
     }
 }

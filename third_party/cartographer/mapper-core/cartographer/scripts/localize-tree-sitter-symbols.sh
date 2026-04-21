@@ -71,12 +71,28 @@ trap 'rm -rf "$WORK"' EXIT
 cp "$ARCHIVE_ABS" "$WORK/input.a"
 (
   cd "$WORK"
-  "$AR" x input.a
-  rm input.a
 
-  # Partial link (`ld -r`) merges every member into a single relocatable
-  # object. `-nostdlib` prevents clang/gcc from pulling in CRT or libSystem.
-  "$CC" -nostdlib -Wl,-r -o combined.o ./*.o
+  # Partial link (`ld -r`) merges every archive member into a single
+  # relocatable object so Cartographer's internal ts_*/tree_sitter_* refs
+  # resolve within the combined object. We feed the archive directly to
+  # the linker with a force-load flag rather than `ar x`-extracting first,
+  # because Cargo emits multiple `.o` members with identical names (each
+  # tree-sitter grammar crate's build.rs produces its own `parser.o` /
+  # `scanner.o`) — `ar x` clobbers duplicates on disk, dropping the C
+  # parser objects for all but the last grammar. `-force_load` (Mach-O)
+  # and `--whole-archive` (ELF) both pull in every member unconditionally,
+  # preserving every instance.
+  #
+  # `-nostdlib` prevents clang/gcc from pulling in CRT or libSystem.
+  case "$(uname -s)" in
+    Darwin)
+      "$CC" -nostdlib -Wl,-r -o combined.o -Wl,-force_load,input.a
+      ;;
+    *)
+      "$CC" -nostdlib -Wl,-r -o combined.o \
+        -Wl,--whole-archive input.a -Wl,--no-whole-archive
+      ;;
+  esac
 
   # Localize tree-sitter runtime (`ts_*`) and grammar init symbols
   # (`tree_sitter_<lang>`, plus internal `tree_sitter_<lang>_external_scanner_*`
