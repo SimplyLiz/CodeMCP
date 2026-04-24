@@ -321,6 +321,21 @@ func (a *ImpactAnalyzer) processTransitiveCallers(symbol *Symbol, vis *Visibilit
 
 // computeBlastRadius calculates blast radius metrics from all impact items
 func (a *ImpactAnalyzer) computeBlastRadius(allImpact []ImpactItem) *BlastRadius {
+	return RecomputeBlastRadius(allImpact)
+}
+
+// RecomputeBlastRadius derives a BlastRadius summary from a flat list of
+// ImpactItems. Exposed so that callers who mutate the item list after
+// analysis (e.g. folding in external enricher data via
+// FoldExternalStaticItems) can refresh the summary counts and risk level
+// without re-running the full analyzer.
+//
+// ModuleId-less items contribute to FileCount and the caller count but
+// not to ModuleCount — LIP tier-1 items arrive without module resolution,
+// so ModuleCount remains a conservative lower bound. RiskLevel is
+// re-derived via ClassifyBlastRadius(moduleCount, callerCount), matching
+// the analyzer's original classification.
+func RecomputeBlastRadius(allImpact []ImpactItem) *BlastRadius {
 	moduleSet := make(map[string]bool)
 	fileSet := make(map[string]bool)
 	callerCount := 0

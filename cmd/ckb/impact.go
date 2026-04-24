@@ -301,6 +301,7 @@ type ImpactResponseCLI struct {
 	SymbolID         string            `json:"symbolId"`
 	Symbol           *SymbolInfoCLI    `json:"symbol,omitempty"`
 	RiskScore        *RiskScoreCLI     `json:"riskScore,omitempty"`
+	BlastRadius      *BlastRadiusCLI   `json:"blastRadius,omitempty"`
 	DirectImpact     []ImpactItemCLI   `json:"directImpact"`
 	TransitiveImpact []ImpactItemCLI   `json:"transitiveImpact,omitempty"`
 	ModulesAffected  []ModuleImpactCLI `json:"modulesAffected"`
@@ -431,6 +432,15 @@ func convertImpactResponse(symbolID string, resp *query.AnalyzeImpactResponse) *
 			Score:       resp.RiskScore.Score,
 			Explanation: resp.RiskScore.Explanation,
 			Factors:     factors,
+		}
+	}
+
+	if resp.BlastRadius != nil {
+		result.BlastRadius = &BlastRadiusCLI{
+			ModuleCount:       resp.BlastRadius.ModuleCount,
+			FileCount:         resp.BlastRadius.FileCount,
+			UniqueCallerCount: resp.BlastRadius.UniqueCallerCount,
+			RiskLevel:         resp.BlastRadius.RiskLevel,
 		}
 	}
 

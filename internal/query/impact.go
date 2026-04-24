@@ -333,6 +333,25 @@ func (e *Engine) AnalyzeImpact(ctx context.Context, opts AnalyzeImpactOptions) (
 		return nil, e.wrapError(err, errors.InternalError)
 	}
 
+	// Fetch LIP enrichment up-front so tier-1 static callers can be folded
+	// into result.DirectImpact/TransitiveImpact before budget truncation and
+	// item sorting. `ext` is also used later to populate semantic callers on
+	// the BlastRadius summary via MergeBlastRadius.
+	ext := e.fetchLIPEnrichment(symbolInfo)
+	if ext != nil {
+		result.DirectImpact, result.TransitiveImpact = impact.FoldExternalStaticItems(
+			result.DirectImpact, result.TransitiveImpact, ext, e.repoRoot)
+		// Recompute the blast-radius summary from the unioned item set so
+		// UniqueCallerCount / FileCount / RiskLevel reflect LIP's static
+		// contribution. Skipped when EdgesSource=="empty" because the fold
+		// no-ops in that case and the original summary is already correct.
+		if ext.EdgesSource != impact.EdgesSourceEmpty && result.BlastRadius != nil {
+			all := append([]impact.ImpactItem{}, result.DirectImpact...)
+			all = append(all, result.TransitiveImpact...)
+			result.BlastRadius = impact.RecomputeBlastRadius(all)
+		}
+	}
+
 	// Convert results
 	directImpact := convertImpactItems(result.DirectImpact)
 	transitiveImpact := convertImpactItems(result.TransitiveImpact)
@@ -454,44 +473,14 @@ func (e *Engine) AnalyzeImpact(ctx context.Context, opts AnalyzeImpactOptions) (
 	}
 
 	// Convert blast radius, then enrich with LIP semantic coupling when available.
+	// The static-item fold already happened up-front; MergeBlastRadius here
+	// only blends in semantic (embedding-discovered) callers and preserves
+	// the post-fold summary counts.
 	var blastRadius *BlastRadiusSummary
 	if result.BlastRadius != nil {
-		// LIP enrichment paths, in preference order:
-		//   1. query_blast_radius_symbol (v2.3+) — direct symbol-URI call, no filtering.
-		//   2. query_blast_radius_batch (v2.2) — fetch all symbols in the file, then LookupSymbol by name.
-		// Both gated on capability so older daemons degrade to SCIP-only.
 		enriched := result.BlastRadius
-		if symbolInfo != nil && symbolInfo.Location != nil {
-			var ext *impact.ExternalBlastRadius
-			switch {
-			case e.lipSupports("query_blast_radius_symbol"):
-				// Prefer the SCIP-form URI for symbols imported from SCIP (the
-				// common case — CKB's StableID is the raw scip-go symbol). Fall
-				// back to the Tier-1 `lip://local/<file>#<name>` form for symbols
-				// that don't round-trip through SCIP.
-				symURI := lip.SCIPSymbolToURI(symbolInfo.StableId)
-				if symURI == "" || !strings.HasPrefix(symURI, "lip://") {
-					symURI = "lip://local/" + symbolInfo.Location.FileId + "#" + symbolInfo.Name
-				}
-				if entry, _ := lip.QueryBlastRadiusSymbol(symURI, 0.6); entry != nil {
-					ext = lip.EntryToExternal(entry)
-				}
-			case e.lipSupports("query_blast_radius_batch"):
-				fileURI := "lip://local/" + symbolInfo.Location.FileId
-				if lipEntries, _ := lip.QueryBlastRadiusBatch([]string{fileURI}, 0.6); lipEntries != nil {
-					converted := make(map[string]*impact.ExternalBlastRadius, len(lipEntries.Entries))
-					for k, v := range lipEntries.Entries {
-						vCopy := v
-						converted[k] = lip.EntryToExternal(&vCopy)
-					}
-					if e, ok := lip.LookupSymbol(converted, symbolInfo.Location.FileId, symbolInfo.Name); ok {
-						ext = e
-					}
-				}
-			}
-			if ext != nil {
-				enriched = impact.MergeBlastRadius(result.BlastRadius, ext)
-			}
+		if ext != nil {
+			enriched = impact.MergeBlastRadius(result.BlastRadius, ext)
 		}
 
 		blastRadius = &BlastRadiusSummary{
@@ -1962,4 +1951,46 @@ func (e *Engine) generateRecommendations(
 	}
 
 	return recs
+}
+
+// fetchLIPEnrichment pulls blast-radius enrichment for a symbol from LIP via
+// the best available RPC. Preference order:
+//  1. query_blast_radius_symbol (v2.3+) — direct symbol-URI call, no filtering.
+//  2. query_blast_radius_batch (v2.2) — fetch all symbols in the file, then
+//     LookupSymbol by name as a fallback.
+//
+// Returns nil when the symbol lacks a location, LIP is unavailable, or the
+// daemon doesn't support either RPC — callers should treat nil as "skip
+// enrichment" and fall back to SCIP-only results unchanged.
+func (e *Engine) fetchLIPEnrichment(symbolInfo *SymbolInfo) *impact.ExternalBlastRadius {
+	if symbolInfo == nil || symbolInfo.Location == nil {
+		return nil
+	}
+	switch {
+	case e.lipSupports("query_blast_radius_symbol"):
+		// Prefer the SCIP-form URI for symbols imported from SCIP (the common
+		// case — CKB's StableID is the raw scip-go symbol). Fall back to the
+		// Tier-1 `lip://local/<file>#<name>` form for symbols that don't
+		// round-trip through SCIP.
+		symURI := lip.SCIPSymbolToURI(symbolInfo.StableId)
+		if symURI == "" || !strings.HasPrefix(symURI, "lip://") {
+			symURI = "lip://local/" + symbolInfo.Location.FileId + "#" + symbolInfo.Name
+		}
+		if entry, _ := lip.QueryBlastRadiusSymbol(symURI, 0.6); entry != nil {
+			return lip.EntryToExternal(entry)
+		}
+	case e.lipSupports("query_blast_radius_batch"):
+		fileURI := "lip://local/" + symbolInfo.Location.FileId
+		if lipEntries, _ := lip.QueryBlastRadiusBatch([]string{fileURI}, 0.6); lipEntries != nil {
+			converted := make(map[string]*impact.ExternalBlastRadius, len(lipEntries.Entries))
+			for k, v := range lipEntries.Entries {
+				vCopy := v
+				converted[k] = lip.EntryToExternal(&vCopy)
+			}
+			if ext, ok := lip.LookupSymbol(converted, symbolInfo.Location.FileId, symbolInfo.Name); ok {
+				return ext
+			}
+		}
+	}
+	return nil
 }
