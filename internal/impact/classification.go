@@ -6,6 +6,8 @@ type ImpactKind string
 const (
 	DirectCaller        ImpactKind = "direct-caller"
 	TransitiveCaller    ImpactKind = "transitive-caller"
+	DirectCallee        ImpactKind = "direct-callee"     // forward direction: what this symbol calls
+	TransitiveCallee    ImpactKind = "transitive-callee" // forward direction, distance >= 2
 	TypeDependency      ImpactKind = "type-dependency"
 	TestDependency      ImpactKind = "test-dependency"
 	ImplementsInterface ImpactKind = "implements-interface"

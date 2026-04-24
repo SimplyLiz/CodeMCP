@@ -105,3 +105,43 @@ func EntryToExternal(entry *BlastRadiusEntry) *impact.ExternalBlastRadius {
 	return ebr
 }
 
+// OutgoingEntryToExternal converts an OutgoingImpactEntry to
+// impact.ExternalBlastRadius so callers can reuse the same fold and merge
+// machinery built for incoming blast radius.
+//
+// The shared Go type does not imply shared semantics: direct_items here are
+// callees (symbols the target invokes), not callers. Consumers must classify
+// folded items with DirectCallee / TransitiveCallee kinds rather than
+// DirectCaller / TransitiveCaller.
+//
+// RiskLevel is intentionally left empty — outgoing impact doesn't carry its
+// own risk classification; CKB derives one from the unioned callee set on
+// receipt.
+func OutgoingEntryToExternal(entry *OutgoingImpactEntry) *impact.ExternalBlastRadius {
+	if entry == nil {
+		return nil
+	}
+	ebr := &impact.ExternalBlastRadius{
+		EdgesSource: entry.EdgesSource,
+	}
+	for _, di := range entry.DirectItems {
+		ebr.DirectItems = append(ebr.DirectItems, impact.ExternalItem{
+			FileURI: di.FileURI, SymbolURI: di.SymbolURI,
+			Distance: di.Distance, Confidence: di.Confidence,
+		})
+	}
+	for _, ti := range entry.TransitiveItems {
+		ebr.TransitiveItems = append(ebr.TransitiveItems, impact.ExternalItem{
+			FileURI: ti.FileURI, SymbolURI: ti.SymbolURI,
+			Distance: ti.Distance, Confidence: ti.Confidence,
+		})
+	}
+	for _, si := range entry.SemanticItems {
+		ebr.SemanticItems = append(ebr.SemanticItems, impact.ExternalSemanticItem{
+			FileURI: si.FileURI, SymbolURI: si.SymbolURI,
+			Similarity: si.Similarity, Source: si.Source,
+		})
+	}
+	return ebr
+}
+

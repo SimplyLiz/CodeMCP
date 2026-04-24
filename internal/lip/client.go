@@ -857,6 +857,63 @@ func QueryBlastRadiusSymbol(symbolURI string, minScore float32) (*BlastRadiusEnt
 }
 
 // =============================================================================
+// Outgoing impact (v2.3.3)
+// =============================================================================
+
+// OutgoingImpactEntry is the result of a QueryOutgoingImpact call. Shape
+// mirrors BlastRadiusEntry but traces the forward call graph — direct_items
+// are callees at distance=1, transitive_items at distance>=2.
+//
+// target_uri echoes the request's symbol_uri (post-canonicalisation).
+// edges_source and the semantic items reuse the same provenance and coupling
+// vocabulary as blast radius, so callers can treat both results through the
+// shared ExternalBlastRadius pipeline via OutgoingEntryToExternal.
+type OutgoingImpactEntry struct {
+	TargetURI       string                    `json:"target_uri"`
+	DirectItems     []BlastRadiusItem         `json:"direct_items"`
+	TransitiveItems []BlastRadiusItem         `json:"transitive_items"`
+	SemanticItems   []BlastRadiusSemanticItem `json:"semantic_items"`
+	// EdgesSource mirrors BlastRadiusEntry.EdgesSource: "tier1",
+	// "scip_with_tier1_edges", "scip_only", or "empty". Omitted by
+	// daemons that don't yet report provenance — treat as fold-eligible.
+	EdgesSource string `json:"edges_source,omitempty"`
+	Truncated   bool   `json:"truncated"`
+}
+
+type outgoingImpactResp struct {
+	Result *OutgoingImpactEntry `json:"result,omitempty"`
+}
+
+// QueryOutgoingImpact asks LIP for the forward call graph of a symbol
+// (v2.3.3+). Returns (nil, nil) when the symbol isn't indexed, LIP is
+// unavailable, or the daemon doesn't support the RPC — callers should
+// degrade to SCIP-only outgoing traversal.
+//
+// Depth is capped at 8 server-side (matching query_outgoing_calls). Semantic
+// items are seeded from the target's own embedding, same as blast radius.
+//
+// Gate on Handshake.SupportedMessages containing "query_outgoing_impact"
+// before calling — older daemons reject with UnknownMessage.
+func QueryOutgoingImpact(symbolURI string, minScore float32) (*OutgoingImpactEntry, error) {
+	if symbolURI == "" {
+		return nil, nil
+	}
+	req := map[string]any{
+		"type":       "query_outgoing_impact",
+		"symbol_uri": symbolURI,
+	}
+	if minScore > 0 {
+		req["min_score"] = minScore
+	}
+	raw, _ := lipRPC(req, 2*time.Second, 2<<20,
+		func(r outgoingImpactResp) *outgoingImpactResp { return &r })
+	if raw == nil {
+		return nil, nil
+	}
+	return raw.Result, nil
+}
+
+// =============================================================================
 // Annotations
 // =============================================================================
 
