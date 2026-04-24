@@ -903,6 +903,39 @@ func BatchAnnotationGet(uris []string, key string) (map[string]string, error) {
 // Protocol
 // =============================================================================
 
+type deltaAckResp struct {
+	Accepted bool    `json:"accepted"`
+	Error    *string `json:"error"`
+}
+
+// RegisterProjectRoot tells the LIP daemon the canonical filesystem root for
+// this workspace (shipped in LIP v2.3.1). Once registered, LIP canonicalises
+// inbound lip://local/<rel> URIs via longest-prefix match against the root
+// set, so callers can send either relative or absolute forms on subsequent
+// queries.
+//
+// Best-effort and idempotent: the daemon tracks roots as an unordered set.
+// Safe to call on every connect. Returns (false, nil) when LIP is unavailable
+// or rejects the root; callers treat both as "proceed without registration"
+// since CKB's query paths already tolerate unregistered roots via the server's
+// auto-detect heuristics.
+//
+// Gate on Handshake.SupportedMessages containing "register_project_root"
+// before calling — older daemons will reject with UnknownMessage.
+func RegisterProjectRoot(root string) (bool, error) {
+	if root == "" {
+		return false, nil
+	}
+	result, _ := lipRPC(
+		map[string]any{"type": "register_project_root", "root": root},
+		500*time.Millisecond, 4<<10,
+		func(r deltaAckResp) *deltaAckResp { return &r })
+	if result == nil {
+		return false, nil
+	}
+	return result.Accepted, nil
+}
+
 // Handshake performs the version handshake. Clients can call this on connect to
 // detect protocol drift before sending real queries.
 func Handshake(clientVersion string) (*HandshakeInfo, error) {

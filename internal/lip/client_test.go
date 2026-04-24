@@ -695,6 +695,52 @@ func TestWireProtocol_BatchAnnotationGet(t *testing.T) {
 	assertField(t, req, "key", "stability")
 }
 
+func TestWireProtocol_RegisterProjectRoot_Accepted(t *testing.T) {
+	d := newTestDaemon(t, deltaAckResp{Accepted: true})
+
+	ok, err := RegisterProjectRoot("/abs/path/to/repo")
+	d.waitHandled(t)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ok {
+		t.Errorf("accepted = false, want true")
+	}
+	req := d.req()
+	assertField(t, req, "type", "register_project_root")
+	assertField(t, req, "root", "/abs/path/to/repo")
+}
+
+// When the daemon rejects the root (e.g. invalid path), the RPC should return
+// (false, nil) — non-fatal, callers fall back to auto-detection.
+func TestWireProtocol_RegisterProjectRoot_Rejected(t *testing.T) {
+	reason := "invalid root"
+	d := newTestDaemon(t, deltaAckResp{Accepted: false, Error: &reason})
+
+	ok, err := RegisterProjectRoot("/bogus")
+	d.waitHandled(t)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ok {
+		t.Errorf("accepted = true, want false")
+	}
+}
+
+// Empty root must short-circuit — no socket call.
+func TestWireProtocol_RegisterProjectRoot_EmptyRoot(t *testing.T) {
+	prev := os.Getenv("LIP_SOCKET")
+	os.Setenv("LIP_SOCKET", "/tmp/lip-nonexistent-ckb-test.sock")
+	defer os.Setenv("LIP_SOCKET", prev)
+
+	ok, err := RegisterProjectRoot("")
+	if ok || err != nil {
+		t.Errorf("empty root: want (false, nil), got (%v, %v)", ok, err)
+	}
+}
+
 func TestWireProtocol_Handshake(t *testing.T) {
 	d := newTestDaemon(t, handshakeResp{DaemonVersion: "2.0.0", ProtocolVersion: 2})
 
