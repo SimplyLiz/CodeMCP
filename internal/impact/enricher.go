@@ -167,6 +167,32 @@ func FoldExternalStaticItems(
 	external *ExternalBlastRadius,
 	repoRoot string,
 ) (foldedDirect, foldedTransitive []ImpactItem) {
+	return foldExternalItemsWithKinds(direct, transitive, external, repoRoot, DirectCaller, TransitiveCaller)
+}
+
+// FoldExternalCalleeItems is the forward-direction twin of
+// FoldExternalStaticItems, tagging folded items with DirectCallee /
+// TransitiveCallee. Used by Engine.AnalyzeOutgoingImpact to fold LIP's
+// query_outgoing_impact result into the shared ImpactItem pipeline.
+//
+// Unlike the incoming path there is typically no SCIP-derived list to merge
+// against — callers usually pass nil for direct/transitive and get back a
+// pure LIP-derived set. Dedup semantics are identical to the incoming fold,
+// so passing non-nil inputs is also supported for future SCIP forward BFS.
+func FoldExternalCalleeItems(
+	direct, transitive []ImpactItem,
+	external *ExternalBlastRadius,
+	repoRoot string,
+) (foldedDirect, foldedTransitive []ImpactItem) {
+	return foldExternalItemsWithKinds(direct, transitive, external, repoRoot, DirectCallee, TransitiveCallee)
+}
+
+func foldExternalItemsWithKinds(
+	direct, transitive []ImpactItem,
+	external *ExternalBlastRadius,
+	repoRoot string,
+	directKind, transitiveKind ImpactKind,
+) (foldedDirect, foldedTransitive []ImpactItem) {
 	if external == nil || external.EdgesSource == EdgesSourceEmpty {
 		return direct, transitive
 	}
@@ -183,7 +209,7 @@ func FoldExternalStaticItems(
 	foldedTransitive = transitive
 
 	for _, ei := range external.DirectItems {
-		item, key, ok := externalItemToImpactItem(ei, DirectCaller)
+		item, key, ok := externalItemToImpactItem(ei, directKind)
 		if !ok {
 			continue
 		}
@@ -194,7 +220,7 @@ func FoldExternalStaticItems(
 		foldedDirect = append(foldedDirect, item)
 	}
 	for _, ei := range external.TransitiveItems {
-		item, key, ok := externalItemToImpactItem(ei, TransitiveCaller)
+		item, key, ok := externalItemToImpactItem(ei, transitiveKind)
 		if !ok {
 			continue
 		}
@@ -220,7 +246,7 @@ func externalItemToImpactItem(ei ExternalItem, kind ImpactKind) (ImpactItem, str
 	}
 	distance := ei.Distance
 	if distance == 0 {
-		if kind == DirectCaller {
+		if kind == DirectCaller || kind == DirectCallee {
 			distance = 1
 		} else {
 			distance = 2

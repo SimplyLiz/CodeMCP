@@ -114,9 +114,10 @@ type ModuleInfoCLI struct {
 
 // ProvenanceCLI contains response metadata
 type ProvenanceCLI struct {
-	RepoStateId     string `json:"repoStateId"`
-	RepoStateDirty  bool   `json:"repoStateDirty"`
-	QueryDurationMs int64  `json:"queryDurationMs"`
+	RepoStateId     string   `json:"repoStateId"`
+	RepoStateDirty  bool     `json:"repoStateDirty"`
+	QueryDurationMs int64    `json:"queryDurationMs"`
+	Warnings        []string `json:"warnings,omitempty"`
 }
 
 func convertSymbolResponse(resp *query.GetSymbolResponse) *SymbolResponseCLI {

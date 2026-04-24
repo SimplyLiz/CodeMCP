@@ -233,6 +233,70 @@ func TestFoldExternalStaticItems_DistanceDefault(t *testing.T) {
 	}
 }
 
+func TestFoldExternalCalleeItems_TagsCalleeKinds(t *testing.T) {
+	// Mirrors the Caller test pattern, but asserts items are tagged with
+	// DirectCallee / TransitiveCallee rather than the caller kinds. Guards
+	// against accidental cross-wiring of foldExternalItemsWithKinds.
+	external := &ExternalBlastRadius{
+		EdgesSource: EdgesSourceScipWithTier1Edges,
+		DirectItems: []ExternalItem{
+			{SymbolURI: "lip://local//repo/a.go#A", Distance: 1, Confidence: 0.95},
+		},
+		TransitiveItems: []ExternalItem{
+			{SymbolURI: "lip://local//repo/b.go#B", Distance: 2, Confidence: 0.85},
+		},
+	}
+	gotD, gotT := FoldExternalCalleeItems(nil, nil, external, "/repo")
+	if len(gotD) != 1 || gotD[0].Kind != DirectCallee {
+		t.Errorf("direct kind = %q, want %q", gotD[0].Kind, DirectCallee)
+	}
+	if len(gotT) != 1 || gotT[0].Kind != TransitiveCallee {
+		t.Errorf("transitive kind = %q, want %q", gotT[0].Kind, TransitiveCallee)
+	}
+}
+
+func TestFoldExternalCalleeItems_NilAndEmpty(t *testing.T) {
+	// Short-circuits mirror the caller twin — nil external and "empty"
+	// EdgesSource both must leave the input lists unchanged.
+	seed := []ImpactItem{{Name: "seed", Kind: DirectCallee, Distance: 1}}
+
+	gotD, gotT := FoldExternalCalleeItems(seed, nil, nil, "/repo")
+	if len(gotD) != 1 || len(gotT) != 0 {
+		t.Errorf("nil external: direct=%d trans=%d, want 1/0", len(gotD), len(gotT))
+	}
+
+	gotD, _ = FoldExternalCalleeItems(seed, nil, &ExternalBlastRadius{
+		EdgesSource: EdgesSourceEmpty,
+		DirectItems: []ExternalItem{
+			{SymbolURI: "lip://local//repo/a.go#A", Distance: 1},
+		},
+	}, "/repo")
+	if len(gotD) != 1 {
+		t.Errorf("empty EdgesSource: direct=%d, want 1 (unchanged)", len(gotD))
+	}
+}
+
+func TestFoldExternalCalleeItems_DistanceDefault(t *testing.T) {
+	// Distance=0 from LIP should default to 1 for direct, 2 for transitive —
+	// same semantics as the caller path.
+	external := &ExternalBlastRadius{
+		EdgesSource: EdgesSourceScipOnly,
+		DirectItems: []ExternalItem{
+			{SymbolURI: "lip://local//repo/a.go#A", Confidence: 0.95},
+		},
+		TransitiveItems: []ExternalItem{
+			{SymbolURI: "lip://local//repo/b.go#B", Confidence: 0.85},
+		},
+	}
+	gotD, gotT := FoldExternalCalleeItems(nil, nil, external, "/repo")
+	if gotD[0].Distance != 1 {
+		t.Errorf("direct default distance = %d, want 1", gotD[0].Distance)
+	}
+	if gotT[0].Distance != 2 {
+		t.Errorf("transitive default distance = %d, want 2", gotT[0].Distance)
+	}
+}
+
 func TestMergeBlastRadius_DedupByFile(t *testing.T) {
 	static := &BlastRadius{
 		UniqueCallerCount: 2,

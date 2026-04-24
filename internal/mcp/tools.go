@@ -345,6 +345,25 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 			},
 		},
 		{
+			Name:        "analyzeOutgoingImpact",
+			Description: "Use this to check 'what does X call?' — returns direct and transitive callees, plus embedding-similar semantically coupled symbols. Mirror of analyzeImpact in the forward direction. Requires a LIP daemon advertising query_outgoing_impact (v2.3.5+); when LIP is unavailable the response is empty with a provenance warning.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"symbolId": map[string]interface{}{
+						"type":        "string",
+						"description": "The stable symbol ID to analyze",
+					},
+					"minScore": map[string]interface{}{
+						"type":        "number",
+						"default":     0.6,
+						"description": "Minimum cosine similarity for semantic callees. 0 disables semantic enrichment.",
+					},
+				},
+				"required": []string{"symbolId"},
+			},
+		},
+		{
 			Name:        "analyzeChange",
 			Description: "Use this AFTER changes are made to analyze a git diff — answers: what might break? which tests should run? who needs to review? For pre-change planning (before writing code), use prepareChange instead. For full PR review with quality gates, use reviewPR.",
 			InputSchema: map[string]interface{}{
@@ -2765,6 +2784,7 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["findReferences"] = s.toolFindReferences
 	s.tools["getArchitecture"] = s.toolGetArchitecture
 	s.tools["analyzeImpact"] = s.toolAnalyzeImpact
+	s.tools["analyzeOutgoingImpact"] = s.toolAnalyzeOutgoingImpact
 	s.tools["analyzeChange"] = s.toolAnalyzeChange
 	s.tools["explainSymbol"] = s.toolExplainSymbol
 	s.tools["justifySymbol"] = s.toolJustifySymbol

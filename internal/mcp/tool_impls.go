@@ -1180,6 +1180,130 @@ func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (*envelope.
 	return resp.Build(), nil
 }
 
+// toolAnalyzeOutgoingImpact implements the analyzeOutgoingImpact tool —
+// the forward-direction twin of analyzeImpact. Answers "what does X call?"
+// by asking LIP for the outgoing call graph. When LIP is unavailable, the
+// response is empty with a provenance warning rather than an error.
+func (s *MCPServer) toolAnalyzeOutgoingImpact(params map[string]interface{}) (*envelope.Response, error) {
+	timer := NewWideResultTimer()
+
+	symbolId, ok := params["symbolId"].(string)
+	if !ok {
+		return nil, errors.NewInvalidParameterError("symbolId", "")
+	}
+
+	minScore := float32(0.6)
+	if v, ok := params["minScore"].(float64); ok {
+		minScore = float32(v)
+	}
+
+	s.logger.Debug("Executing analyzeOutgoingImpact",
+		"symbolId", symbolId,
+		"minScore", minScore,
+	)
+
+	ctx := context.Background()
+	outResp, err := s.engine().AnalyzeOutgoingImpact(ctx, query.AnalyzeOutgoingImpactOptions{
+		SymbolId: symbolId,
+		MinScore: minScore,
+	})
+	if err != nil {
+		return nil, errors.NewOperationError("outgoing impact analysis", err)
+	}
+
+	directCallees := make([]map[string]interface{}, 0, len(outResp.DirectCallees))
+	for _, item := range outResp.DirectCallees {
+		info := map[string]interface{}{
+			"stableId":   item.StableId,
+			"name":       item.Name,
+			"kind":       item.Kind,
+			"distance":   item.Distance,
+			"moduleId":   item.ModuleId,
+			"confidence": item.Confidence,
+		}
+		if item.Location != nil {
+			info["location"] = map[string]interface{}{
+				"fileId":    item.Location.FileId,
+				"startLine": item.Location.StartLine,
+			}
+		}
+		directCallees = append(directCallees, info)
+	}
+
+	transitiveCallees := make([]map[string]interface{}, 0, len(outResp.TransitiveCallees))
+	for _, item := range outResp.TransitiveCallees {
+		info := map[string]interface{}{
+			"stableId":   item.StableId,
+			"name":       item.Name,
+			"kind":       item.Kind,
+			"distance":   item.Distance,
+			"moduleId":   item.ModuleId,
+			"confidence": item.Confidence,
+		}
+		if item.Location != nil {
+			info["location"] = map[string]interface{}{
+				"fileId":    item.Location.FileId,
+				"startLine": item.Location.StartLine,
+			}
+		}
+		transitiveCallees = append(transitiveCallees, info)
+	}
+
+	semanticCallees := make([]map[string]interface{}, 0, len(outResp.SemanticCallees))
+	for _, s := range outResp.SemanticCallees {
+		semanticCallees = append(semanticCallees, map[string]interface{}{
+			"symbolUri":  s.SymbolURI,
+			"fileUri":    s.FileURI,
+			"similarity": s.Similarity,
+			"source":     s.Source,
+		})
+	}
+
+	data := map[string]interface{}{
+		"directCallees":     directCallees,
+		"transitiveCallees": transitiveCallees,
+	}
+	if len(semanticCallees) > 0 {
+		data["semanticCallees"] = semanticCallees
+	}
+	if outResp.EdgesSource != "" {
+		data["edgesSource"] = outResp.EdgesSource
+	}
+	if outResp.Truncated {
+		data["truncated"] = true
+	}
+	if outResp.Symbol != nil {
+		sym := map[string]interface{}{
+			"stableId": outResp.Symbol.StableId,
+			"name":     outResp.Symbol.Name,
+			"kind":     outResp.Symbol.Kind,
+		}
+		if outResp.Symbol.Visibility != nil {
+			sym["visibility"] = outResp.Symbol.Visibility.Visibility
+		}
+		data["symbol"] = sym
+	}
+
+	totalResults := len(outResp.DirectCallees) + len(outResp.TransitiveCallees)
+	responseBytes := MeasureJSONSize(data)
+	RecordWideResult(WideResultMetrics{
+		ToolName:        "analyzeOutgoingImpact",
+		TotalResults:    totalResults,
+		ReturnedResults: totalResults,
+		TruncatedCount:  0,
+		ResponseBytes:   responseBytes,
+		EstimatedTokens: EstimateTokens(responseBytes),
+		ExecutionMs:     timer.ElapsedMs(),
+	})
+
+	activeBackend := s.engine().ActiveBackendName()
+	return NewToolResponse().
+		Data(data).
+		WithProvenance(outResp.Provenance).
+		WithBackend(activeBackend, s.logger).
+		Build(), nil
+}
+
 // toolAnalyzeChange implements the analyzeChange tool
 func (s *MCPServer) toolAnalyzeChange(params map[string]interface{}) (*envelope.Response, error) {
 	timer := NewWideResultTimer()

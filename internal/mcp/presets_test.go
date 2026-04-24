@@ -42,9 +42,9 @@ func TestPresetFiltering(t *testing.T) {
 		t.Fatalf("failed to set full preset: %v", err)
 	}
 	fullTools := server.GetFilteredTools()
-	// v8.5: +3 Cartographer (shotgunSurgery, evolution, blastRadius) +3 LIP annotation tools = 107; +1 symbolExists = 108; +1 (full includes the expanded presets) = 109
-	if len(fullTools) != 109 {
-		t.Errorf("expected 109 full tools, got %d", len(fullTools))
+	// v8.5: +3 Cartographer (shotgunSurgery, evolution, blastRadius) +3 LIP annotation tools = 107; +1 symbolExists = 108; +1 (full includes the expanded presets) = 109; +1 analyzeOutgoingImpact = 110
+	if len(fullTools) != 110 {
+		t.Errorf("expected 110 full tools, got %d", len(fullTools))
 	}
 
 	// Full preset should still have core tools first
