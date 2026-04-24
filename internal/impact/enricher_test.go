@@ -102,6 +102,137 @@ func TestMergeBlastRadius_BothSource(t *testing.T) {
 	}
 }
 
+func TestFoldExternalStaticItems_NilExternal(t *testing.T) {
+	direct := []ImpactItem{{StableId: "a", Name: "A", Kind: DirectCaller}}
+	gotD, gotT := FoldExternalStaticItems(direct, nil, nil, "/repo")
+	if len(gotD) != 1 || gotD[0].StableId != "a" {
+		t.Errorf("nil external should pass direct through unchanged, got %+v", gotD)
+	}
+	if gotT != nil {
+		t.Errorf("nil external should pass transitive through unchanged, got %+v", gotT)
+	}
+}
+
+func TestFoldExternalStaticItems_EmptyEdgesSource(t *testing.T) {
+	direct := []ImpactItem{{StableId: "a", Name: "A", Kind: DirectCaller}}
+	external := &ExternalBlastRadius{
+		EdgesSource: EdgesSourceEmpty,
+		DirectItems: []ExternalItem{
+			{FileURI: "lip://local//repo/b.go", SymbolURI: "lip://local//repo/b.go#B", Distance: 1, Confidence: 0.9},
+		},
+	}
+	gotD, _ := FoldExternalStaticItems(direct, nil, external, "/repo")
+	if len(gotD) != 1 {
+		t.Errorf("EdgesSource=empty should skip fold; got %d direct items, want 1", len(gotD))
+	}
+}
+
+func TestFoldExternalStaticItems_SkipsEmptySymbolURI(t *testing.T) {
+	external := &ExternalBlastRadius{
+		EdgesSource: EdgesSourceScipOnly,
+		DirectItems: []ExternalItem{
+			{FileURI: "lip://local//repo/phase4.go", SymbolURI: "", Distance: 1, Confidence: 0.95},
+			{FileURI: "lip://local//repo/ok.go", SymbolURI: "lip://local//repo/ok.go#Ok", Distance: 1, Confidence: 0.95},
+		},
+	}
+	gotD, _ := FoldExternalStaticItems(nil, nil, external, "/repo")
+	if len(gotD) != 1 {
+		t.Fatalf("expected 1 direct item after skipping empty-SymbolURI, got %d", len(gotD))
+	}
+	if gotD[0].Name != "Ok" {
+		t.Errorf("kept item name = %q, want Ok", gotD[0].Name)
+	}
+	if gotD[0].Location == nil || gotD[0].Location.FileId != "/repo/ok.go" {
+		t.Errorf("kept item FileId = %v, want /repo/ok.go", gotD[0].Location)
+	}
+}
+
+func TestFoldExternalStaticItems_DedupAgainstSCIP(t *testing.T) {
+	// SCIP already knows about callgraph.go:RenderTree. LIP rediscovers it.
+	// After fold, we should NOT get a duplicate.
+	direct := []ImpactItem{
+		{StableId: "scip-sym", Name: "RenderTree", Kind: DirectCaller, Distance: 1,
+			Location: &Location{FileId: "cmd/ckb/callgraph.go"}},
+	}
+	external := &ExternalBlastRadius{
+		EdgesSource: EdgesSourceScipOnly,
+		DirectItems: []ExternalItem{
+			// Same file + name as SCIP → dedup
+			{FileURI: "lip://local//repo/cmd/ckb/callgraph.go",
+				SymbolURI: "lip://local//repo/cmd/ckb/callgraph.go#RenderTree",
+				Distance:  1, Confidence: 0.95},
+			// Novel caller — keep
+			{FileURI: "lip://local//repo/cmd/ckb/impact.go",
+				SymbolURI: "lip://local//repo/cmd/ckb/impact.go#doImpact",
+				Distance:  1, Confidence: 0.95},
+		},
+	}
+	gotD, _ := FoldExternalStaticItems(direct, nil, external, "/repo")
+	if len(gotD) != 2 {
+		t.Fatalf("want 2 items (1 SCIP + 1 novel LIP), got %d: %+v", len(gotD), gotD)
+	}
+	if gotD[0].Name != "RenderTree" || gotD[1].Name != "doImpact" {
+		t.Errorf("wrong items: %q, %q", gotD[0].Name, gotD[1].Name)
+	}
+}
+
+func TestFoldExternalStaticItems_DedupBetweenLIPDirectAndTransitive(t *testing.T) {
+	// LIP emits the same caller in both lists (shouldn't happen, but guard).
+	external := &ExternalBlastRadius{
+		EdgesSource: EdgesSourceScipWithTier1Edges,
+		DirectItems: []ExternalItem{
+			{SymbolURI: "lip://local//repo/a.go#A", Distance: 1, Confidence: 0.95},
+		},
+		TransitiveItems: []ExternalItem{
+			{SymbolURI: "lip://local//repo/a.go#A", Distance: 2, Confidence: 0.85},
+		},
+	}
+	gotD, gotT := FoldExternalStaticItems(nil, nil, external, "/repo")
+	if len(gotD) != 1 || len(gotT) != 0 {
+		t.Errorf("want direct=1 trans=0 after cross-list dedup, got direct=%d trans=%d", len(gotD), len(gotT))
+	}
+}
+
+func TestFoldExternalStaticItems_AbsoluteFileIdPassthrough(t *testing.T) {
+	// When SCIP already stores an absolute FileId, dedup should still match
+	// LIP's absolute URI — filepath.Join shouldn't double-prefix.
+	direct := []ImpactItem{
+		{Name: "X", Kind: DirectCaller, Distance: 1,
+			Location: &Location{FileId: "/repo/x.go"}},
+	}
+	external := &ExternalBlastRadius{
+		EdgesSource: EdgesSourceTier1,
+		DirectItems: []ExternalItem{
+			{SymbolURI: "lip://local//repo/x.go#X", Distance: 1, Confidence: 0.95},
+		},
+	}
+	gotD, _ := FoldExternalStaticItems(direct, nil, external, "/repo")
+	if len(gotD) != 1 {
+		t.Errorf("abs FileId dedup failed: got %d items, want 1", len(gotD))
+	}
+}
+
+func TestFoldExternalStaticItems_DistanceDefault(t *testing.T) {
+	// LIP sometimes omits Distance=0. Direct items should default to 1,
+	// transitive to 2.
+	external := &ExternalBlastRadius{
+		EdgesSource: EdgesSourceScipOnly,
+		DirectItems: []ExternalItem{
+			{SymbolURI: "lip://local//repo/a.go#A", Confidence: 0.95},
+		},
+		TransitiveItems: []ExternalItem{
+			{SymbolURI: "lip://local//repo/b.go#B", Confidence: 0.85},
+		},
+	}
+	gotD, gotT := FoldExternalStaticItems(nil, nil, external, "/repo")
+	if len(gotD) != 1 || gotD[0].Distance != 1 {
+		t.Errorf("direct distance default = %d, want 1", gotD[0].Distance)
+	}
+	if len(gotT) != 1 || gotT[0].Distance != 2 {
+		t.Errorf("transitive distance default = %d, want 2", gotT[0].Distance)
+	}
+}
+
 func TestMergeBlastRadius_DedupByFile(t *testing.T) {
 	static := &BlastRadius{
 		UniqueCallerCount: 2,

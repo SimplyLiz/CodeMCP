@@ -54,9 +54,36 @@ func LookupSymbol(entries map[string]*impact.ExternalBlastRadius, file, name str
 	return nil, false
 }
 
+// SCIPSymbolToURI translates a SCIP symbol string (space-separated
+// `<scheme> <manager> <package> <version> <descriptor>`) into the LIP URI
+// form LIP's daemon uses for SCIP-imported symbols:
+// `lip://<scheme>/<manager>/<package>@<version>/<descriptor>`.
+//
+// Returns the input unchanged when it already looks like a LIP URI (starts
+// with `lip://`) or doesn't parse as a 5-field SCIP symbol. Mirrors
+// `scip_symbol_to_lip_uri` in LIP's import.rs.
+func SCIPSymbolToURI(sym string) string {
+	if sym == "" {
+		return ""
+	}
+	if strings.HasPrefix(sym, "lip://") {
+		return sym
+	}
+	parts := strings.SplitN(sym, " ", 5)
+	if len(parts) != 5 {
+		return sym
+	}
+	scheme, manager, pkg, version, descriptor := parts[0], parts[1], parts[2], parts[3], parts[4]
+	descPath := strings.ReplaceAll(descriptor, " ", "/")
+	return "lip://" + scheme + "/" + manager + "/" + pkg + "@" + version + "/" + descPath
+}
+
 // EntryToExternal converts a BlastRadiusEntry to impact.ExternalBlastRadius.
 func EntryToExternal(entry *BlastRadiusEntry) *impact.ExternalBlastRadius {
-	ebr := &impact.ExternalBlastRadius{RiskLevel: entry.RiskLevel}
+	ebr := &impact.ExternalBlastRadius{
+		RiskLevel:   entry.RiskLevel,
+		EdgesSource: entry.EdgesSource,
+	}
 	for _, di := range entry.DirectItems {
 		ebr.DirectItems = append(ebr.DirectItems, impact.ExternalItem{
 			FileURI: di.FileURI, SymbolURI: di.SymbolURI,

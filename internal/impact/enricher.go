@@ -1,6 +1,10 @@
 package impact
 
-import "context"
+import (
+	"context"
+	"path/filepath"
+	"strings"
+)
 
 // BlastRadiusEnricher supplements SCIP-derived blast radius with external data
 // (e.g., LIP embedding-based semantic coupling). Implementations must be safe
@@ -25,7 +29,21 @@ type ExternalBlastRadius struct {
 	SemanticItems []ExternalSemanticItem
 	// RiskLevel is the external source's own risk assessment.
 	RiskLevel string
+	// EdgesSource is the provenance for DirectItems/TransitiveItems. Values
+	// mirror LIP v2.3.1: "tier1" (tree-sitter AST), "scip_with_tier1_edges"
+	// (SCIP symbols, Tier-1 edges back-filled), "scip_only" (SCIP call edges
+	// as-is), "empty" (no static edges available). An unset value means the
+	// source didn't report provenance — treat as fold-eligible.
+	EdgesSource string
 }
+
+// Edge-source values for ExternalBlastRadius.EdgesSource.
+const (
+	EdgesSourceTier1              = "tier1"
+	EdgesSourceScipWithTier1Edges = "scip_with_tier1_edges"
+	EdgesSourceScipOnly           = "scip_only"
+	EdgesSourceEmpty              = "empty"
+)
 
 // ExternalItem is a static caller from an external blast radius source.
 type ExternalItem struct {
@@ -120,4 +138,161 @@ func MergeBlastRadius(static *BlastRadius, external *ExternalBlastRadius) *Blast
 	merged.SemanticCallers = semanticCallers
 	// RiskLevel stays SCIP-derived. Semantic coupling informs the human, not the threshold.
 	return &merged
+}
+
+// FoldExternalStaticItems folds an enricher's DirectItems / TransitiveItems
+// into SCIP-derived ImpactItem lists so LIP's tier-1 tree-sitter callers
+// (which SCIP misses when scip-go emits no Call roles) become first-class
+// impact items rather than sitting in a parallel summary field.
+//
+// Behaviour:
+//   - external == nil OR EdgesSource == "empty" → returns (direct, transitive)
+//     unchanged. "empty" means LIP had no static call-edge evidence to
+//     contribute; folding nothing is correct.
+//   - Items with SymbolURI == "" are skipped (Phase-4 file-only fallback
+//     from LIP — legitimate file-level evidence but no symbol identity to
+//     dedup against).
+//   - Remaining items are deduped against the existing SCIP items by
+//     (absolute file path, symbol name). LIP's tier-1 URIs carry absolute
+//     paths (lip://local//<abs>#<name>); SCIP ImpactItem.Location.FileId
+//     is joined onto repoRoot when relative. Items already present on the
+//     SCIP side are dropped — we never inflate caller counts with evidence
+//     SCIP already recorded.
+//
+// The function does not reclassify EdgesSource values — callers decide
+// whether the provenance is trustworthy before calling. All non-Empty
+// sources (tier1, scip_with_tier1_edges, scip_only) fold the same way.
+func FoldExternalStaticItems(
+	direct, transitive []ImpactItem,
+	external *ExternalBlastRadius,
+	repoRoot string,
+) (foldedDirect, foldedTransitive []ImpactItem) {
+	if external == nil || external.EdgesSource == EdgesSourceEmpty {
+		return direct, transitive
+	}
+
+	seen := make(map[string]struct{}, len(direct)+len(transitive))
+	for _, it := range direct {
+		seen[impactItemDedupKey(it, repoRoot)] = struct{}{}
+	}
+	for _, it := range transitive {
+		seen[impactItemDedupKey(it, repoRoot)] = struct{}{}
+	}
+
+	foldedDirect = direct
+	foldedTransitive = transitive
+
+	for _, ei := range external.DirectItems {
+		item, key, ok := externalItemToImpactItem(ei, DirectCaller)
+		if !ok {
+			continue
+		}
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		foldedDirect = append(foldedDirect, item)
+	}
+	for _, ei := range external.TransitiveItems {
+		item, key, ok := externalItemToImpactItem(ei, TransitiveCaller)
+		if !ok {
+			continue
+		}
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		foldedTransitive = append(foldedTransitive, item)
+	}
+	return foldedDirect, foldedTransitive
+}
+
+// externalItemToImpactItem parses a LIP ExternalItem into an ImpactItem
+// and its dedup key. Returns ok=false for items with empty SymbolURI or a
+// URI that doesn't carry a `#<name>` fragment.
+func externalItemToImpactItem(ei ExternalItem, kind ImpactKind) (ImpactItem, string, bool) {
+	if ei.SymbolURI == "" {
+		return ImpactItem{}, "", false
+	}
+	absPath, name, ok := splitLIPSymbolURI(ei.SymbolURI, ei.FileURI)
+	if !ok {
+		return ImpactItem{}, "", false
+	}
+	distance := ei.Distance
+	if distance == 0 {
+		if kind == DirectCaller {
+			distance = 1
+		} else {
+			distance = 2
+		}
+	}
+	item := ImpactItem{
+		StableId:   ei.SymbolURI,
+		Name:       name,
+		Kind:       kind,
+		Distance:   distance,
+		Confidence: ei.Confidence,
+		Location:   &Location{FileId: absPath},
+	}
+	return item, dedupKey(absPath, name), true
+}
+
+// splitLIPSymbolURI parses a lip://local//<abs>#<name> URI into (abs, name).
+// Falls back to the companion file_uri when the symbol URI has no fragment,
+// which happens for Phase-4 file-only items LIP emits — but those should
+// already be filtered by the caller via the empty-SymbolURI check, so a
+// fragment-less URI here is treated as unparseable.
+func splitLIPSymbolURI(symURI, fileURI string) (absPath, name string, ok bool) {
+	hash := strings.LastIndex(symURI, "#")
+	if hash < 0 {
+		return "", "", false
+	}
+	filePart := symURI[:hash]
+	name = symURI[hash+1:]
+	if name == "" {
+		return "", "", false
+	}
+	absPath = stripLIPLocalPrefix(filePart)
+	if absPath == "" && fileURI != "" {
+		absPath = stripLIPLocalPrefix(fileURI)
+	}
+	if absPath == "" {
+		return "", "", false
+	}
+	return absPath, name, true
+}
+
+// stripLIPLocalPrefix converts lip://local//<abs> or lip://local/<rel>
+// back to a filesystem path. Non-lip://local URIs (e.g. scip-go) are
+// returned unchanged — they won't match any SCIP FileId but the dedup
+// key will still be unique, so LIP items are safely additive.
+func stripLIPLocalPrefix(uri string) string {
+	const p = "lip://local/"
+	if !strings.HasPrefix(uri, p) {
+		return uri
+	}
+	rest := uri[len(p):]
+	// LIP writes lip://local//<abs> (double slash) when the path is
+	// absolute. After stripping the single-slash prefix, a leading
+	// slash survives and marks an absolute path. Relative paths come
+	// through as plain "foo/bar.go".
+	return rest
+}
+
+// impactItemDedupKey produces the (absolute path, name) key used for
+// cross-source dedup. Location.FileId may be repo-relative (the common
+// SCIP case) or absolute — filepath.IsAbs + filepath.Join handles both.
+func impactItemDedupKey(it ImpactItem, repoRoot string) string {
+	path := ""
+	if it.Location != nil {
+		path = it.Location.FileId
+	}
+	if path != "" && !filepath.IsAbs(path) && repoRoot != "" {
+		path = filepath.Join(repoRoot, path)
+	}
+	return dedupKey(path, it.Name)
+}
+
+func dedupKey(absPath, name string) string {
+	return absPath + "#" + name
 }

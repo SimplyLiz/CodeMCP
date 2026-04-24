@@ -771,6 +771,10 @@ type BlastRadiusEntry struct {
 	RiskLevel            string                    `json:"risk_level"`
 	Truncated            bool                      `json:"truncated"`
 	SemanticItems        []BlastRadiusSemanticItem `json:"semantic_items"`
+	// EdgesSource is LIP v2.3.1+ provenance for the static call edges:
+	// "tier1", "scip_with_tier1_edges", "scip_only", or "empty". Omitted
+	// by older daemons — clients treat missing as "fold-eligible".
+	EdgesSource string `json:"edges_source,omitempty"`
 }
 
 // BlastRadiusBatchResult is the full response from QueryBlastRadiusBatch.

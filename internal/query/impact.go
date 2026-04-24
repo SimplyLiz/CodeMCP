@@ -465,7 +465,14 @@ func (e *Engine) AnalyzeImpact(ctx context.Context, opts AnalyzeImpactOptions) (
 			var ext *impact.ExternalBlastRadius
 			switch {
 			case e.lipSupports("query_blast_radius_symbol"):
-				symURI := "lip://local/" + symbolInfo.Location.FileId + "#" + symbolInfo.Name
+				// Prefer the SCIP-form URI for symbols imported from SCIP (the
+				// common case — CKB's StableID is the raw scip-go symbol). Fall
+				// back to the Tier-1 `lip://local/<file>#<name>` form for symbols
+				// that don't round-trip through SCIP.
+				symURI := lip.SCIPSymbolToURI(symbolInfo.StableId)
+				if symURI == "" || !strings.HasPrefix(symURI, "lip://") {
+					symURI = "lip://local/" + symbolInfo.Location.FileId + "#" + symbolInfo.Name
+				}
 				if entry, _ := lip.QueryBlastRadiusSymbol(symURI, 0.6); entry != nil {
 					ext = lip.EntryToExternal(entry)
 				}
