@@ -107,7 +107,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "searchSymbols",
-			Description: "Semantic code search returning symbol types, locations, and relationships—more accurate than text-based grep/find.",
+			Description: "Semantic code search returning symbol types, locations, and relationships—more accurate than text-based grep/find. Note: may not match class methods or record properties by bare name — use symbolExists for authoritative boolean lookups.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -146,6 +146,34 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 					},
 				},
 				"required": []string{"query"},
+			},
+		},
+		{
+			Name:        "symbolExists",
+			Description: "Boolean oracle for LLM grounding: answers whether a bare symbol name has any declaration in the index. Uses exact-match (not FTS ranking) so class methods and object-property declarations are found reliably. Returns exists, matches count, distinct kinds, and receiver names for methods/properties. Cheaper than searchSymbols — no locations, no ranking.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "Bare symbol name to look up (e.g. \"saveReport\", \"ENV_PATH\")",
+					},
+					"kinds": map[string]interface{}{
+						"type":  "array",
+						"items": map[string]interface{}{"type": "string"},
+						"description": "Optional kind filter (e.g. [\"method\", \"function\", \"class\", \"property\"])",
+					},
+					"scope": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional file-path prefix to restrict search (e.g. \"packages/server/src/\")",
+					},
+					"includeExternal": map[string]interface{}{
+						"type":        "boolean",
+						"default":     false,
+						"description": "Include symbols from node_modules (default false)",
+					},
+				},
+				"required": []string{"name"},
 			},
 		},
 		{
@@ -2731,6 +2759,7 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["expandToolset"] = s.toolExpandToolset
 	s.tools["getSymbol"] = s.toolGetSymbol
 	s.tools["searchSymbols"] = s.toolSearchSymbols
+	s.tools["symbolExists"] = s.toolSymbolExists
 	s.tools["listSymbols"] = s.toolListSymbols
 	s.tools["getSymbolGraph"] = s.toolGetSymbolGraph
 	s.tools["findReferences"] = s.toolFindReferences

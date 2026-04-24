@@ -39,6 +39,7 @@ var Presets = map[string][]string{
 
 		// Discovery & Search (granular fallback)
 		"searchSymbols",
+		"symbolExists",
 		"getSymbol",
 
 		// Navigation & Understanding (granular fallback)
@@ -77,7 +78,7 @@ var Presets = map[string][]string{
 	PresetReview: {
 		// Core tools
 		"explore", "understand", "prepareChange", "batchGet", "batchSearch",
-		"searchSymbols", "getSymbol", "explainSymbol", "explainFile", "explainPath",
+		"searchSymbols", "symbolExists", "getSymbol", "explainSymbol", "explainFile", "explainPath",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "getModuleResponsibilities", "listKeyConcepts",
 		"analyzeImpact", "getHotspots", "exportForLLM",
@@ -106,7 +107,7 @@ var Presets = map[string][]string{
 	PresetRefactor: {
 		// Core tools
 		"explore", "understand", "prepareChange", "batchGet", "batchSearch",
-		"searchSymbols", "getSymbol", "explainSymbol", "explainFile", "explainPath",
+		"searchSymbols", "symbolExists", "getSymbol", "explainSymbol", "explainFile", "explainPath",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "getModuleResponsibilities", "listKeyConcepts",
 		"analyzeImpact", "getHotspots", "exportForLLM",
@@ -136,7 +137,7 @@ var Presets = map[string][]string{
 	PresetFederation: {
 		// Core tools
 		"explore", "understand", "prepareChange", "batchGet", "batchSearch",
-		"searchSymbols", "getSymbol", "explainSymbol", "explainFile", "explainPath",
+		"searchSymbols", "symbolExists", "getSymbol", "explainSymbol", "explainFile", "explainPath",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "getModuleResponsibilities", "listKeyConcepts",
 		"analyzeImpact", "getHotspots", "exportForLLM",
@@ -170,7 +171,7 @@ var Presets = map[string][]string{
 	PresetDocs: {
 		// Core tools
 		"explore", "understand", "prepareChange", "batchGet", "batchSearch",
-		"searchSymbols", "getSymbol", "explainSymbol", "explainFile", "explainPath",
+		"searchSymbols", "symbolExists", "getSymbol", "explainSymbol", "explainFile", "explainPath",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "getModuleResponsibilities", "listKeyConcepts",
 		"analyzeImpact", "getHotspots", "exportForLLM",
@@ -192,7 +193,7 @@ var Presets = map[string][]string{
 	PresetOps: {
 		// Core tools
 		"explore", "understand", "prepareChange", "batchGet", "batchSearch",
-		"searchSymbols", "getSymbol", "explainSymbol", "explainFile", "explainPath",
+		"searchSymbols", "symbolExists", "getSymbol", "explainSymbol", "explainFile", "explainPath",
 		"findReferences", "getCallGraph", "traceUsage",
 		"getArchitecture", "getModuleOverview", "getModuleResponsibilities", "listKeyConcepts",
 		"analyzeImpact", "getHotspots", "exportForLLM",
@@ -263,6 +264,7 @@ var coreToolOrder = []string{
 	"batchSearch",
 	// Granular tools (fallback)
 	"searchSymbols",
+	"symbolExists",
 	"getSymbol",
 	"explainSymbol",
 	"explainFile",

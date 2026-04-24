@@ -593,6 +593,56 @@ func (s *MCPServer) toolSearchSymbols(params map[string]interface{}) (*envelope.
 		Build(), nil
 }
 
+// toolSymbolExists implements the symbolExists tool.
+func (s *MCPServer) toolSymbolExists(params map[string]interface{}) (*envelope.Response, error) {
+	name, ok := params["name"].(string)
+	if !ok || name == "" {
+		return nil, errors.NewInvalidParameterError("name", "")
+	}
+
+	var kinds []string
+	if kindsVal, ok := params["kinds"].([]interface{}); ok {
+		for _, k := range kindsVal {
+			if kStr, ok := k.(string); ok {
+				kinds = append(kinds, kStr)
+			}
+		}
+	}
+
+	scope, _ := params["scope"].(string)
+	includeExternal, _ := params["includeExternal"].(bool)
+
+	ctx := context.Background()
+	opts := query.SymbolExistsOptions{
+		Name:            name,
+		Kinds:           kinds,
+		Scope:           scope,
+		IncludeExternal: includeExternal,
+	}
+
+	result, err := s.engine().SymbolExists(ctx, opts)
+	if err != nil {
+		return nil, errors.NewOperationError("symbol exists", err)
+	}
+
+	data := map[string]interface{}{
+		"exists":  result.Exists,
+		"matches": result.Matches,
+		"kinds":   result.Kinds,
+	}
+	if len(result.Receivers) > 0 {
+		data["receivers"] = result.Receivers
+	}
+	if result.StaleIndex {
+		data["staleIndex"] = result.StaleIndex
+	}
+
+	return NewToolResponse().
+		Data(data).
+		WithProvenance(result.Provenance).
+		Build(), nil
+}
+
 // toolFindReferences implements the findReferences tool
 func (s *MCPServer) toolFindReferences(params map[string]interface{}) (*envelope.Response, error) {
 	timer := NewWideResultTimer()
