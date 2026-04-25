@@ -222,11 +222,11 @@ func runReview(cmd *cobra.Command, args []string) {
 	}
 
 	opts := query.ReviewPROptions{
-		BaseBranch: reviewBaseBranch,
-		HeadBranch: reviewHeadBranch,
-		Policy:     policy,
-		Checks:     reviewChecks,
-		SkipChecks: reviewSkipChecks,
+		BaseBranch:  reviewBaseBranch,
+		HeadBranch:  reviewHeadBranch,
+		Policy:      policy,
+		Checks:      reviewChecks,
+		SkipChecks:  reviewSkipChecks,
 		Staged:      reviewStaged,
 		Scope:       scope,
 		LLM:         reviewLLM,

@@ -159,8 +159,8 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 						"description": "Bare symbol name to look up (e.g. \"saveReport\", \"ENV_PATH\")",
 					},
 					"kinds": map[string]interface{}{
-						"type":  "array",
-						"items": map[string]interface{}{"type": "string"},
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
 						"description": "Optional kind filter (e.g. [\"method\", \"function\", \"class\", \"property\"])",
 					},
 					"scope": map[string]interface{}{

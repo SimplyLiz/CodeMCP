@@ -118,9 +118,9 @@ type BlastRadiusSummary struct {
 	RiskLevel         string `json:"riskLevel"`         // "low", "medium", "high"
 
 	// LIP semantic enrichment (omitted when LIP is unavailable)
-	StaticCallerCount   int               `json:"staticCallerCount,omitempty"`
-	SemanticCallerCount int               `json:"semanticCallerCount,omitempty"`
-	ConfirmedCount      int               `json:"confirmedCount,omitempty"`
+	StaticCallerCount   int                  `json:"staticCallerCount,omitempty"`
+	SemanticCallerCount int                  `json:"semanticCallerCount,omitempty"`
+	ConfirmedCount      int                  `json:"confirmedCount,omitempty"`
 	SemanticCallers     []SemanticCallerInfo `json:"semanticCallers,omitempty"`
 }
 
@@ -128,7 +128,7 @@ type BlastRadiusSummary struct {
 type SemanticCallerInfo struct {
 	SymbolURI  string  `json:"symbolUri,omitempty"`
 	FileURI    string  `json:"fileUri"`
-	Tier       string  `json:"tier"`                 // "semantic" or "both"
+	Tier       string  `json:"tier"` // "semantic" or "both"
 	Confidence float64 `json:"confidence"`
 	Similarity float32 `json:"similarity,omitempty"`
 }

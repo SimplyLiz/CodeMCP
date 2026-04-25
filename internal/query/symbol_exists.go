@@ -46,9 +46,9 @@ func (e *Engine) SymbolExists(ctx context.Context, opts SymbolExistsOptions) (*S
 
 	notFound := func(reason string) *SymbolExistsResult {
 		return &SymbolExistsResult{
-			Exists:     false,
-			Matches:    0,
-			Kinds:      []string{},
+			Exists:  false,
+			Matches: 0,
+			Kinds:   []string{},
 			Provenance: e.buildProvenance(repoState, "head", startTime, nil,
 				CompletenessInfo{Score: 0.5, Reason: reason}),
 		}

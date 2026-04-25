@@ -519,7 +519,7 @@ type BlastRadiusRelated struct {
 type RenderArchitectureResult struct {
 	Diagram   string `json:"diagram"`
 	Truncated bool   `json:"truncated"`
-	Format    string `json:"format"`    // "mermaid" | "dot"
+	Format    string `json:"format"` // "mermaid" | "dot"
 	NodeCount int    `json:"nodeCount"`
 }
 

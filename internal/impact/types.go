@@ -71,7 +71,7 @@ type EnrichedCaller struct {
 	SymbolURI  string       `json:"symbolUri,omitempty"`
 	FileURI    string       `json:"fileUri"`
 	Tier       CouplingTier `json:"tier"`
-	Confidence float64      `json:"confidence"`        // 0.0–1.0
+	Confidence float64      `json:"confidence"`           // 0.0–1.0
 	Similarity float32      `json:"similarity,omitempty"` // raw cosine similarity (semantic/both only)
 }
 

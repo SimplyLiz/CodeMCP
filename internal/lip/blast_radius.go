@@ -144,4 +144,3 @@ func OutgoingEntryToExternal(entry *OutgoingImpactEntry) *impact.ExternalBlastRa
 	}
 	return ebr
 }
-

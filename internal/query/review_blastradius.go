@@ -268,4 +268,3 @@ func isFrameworkSymbol(kind, name, file string) bool {
 
 	return false
 }
-

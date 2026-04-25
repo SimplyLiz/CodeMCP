@@ -14,12 +14,12 @@ func ptrF64(v float64) *float64 { return &v }
 
 func TestBridgeMultiplierFromGraph(t *testing.T) {
 	tests := []struct {
-		name        string
-		nodes       []cartographer.GraphNode
-		files       []string
-		wantMul     float64
-		wantFactor  bool
-		wantValue   float64 // only checked when wantFactor=true
+		name       string
+		nodes      []cartographer.GraphNode
+		files      []string
+		wantMul    float64
+		wantFactor bool
+		wantValue  float64 // only checked when wantFactor=true
 	}{
 		{
 			name:       "no nodes",
