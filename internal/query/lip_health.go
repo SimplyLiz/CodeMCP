@@ -97,6 +97,17 @@ func (e *Engine) probeHandshake() {
 		supported[m] = struct{}{}
 	}
 
+	// Register our workspace root so LIP canonicalises relative lip://local/
+	// URIs against the correct absolute path. Gated on capability — older
+	// daemons (pre-v2.3.1) reject with UnknownMessage; they auto-detect roots
+	// from file-level indexing instead, so skipping is safe.
+	//
+	// Idempotent on the daemon side: repeated calls (reconnects, multi-engine
+	// test setups) are no-ops rather than errors.
+	if _, ok := supported["register_project_root"]; ok && e.repoRoot != "" {
+		_, _ = lip.RegisterProjectRoot(e.repoRoot)
+	}
+
 	// Follow up with a cheap IndexStatus probe so callers can distinguish
 	// "daemon down" from "daemon up but has no content for this workspace".
 	// Failures here are non-fatal — we just leave lipIndexProbed=false and

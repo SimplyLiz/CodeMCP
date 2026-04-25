@@ -206,16 +206,21 @@ fn lip_uri(path: &Path, qualified: &str) -> String {
     feature = "lang-c",      feature = "lang-cpp",
 ))]
 fn make_sig(
-    raw: String, kind: SymbolKind, line: usize, path: &Path,
+    raw: String, kind: SymbolKind, node: &Node, path: &Path,
     name: &str, qualified: &str, doc: Option<String>,
 ) -> Signature {
+    let sp = node.start_position();
+    let ep = node.end_position();
     Signature {
         raw,
         ckb_id: Some(lip_uri(path, qualified)),
         symbol_name: Some(name.to_string()),
         qualified_name: Some(qualified.to_string()),
         kind,
-        line_start: line,
+        line_start: sp.row,
+        col_start: sp.column,
+        line_end: ep.row,
+        col_end: ep.column,
         confidence: CONFIDENCE_TS,
         doc_comment: doc,
     }
@@ -291,7 +296,7 @@ fn walk_rust(node: &Node, src: &[u8], path: &Path, sigs: &mut Vec<Signature>, sc
                 .unwrap_or_default();
             let raw = sig_up_to_block(node, src);
             let doc = preceding_doc_comment(node, src);
-            sigs.push(make_sig(raw, SymbolKind::Interface, node.start_position().row, path, &name, &name, doc));
+            sigs.push(make_sig(raw, SymbolKind::Interface, node, path, &name, &name, doc));
             scope.push(name);
             if let Some(body) = node.child_by_field_name("body") {
                 let mut cur = body.walk();
@@ -318,7 +323,7 @@ fn walk_rust(node: &Node, src: &[u8], path: &Path, sigs: &mut Vec<Signature>, sc
             let kind = if scope.is_empty() { SymbolKind::Function } else { SymbolKind::Method };
             let raw = sig_up_to_block(node, src);
             let doc = preceding_doc_comment(node, src);
-            sigs.push(make_sig(raw, kind, node.start_position().row, path, &name, &qualified, doc));
+            sigs.push(make_sig(raw, kind, node, path, &name, &qualified, doc));
         }
         "struct_item" => {
             let name = node.child_by_field_name("name")
@@ -328,7 +333,7 @@ fn walk_rust(node: &Node, src: &[u8], path: &Path, sigs: &mut Vec<Signature>, sc
             let raw = first_line(node, src);
             let doc = preceding_doc_comment(node, src);
             let qualified = scope_qualify(scope, &name);
-            sigs.push(make_sig(raw, SymbolKind::Struct, node.start_position().row, path, &name, &qualified, doc));
+            sigs.push(make_sig(raw, SymbolKind::Struct, node, path, &name, &qualified, doc));
         }
         "enum_item" => {
             let name = node.child_by_field_name("name")
@@ -338,7 +343,7 @@ fn walk_rust(node: &Node, src: &[u8], path: &Path, sigs: &mut Vec<Signature>, sc
             let raw = first_line(node, src);
             let doc = preceding_doc_comment(node, src);
             let qualified = scope_qualify(scope, &name);
-            sigs.push(make_sig(raw, SymbolKind::Enum, node.start_position().row, path, &name, &qualified, doc));
+            sigs.push(make_sig(raw, SymbolKind::Enum, node, path, &name, &qualified, doc));
         }
         "type_item" => {
             let name = node.child_by_field_name("name")
@@ -347,7 +352,7 @@ fn walk_rust(node: &Node, src: &[u8], path: &Path, sigs: &mut Vec<Signature>, sc
             if name.is_empty() { return; }
             let raw = node_text(node, src).split_whitespace().collect::<Vec<_>>().join(" ");
             let doc = preceding_doc_comment(node, src);
-            sigs.push(make_sig(raw, SymbolKind::TypeAlias, node.start_position().row, path, &name, &name, doc));
+            sigs.push(make_sig(raw, SymbolKind::TypeAlias, node, path, &name, &name, doc));
         }
         "const_item" | "static_item" => {
             let name = node.child_by_field_name("name")
@@ -366,7 +371,7 @@ fn walk_rust(node: &Node, src: &[u8], path: &Path, sigs: &mut Vec<Signature>, sc
             }
             let raw = node_text(node, src).split_whitespace().collect::<Vec<_>>().join(" ");
             let doc = preceding_doc_comment(node, src);
-            sigs.push(make_sig(raw, SymbolKind::Variable, node.start_position().row, path, &name, &name, doc));
+            sigs.push(make_sig(raw, SymbolKind::Variable, node, path, &name, &name, doc));
         }
         "macro_definition" => {
             let name = {
@@ -380,7 +385,7 @@ fn walk_rust(node: &Node, src: &[u8], path: &Path, sigs: &mut Vec<Signature>, sc
             if name.is_empty() { return; }
             let raw = format!("macro_rules! {}", name);
             let doc = preceding_doc_comment(node, src);
-            sigs.push(make_sig(raw, SymbolKind::Macro, node.start_position().row, path, &name, &name, doc));
+            sigs.push(make_sig(raw, SymbolKind::Macro, node, path, &name, &name, doc));
         }
         "mod_item" => {
             let name = node.child_by_field_name("name")
@@ -389,7 +394,7 @@ fn walk_rust(node: &Node, src: &[u8], path: &Path, sigs: &mut Vec<Signature>, sc
             if name.is_empty() { return; }
             let doc = preceding_doc_comment(node, src);
             let raw = format!("mod {}", name);
-            sigs.push(make_sig(raw, SymbolKind::Namespace, node.start_position().row, path, &name, &name, doc));
+            sigs.push(make_sig(raw, SymbolKind::Namespace, node, path, &name, &name, doc));
             if let Some(body) = node.child_by_field_name("body") {
                 scope.push(name);
                 let mut cur = body.walk();
@@ -475,7 +480,7 @@ fn walk_go(node: &Node, src: &[u8], path: &Path, sigs: &mut Vec<Signature>) {
             if name.is_empty() { return; }
             let raw = sig_up_to_block(node, src);
             let doc = preceding_doc_comment(node, src);
-            sigs.push(make_sig(raw, SymbolKind::Function, node.start_position().row, path, &name, &name, doc));
+            sigs.push(make_sig(raw, SymbolKind::Function, node, path, &name, &name, doc));
         }
         "method_declaration" => {
             let name = node.child_by_field_name("name")
@@ -499,7 +504,7 @@ fn walk_go(node: &Node, src: &[u8], path: &Path, sigs: &mut Vec<Signature>) {
             let qualified = if receiver_type.is_empty() { name.clone() } else { format!("{}.{}", receiver_type, name) };
             let raw = sig_up_to_block(node, src);
             let doc = preceding_doc_comment(node, src);
-            sigs.push(make_sig(raw, SymbolKind::Method, node.start_position().row, path, &name, &qualified, doc));
+            sigs.push(make_sig(raw, SymbolKind::Method, node, path, &name, &qualified, doc));
         }
         "type_declaration" => {
             let mut cur = node.walk();
@@ -516,7 +521,7 @@ fn walk_go(node: &Node, src: &[u8], path: &Path, sigs: &mut Vec<Signature>) {
                     };
                     let raw = first_line(&child, src);
                     let doc = preceding_doc_comment(&child, src);
-                    sigs.push(make_sig(raw, kind, child.start_position().row, path, &name, &name, doc));
+                    sigs.push(make_sig(raw, kind, &child, path, &name, &name, doc));
                 }
             }
         }
@@ -536,7 +541,7 @@ fn walk_go(node: &Node, src: &[u8], path: &Path, sigs: &mut Vec<Signature>) {
                     if name.is_empty() { continue; }
                     let raw = node_text(&child, src).split_whitespace().collect::<Vec<_>>().join(" ");
                     let doc = preceding_doc_comment(&child, src);
-                    sigs.push(make_sig(raw, SymbolKind::Variable, child.start_position().row, path, &name, &name, doc));
+                    sigs.push(make_sig(raw, SymbolKind::Variable, &child, path, &name, &name, doc));
                 }
             }
         }
@@ -611,7 +616,7 @@ fn walk_python(node: &Node, src: &[u8], path: &Path, sigs: &mut Vec<Signature>, 
             let kind = if scope.is_empty() { SymbolKind::Function } else { SymbolKind::Method };
             let raw = sig_up_to_colon(node, src);
             let doc = preceding_doc_comment(node, src);
-            sigs.push(make_sig(raw, kind, node.start_position().row, path, &name, &qualified, doc));
+            sigs.push(make_sig(raw, kind, node, path, &name, &qualified, doc));
         }
         "class_definition" => {
             let name = node.child_by_field_name("name")
@@ -620,7 +625,7 @@ fn walk_python(node: &Node, src: &[u8], path: &Path, sigs: &mut Vec<Signature>, 
             if name.is_empty() { return; }
             let raw = sig_up_to_colon(node, src);
             let doc = preceding_doc_comment(node, src);
-            sigs.push(make_sig(raw, SymbolKind::Class, node.start_position().row, path, &name, &name, doc));
+            sigs.push(make_sig(raw, SymbolKind::Class, node, path, &name, &name, doc));
             scope.push(name);
             if let Some(body) = node.child_by_field_name("body") {
                 let mut cur = body.walk();
@@ -644,7 +649,7 @@ fn walk_python(node: &Node, src: &[u8], path: &Path, sigs: &mut Vec<Signature>, 
                     .unwrap_or_default();
                 if !name.is_empty() && name.chars().all(|c| c.is_uppercase() || c == '_' || c.is_numeric()) {
                     let raw = first_line(node, src);
-                    sigs.push(make_sig(raw, SymbolKind::Variable, node.start_position().row, path, &name, &name, None));
+                    sigs.push(make_sig(raw, SymbolKind::Variable, node, path, &name, &name, None));
                 }
             }
         }
@@ -737,7 +742,7 @@ fn walk_ts(node: &Node, src: &[u8], path: &Path, sigs: &mut Vec<Signature>, scop
             let kind = if scope.is_empty() { SymbolKind::Function } else { SymbolKind::Method };
             let raw = sig_up_to_block(node, src);
             let doc = preceding_doc_comment(node, src);
-            sigs.push(make_sig(raw, kind, node.start_position().row, path, &name, &qualified, doc));
+            sigs.push(make_sig(raw, kind, node, path, &name, &qualified, doc));
         }
         "class_declaration" | "abstract_class_declaration" | "class" => {
             let name = node.child_by_field_name("name")
@@ -746,7 +751,7 @@ fn walk_ts(node: &Node, src: &[u8], path: &Path, sigs: &mut Vec<Signature>, scop
             if name.is_empty() { return; }
             let raw = sig_up_to_block(node, src);
             let doc = preceding_doc_comment(node, src);
-            sigs.push(make_sig(raw, SymbolKind::Class, node.start_position().row, path, &name, &name, doc));
+            sigs.push(make_sig(raw, SymbolKind::Class, node, path, &name, &name, doc));
             scope.push(name);
             if let Some(body) = node.child_by_field_name("body") {
                 let mut cur = body.walk();
@@ -765,7 +770,7 @@ fn walk_ts(node: &Node, src: &[u8], path: &Path, sigs: &mut Vec<Signature>, scop
             let qualified = scope_qualify(scope, &name);
             let raw = sig_up_to_block(node, src);
             let doc = preceding_doc_comment(node, src);
-            sigs.push(make_sig(raw, SymbolKind::Method, node.start_position().row, path, &name, &qualified, doc));
+            sigs.push(make_sig(raw, SymbolKind::Method, node, path, &name, &qualified, doc));
         }
         "interface_declaration" => {
             let name = node.child_by_field_name("name")
@@ -774,7 +779,7 @@ fn walk_ts(node: &Node, src: &[u8], path: &Path, sigs: &mut Vec<Signature>, scop
             if name.is_empty() { return; }
             let raw = sig_up_to_block(node, src);
             let doc = preceding_doc_comment(node, src);
-            sigs.push(make_sig(raw, SymbolKind::Interface, node.start_position().row, path, &name, &name, doc));
+            sigs.push(make_sig(raw, SymbolKind::Interface, node, path, &name, &name, doc));
         }
         "type_alias_declaration" => {
             let name = node.child_by_field_name("name")
@@ -783,7 +788,7 @@ fn walk_ts(node: &Node, src: &[u8], path: &Path, sigs: &mut Vec<Signature>, scop
             if name.is_empty() { return; }
             let raw = first_line(node, src);
             let doc = preceding_doc_comment(node, src);
-            sigs.push(make_sig(raw, SymbolKind::TypeAlias, node.start_position().row, path, &name, &name, doc));
+            sigs.push(make_sig(raw, SymbolKind::TypeAlias, node, path, &name, &name, doc));
         }
         "enum_declaration" => {
             let name = node.child_by_field_name("name")
@@ -792,7 +797,7 @@ fn walk_ts(node: &Node, src: &[u8], path: &Path, sigs: &mut Vec<Signature>, scop
             if name.is_empty() { return; }
             let raw = first_line(node, src);
             let doc = preceding_doc_comment(node, src);
-            sigs.push(make_sig(raw, SymbolKind::Enum, node.start_position().row, path, &name, &name, doc));
+            sigs.push(make_sig(raw, SymbolKind::Enum, node, path, &name, &name, doc));
         }
         "export_statement" | "export_clause" => {
             let mut cur = node.walk();
@@ -819,7 +824,7 @@ fn walk_ts(node: &Node, src: &[u8], path: &Path, sigs: &mut Vec<Signature>, scop
                 let raw = format!("const {} = {}", name, sig_up_to_block(&val, src));
                 let qualified = scope_qualify(scope, &name);
                 let doc = preceding_doc_comment(node, src);
-                sigs.push(make_sig(raw, SymbolKind::Function, decl.start_position().row, path, &name, &qualified, doc));
+                sigs.push(make_sig(raw, SymbolKind::Function, &decl, path, &name, &qualified, doc));
             }
         }
         _ => {
@@ -903,7 +908,7 @@ fn walk_c_cpp(
                     let raw = sig_up_to_block(node, src);
                     let doc = preceding_doc_comment(node, src);
                     let kind = if scope.is_empty() { SymbolKind::Function } else { SymbolKind::Method };
-                    sigs.push(make_sig(raw, kind, node.start_position().row, path, &name, &qualified, doc));
+                    sigs.push(make_sig(raw, kind, node, path, &name, &qualified, doc));
                 }
             }
             // Don't recurse into the body — we don't want nested functions
@@ -918,7 +923,7 @@ fn walk_c_cpp(
                     if !name.is_empty() {
                         let raw = node_text(node, src).split_whitespace().collect::<Vec<_>>().join(" ");
                         let doc = preceding_doc_comment(node, src);
-                        sigs.push(make_sig(raw, SymbolKind::Function, node.start_position().row, path, &name, &qualified, doc));
+                        sigs.push(make_sig(raw, SymbolKind::Function, node, path, &name, &qualified, doc));
                     }
                 }
             }
@@ -933,7 +938,7 @@ fn walk_c_cpp(
                     let raw = first_line(node, src);
                     let doc = preceding_doc_comment(node, src);
                     let qualified = scope_qualify(scope, &name);
-                    sigs.push(make_sig(raw, SymbolKind::Struct, node.start_position().row, path, &name, &qualified, doc));
+                    sigs.push(make_sig(raw, SymbolKind::Struct, node, path, &name, &qualified, doc));
                 }
             }
             // Still walk the body for nested types
@@ -947,7 +952,7 @@ fn walk_c_cpp(
                     let raw = first_line(node, src);
                     let doc = preceding_doc_comment(node, src);
                     let qualified = scope_qualify(scope, &name);
-                    sigs.push(make_sig(raw, SymbolKind::Enum, node.start_position().row, path, &name, &qualified, doc));
+                    sigs.push(make_sig(raw, SymbolKind::Enum, node, path, &name, &qualified, doc));
                 }
             }
             return;
@@ -971,7 +976,7 @@ fn walk_c_cpp(
             if !name.is_empty() {
                 let raw = node_text(node, src).split_whitespace().collect::<Vec<_>>().join(" ");
                 let doc = preceding_doc_comment(node, src);
-                sigs.push(make_sig(raw, SymbolKind::TypeAlias, node.start_position().row, path, &name, &name, doc));
+                sigs.push(make_sig(raw, SymbolKind::TypeAlias, node, path, &name, &name, doc));
             }
             return;
         }
@@ -982,7 +987,7 @@ fn walk_c_cpp(
                 let name = node_text(&name_node, src).to_string();
                 if !name.is_empty() {
                     let raw = first_line(node, src);
-                    sigs.push(make_sig(raw, SymbolKind::Variable, node.start_position().row, path, &name, &name, None));
+                    sigs.push(make_sig(raw, SymbolKind::Variable, node, path, &name, &name, None));
                 }
             }
             return;
@@ -992,7 +997,7 @@ fn walk_c_cpp(
                 let name = node_text(&name_node, src).to_string();
                 if !name.is_empty() {
                     let raw = first_line(node, src);
-                    sigs.push(make_sig(raw, SymbolKind::Macro, node.start_position().row, path, &name, &name, None));
+                    sigs.push(make_sig(raw, SymbolKind::Macro, node, path, &name, &name, None));
                 }
             }
             return;
@@ -1007,7 +1012,7 @@ fn walk_c_cpp(
                     let raw = first_line(node, src);
                     let doc = preceding_doc_comment(node, src);
                     let qualified = scope_qualify(scope, &name);
-                    sigs.push(make_sig(raw, SymbolKind::Class, node.start_position().row, path, &name, &qualified, doc));
+                    sigs.push(make_sig(raw, SymbolKind::Class, node, path, &name, &qualified, doc));
                     // Walk class body for inline method definitions
                     if let Some(body) = node.child_by_field_name("body") {
                         scope.push(name);
@@ -1031,7 +1036,7 @@ fn walk_c_cpp(
                 let doc = preceding_doc_comment(node, src);
                 sigs.push(make_sig(
                     format!("namespace {}", name), SymbolKind::Namespace,
-                    node.start_position().row, path, &name, &name, doc,
+                    node, path, &name, &name, doc,
                 ));
                 scope.push(name);
             }

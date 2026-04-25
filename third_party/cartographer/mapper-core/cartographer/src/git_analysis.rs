@@ -402,3 +402,75 @@ pub fn git_diff_files(root: &Path, c1: &str, c2: &str) -> Vec<(String, char)> {
 
     result
 }
+
+// ---------------------------------------------------------------------------
+// git_ownership
+// ---------------------------------------------------------------------------
+
+/// Dominant author per file over the last `limit` commits. "Dominant" =
+/// highest raw commit count; ties broken alphabetically. Bot authors and
+/// formatting-only commits are excluded (same filters as churn/cochange).
+///
+/// Returns an empty map if git is unavailable or the directory is not a repo.
+/// Keys are repo-relative paths matching `git log --name-only` output.
+pub fn git_ownership(root: &Path, limit: usize) -> HashMap<String, String> {
+    let output = Command::new("git")
+        .args([
+            "-C",
+            &root.to_string_lossy(),
+            "log",
+            &format!("-n {}", limit),
+            "--name-only",
+            "--format=%x1f%an%x1f%s",
+        ])
+        .output();
+
+    let output = match output {
+        Ok(o) if o.status.success() => o,
+        _ => return HashMap::new(),
+    };
+
+    let text = String::from_utf8_lossy(&output.stdout);
+
+    // Per-file per-author commit counts. We need the raw author name here
+    // (not just the skip flag) so we parse the header locally instead of
+    // reusing `parse_header`.
+    let mut counts: HashMap<String, HashMap<String, usize>> = HashMap::new();
+    let mut current_author: Option<String> = None;
+    let mut skip_current = false;
+
+    for line in text.lines() {
+        let line = line.trim();
+        if line.starts_with('\x1f') {
+            let parts: Vec<&str> = line.splitn(3, '\x1f').collect();
+            let author = parts.get(1).copied().unwrap_or("").trim().to_string();
+            let subject = parts.get(2).copied().unwrap_or("").trim();
+            skip_current = is_bot_author(&author) || is_formatting_subject(subject);
+            current_author = if skip_current { None } else { Some(author) };
+            continue;
+        }
+        if line.is_empty() || skip_current {
+            continue;
+        }
+        if let Some(ref author) = current_author {
+            *counts
+                .entry(line.to_string())
+                .or_default()
+                .entry(author.clone())
+                .or_insert(0) += 1;
+        }
+    }
+
+    let mut owners: HashMap<String, String> = HashMap::with_capacity(counts.len());
+    for (file, authors) in counts {
+        // Pick the author with the highest count; ties → alphabetical so the
+        // result is deterministic across runs.
+        let dominant = authors
+            .into_iter()
+            .max_by(|a, b| a.1.cmp(&b.1).then_with(|| b.0.cmp(&a.0)));
+        if let Some((name, _)) = dominant {
+            owners.insert(file, name);
+        }
+    }
+    owners
+}

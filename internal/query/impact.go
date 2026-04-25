@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -113,8 +114,23 @@ type ModuleImpact struct {
 type BlastRadiusSummary struct {
 	ModuleCount       int    `json:"moduleCount"`
 	FileCount         int    `json:"fileCount"`
-	UniqueCallerCount int    `json:"uniqueCallerCount"`
-	RiskLevel         string `json:"riskLevel"` // "low", "medium", "high"
+	UniqueCallerCount int    `json:"uniqueCallerCount"` // SCIP static callers only (drives thresholds)
+	RiskLevel         string `json:"riskLevel"`         // "low", "medium", "high"
+
+	// LIP semantic enrichment (omitted when LIP is unavailable)
+	StaticCallerCount   int                  `json:"staticCallerCount,omitempty"`
+	SemanticCallerCount int                  `json:"semanticCallerCount,omitempty"`
+	ConfirmedCount      int                  `json:"confirmedCount,omitempty"`
+	SemanticCallers     []SemanticCallerInfo `json:"semanticCallers,omitempty"`
+}
+
+// SemanticCallerInfo is an embedding-discovered caller surfaced in the blast radius.
+type SemanticCallerInfo struct {
+	SymbolURI  string  `json:"symbolUri,omitempty"`
+	FileURI    string  `json:"fileUri"`
+	Tier       string  `json:"tier"` // "semantic" or "both"
+	Confidence float64 `json:"confidence"`
+	Similarity float32 `json:"similarity,omitempty"`
 }
 
 // scipCallerProvider adapts SCIPAdapter to the TransitiveCallerProvider interface
@@ -317,6 +333,25 @@ func (e *Engine) AnalyzeImpact(ctx context.Context, opts AnalyzeImpactOptions) (
 		return nil, e.wrapError(err, errors.InternalError)
 	}
 
+	// Fetch LIP enrichment up-front so tier-1 static callers can be folded
+	// into result.DirectImpact/TransitiveImpact before budget truncation and
+	// item sorting. `ext` is also used later to populate semantic callers on
+	// the BlastRadius summary via MergeBlastRadius.
+	ext := e.fetchLIPEnrichment(symbolInfo)
+	if ext != nil {
+		result.DirectImpact, result.TransitiveImpact = impact.FoldExternalStaticItems(
+			result.DirectImpact, result.TransitiveImpact, ext, e.repoRoot)
+		// Recompute the blast-radius summary from the unioned item set so
+		// UniqueCallerCount / FileCount / RiskLevel reflect LIP's static
+		// contribution. Skipped when EdgesSource=="empty" because the fold
+		// no-ops in that case and the original summary is already correct.
+		if ext.EdgesSource != impact.EdgesSourceEmpty && result.BlastRadius != nil {
+			all := append([]impact.ImpactItem{}, result.DirectImpact...)
+			all = append(all, result.TransitiveImpact...)
+			result.BlastRadius = impact.RecomputeBlastRadius(all)
+		}
+	}
+
 	// Convert results
 	directImpact := convertImpactItems(result.DirectImpact)
 	transitiveImpact := convertImpactItems(result.TransitiveImpact)
@@ -437,14 +472,34 @@ func (e *Engine) AnalyzeImpact(ctx context.Context, opts AnalyzeImpactOptions) (
 		docsToUpdate = e.getDocsToUpdate(symbolInfo.StableId, 5)
 	}
 
-	// Convert blast radius
+	// Convert blast radius, then enrich with LIP semantic coupling when available.
+	// The static-item fold already happened up-front; MergeBlastRadius here
+	// only blends in semantic (embedding-discovered) callers and preserves
+	// the post-fold summary counts.
 	var blastRadius *BlastRadiusSummary
 	if result.BlastRadius != nil {
+		enriched := result.BlastRadius
+		if ext != nil {
+			enriched = impact.MergeBlastRadius(result.BlastRadius, ext)
+		}
+
 		blastRadius = &BlastRadiusSummary{
-			ModuleCount:       result.BlastRadius.ModuleCount,
-			FileCount:         result.BlastRadius.FileCount,
-			UniqueCallerCount: result.BlastRadius.UniqueCallerCount,
-			RiskLevel:         result.BlastRadius.RiskLevel,
+			ModuleCount:         enriched.ModuleCount,
+			FileCount:           enriched.FileCount,
+			UniqueCallerCount:   enriched.UniqueCallerCount,
+			RiskLevel:           enriched.RiskLevel,
+			StaticCallerCount:   enriched.StaticCallerCount,
+			SemanticCallerCount: enriched.SemanticCallerCount,
+			ConfirmedCount:      enriched.ConfirmedCount,
+		}
+		for _, sc := range enriched.SemanticCallers {
+			blastRadius.SemanticCallers = append(blastRadius.SemanticCallers, SemanticCallerInfo{
+				SymbolURI:  sc.SymbolURI,
+				FileURI:    sc.FileURI,
+				Tier:       string(sc.Tier),
+				Confidence: sc.Confidence,
+				Similarity: sc.Similarity,
+			})
 		}
 	}
 
@@ -1223,6 +1278,69 @@ func (e *Engine) getGitDiff(staged bool, baseBranch string) (string, error) {
 	return string(out), nil
 }
 
+// bridgeMultiplierFromGraph computes a risk multiplier from Cartographer's
+// betweenness-centrality scores for the changed files. Files on critical
+// architectural paths (high BridgeScore) yield a larger multiplier so that
+// the same textual change is reported as riskier when it lands in a bridge.
+//
+// The multiplier is 1.0 + max(BridgeScore)/1000, capped at 2.0. BridgeScore
+// is betweenness_centrality * 1000 (range 0-1000) per api.rs, so this maps
+// a "perfect bridge" to a 2x risk amplification and a non-bridge to 1x.
+//
+// Matches files by both Path (exact) and ModuleID, to cover the cases where
+// ChangedSymbol.File is either a repo-relative path or a module identifier.
+// Returns (1.0, nil) when no nodes match — callers should treat a nil factor
+// as "no adjustment, skip the factor append".
+func bridgeMultiplierFromGraph(nodes []cartographer.GraphNode, files []string) (float64, *RiskFactor) {
+	if len(nodes) == 0 || len(files) == 0 {
+		return 1.0, nil
+	}
+	byPath := make(map[string]float64, len(nodes))
+	byModule := make(map[string]float64, len(nodes))
+	for _, n := range nodes {
+		if n.BridgeScore == nil {
+			continue
+		}
+		if n.Path != "" {
+			byPath[n.Path] = *n.BridgeScore
+		}
+		if n.ModuleID != "" {
+			byModule[n.ModuleID] = *n.BridgeScore
+		}
+	}
+	if len(byPath) == 0 && len(byModule) == 0 {
+		return 1.0, nil
+	}
+
+	var maxScore float64
+	matched := false
+	for _, f := range files {
+		if s, ok := byPath[f]; ok {
+			if s > maxScore {
+				maxScore = s
+			}
+			matched = true
+			continue
+		}
+		if s, ok := byModule[f]; ok {
+			if s > maxScore {
+				maxScore = s
+			}
+			matched = true
+		}
+	}
+	if !matched {
+		return 1.0, nil
+	}
+
+	multiplier := math.Min(1.0+maxScore/1000.0, 2.0)
+	return multiplier, &RiskFactor{
+		Name:   "bridge_centrality",
+		Value:  maxScore / 1000.0, // 0.0-1.0 informational
+		Weight: 0,                 // applied as multiplier, not weighted mean
+	}
+}
+
 // calculateAggregatedRisk computes an aggregated risk score for the change set.
 func (e *Engine) calculateAggregatedRisk(
 	changedSymbols []impact.ChangedSymbol,
@@ -1312,6 +1430,33 @@ func (e *Engine) calculateAggregatedRisk(
 		score = weightedSum / totalWeight
 	}
 
+	// Bridge-centrality adjustment: if any changed file sits on a critical
+	// architectural path, amplify the score. See bridgeMultiplierFromGraph
+	// for the multiplier shape. The graph is only fetched when the
+	// cartographer build tag is on; under the stub build this is a no-op.
+	bridgeAmplified := false
+	if cartographer.Available() && e.repoRoot != "" {
+		if graph, err := cartographer.MapProject(e.repoRoot); err == nil && graph != nil {
+			files := make([]string, 0, len(changedSymbols))
+			seen := make(map[string]struct{}, len(changedSymbols))
+			for _, s := range changedSymbols {
+				if s.File == "" {
+					continue
+				}
+				if _, dup := seen[s.File]; dup {
+					continue
+				}
+				seen[s.File] = struct{}{}
+				files = append(files, s.File)
+			}
+			if mul, factor := bridgeMultiplierFromGraph(graph.Nodes, files); factor != nil {
+				score = math.Min(score*mul, 1.0)
+				factors = append(factors, *factor)
+				bridgeAmplified = true
+			}
+		}
+	}
+
 	// Determine level
 	var level string
 	switch {
@@ -1328,6 +1473,9 @@ func (e *Engine) calculateAggregatedRisk(
 	// Build explanation
 	explanation := fmt.Sprintf("Change affects %d symbols across %d modules with %d direct and %d transitive impacts.",
 		len(changedSymbols), len(modules), len(directImpact), len(transitiveImpact))
+	if bridgeAmplified {
+		explanation += " Risk amplified by bridge centrality (change lands on a critical architectural path)."
+	}
 
 	return &RiskScore{
 		Level:       level,
@@ -1803,4 +1951,46 @@ func (e *Engine) generateRecommendations(
 	}
 
 	return recs
+}
+
+// fetchLIPEnrichment pulls blast-radius enrichment for a symbol from LIP via
+// the best available RPC. Preference order:
+//  1. query_blast_radius_symbol (v2.3+) — direct symbol-URI call, no filtering.
+//  2. query_blast_radius_batch (v2.2) — fetch all symbols in the file, then
+//     LookupSymbol by name as a fallback.
+//
+// Returns nil when the symbol lacks a location, LIP is unavailable, or the
+// daemon doesn't support either RPC — callers should treat nil as "skip
+// enrichment" and fall back to SCIP-only results unchanged.
+func (e *Engine) fetchLIPEnrichment(symbolInfo *SymbolInfo) *impact.ExternalBlastRadius {
+	if symbolInfo == nil || symbolInfo.Location == nil {
+		return nil
+	}
+	switch {
+	case e.lipSupports("query_blast_radius_symbol"):
+		// Prefer the SCIP-form URI for symbols imported from SCIP (the common
+		// case — CKB's StableID is the raw scip-go symbol). Fall back to the
+		// Tier-1 `lip://local/<file>#<name>` form for symbols that don't
+		// round-trip through SCIP.
+		symURI := lip.SCIPSymbolToURI(symbolInfo.StableId)
+		if symURI == "" || !strings.HasPrefix(symURI, "lip://") {
+			symURI = "lip://local/" + symbolInfo.Location.FileId + "#" + symbolInfo.Name
+		}
+		if entry, _ := lip.QueryBlastRadiusSymbol(symURI, 0.6); entry != nil {
+			return lip.EntryToExternal(entry)
+		}
+	case e.lipSupports("query_blast_radius_batch"):
+		fileURI := "lip://local/" + symbolInfo.Location.FileId
+		if lipEntries, _ := lip.QueryBlastRadiusBatch([]string{fileURI}, 0.6); lipEntries != nil {
+			converted := make(map[string]*impact.ExternalBlastRadius, len(lipEntries.Entries))
+			for k, v := range lipEntries.Entries {
+				vCopy := v
+				converted[k] = lip.EntryToExternal(&vCopy)
+			}
+			if ext, ok := lip.LookupSymbol(converted, symbolInfo.Location.FileId, symbolInfo.Name); ok {
+				return ext
+			}
+		}
+	}
+	return nil
 }

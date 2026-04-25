@@ -695,6 +695,187 @@ func TestWireProtocol_BatchAnnotationGet(t *testing.T) {
 	assertField(t, req, "key", "stability")
 }
 
+func TestWireProtocol_RegisterProjectRoot_Accepted(t *testing.T) {
+	d := newTestDaemon(t, deltaAckResp{Accepted: true})
+
+	ok, err := RegisterProjectRoot("/abs/path/to/repo")
+	d.waitHandled(t)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ok {
+		t.Errorf("accepted = false, want true")
+	}
+	req := d.req()
+	assertField(t, req, "type", "register_project_root")
+	assertField(t, req, "root", "/abs/path/to/repo")
+}
+
+// When the daemon rejects the root (e.g. invalid path), the RPC should return
+// (false, nil) — non-fatal, callers fall back to auto-detection.
+func TestWireProtocol_RegisterProjectRoot_Rejected(t *testing.T) {
+	reason := "invalid root"
+	d := newTestDaemon(t, deltaAckResp{Accepted: false, Error: &reason})
+
+	ok, err := RegisterProjectRoot("/bogus")
+	d.waitHandled(t)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ok {
+		t.Errorf("accepted = true, want false")
+	}
+}
+
+// Empty root must short-circuit — no socket call.
+func TestWireProtocol_RegisterProjectRoot_EmptyRoot(t *testing.T) {
+	prev := os.Getenv("LIP_SOCKET")
+	os.Setenv("LIP_SOCKET", "/tmp/lip-nonexistent-ckb-test.sock")
+	defer os.Setenv("LIP_SOCKET", prev)
+
+	ok, err := RegisterProjectRoot("")
+	if ok || err != nil {
+		t.Errorf("empty root: want (false, nil), got (%v, %v)", ok, err)
+	}
+}
+
+// =============================================================================
+// Outgoing impact
+// =============================================================================
+
+func TestWireProtocol_QueryOutgoingImpact_WithResult(t *testing.T) {
+	d := newTestDaemon(t, outgoingImpactResp{Result: &OutgoingImpactEntry{
+		TargetURI: "lip://local//repo/foo.go#Caller",
+		DirectItems: []BlastRadiusItem{
+			{FileURI: "lip://local//repo/bar.go", SymbolURI: "lip://local//repo/bar.go#Callee",
+				Distance: 1, Confidence: 0.95},
+		},
+		TransitiveItems: []BlastRadiusItem{
+			{FileURI: "lip://local//repo/baz.go", SymbolURI: "lip://local//repo/baz.go#Deep",
+				Distance: 2, Confidence: 0.85},
+		},
+		SemanticItems: []BlastRadiusSemanticItem{
+			{FileURI: "lip://local//repo/similar.go", SymbolURI: "...#Similar",
+				Similarity: 0.82, Source: "semantic"},
+		},
+		EdgesSource: "scip_with_tier1_edges",
+		Truncated:   false,
+	}})
+
+	got, err := QueryOutgoingImpact("lip://local//repo/foo.go#Caller", 0.6)
+	d.waitHandled(t)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got == nil {
+		t.Fatal("got nil result")
+	}
+	if got.TargetURI != "lip://local//repo/foo.go#Caller" {
+		t.Errorf("TargetURI = %q", got.TargetURI)
+	}
+	if len(got.DirectItems) != 1 || got.DirectItems[0].Distance != 1 {
+		t.Errorf("DirectItems = %+v", got.DirectItems)
+	}
+	if len(got.TransitiveItems) != 1 || got.TransitiveItems[0].Distance != 2 {
+		t.Errorf("TransitiveItems = %+v", got.TransitiveItems)
+	}
+	if len(got.SemanticItems) != 1 || got.SemanticItems[0].Source != "semantic" {
+		t.Errorf("SemanticItems = %+v", got.SemanticItems)
+	}
+	if got.EdgesSource != "scip_with_tier1_edges" {
+		t.Errorf("EdgesSource = %q", got.EdgesSource)
+	}
+
+	req := d.req()
+	assertField(t, req, "type", "query_outgoing_impact")
+	assertField(t, req, "symbol_uri", "lip://local//repo/foo.go#Caller")
+	assertField(t, req, "min_score", 0.6)
+}
+
+// Null result (target not indexed) must come back as (nil, nil).
+func TestWireProtocol_QueryOutgoingImpact_NullResult(t *testing.T) {
+	d := newTestDaemon(t, outgoingImpactResp{Result: nil})
+
+	got, err := QueryOutgoingImpact("lip://local//repo/unknown.go#X", 0.6)
+	d.waitHandled(t)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != nil {
+		t.Errorf("want nil result for unindexed target, got %+v", got)
+	}
+}
+
+// min_score=0 must be omitted so the daemon applies its default.
+func TestWireProtocol_QueryOutgoingImpact_OmitMinScore(t *testing.T) {
+	d := newTestDaemon(t, outgoingImpactResp{})
+
+	_, _ = QueryOutgoingImpact("lip://x#X", 0)
+	d.waitHandled(t)
+
+	req := d.req()
+	assertField(t, req, "type", "query_outgoing_impact")
+	assertField(t, req, "symbol_uri", "lip://x#X")
+	assertNoField(t, req, "min_score")
+}
+
+// Empty symbol URI must short-circuit — no socket call.
+func TestWireProtocol_QueryOutgoingImpact_EmptySymbol(t *testing.T) {
+	prev := os.Getenv("LIP_SOCKET")
+	os.Setenv("LIP_SOCKET", "/tmp/lip-nonexistent-ckb-test.sock")
+	defer os.Setenv("LIP_SOCKET", prev)
+
+	got, err := QueryOutgoingImpact("", 0.6)
+	if got != nil || err != nil {
+		t.Errorf("empty symbol: want (nil, nil), got (%v, %v)", got, err)
+	}
+}
+
+func TestOutgoingEntryToExternal(t *testing.T) {
+	entry := &OutgoingImpactEntry{
+		TargetURI: "lip://x#X",
+		DirectItems: []BlastRadiusItem{
+			{FileURI: "f1", SymbolURI: "f1#A", Distance: 1, Confidence: 0.9},
+		},
+		TransitiveItems: []BlastRadiusItem{
+			{FileURI: "f2", SymbolURI: "f2#B", Distance: 2, Confidence: 0.8},
+		},
+		SemanticItems: []BlastRadiusSemanticItem{
+			{FileURI: "f3", SymbolURI: "f3#C", Similarity: 0.75, Source: "both"},
+		},
+		EdgesSource: "tier1",
+	}
+	ext := OutgoingEntryToExternal(entry)
+	if ext == nil {
+		t.Fatal("got nil")
+	}
+	if len(ext.DirectItems) != 1 || ext.DirectItems[0].SymbolURI != "f1#A" {
+		t.Errorf("DirectItems: %+v", ext.DirectItems)
+	}
+	if len(ext.TransitiveItems) != 1 || ext.TransitiveItems[0].Distance != 2 {
+		t.Errorf("TransitiveItems: %+v", ext.TransitiveItems)
+	}
+	if len(ext.SemanticItems) != 1 || ext.SemanticItems[0].Source != "both" {
+		t.Errorf("SemanticItems: %+v", ext.SemanticItems)
+	}
+	if ext.EdgesSource != "tier1" {
+		t.Errorf("EdgesSource = %q", ext.EdgesSource)
+	}
+	if ext.RiskLevel != "" {
+		t.Errorf("RiskLevel should be empty for outgoing, got %q", ext.RiskLevel)
+	}
+}
+
+func TestOutgoingEntryToExternal_Nil(t *testing.T) {
+	if got := OutgoingEntryToExternal(nil); got != nil {
+		t.Errorf("nil entry: want nil, got %+v", got)
+	}
+}
+
 func TestWireProtocol_Handshake(t *testing.T) {
 	d := newTestDaemon(t, handshakeResp{DaemonVersion: "2.0.0", ProtocolVersion: 2})
 

@@ -58,12 +58,35 @@ type Reference struct {
 	IsTest     bool          // Whether this reference is from a test
 }
 
+// CouplingTier distinguishes how a caller relationship was discovered.
+type CouplingTier string
+
+const (
+	CouplingSemantic CouplingTier = "semantic" // LIP embedding similarity — lower certainty
+	CouplingBoth     CouplingTier = "both"     // confirmed by both SCIP and LIP
+)
+
+// EnrichedCaller is a caller discovered by either static analysis or semantic similarity.
+type EnrichedCaller struct {
+	SymbolURI  string       `json:"symbolUri,omitempty"`
+	FileURI    string       `json:"fileUri"`
+	Tier       CouplingTier `json:"tier"`
+	Confidence float64      `json:"confidence"`           // 0.0–1.0
+	Similarity float32      `json:"similarity,omitempty"` // raw cosine similarity (semantic/both only)
+}
+
 // BlastRadius summarizes the spread of impact across the codebase
 type BlastRadius struct {
 	ModuleCount       int    `json:"moduleCount"`       // Number of affected modules
 	FileCount         int    `json:"fileCount"`         // Number of affected files
-	UniqueCallerCount int    `json:"uniqueCallerCount"` // Number of unique callers
+	UniqueCallerCount int    `json:"uniqueCallerCount"` // Number of unique callers (SCIP static only)
 	RiskLevel         string `json:"riskLevel"`         // "low", "medium", "high"
+
+	// Semantic enrichment from LIP (populated when LIP blast radius is available)
+	StaticCallerCount   int              `json:"staticCallerCount,omitempty"`
+	SemanticCallerCount int              `json:"semanticCallerCount,omitempty"`
+	ConfirmedCount      int              `json:"confirmedCount,omitempty"` // callers found by both SCIP and LIP
+	SemanticCallers     []EnrichedCaller `json:"semanticCallers,omitempty"`
 }
 
 // Blast radius classification thresholds

@@ -31,7 +31,7 @@ jobs:
           cache: true
 
       - name: Install scip-go
-        run: go install github.com/sourcegraph/scip-go/cmd/scip-go@latest
+        run: go install github.com/scip-code/scip-go/cmd/scip-go@latest
 
       - name: Run tests with coverage
         run: |

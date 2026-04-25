@@ -78,6 +78,22 @@ golangci-lint run
 ./ckb setup --tool=vscode
 ```
 
+## Release Process
+
+Releases are fully automated via `.github/workflows/release.yml`, triggered by pushing a `v*` tag.
+
+**Steps to release:**
+1. Bump version in `internal/version/version.go`, `npm/package.json`, `testdata/review/sarif.json`
+2. Update `CHANGELOG.md`
+3. Merge to main, tag `vX.Y.Z`, push the tag
+4. The pipeline handles everything else:
+   - Runs `go test -race ./...`
+   - GoReleaser builds cross-platform binaries and uploads to GitHub Releases
+   - Updates Homebrew tap (`SimplyLiz/homebrew-ckb`)
+   - Publishes `@tastehub/ckb` + 5 platform packages to npm
+
+**Do not manually `npm publish`** — the pipeline does it with checksummed binaries from GoReleaser.
+
 ## npm Distribution (v7.0)
 
 CKB is also available via npm:

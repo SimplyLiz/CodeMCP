@@ -35,6 +35,8 @@ pub enum SymbolKind {
     EnumMember,
     Constructor,
     TypeAlias,
+    ConfigKey,
+    Endpoint,
 }
 
 // ---------------------------------------------------------------------------
@@ -63,6 +65,15 @@ pub struct Signature {
     /// 0-indexed line number of this signature.
     #[serde(default)]
     pub line_start: usize,
+    /// Column byte offset (UTF-8) of this signature on its start line. 0-indexed.
+    #[serde(default)]
+    pub col_start: usize,
+    /// 0-indexed end line (inclusive).
+    #[serde(default)]
+    pub line_end: usize,
+    /// Column byte offset (UTF-8) of the end of this signature. 0-indexed, exclusive.
+    #[serde(default)]
+    pub col_end: usize,
     /// Confidence score (1–100). 30 = Tier 1 regex heuristic.
     #[serde(default = "default_confidence")]
     pub confidence: u8,
@@ -89,6 +100,9 @@ impl Signature {
             qualified_name: Some(qualified_name),
             kind,
             line_start,
+            col_start: 0,
+            line_end: 0,
+            col_end: 0,
             confidence: 30,
             doc_comment,
         }
@@ -433,8 +447,16 @@ pub fn extract_skeleton(path: &Path, content: &str) -> MappedFile {
         "c" | "cpp" | "cc" | "cxx" | "h" | "hpp" => extract_c_cpp(rel_path, content),
         "rb" => extract_ruby(rel_path, content),
         "php" => extract_php(rel_path, content),
-        "md" | "txt" | "json" | "yaml" | "yml" | "toml" | "xml" | "html" | "css" | "scss"
-        | "less" | "svg" | "lock" => {
+        "cs" => extract_csharp(rel_path, content),
+        "swift" => extract_swift(rel_path, content),
+        "lua" => extract_lua(rel_path, content),
+        "sh" | "bash" | "zsh" | "fish" => extract_shell(rel_path, content),
+        "sql" => extract_sql(rel_path, content),
+        "md" | "markdown" => extract_markdown(rel_path, content),
+        "yaml" | "yml" => extract_yaml(rel_path, content),
+        "toml" => extract_toml(rel_path, content),
+        "json" => extract_json(rel_path, content),
+        "txt" | "xml" | "html" | "css" | "scss" | "less" | "svg" | "lock" => {
             return MappedFile {
                 path: path.to_string_lossy().replace('\\', "/"),
                 imports: Vec::new(),
@@ -1713,6 +1735,958 @@ fn extract_php(path: String, content: &str) -> MappedFile {
 }
 
 // ---------------------------------------------------------------------------
+// C#
+// ---------------------------------------------------------------------------
+
+fn extract_csharp(path: String, content: &str) -> MappedFile {
+    let import_re = Regex::new(r"^using\s+([\w.]+)").unwrap();
+    let type_re = Regex::new(
+        r"^(?:(?:public|private|protected|internal|static|abstract|sealed|virtual|override|readonly|partial)\s+)*(?:class|interface|enum|struct|record)\s+(\w+)",
+    )
+    .unwrap();
+    let fn_re = Regex::new(
+        r"^(?:(?:public|private|protected|internal|static|abstract|sealed|virtual|override|readonly|async)\s+)+[\w<>\[\]?]+\s+(\w+)\s*\(",
+    )
+    .unwrap();
+
+    let mut imports = Vec::new();
+    let mut signatures = Vec::new();
+    let mut doc_buf: Vec<String> = Vec::new();
+    let mut scope = ScopeTracker::new();
+    let mut in_block_comment = false;
+
+    for (line_idx, line) in content.lines().enumerate() {
+        let trimmed = line.trim();
+
+        if trimmed.is_empty() {
+            if !in_block_comment { doc_buf.clear(); }
+            scope.update(line, None);
+            continue;
+        }
+
+        if in_block_comment {
+            if trimmed.contains("*/") { in_block_comment = false; }
+            else { doc_buf.push(strip_doc_marker(trimmed)); }
+            scope.update(line, None);
+            continue;
+        }
+
+        if trimmed.starts_with("/**") || trimmed.starts_with("/*") {
+            in_block_comment = !trimmed.contains("*/");
+            doc_buf.push(strip_doc_marker(trimmed));
+            scope.update(line, None);
+            continue;
+        }
+
+        if trimmed.starts_with("///") || trimmed.starts_with("//") {
+            doc_buf.push(strip_doc_marker(trimmed));
+            scope.update(line, None);
+            continue;
+        }
+
+        if import_re.is_match(trimmed) {
+            imports.push(trimmed.to_string());
+            doc_buf.clear();
+            scope.update(line, None);
+            continue;
+        }
+
+        if let Some(caps) = type_re.captures(trimmed) {
+            let name = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
+            let kind = if trimmed.contains("interface") {
+                SymbolKind::Interface
+            } else if trimmed.contains("enum") {
+                SymbolKind::Enum
+            } else if trimmed.contains("struct") {
+                SymbolKind::Struct
+            } else {
+                SymbolKind::Class
+            };
+            let doc = take_doc(&mut doc_buf);
+            let raw = trimmed.split('{').next().unwrap_or(trimmed).trim().to_string();
+            signatures.push(Signature::new(raw, kind, line_idx, &path, name.clone(), doc));
+            scope.update(line, Some(name));
+            continue;
+        }
+
+        if let Some(caps) = fn_re.captures(trimmed) {
+            let name = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
+            if !matches!(name.as_str(), "if" | "for" | "while" | "switch" | "foreach" | "catch") {
+                let qualified = scope.qualify(&name);
+                let kind = if scope.current().is_some() { SymbolKind::Method } else { SymbolKind::Function };
+                let raw = trimmed.split('{').next().unwrap_or(trimmed).trim().to_string();
+                let doc = take_doc(&mut doc_buf);
+                signatures.push(Signature::new(raw, kind, line_idx, &path, qualified, doc));
+            }
+            scope.update(line, None);
+            continue;
+        }
+
+        doc_buf.clear();
+        scope.update(line, None);
+    }
+
+    MappedFile { path, imports, signatures, docstrings: None, parameters: None, return_types: None }
+}
+
+// ---------------------------------------------------------------------------
+// Swift
+// ---------------------------------------------------------------------------
+
+fn extract_swift(path: String, content: &str) -> MappedFile {
+    let import_re = Regex::new(r"^import\s+(\w+)").unwrap();
+    let type_re = Regex::new(
+        r"^(?:(?:public|private|internal|fileprivate|open|final)\s+)*(?:class|struct|enum|protocol|actor)\s+(\w+)",
+    )
+    .unwrap();
+    let fn_re = Regex::new(
+        r"^(?:(?:public|private|internal|fileprivate|open|final|override|static|class|mutating|lazy)\s+)*func\s+(\w+)",
+    )
+    .unwrap();
+    let prop_re = Regex::new(
+        r"^(?:(?:public|private|internal|fileprivate|open|final|lazy|static)\s+)*(?:var|let)\s+(\w+)\s*:",
+    )
+    .unwrap();
+    let ext_re = Regex::new(r"^extension\s+(\w+)").unwrap();
+    let alias_re = Regex::new(r"^typealias\s+(\w+)").unwrap();
+
+    let mut imports = Vec::new();
+    let mut signatures = Vec::new();
+    let mut doc_buf: Vec<String> = Vec::new();
+    let mut scope = ScopeTracker::new();
+    let mut in_block_comment = false;
+
+    for (line_idx, line) in content.lines().enumerate() {
+        let trimmed = line.trim();
+
+        if trimmed.is_empty() {
+            if !in_block_comment { doc_buf.clear(); }
+            scope.update(line, None);
+            continue;
+        }
+
+        if in_block_comment {
+            if trimmed.contains("*/") { in_block_comment = false; }
+            else { doc_buf.push(strip_doc_marker(trimmed)); }
+            scope.update(line, None);
+            continue;
+        }
+
+        if trimmed.starts_with("/**") || trimmed.starts_with("/*") {
+            in_block_comment = !trimmed.contains("*/");
+            doc_buf.push(strip_doc_marker(trimmed));
+            scope.update(line, None);
+            continue;
+        }
+
+        if trimmed.starts_with("///") || trimmed.starts_with("//") {
+            doc_buf.push(strip_doc_marker(trimmed));
+            scope.update(line, None);
+            continue;
+        }
+
+        if import_re.is_match(trimmed) {
+            imports.push(trimmed.to_string());
+            doc_buf.clear();
+            scope.update(line, None);
+            continue;
+        }
+
+        if let Some(caps) = type_re.captures(trimmed) {
+            let name = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
+            let kind = if trimmed.contains("protocol") { SymbolKind::Interface }
+                else if trimmed.contains("enum") { SymbolKind::Enum }
+                else if trimmed.contains("struct") { SymbolKind::Struct }
+                else { SymbolKind::Class };
+            let doc = take_doc(&mut doc_buf);
+            let raw = trimmed.split('{').next().unwrap_or(trimmed).trim().to_string();
+            signatures.push(Signature::new(raw, kind, line_idx, &path, name.clone(), doc));
+            scope.update(line, Some(name));
+            continue;
+        }
+
+        if let Some(caps) = ext_re.captures(trimmed) {
+            let name = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
+            let doc = take_doc(&mut doc_buf);
+            let raw = trimmed.split('{').next().unwrap_or(trimmed).trim().to_string();
+            signatures.push(Signature::new(raw, SymbolKind::Namespace, line_idx, &path, name.clone(), doc));
+            scope.update(line, Some(name));
+            continue;
+        }
+
+        if let Some(caps) = alias_re.captures(trimmed) {
+            let name = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
+            let doc = take_doc(&mut doc_buf);
+            signatures.push(Signature::new(trimmed.to_string(), SymbolKind::TypeAlias, line_idx, &path, name, doc));
+            scope.update(line, None);
+            continue;
+        }
+
+        if let Some(caps) = fn_re.captures(trimmed) {
+            let name = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
+            let qualified = scope.qualify(&name);
+            let kind = if scope.current().is_some() { SymbolKind::Method } else { SymbolKind::Function };
+            let raw = trimmed.split('{').next().unwrap_or(trimmed).trim().to_string();
+            let doc = take_doc(&mut doc_buf);
+            signatures.push(Signature::new(raw, kind, line_idx, &path, qualified, doc));
+            scope.update(line, None);
+            continue;
+        }
+
+        if let Some(caps) = prop_re.captures(trimmed) {
+            let name = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
+            if scope.current().is_some() {
+                let qualified = scope.qualify(&name);
+                let doc = take_doc(&mut doc_buf);
+                let raw = trimmed.split('=').next().unwrap_or(trimmed).trim().to_string();
+                signatures.push(Signature::new(raw, SymbolKind::Field, line_idx, &path, qualified, doc));
+            } else {
+                doc_buf.clear();
+            }
+            scope.update(line, None);
+            continue;
+        }
+
+        doc_buf.clear();
+        scope.update(line, None);
+    }
+
+    MappedFile { path, imports, signatures, docstrings: None, parameters: None, return_types: None }
+}
+
+// ---------------------------------------------------------------------------
+// Lua
+// ---------------------------------------------------------------------------
+
+fn extract_lua(path: String, content: &str) -> MappedFile {
+    let require_re = Regex::new(r#"^(?:local\s+\w+\s*=\s*)?require\s*\(?['"]([^'"]+)['"]\)?"#).unwrap();
+    let fn_decl_re = Regex::new(r"^(?:local\s+)?function\s+([\w.:]+)\s*\(").unwrap();
+    let fn_assign_re = Regex::new(r"^(?:local\s+)?([\w.:]+)\s*=\s*function\s*\(").unwrap();
+
+    let mut imports = Vec::new();
+    let mut signatures = Vec::new();
+    let mut doc_buf: Vec<String> = Vec::new();
+
+    for (line_idx, line) in content.lines().enumerate() {
+        let trimmed = line.trim();
+
+        if trimmed.is_empty() {
+            doc_buf.clear();
+            continue;
+        }
+
+        if trimmed.starts_with("--") {
+            doc_buf.push(strip_doc_marker(trimmed));
+            continue;
+        }
+
+        if let Some(caps) = require_re.captures(trimmed) {
+            let module = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
+            imports.push(format!("require '{}'", module));
+            doc_buf.clear();
+            continue;
+        }
+
+        if let Some(caps) = fn_decl_re.captures(trimmed) {
+            let name = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
+            let doc = take_doc(&mut doc_buf);
+            let raw = trimmed.split(')').next().map(|s| format!("{})", s)).unwrap_or_else(|| trimmed.to_string());
+            signatures.push(Signature::new(raw, SymbolKind::Function, line_idx, &path, name, doc));
+            continue;
+        }
+
+        if let Some(caps) = fn_assign_re.captures(trimmed) {
+            let name = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
+            if !name.is_empty() && !name.starts_with('_') {
+                let doc = take_doc(&mut doc_buf);
+                let raw = format!("function {}(...)", name);
+                signatures.push(Signature::new(raw, SymbolKind::Function, line_idx, &path, name, doc));
+            } else {
+                doc_buf.clear();
+            }
+            continue;
+        }
+
+        doc_buf.clear();
+    }
+
+    MappedFile { path, imports, signatures, docstrings: None, parameters: None, return_types: None }
+}
+
+// ---------------------------------------------------------------------------
+// Shell (sh / bash / zsh / fish)
+// ---------------------------------------------------------------------------
+
+fn extract_shell(path: String, content: &str) -> MappedFile {
+    let fn_paren_re = Regex::new(r"^(\w[\w-]*)\s*\(\)\s*(?:\{|$)").unwrap();
+    let fn_keyword_re = Regex::new(r"^function\s+(\w[\w-]*)").unwrap();
+
+    let mut signatures = Vec::new();
+    let mut doc_buf: Vec<String> = Vec::new();
+
+    for (line_idx, line) in content.lines().enumerate() {
+        let trimmed = line.trim();
+
+        if trimmed.is_empty() {
+            doc_buf.clear();
+            continue;
+        }
+
+        if trimmed.starts_with('#') {
+            doc_buf.push(strip_doc_marker(trimmed));
+            continue;
+        }
+
+        if let Some(caps) = fn_keyword_re.captures(trimmed) {
+            let name = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
+            let doc = take_doc(&mut doc_buf);
+            signatures.push(Signature::new(format!("function {}()", name), SymbolKind::Function, line_idx, &path, name, doc));
+            continue;
+        }
+
+        if let Some(caps) = fn_paren_re.captures(trimmed) {
+            let name = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
+            let doc = take_doc(&mut doc_buf);
+            signatures.push(Signature::new(format!("{}()", name), SymbolKind::Function, line_idx, &path, name, doc));
+            continue;
+        }
+
+        doc_buf.clear();
+    }
+
+    MappedFile { path, imports: Vec::new(), signatures, docstrings: None, parameters: None, return_types: None }
+}
+
+// ---------------------------------------------------------------------------
+// SQL
+// ---------------------------------------------------------------------------
+
+fn extract_sql(path: String, content: &str) -> MappedFile {
+    let ddl_re = Regex::new(
+        r"(?i)^CREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|VIEW|FUNCTION|PROCEDURE|INDEX|TRIGGER)\s+(?:\w+\.)?(\w+)",
+    )
+    .unwrap();
+    let alter_re = Regex::new(r"(?i)^ALTER\s+TABLE\s+(?:\w+\.)?(\w+)").unwrap();
+
+    let mut signatures = Vec::new();
+    let mut doc_buf: Vec<String> = Vec::new();
+
+    for (line_idx, line) in content.lines().enumerate() {
+        let trimmed = line.trim();
+
+        if trimmed.is_empty() {
+            doc_buf.clear();
+            continue;
+        }
+
+        if trimmed.starts_with("--") {
+            doc_buf.push(strip_doc_marker(trimmed));
+            continue;
+        }
+
+        if let Some(caps) = ddl_re.captures(trimmed) {
+            let name = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
+            let upper = trimmed.to_uppercase();
+            let kind = if upper.contains("TABLE") { SymbolKind::Struct }
+                else if upper.contains("VIEW") { SymbolKind::Class }
+                else if upper.contains("FUNCTION") || upper.contains("PROCEDURE") { SymbolKind::Function }
+                else { SymbolKind::Unknown };
+            let doc = take_doc(&mut doc_buf);
+            let raw = trimmed.split('(').next().unwrap_or(trimmed).trim_end_matches(';').trim().to_string();
+            signatures.push(Signature::new(raw, kind, line_idx, &path, name, doc));
+            continue;
+        }
+
+        if let Some(caps) = alter_re.captures(trimmed) {
+            let name = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
+            let doc = take_doc(&mut doc_buf);
+            signatures.push(Signature::new(trimmed.trim_end_matches(';').to_string(), SymbolKind::Struct, line_idx, &path, name, doc));
+            continue;
+        }
+
+        doc_buf.clear();
+    }
+
+    MappedFile { path, imports: Vec::new(), signatures, docstrings: None, parameters: None, return_types: None }
+}
+
+// ---------------------------------------------------------------------------
+// Markdown
+// ---------------------------------------------------------------------------
+
+/// Code-file extensions used to detect file-path cross-references in docs.
+const CODE_EXTENSIONS: &[&str] = &[
+    "rs", "go", "py", "js", "jsx", "ts", "tsx", "mjs", "cjs",
+    "java", "kt", "scala", "c", "cpp", "cc", "cxx", "h", "hpp",
+    "rb", "php", "cs", "swift", "lua", "sh", "sql",
+    "yaml", "yml", "toml", "json", "md",
+];
+
+fn looks_like_file_path(s: &str) -> bool {
+    // Contains a slash or ends with a known extension
+    if s.contains('/') { return true; }
+    if let Some(dot) = s.rfind('.') {
+        let ext = &s[dot + 1..];
+        return CODE_EXTENSIONS.contains(&ext);
+    }
+    false
+}
+
+fn extract_markdown(path: String, content: &str) -> MappedFile {
+    let heading_re = Regex::new(r"^(#{1,6})\s+(.+)").unwrap();
+    let link_re = Regex::new(r"\[.*?\]\(([^)]+)\)").unwrap();
+    let backtick_sym_re = Regex::new(r"`([A-Z]\w{3,})`").unwrap();
+    // Captures backtick file refs like `scanner.rs`, `search.md`, `config.yaml`
+    let backtick_file_re = Regex::new(
+        r"`([\w_-]+\.(?:rs|go|py|ts|tsx|js|jsx|mjs|cjs|java|kt|rb|php|cs|swift|lua|sh|sql|c|h|cpp|cc|cxx|hpp|md|yaml|yml|toml|json))`"
+    ).unwrap();
+    let bare_path_re = Regex::new(r"(?:^|\s)((?:\./|src/|lib/|pkg/|cmd/|internal/)[\w/.@-]+)").unwrap();
+    let frontmatter_key_re = Regex::new(r"^([\w_-]+)\s*:").unwrap();
+
+    let mut signatures = Vec::new();
+    let mut imports = Vec::new();
+    let mut seen_imports = std::collections::HashSet::new();
+
+    let lines: Vec<&str> = content.lines().collect();
+    let mut start_line = 0;
+
+    // --- YAML front-matter (fenced by --- at line 0) ---
+    if lines.first().map(|l| l.trim()) == Some("---") {
+        for (i, line) in lines.iter().enumerate().skip(1) {
+            let trimmed = line.trim();
+            if trimmed == "---" {
+                start_line = i + 1;
+                break;
+            }
+            if let Some(caps) = frontmatter_key_re.captures(trimmed) {
+                let name = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
+                if !name.is_empty() {
+                    signatures.push(Signature::new(
+                        trimmed.to_string(), SymbolKind::ConfigKey, i, &path,
+                        format!("frontmatter.{}", name), None,
+                    ));
+                }
+            }
+        }
+    }
+
+    // --- Main pass: headings + cross-references ---
+    for (line_idx, line) in lines.iter().enumerate().skip(start_line) {
+        let trimmed = line.trim();
+
+        // Headings
+        if let Some(caps) = heading_re.captures(trimmed) {
+            let level = caps.get(1).map(|m| m.as_str().len()).unwrap_or(1);
+            let title = caps.get(2).map(|m| m.as_str().trim()).unwrap_or("").to_string();
+            if title.is_empty() { continue; }
+            let kind = if level == 1 { SymbolKind::Namespace } else { SymbolKind::Field };
+            let slug = title.to_lowercase().replace(|c: char| !c.is_alphanumeric(), "-");
+            let raw = format!("{} {}", "#".repeat(level), title);
+            signatures.push(Signature::new(raw, kind, line_idx, &path, slug, None));
+        }
+
+        // Markdown link cross-refs: [text](target)
+        for caps in link_re.captures_iter(trimmed) {
+            let target = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            // Skip URLs, anchors, and images
+            if target.starts_with("http") || target.starts_with('#') || target.is_empty() {
+                continue;
+            }
+            let target = target.split('#').next().unwrap_or(target); // strip anchor
+            if looks_like_file_path(target) && seen_imports.insert(target.to_string()) {
+                imports.push(target.trim_start_matches("./").to_string());
+            }
+        }
+
+        // Backtick PascalCase symbol refs: `ApiState`, `MappedFile`
+        for caps in backtick_sym_re.captures_iter(trimmed) {
+            let sym = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            if seen_imports.insert(sym.to_string()) {
+                imports.push(sym.to_string());
+            }
+        }
+
+        // Backtick file refs: `scanner.rs`, `search.md`, `config.yaml`
+        for caps in backtick_file_re.captures_iter(trimmed) {
+            let file_ref = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            if seen_imports.insert(file_ref.to_string()) {
+                imports.push(file_ref.to_string());
+            }
+        }
+
+        // Bare file paths: src/foo/bar.rs, ./lib/util.ts
+        for caps in bare_path_re.captures_iter(trimmed) {
+            let p = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            let clean = p.trim_start_matches("./");
+            if seen_imports.insert(clean.to_string()) {
+                imports.push(clean.to_string());
+            }
+        }
+    }
+
+    MappedFile { path, imports, signatures, docstrings: None, parameters: None, return_types: None }
+}
+
+// ---------------------------------------------------------------------------
+// YAML
+// ---------------------------------------------------------------------------
+
+fn extract_yaml(path: String, content: &str) -> MappedFile {
+    let key_re = Regex::new(r"^(\s*)([\w_-]+)\s*:(.*)").unwrap();
+    let max_depth: usize = 3;
+
+    let mut signatures = Vec::new();
+    let mut top_level_keys = Vec::new();
+
+    // Indent-stack: (indent_level, key_name)
+    let mut stack: Vec<(usize, String)> = Vec::new();
+
+    for (line_idx, line) in content.lines().enumerate() {
+        // Skip comments, empty lines, list items
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with('-') {
+            continue;
+        }
+
+        if let Some(caps) = key_re.captures(line) {
+            let indent = caps.get(1).map(|m| m.as_str().len()).unwrap_or(0);
+            let key = caps.get(2).map(|m| m.as_str()).unwrap_or("").to_string();
+            let value = caps.get(3).map(|m| m.as_str().trim()).unwrap_or("");
+
+            if key.is_empty() { continue; }
+
+            // Pop stack entries at same or deeper indent
+            while let Some(&(level, _)) = stack.last() {
+                if level >= indent { stack.pop(); } else { break; }
+            }
+
+            // Track top-level keys for OpenAPI detection
+            if indent == 0 {
+                top_level_keys.push(key.clone());
+            }
+
+            // Build dot-path from stack
+            let depth = stack.len();
+            if depth < max_depth {
+                let dot_path = if stack.is_empty() {
+                    key.clone()
+                } else {
+                    let prefix: Vec<&str> = stack.iter().map(|(_, k)| k.as_str()).collect();
+                    format!("{}.{}", prefix.join("."), key)
+                };
+
+                let kind = if indent == 0 { SymbolKind::Field } else { SymbolKind::ConfigKey };
+                let raw = if value.is_empty() {
+                    format!("{}:", dot_path)
+                } else {
+                    format!("{}: {}", dot_path, value)
+                };
+                signatures.push(Signature::new(raw, kind, line_idx, &path, dot_path, None));
+            }
+
+            stack.push((indent, key));
+        }
+    }
+
+    // --- OpenAPI detection ---
+    let is_openapi = top_level_keys.iter().any(|k| k == "openapi" || k == "swagger");
+    if is_openapi {
+        extract_yaml_openapi_paths(content, &path, &mut signatures);
+    }
+
+    MappedFile { path, imports: Vec::new(), signatures, docstrings: None, parameters: None, return_types: None }
+}
+
+/// Extract OpenAPI endpoint paths from YAML content.
+/// Looks for lines under `paths:` that start with `/`.
+fn extract_yaml_openapi_paths(content: &str, path: &str, signatures: &mut Vec<Signature>) {
+    let path_entry_re = Regex::new(r"^  (/\S+)\s*:").unwrap();
+    let method_re = Regex::new(r"^    (get|post|put|patch|delete|head|options)\s*:").unwrap();
+
+    let mut in_paths = false;
+    let mut current_path = String::new();
+
+    for (line_idx, line) in content.lines().enumerate() {
+        let trimmed = line.trim();
+
+        // Detect `paths:` section (top-level, no indent)
+        if !line.starts_with(' ') && trimmed.starts_with("paths:") {
+            in_paths = true;
+            continue;
+        }
+        // Exit paths section when next top-level key appears
+        if in_paths && !line.starts_with(' ') && !trimmed.is_empty() {
+            in_paths = false;
+        }
+
+        if !in_paths { continue; }
+
+        // Path entry: /api/users:
+        if let Some(caps) = path_entry_re.captures(line) {
+            current_path = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
+            continue;
+        }
+
+        // HTTP method under a path
+        if !current_path.is_empty() {
+            if let Some(caps) = method_re.captures(line) {
+                let method = caps.get(1).map(|m| m.as_str().to_uppercase()).unwrap_or_default();
+                let raw = format!("{} {}", method, current_path);
+                let qname = format!("paths.{}.{}", current_path, method.to_lowercase());
+                signatures.push(Signature::new(
+                    raw, SymbolKind::Endpoint, line_idx, path, qname, None,
+                ));
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TOML
+// ---------------------------------------------------------------------------
+
+fn extract_toml(path: String, content: &str) -> MappedFile {
+    // Try structured parsing first; fall back to regex on failure.
+    if let Ok(table) = content.parse::<toml::Value>() {
+        let mut signatures = Vec::new();
+        toml_walk(&table, "", &path, &mut signatures, 0, 3);
+
+        // Map line numbers: for each signature, find the matching line in source.
+        // This is a best-effort pass — qualified names are used as search keys.
+        let lines: Vec<&str> = content.lines().collect();
+        for sig in &mut signatures {
+            if let Some(qname) = &sig.qualified_name {
+                // Use the last segment as the key to search for
+                let search_key = qname.rsplit('.').next().unwrap_or(qname);
+                for (i, line) in lines.iter().enumerate() {
+                    let trimmed = line.trim();
+                    if trimmed.starts_with(search_key) || trimmed.starts_with(&format!("[{}]", qname)) {
+                        sig.line_start = i;
+                        break;
+                    }
+                }
+            }
+        }
+
+        return MappedFile { path, imports: Vec::new(), signatures, docstrings: None, parameters: None, return_types: None };
+    }
+
+    // Fallback: regex-only for malformed TOML
+    let section_re = Regex::new(r"^\[([^\]]+)\]").unwrap();
+    let key_re = Regex::new(r"^([\w_-]+)\s*=").unwrap();
+    let mut signatures = Vec::new();
+    let mut current_section = String::new();
+
+    for (line_idx, line) in content.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') { continue; }
+        if let Some(caps) = section_re.captures(trimmed) {
+            let name = caps.get(1).map(|m| m.as_str().trim()).unwrap_or("").to_string();
+            if name.is_empty() { continue; }
+            current_section = name.clone();
+            signatures.push(Signature::new(trimmed.to_string(), SymbolKind::Namespace, line_idx, &path, name, None));
+        } else if let Some(caps) = key_re.captures(trimmed) {
+            let key = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
+            let qname = if current_section.is_empty() {
+                key.clone()
+            } else {
+                format!("{}.{}", current_section, key)
+            };
+            signatures.push(Signature::new(trimmed.to_string(), SymbolKind::ConfigKey, line_idx, &path, qname, None));
+        }
+    }
+
+    MappedFile { path, imports: Vec::new(), signatures, docstrings: None, parameters: None, return_types: None }
+}
+
+/// Recursively walk a parsed TOML value tree, emitting signatures.
+fn toml_walk(
+    value: &toml::Value,
+    prefix: &str,
+    path: &str,
+    signatures: &mut Vec<Signature>,
+    depth: usize,
+    max_depth: usize,
+) {
+    if depth > max_depth { return; }
+
+    if let Some(table) = value.as_table() {
+        for (key, val) in table {
+            let qname = if prefix.is_empty() {
+                key.clone()
+            } else {
+                format!("{}.{}", prefix, key)
+            };
+
+            match val {
+                toml::Value::Table(_) => {
+                    // Section/table → Namespace
+                    let raw = if depth == 0 {
+                        format!("[{}]", qname)
+                    } else {
+                        format!("{}:", qname)
+                    };
+                    signatures.push(Signature::new(
+                        raw, SymbolKind::Namespace, 0, path, qname.clone(), None,
+                    ));
+                    toml_walk(val, &qname, path, signatures, depth + 1, max_depth);
+                }
+                toml::Value::Array(arr) if arr.first().map(|v| v.is_table()).unwrap_or(false) => {
+                    // Array of tables (e.g. [[bin]])
+                    let raw = format!("[[{}]]", qname);
+                    signatures.push(Signature::new(
+                        raw, SymbolKind::Namespace, 0, path, qname.clone(), None,
+                    ));
+                    // Walk first entry only for structure discovery
+                    if let Some(first) = arr.first() {
+                        toml_walk(first, &qname, path, signatures, depth + 1, max_depth);
+                    }
+                }
+                _ => {
+                    // Leaf value → ConfigKey
+                    let val_str = match val {
+                        toml::Value::String(s) => format!("\"{}\"", s),
+                        other => other.to_string(),
+                    };
+                    let raw = format!("{} = {}", qname, val_str);
+                    signatures.push(Signature::new(
+                        raw, SymbolKind::ConfigKey, 0, path, qname, None,
+                    ));
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// JSON
+// ---------------------------------------------------------------------------
+
+/// Max JSON file size to attempt parsing (512 KB). Larger files (data fixtures,
+/// generated output) are skipped to avoid slow extraction.
+const JSON_MAX_SIZE: usize = 512 * 1024;
+
+fn extract_json(path: String, content: &str) -> MappedFile {
+    let empty = MappedFile {
+        path: path.clone(), imports: Vec::new(), signatures: Vec::new(),
+        docstrings: None, parameters: None, return_types: None,
+    };
+
+    if content.len() > JSON_MAX_SIZE {
+        return empty;
+    }
+
+    let parsed: serde_json::Value = match serde_json::from_str(content) {
+        Ok(v) => v,
+        Err(_) => return empty,
+    };
+
+    let obj = match parsed.as_object() {
+        Some(o) => o,
+        None => return empty,
+    };
+
+    let mut signatures = Vec::new();
+    let mut imports = Vec::new();
+
+    // Detect variant
+    let has_schema = obj.contains_key("$schema");
+    let is_openapi = obj.contains_key("openapi") || obj.contains_key("swagger");
+    let is_package_json = obj.contains_key("name") && obj.contains_key("version")
+        && (obj.contains_key("dependencies") || obj.contains_key("devDependencies"));
+
+    if is_openapi {
+        extract_json_openapi(obj, &path, &mut signatures);
+    } else if has_schema {
+        extract_json_schema(obj, &path, &mut signatures, &mut imports);
+    } else if is_package_json {
+        extract_json_package(obj, &path, &mut signatures, &mut imports);
+    } else {
+        // Generic: top-level keys as Field, nested at depth <= 2 as ConfigKey
+        json_walk(obj, "", &path, &mut signatures, 0, 2);
+    }
+
+    MappedFile { path, imports, signatures, docstrings: None, parameters: None, return_types: None }
+}
+
+fn json_walk(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    prefix: &str,
+    path: &str,
+    signatures: &mut Vec<Signature>,
+    depth: usize,
+    max_depth: usize,
+) {
+    for (key, val) in obj {
+        let qname = if prefix.is_empty() { key.clone() } else { format!("{}.{}", prefix, key) };
+        let kind = if depth == 0 { SymbolKind::Field } else { SymbolKind::ConfigKey };
+
+        match val {
+            serde_json::Value::Object(inner) if depth < max_depth => {
+                signatures.push(Signature::new(
+                    format!("{}:", qname), kind, 0, path, qname.clone(), None,
+                ));
+                json_walk(inner, &qname, path, signatures, depth + 1, max_depth);
+            }
+            _ => {
+                let val_str = match val {
+                    serde_json::Value::String(s) => format!("\"{}\"", truncate_str(s, 60)),
+                    serde_json::Value::Array(_) => "[...]".to_string(),
+                    serde_json::Value::Object(_) => "{...}".to_string(),
+                    other => other.to_string(),
+                };
+                signatures.push(Signature::new(
+                    format!("{}: {}", qname, val_str), kind, 0, path, qname, None,
+                ));
+            }
+        }
+    }
+}
+
+fn truncate_str(s: &str, max: usize) -> String {
+    if s.len() <= max { s.to_string() } else { format!("{}...", &s[..max]) }
+}
+
+/// Extract OpenAPI endpoints from a parsed JSON object.
+fn extract_json_openapi(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    path: &str,
+    signatures: &mut Vec<Signature>,
+) {
+    // info.title
+    if let Some(info) = obj.get("info").and_then(|v| v.as_object()) {
+        if let Some(title) = info.get("title").and_then(|v| v.as_str()) {
+            signatures.push(Signature::new(
+                format!("info.title: \"{}\"", title), SymbolKind::Field, 0, path,
+                "info.title".to_string(), None,
+            ));
+        }
+    }
+
+    // paths
+    if let Some(paths) = obj.get("paths").and_then(|v| v.as_object()) {
+        for (endpoint, methods) in paths {
+            if let Some(methods_obj) = methods.as_object() {
+                for method in methods_obj.keys() {
+                    let m = method.to_uppercase();
+                    if matches!(m.as_str(), "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS") {
+                        let raw = format!("{} {}", m, endpoint);
+                        let qname = format!("paths.{}.{}", endpoint, method);
+                        signatures.push(Signature::new(
+                            raw, SymbolKind::Endpoint, 0, path, qname, None,
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    // components.schemas
+    if let Some(components) = obj.get("components").and_then(|v| v.as_object()) {
+        if let Some(schemas) = components.get("schemas").and_then(|v| v.as_object()) {
+            for schema_name in schemas.keys() {
+                let qname = format!("components.schemas.{}", schema_name);
+                signatures.push(Signature::new(
+                    format!("schema {}", schema_name), SymbolKind::Namespace, 0, path,
+                    qname, None,
+                ));
+            }
+        }
+    }
+}
+
+/// Extract JSON Schema properties and $ref imports.
+fn extract_json_schema(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    path: &str,
+    signatures: &mut Vec<Signature>,
+    imports: &mut Vec<String>,
+) {
+    // Title
+    if let Some(title) = obj.get("title").and_then(|v| v.as_str()) {
+        signatures.push(Signature::new(
+            format!("schema: {}", title), SymbolKind::Namespace, 0, path,
+            title.to_string(), None,
+        ));
+    }
+
+    // Properties
+    if let Some(props) = obj.get("properties").and_then(|v| v.as_object()) {
+        for (key, val) in props {
+            let type_str = val.get("type").and_then(|v| v.as_str()).unwrap_or("any");
+            let raw = format!("{}: {}", key, type_str);
+            signatures.push(Signature::new(
+                raw, SymbolKind::ConfigKey, 0, path,
+                format!("properties.{}", key), None,
+            ));
+        }
+    }
+
+    // $ref values → imports
+    collect_json_refs(obj, imports);
+}
+
+fn collect_json_refs(obj: &serde_json::Map<String, serde_json::Value>, imports: &mut Vec<String>) {
+    for (key, val) in obj {
+        if key == "$ref" {
+            if let Some(r) = val.as_str() {
+                // Only add file-path refs, not internal #/definitions/... refs
+                if !r.starts_with('#') && !r.is_empty() {
+                    imports.push(r.trim_start_matches("./").to_string());
+                }
+            }
+        }
+        match val {
+            serde_json::Value::Object(inner) => collect_json_refs(inner, imports),
+            serde_json::Value::Array(arr) => {
+                for item in arr {
+                    if let Some(inner) = item.as_object() {
+                        collect_json_refs(inner, imports);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Extract package.json: name, scripts, dependencies as imports.
+fn extract_json_package(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    path: &str,
+    signatures: &mut Vec<Signature>,
+    imports: &mut Vec<String>,
+) {
+    // name + version
+    if let Some(name) = obj.get("name").and_then(|v| v.as_str()) {
+        let version = obj.get("version").and_then(|v| v.as_str()).unwrap_or("?");
+        signatures.push(Signature::new(
+            format!("{} @ {}", name, version), SymbolKind::Namespace, 0, path,
+            "package".to_string(), None,
+        ));
+    }
+
+    // scripts
+    if let Some(scripts) = obj.get("scripts").and_then(|v| v.as_object()) {
+        for (key, val) in scripts {
+            let cmd = val.as_str().unwrap_or("...");
+            signatures.push(Signature::new(
+                format!("script {}: {}", key, truncate_str(cmd, 60)),
+                SymbolKind::ConfigKey, 0, path,
+                format!("scripts.{}", key), None,
+            ));
+        }
+    }
+
+    // main / module entry points → imports
+    for field in &["main", "module", "types"] {
+        if let Some(entry) = obj.get(*field).and_then(|v| v.as_str()) {
+            imports.push(entry.trim_start_matches("./").to_string());
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Generic fallback
 // ---------------------------------------------------------------------------
 
@@ -1770,5 +2744,193 @@ fn extract_generic(path: String, content: &str) -> MappedFile {
         docstrings: None,
         parameters: None,
         return_types: None,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests — document extractors
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod doc_tests {
+    use super::*;
+    use std::path::Path;
+
+    // ── Markdown ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn markdown_headings_preserved() {
+        let content = "# Title\n\nSome text.\n\n## Section One\n\n### Subsection";
+        let mf = extract_skeleton(Path::new("README.md"), content);
+        let heading_sigs: Vec<_> = mf.signatures.iter()
+            .filter(|s| s.kind == SymbolKind::Namespace || s.kind == SymbolKind::Field)
+            .collect();
+        assert_eq!(heading_sigs.len(), 3);
+        assert_eq!(heading_sigs[0].kind, SymbolKind::Namespace); // H1
+        assert_eq!(heading_sigs[1].kind, SymbolKind::Field);     // H2
+        assert_eq!(heading_sigs[2].kind, SymbolKind::Field);     // H3
+    }
+
+    #[test]
+    fn markdown_link_crossrefs() {
+        let content = "# Guide\n\nSee [the handler](src/api/handler.rs) for details.\n\nAlso check [config](./config.toml).";
+        let mf = extract_skeleton(Path::new("docs/guide.md"), content);
+        assert!(mf.imports.iter().any(|i| i == "src/api/handler.rs"), "should import handler.rs");
+        assert!(mf.imports.iter().any(|i| i == "config.toml"), "should import config.toml");
+    }
+
+    #[test]
+    fn markdown_backtick_symbol_refs() {
+        let content = "# API\n\nThe `ApiState` struct manages the graph. See `MappedFile` too.\n\nIgnore `foo` (too short).";
+        let mf = extract_skeleton(Path::new("docs/api.md"), content);
+        assert!(mf.imports.iter().any(|i| i == "ApiState"), "should import ApiState");
+        assert!(mf.imports.iter().any(|i| i == "MappedFile"), "should import MappedFile");
+        assert!(!mf.imports.iter().any(|i| i == "foo"), "should NOT import short names");
+    }
+
+    #[test]
+    fn markdown_frontmatter() {
+        let content = "---\ntitle: My Doc\ntags: rust, api\n---\n# Content\n\nBody text.";
+        let mf = extract_skeleton(Path::new("docs/post.md"), content);
+        let fm_sigs: Vec<_> = mf.signatures.iter().filter(|s| s.kind == SymbolKind::ConfigKey).collect();
+        assert_eq!(fm_sigs.len(), 2, "should extract 2 front-matter keys");
+        assert!(fm_sigs.iter().any(|s| s.qualified_name.as_deref() == Some("frontmatter.title")));
+    }
+
+    #[test]
+    fn markdown_skips_urls() {
+        let content = "# Links\n\n[Google](https://google.com)\n[Anchor](#section)";
+        let mf = extract_skeleton(Path::new("README.md"), content);
+        assert!(mf.imports.is_empty(), "should not import URLs or anchors");
+    }
+
+    #[test]
+    fn markdown_bare_paths() {
+        let content = "# Guide\n\nEdit src/mapper.rs to change extraction.";
+        let mf = extract_skeleton(Path::new("CONTRIBUTING.md"), content);
+        assert!(mf.imports.iter().any(|i| i == "src/mapper.rs"), "should detect bare file paths");
+    }
+
+    #[test]
+    fn markdown_backtick_file_refs() {
+        let content = "| `scanner.rs` | File discovery |\n| `mapper.rs` | Extraction |\n| `api.rs` | Graph |\n\nSee `config.yaml` too.";
+        let mf = extract_skeleton(Path::new("docs/architecture.md"), content);
+        assert!(mf.imports.iter().any(|i| i == "scanner.rs"), "should import scanner.rs");
+        assert!(mf.imports.iter().any(|i| i == "mapper.rs"), "should import mapper.rs");
+        assert!(mf.imports.iter().any(|i| i == "api.rs"), "should import api.rs");
+        assert!(mf.imports.iter().any(|i| i == "config.yaml"), "should import config.yaml");
+    }
+
+    // ── YAML ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn yaml_nested_keys() {
+        let content = "server:\n  host: localhost\n  port: 8080\ndatabase:\n  name: mydb";
+        let mf = extract_skeleton(Path::new("config.yaml"), content);
+        let qnames: Vec<_> = mf.signatures.iter().filter_map(|s| s.qualified_name.as_deref()).collect();
+        assert!(qnames.contains(&"server"), "should have top-level key");
+        assert!(qnames.contains(&"server.host"), "should have nested key");
+        assert!(qnames.contains(&"server.port"), "should have nested key");
+        assert!(qnames.contains(&"database.name"), "should have nested key");
+    }
+
+    #[test]
+    fn yaml_depth_cap() {
+        let content = "a:\n  b:\n    c:\n      d:\n        e: deep";
+        let mf = extract_skeleton(Path::new("deep.yml"), content);
+        // Depth 3 cap means a, a.b, a.b.c are extracted; a.b.c.d and deeper are not
+        let qnames: Vec<_> = mf.signatures.iter().filter_map(|s| s.qualified_name.as_deref()).collect();
+        assert!(qnames.contains(&"a.b.c"), "depth 3 should be included");
+        assert!(!qnames.iter().any(|q| q.contains("d")), "depth 4+ should be excluded");
+    }
+
+    #[test]
+    fn yaml_openapi_endpoints() {
+        let content = "\
+openapi: 3.0.0
+info:
+  title: Test API
+paths:
+  /users:
+    get:
+    post:
+  /users/{id}:
+    get:
+    delete:
+components:
+  schemas:";
+        let mf = extract_skeleton(Path::new("openapi.yaml"), content);
+        let endpoints: Vec<_> = mf.signatures.iter()
+            .filter(|s| s.kind == SymbolKind::Endpoint)
+            .collect();
+        assert!(endpoints.len() >= 4, "should extract at least 4 endpoints, got {}", endpoints.len());
+        assert!(endpoints.iter().any(|s| s.raw == "GET /users"));
+        assert!(endpoints.iter().any(|s| s.raw == "DELETE /users/{id}"));
+    }
+
+    // ── TOML ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn toml_sections_and_keys() {
+        let content = "[package]\nname = \"cartographer\"\nversion = \"3.0.0\"\n\n[dependencies]\nserde = \"1.0\"";
+        let mf = extract_skeleton(Path::new("Cargo.toml"), content);
+        let qnames: Vec<_> = mf.signatures.iter().filter_map(|s| s.qualified_name.as_deref()).collect();
+        assert!(qnames.contains(&"package"), "should have package section");
+        assert!(qnames.contains(&"package.name"), "should have package.name key");
+        assert!(qnames.contains(&"dependencies"), "should have dependencies section");
+        assert!(qnames.contains(&"dependencies.serde"), "should have dependencies.serde key");
+    }
+
+    #[test]
+    fn toml_fallback_on_bad_input() {
+        // Malformed TOML — should still extract what it can via regex fallback
+        let content = "[section]\nkey = value\n[bad\nmore = stuff";
+        let mf = extract_skeleton(Path::new("bad.toml"), content);
+        // Regex fallback should get at least the section and key
+        assert!(!mf.signatures.is_empty(), "fallback should extract something");
+    }
+
+    // ── JSON ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn json_generic_keys() {
+        let content = r#"{"name": "test", "version": 1, "config": {"debug": true}}"#;
+        let mf = extract_skeleton(Path::new("settings.json"), content);
+        assert!(!mf.signatures.is_empty(), "should extract JSON keys");
+        let qnames: Vec<_> = mf.signatures.iter().filter_map(|s| s.qualified_name.as_deref()).collect();
+        assert!(qnames.contains(&"name"));
+        assert!(qnames.contains(&"config.debug"));
+    }
+
+    #[test]
+    fn json_openapi() {
+        let content = r#"{"openapi": "3.0.0", "info": {"title": "My API"}, "paths": {"/health": {"get": {}}}}"#;
+        let mf = extract_skeleton(Path::new("api.json"), content);
+        let endpoints: Vec<_> = mf.signatures.iter().filter(|s| s.kind == SymbolKind::Endpoint).collect();
+        assert_eq!(endpoints.len(), 1);
+        assert_eq!(endpoints[0].raw, "GET /health");
+    }
+
+    #[test]
+    fn json_schema_properties() {
+        let content = r#"{"$schema": "http://json-schema.org/draft-07/schema#", "title": "User", "properties": {"name": {"type": "string"}, "age": {"type": "integer"}}}"#;
+        let mf = extract_skeleton(Path::new("user.schema.json"), content);
+        let props: Vec<_> = mf.signatures.iter().filter(|s| s.kind == SymbolKind::ConfigKey).collect();
+        assert_eq!(props.len(), 2, "should extract 2 properties");
+    }
+
+    #[test]
+    fn json_package_json() {
+        let content = r#"{"name": "my-app", "version": "1.0.0", "main": "dist/index.js", "dependencies": {"express": "^4.18.0"}}"#;
+        let mf = extract_skeleton(Path::new("package.json"), content);
+        assert!(mf.imports.iter().any(|i| i == "dist/index.js"), "should import main entry point");
+    }
+
+    #[test]
+    fn json_size_guard() {
+        // Content > 512KB should return empty
+        let content = "x".repeat(600_000);
+        let mf = extract_skeleton(Path::new("huge.json"), &content);
+        assert!(mf.signatures.is_empty(), "should skip oversized JSON");
     }
 }

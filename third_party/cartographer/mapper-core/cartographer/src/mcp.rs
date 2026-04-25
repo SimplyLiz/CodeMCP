@@ -5,6 +5,24 @@ use crate::api::{ApiState, ModuleContextRequest};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+// ---------------------------------------------------------------------------
+// watch_graph event types
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GraphEventKind {
+    FileReindexed,
+    GraphUpdated,
+}
+
+#[derive(Serialize)]
+pub struct GraphEvent {
+    pub kind:         GraphEventKind,
+    pub path:         String,
+    pub timestamp_ms: u64,
+}
+
 macro_rules! mcprop {
     ($type:literal, $desc:literal) => {
         McpProperty {
@@ -659,6 +677,156 @@ impl McpServer {
                         props
                     },
                     required: vec!["content".to_string()],
+                },
+            },
+            // -----------------------------------------------------------------
+            // Symbol-scoped search
+            // -----------------------------------------------------------------
+            McpTool {
+                name: "search_in_symbol".to_string(),
+                description: "Search for a pattern scoped to the body of a named function or \
+                              method. Returns only matches within that symbol's approximate line \
+                              range, filtering out occurrences elsewhere in the file. Useful for \
+                              \"find X only inside handleKeyMsg()\" without wading through \
+                              whole-file grep results."
+                    .to_string(),
+                input_schema: {
+                    let mut props = HashMap::new();
+                    props.insert("file".to_string(),    mcprop!("string", "Relative path or filename fragment (e.g. chatview.go)"));
+                    props.insert("symbol".to_string(),  mcprop!("string", "Function or method name to scope the search to"));
+                    props.insert("pattern".to_string(), mcprop!("string", "Regex or literal search pattern"));
+                    props.insert("context_lines".to_string(), mcprop!("number", "Lines of context around each match (default 2)"));
+                    McpInputSchema {
+                        type_: "object".to_string(),
+                        properties: props,
+                        required: vec!["file".to_string(), "symbol".to_string(), "pattern".to_string()],
+                    }
+                },
+            },
+            // -----------------------------------------------------------------
+            // TUI key-binding map
+            // -----------------------------------------------------------------
+            McpTool {
+                name: "list_key_handlers".to_string(),
+                description: "Extract a structured key-binding map from a TUI source file. \
+                              Groups all `case \"key\":` and `== \"key\"` patterns by key string \
+                              with surrounding context. Works for Go/Bubble Tea, Rust/crossterm, \
+                              and any framework using quoted key strings."
+                    .to_string(),
+                input_schema: {
+                    let mut props = HashMap::new();
+                    props.insert("file".to_string(), mcprop!("string", "Relative path or filename fragment"));
+                    props.insert("context_lines".to_string(), mcprop!("number", "Lines of context around each binding (default 4)"));
+                    McpInputSchema {
+                        type_: "object".to_string(),
+                        properties: props,
+                        required: vec!["file".to_string()],
+                    }
+                },
+            },
+            // -----------------------------------------------------------------
+            // State-machine mapper
+            // -----------------------------------------------------------------
+            McpTool {
+                name: "map_state_machine".to_string(),
+                description: "Correlate state guards with nearby key handlers to produce a \
+                              state × handlers matrix. Given a state variable name and enum \
+                              prefix, returns which keys are handled in each state with guard \
+                              line numbers. Ideal for large TUI files with switch-on-state \
+                              dispatch (e.g. Bubble Tea chatview)."
+                    .to_string(),
+                input_schema: {
+                    let mut props = HashMap::new();
+                    props.insert("file".to_string(),         mcprop!("string", "Relative path or filename fragment"));
+                    props.insert("state_var".to_string(),    mcprop!("string", "State variable expression to look for in guards (default: m.state)"));
+                    props.insert("state_prefix".to_string(), mcprop!("string", "Enum variant prefix used to identify state constants (default: State)"));
+                    props.insert("context_lines".to_string(), mcprop!("number", "Context lines around each guard (default 3)"));
+                    McpInputSchema {
+                        type_: "object".to_string(),
+                        properties: props,
+                        required: vec!["file".to_string()],
+                    }
+                },
+            },
+            // -----------------------------------------------------------------
+            // Incremental graph push events
+            // -----------------------------------------------------------------
+            McpTool {
+                name: "watch_graph".to_string(),
+                description: "Watch a directory for source file changes and emit incremental \
+                              graph events as newline-delimited JSON to stdout. Each event \
+                              includes the kind (file_reindexed or graph_updated), the file \
+                              path, and a millisecond timestamp. Runs until timeout_secs \
+                              elapses (default 30, max 300)."
+                    .to_string(),
+                input_schema: McpInputSchema {
+                    type_: "object".to_string(),
+                    properties: {
+                        let mut props = HashMap::new();
+                        props.insert("root".to_string(), mcprop!("string", "Root directory path to watch recursively"));
+                        props.insert("timeout_secs".to_string(), mcprop!("number", "How long to watch in seconds (default 30, max 300)"));
+                        props
+                    },
+                    required: vec!["root".to_string()],
+                },
+            },
+            // -----------------------------------------------------------------
+            // Document-oriented tools
+            // -----------------------------------------------------------------
+            McpTool {
+                name: "doc_index".to_string(),
+                description: "Return all document-type files (Markdown, YAML, TOML, JSON) \
+                              in the project with their extracted headings, config keys, \
+                              cross-reference edges, and edge counts. Useful as a table \
+                              of contents for the project's documentation."
+                    .to_string(),
+                input_schema: McpInputSchema {
+                    type_: "object".to_string(),
+                    properties: HashMap::new(),
+                    required: vec![],
+                },
+            },
+            McpTool {
+                name: "doc_context".to_string(),
+                description: "Get a single document's extracted structure plus the skeleton \
+                              of all code files it cross-references. Follows import edges \
+                              from the doc into code, ranked by relevance. Returns the doc \
+                              first, then supporting code — ideal for understanding what a \
+                              doc describes."
+                    .to_string(),
+                input_schema: {
+                    let mut props = HashMap::new();
+                    props.insert("doc_path".to_string(), mcprop!("string",
+                        "Path to the document file (relative to project root, or a path fragment)"));
+                    props.insert("budget".to_string(), mcprop!("number",
+                        "Max tokens for referenced code context (default 4000)"));
+                    McpInputSchema {
+                        type_: "object".to_string(),
+                        properties: props,
+                        required: vec!["doc_path".to_string()],
+                    }
+                },
+            },
+            McpTool {
+                name: "query_docs".to_string(),
+                description: "Doc-biased context retrieval: searches documents first, then \
+                              follows cross-reference edges into the code they describe. \
+                              Returns a bundle with docs and supporting code separated. \
+                              Like query_context but prioritises documentation."
+                    .to_string(),
+                input_schema: {
+                    let mut props = HashMap::new();
+                    props.insert("query".to_string(), mcprop!("string",
+                        "Natural language query or keyword to search for"));
+                    props.insert("budget".to_string(), mcprop!("number",
+                        "Max total tokens (default 8000)"));
+                    props.insert("model".to_string(), mcprop!("string",
+                        "Target model for health scoring: claude, gpt4, llama (default claude)"));
+                    McpInputSchema {
+                        type_: "object".to_string(),
+                        properties: props,
+                        required: vec!["query".to_string()],
+                    }
                 },
             },
         ]
@@ -1669,10 +1837,582 @@ impl McpServer {
                         .unwrap_or_default(),
                 };
 
-                let report = crate::token_metrics::analyze(&content, &opts);
+                let mut report = crate::token_metrics::analyze(&content, &opts);
+
+                // Populate NYX.md [commands] preset names
+                let nyx = crate::token_metrics::parse_nyx_commands(&self.api_state.root_path);
+                if !nyx.is_empty() {
+                    let preset_names: Vec<String> = nyx.into_keys().collect();
+                    report.nyx_commands = Some(preset_names);
+                }
+
+                // Warn if any preset command references a file in a detected cycle
+                if let Some(ref preset_names_ref) = report.nyx_commands.clone() {
+                    if let Ok(graph) = self.api_state.rebuild_graph() {
+                        let cycle_files: std::collections::HashSet<String> = graph.cycles.iter()
+                            .flat_map(|c| c.nodes.iter().cloned())
+                            .collect();
+                        let nyx_map = crate::token_metrics::parse_nyx_commands(&self.api_state.root_path);
+                        for preset_name in preset_names_ref {
+                            if let Some(cmd) = nyx_map.get(preset_name) {
+                                let references_cycle = cycle_files.iter().any(|f| cmd.contains(f.as_str()));
+                                if references_cycle {
+                                    report.warnings.push(format!(
+                                        "preset '{}' references a file in a dependency cycle",
+                                        preset_name
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Ok(McpToolResult {
                     content: vec![McpContent::text(
-                        serde_json::to_string_pretty(&report).unwrap_or_default(),
+                        serde_json::to_string(&report).unwrap_or_default(),
+                    )],
+                    is_error: None,
+                })
+            }
+
+            "watch_graph" => {
+                use notify::{RecursiveMode, Watcher};
+                use std::sync::mpsc;
+                use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+                let args = &call.arguments;
+                let root_str = args
+                    .get("root")
+                    .and_then(|v| v.as_str())
+                    .ok_or("Missing root")?
+                    .to_string();
+                let timeout_secs = args
+                    .get("timeout_secs")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(30)
+                    .min(300);
+
+                let watch_path = std::path::PathBuf::from(&root_str);
+                let (tx, rx) = mpsc::channel();
+
+                let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+                    if let Ok(event) = res {
+                        let _ = tx.send(event);
+                    }
+                }).map_err(|e| format!("Failed to create watcher: {}", e))?;
+
+                watcher.watch(&watch_path, RecursiveMode::Recursive)
+                    .map_err(|e| format!("Failed to watch {}: {}", root_str, e))?;
+
+                let source_extensions: std::collections::HashSet<&str> =
+                    ["rs", "go", "py", "ts", "js", "dart"].iter().copied().collect();
+
+                let deadline = Instant::now() + Duration::from_secs(timeout_secs);
+                let mut event_count = 0u64;
+
+                while Instant::now() < deadline {
+                    let remaining = deadline.saturating_duration_since(Instant::now());
+                    if remaining.is_zero() { break; }
+                    let timeout = remaining.min(Duration::from_millis(100));
+                    match rx.recv_timeout(timeout) {
+                        Ok(event) => {
+                            for path in &event.paths {
+                                let ext = path.extension()
+                                    .and_then(|e| e.to_str())
+                                    .unwrap_or("");
+                                if !source_extensions.contains(ext) {
+                                    continue;
+                                }
+                                let timestamp_ms = SystemTime::now()
+                                    .duration_since(UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_millis() as u64;
+                                let graph_event = GraphEvent {
+                                    kind: GraphEventKind::FileReindexed,
+                                    path: path.to_string_lossy().to_string(),
+                                    timestamp_ms,
+                                };
+                                println!("{}", serde_json::to_string(&graph_event).unwrap_or_default());
+                                event_count += 1;
+                            }
+                        }
+                        Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                        Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                    }
+                }
+
+                Ok(McpToolResult {
+                    content: vec![McpContent::text(
+                        serde_json::to_string(&serde_json::json!({
+                            "events_emitted": event_count,
+                            "timeout_secs":   timeout_secs,
+                            "root":           root_str,
+                        })).unwrap_or_default(),
+                    )],
+                    is_error: None,
+                })
+            }
+
+            // -----------------------------------------------------------------
+            // search_in_symbol — scope a search to one function's body
+            // -----------------------------------------------------------------
+            "search_in_symbol" => {
+                let args = &call.arguments;
+                let file    = args.get("file").and_then(|v| v.as_str()).ok_or("Missing file")?;
+                let symbol  = args.get("symbol").and_then(|v| v.as_str()).ok_or("Missing symbol")?;
+                let pattern = args.get("pattern").and_then(|v| v.as_str()).ok_or("Missing pattern")?;
+                let ctx     = args.get("context_lines").and_then(|v| v.as_u64()).unwrap_or(2) as usize;
+
+                // 1. Locate the file in the skeleton index
+                let files = self.api_state.mapped_files.lock().map(|g| g.clone()).unwrap_or_default();
+                let mf = files.values()
+                    .find(|f| f.path == file || f.path.contains(file))
+                    .ok_or_else(|| format!("File not found: {}", file))?;
+
+                // 2. Find the symbol (symbol_name, qualified_name, or raw text)
+                let sig = mf.signatures.iter()
+                    .find(|s| {
+                        s.symbol_name.as_deref() == Some(symbol)
+                            || s.qualified_name.as_deref() == Some(symbol)
+                            || s.raw.contains(symbol)
+                    })
+                    .ok_or_else(|| format!("Symbol '{}' not found in {}", symbol, file))?;
+
+                let sym_start = sig.line_start; // 0-indexed
+
+                // 3. Estimate end: next symbol's line_start, fallback +500
+                let sym_end = mf.signatures.iter()
+                    .filter(|s| s.line_start > sym_start)
+                    .map(|s| s.line_start)
+                    .min()
+                    .unwrap_or(sym_start + 500);
+
+                // 4. Content search scoped to this file by glob
+                let fname = std::path::Path::new(&mf.path)
+                    .file_name().and_then(|n| n.to_str()).unwrap_or(file);
+                let opts = crate::search::SearchOptions {
+                    case_sensitive: true,
+                    context_lines: ctx,
+                    max_results: 500,
+                    file_glob: Some(format!("**/{}", fname)),
+                    ..Default::default()
+                };
+                let sr = crate::search::search_content(&self.api_state.root_path, pattern, &opts)
+                    .map_err(|e| e)?;
+
+                // 5. Filter to the symbol's estimated line range (convert 0-indexed → 1-indexed)
+                let in_range: Vec<_> = sr.matches.into_iter()
+                    .filter(|m| m.line_number > sym_start && m.line_number <= sym_end + 1)
+                    .collect();
+                let match_count = in_range.len();
+
+                let result = serde_json::json!({
+                    "file": mf.path,
+                    "symbol": symbol,
+                    "symbol_kind": format!("{:?}", sig.kind),
+                    "symbol_line": sym_start + 1,
+                    "estimated_end_line": sym_end + 1,
+                    "pattern": pattern,
+                    "match_count": match_count,
+                    "matches": in_range,
+                });
+                Ok(McpToolResult {
+                    content: vec![McpContent::text(serde_json::to_string_pretty(&result).unwrap_or_default())],
+                    is_error: None,
+                })
+            }
+
+            // -----------------------------------------------------------------
+            // list_key_handlers — TUI key-binding map
+            // -----------------------------------------------------------------
+            "list_key_handlers" => {
+                let args = &call.arguments;
+                let file = args.get("file").and_then(|v| v.as_str()).ok_or("Missing file")?;
+                let ctx  = args.get("context_lines").and_then(|v| v.as_u64()).unwrap_or(4) as usize;
+
+                let files = self.api_state.mapped_files.lock().map(|g| g.clone()).unwrap_or_default();
+                let mf = files.values()
+                    .find(|f| f.path == file || f.path.contains(file))
+                    .ok_or_else(|| format!("File not found: {}", file))?;
+                let fname = std::path::Path::new(&mf.path)
+                    .file_name().and_then(|n| n.to_str()).unwrap_or(file);
+                let glob = format!("**/{}", fname);
+
+                // Search for both dominant key-handler syntaxes
+                let mut all_matches = Vec::new();
+                for pattern in &[r#"case ""#, r#"== ""#] {
+                    let opts = crate::search::SearchOptions {
+                        case_sensitive: true,
+                        context_lines: ctx,
+                        max_results: 300,
+                        file_glob: Some(glob.clone()),
+                        ..Default::default()
+                    };
+                    if let Ok(sr) = crate::search::search_content(&self.api_state.root_path, pattern, &opts) {
+                        all_matches.extend(sr.matches);
+                    }
+                }
+
+                // Group by extracted key string (BTreeMap keeps keys sorted)
+                let mut key_map: std::collections::BTreeMap<String, Vec<serde_json::Value>> =
+                    std::collections::BTreeMap::new();
+                for m in &all_matches {
+                    if let Some(key) = extract_quoted_key(&m.line) {
+                        key_map.entry(key).or_default().push(serde_json::json!({
+                            "line":           m.line_number,
+                            "text":           m.line.trim(),
+                            "before_context": m.before_context,
+                            "after_context":  m.after_context,
+                        }));
+                    }
+                }
+
+                let handlers: Vec<_> = key_map.iter().map(|(k, v)| serde_json::json!({
+                    "key":         k,
+                    "occurrences": v,
+                })).collect();
+
+                let result = serde_json::json!({
+                    "file":          mf.path,
+                    "handler_count": handlers.len(),
+                    "handlers":      handlers,
+                });
+                Ok(McpToolResult {
+                    content: vec![McpContent::text(serde_json::to_string_pretty(&result).unwrap_or_default())],
+                    is_error: None,
+                })
+            }
+
+            // -----------------------------------------------------------------
+            // map_state_machine — state × key-handlers matrix
+            // -----------------------------------------------------------------
+            "map_state_machine" => {
+                let args = &call.arguments;
+                let file         = args.get("file").and_then(|v| v.as_str()).ok_or("Missing file")?;
+                let state_var    = args.get("state_var").and_then(|v| v.as_str()).unwrap_or("m.state").to_string();
+                let state_prefix = args.get("state_prefix").and_then(|v| v.as_str()).unwrap_or("State").to_string();
+
+                let files = self.api_state.mapped_files.lock().map(|g| g.clone()).unwrap_or_default();
+                let mf = files.values()
+                    .find(|f| f.path == file || f.path.contains(file))
+                    .ok_or_else(|| format!("File not found: {}", file))?;
+                let fname = std::path::Path::new(&mf.path)
+                    .file_name().and_then(|n| n.to_str()).unwrap_or(file);
+                let glob = format!("**/{}", fname);
+
+                // Helper: build SearchOptions for this file
+                let make_opts = |max: usize| crate::search::SearchOptions {
+                    case_sensitive: true,
+                    max_results: max,
+                    file_glob: Some(glob.clone()),
+                    ..Default::default()
+                };
+
+                // 1. Find all state enum variants by searching for the prefix
+                let mut known_states: Vec<String> = Vec::new();
+                if let Ok(sr) = crate::search::search_content(
+                    &self.api_state.root_path, &state_prefix, &make_opts(300))
+                {
+                    for m in &sr.matches {
+                        let mut pos = 0usize;
+                        while pos < m.line.len() {
+                            if let Some(idx) = m.line[pos..].find(&state_prefix as &str) {
+                                let abs = pos + idx;
+                                let rest = &m.line[abs..];
+                                let end = rest.find(|c: char| !c.is_alphanumeric() && c != '_')
+                                    .unwrap_or(rest.len());
+                                let name = &rest[..end];
+                                if name.len() > state_prefix.len() {
+                                    let name = name.to_string();
+                                    if !known_states.contains(&name) {
+                                        known_states.push(name);
+                                    }
+                                }
+                                pos = abs + 1;
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // 2. Find all state guard locations: `state_var == `
+                let guard_pattern = format!("{} == ", state_var);
+                let mut guard_map: HashMap<String, Vec<usize>> = HashMap::new();
+                if let Ok(sr) = crate::search::search_content(
+                    &self.api_state.root_path, &guard_pattern, &make_opts(500))
+                {
+                    for m in &sr.matches {
+                        for state in &known_states {
+                            if m.line.contains(state.as_str()) {
+                                guard_map.entry(state.clone()).or_default().push(m.line_number);
+                            }
+                        }
+                    }
+                }
+
+                // 3. Collect all key handler matches
+                let mut all_key_matches = Vec::new();
+                for pattern in &[r#"case ""#, r#"== ""#] {
+                    if let Ok(sr) = crate::search::search_content(
+                        &self.api_state.root_path, pattern, &make_opts(500))
+                    {
+                        all_key_matches.extend(sr.matches);
+                    }
+                }
+
+                // 4. For each state, attribute key handlers within WINDOW lines of a guard
+                const WINDOW: usize = 60;
+                let mut state_handlers: serde_json::Map<String, serde_json::Value> =
+                    serde_json::Map::new();
+
+                for state in &known_states {
+                    let guard_lines = guard_map.get(state).cloned().unwrap_or_default();
+                    let mut keys: Vec<String> = Vec::new();
+                    let mut handler_details: Vec<serde_json::Value> = Vec::new();
+
+                    for &guard_ln in &guard_lines {
+                        for km in &all_key_matches {
+                            if km.line_number > guard_ln && km.line_number < guard_ln + WINDOW {
+                                if let Some(key) = extract_quoted_key(&km.line) {
+                                    if !keys.contains(&key) {
+                                        keys.push(key.clone());
+                                        handler_details.push(serde_json::json!({
+                                            "key":  key,
+                                            "line": km.line_number,
+                                            "text": km.line.trim(),
+                                        }));
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    state_handlers.insert(state.clone(), serde_json::json!({
+                        "guard_lines": guard_lines,
+                        "keys":        keys,
+                        "handlers":    handler_details,
+                    }));
+                }
+
+                let result = serde_json::json!({
+                    "file":           mf.path,
+                    "state_var":      state_var,
+                    "state_prefix":   state_prefix,
+                    "states":         known_states,
+                    "state_handlers": state_handlers,
+                });
+                Ok(McpToolResult {
+                    content: vec![McpContent::text(serde_json::to_string_pretty(&result).unwrap_or_default())],
+                    is_error: None,
+                })
+            }
+
+            // -----------------------------------------------------------------
+            // doc_index — list all document nodes with structure + edges
+            // -----------------------------------------------------------------
+            "doc_index" => {
+                let docs = self.api_state.doc_nodes()?;
+                Ok(McpToolResult {
+                    content: vec![McpContent::text(
+                        serde_json::to_string_pretty(&docs).unwrap_or_default(),
+                    )],
+                    is_error: None,
+                })
+            }
+
+            // -----------------------------------------------------------------
+            // doc_context — single doc + referenced code skeletons
+            // -----------------------------------------------------------------
+            "doc_context" => {
+                let args = &call.arguments;
+                let doc_path = args.get("doc_path").and_then(|v| v.as_str())
+                    .ok_or("Missing doc_path")?;
+                let budget = args.get("budget").and_then(|v| v.as_u64()).unwrap_or(4000) as usize;
+
+                // Rebuild graph so edges exist
+                if let Err(e) = self.api_state.rebuild_graph() {
+                    return Err(e);
+                }
+
+                // Find the doc in mapped_files (exact match or substring)
+                let files = self.api_state.mapped_files.lock().map_err(|e| e.to_string())?;
+                let (module_id, mf) = files.iter()
+                    .find(|(_, f)| f.path == doc_path || f.path.contains(doc_path))
+                    .ok_or_else(|| format!("Document not found: {}", doc_path))?;
+
+                let doc_sigs: Vec<String> = mf.signatures.iter().map(|s| s.raw.clone()).collect();
+                let doc_imports = mf.imports.clone();
+                let doc_path_owned = mf.path.clone();
+                let module_id_owned = module_id.clone();
+
+                // Drop the lock before calling ranked_skeleton
+                drop(files);
+
+                // Use the doc's imports as focus files for ranked skeleton
+                let focus: Vec<String> = doc_imports.clone();
+                let ranked = if focus.is_empty() {
+                    vec![]
+                } else {
+                    self.api_state.ranked_skeleton(&focus, budget).unwrap_or_default()
+                };
+
+                let total_tokens: usize = ranked.iter().map(|f| f.estimated_tokens).sum();
+
+                let referenced: Vec<serde_json::Value> = ranked.iter().map(|f| {
+                    serde_json::json!({
+                        "path": f.path,
+                        "rank": f.rank,
+                        "signatureCount": f.signature_count,
+                        "estimatedTokens": f.estimated_tokens,
+                        "signatures": f.signatures,
+                    })
+                }).collect();
+
+                let result = serde_json::json!({
+                    "doc": {
+                        "path": doc_path_owned,
+                        "moduleId": module_id_owned,
+                        "signatures": doc_sigs,
+                        "imports": doc_imports,
+                    },
+                    "referencedFiles": referenced,
+                    "totalTokens": total_tokens,
+                });
+
+                Ok(McpToolResult {
+                    content: vec![McpContent::text(
+                        serde_json::to_string_pretty(&result).unwrap_or_default(),
+                    )],
+                    is_error: None,
+                })
+            }
+
+            // -----------------------------------------------------------------
+            // query_docs — doc-biased context retrieval
+            // -----------------------------------------------------------------
+            "query_docs" => {
+                let args = &call.arguments;
+                let query = args.get("query").and_then(|v| v.as_str())
+                    .ok_or("Missing query")?.to_string();
+                let budget = args.get("budget").and_then(|v| v.as_u64()).unwrap_or(8000) as usize;
+                let model_str = args.get("model").and_then(|v| v.as_str())
+                    .unwrap_or("claude").to_string();
+
+                // Rebuild graph
+                if let Err(e) = self.api_state.rebuild_graph() {
+                    return Err(e);
+                }
+
+                // Step 1: BM25 search across all files
+                let bm25_opts = crate::search::BM25Options {
+                    max_results: 30,
+                    ..Default::default()
+                };
+                let bm25_result = crate::search::bm25_search(
+                    &self.api_state.root_path, &query, &bm25_opts,
+                ).unwrap_or_default();
+
+                // Step 2: Separate into doc files and code files
+                let mut doc_files: Vec<String> = Vec::new();
+                let mut code_files: Vec<String> = Vec::new();
+                let mut seen = std::collections::HashSet::new();
+
+                for m in &bm25_result.matches {
+                    if !seen.insert(m.path.clone()) { continue; }
+                    if crate::api::is_doc_path(&m.path) {
+                        doc_files.push(m.path.clone());
+                    } else {
+                        code_files.push(m.path.clone());
+                    }
+                }
+
+                // Step 3: Follow doc cross-refs into code
+                let files = self.api_state.mapped_files.lock().map_err(|e| e.to_string())?;
+                let mut ref_code: Vec<String> = Vec::new();
+                for doc_path in &doc_files {
+                    if let Some(mf) = files.get(doc_path.as_str()) {
+                        for imp in &mf.imports {
+                            if !seen.contains(imp) && !crate::api::is_doc_path(imp) {
+                                seen.insert(imp.clone());
+                                ref_code.push(imp.clone());
+                            }
+                        }
+                    }
+                }
+                drop(files);
+
+                // Merge: doc imports come after direct code hits
+                code_files.extend(ref_code);
+
+                // Step 4: Build ranked skeleton — docs as primary focus, code as secondary
+                let mut all_focus = doc_files.clone();
+                all_focus.extend(code_files.iter().cloned());
+                all_focus.truncate(30);
+
+                let ranked = self.api_state.ranked_skeleton(&all_focus, budget)
+                    .unwrap_or_default();
+
+                // Step 5: Build context text — docs first, then code
+                let mut doc_entries = Vec::new();
+                let mut code_entries = Vec::new();
+                let mut context_text = format!("## Doc Context for: {}\n\n", query);
+                let mut total_tokens = 0usize;
+
+                for f in &ranked {
+                    let entry = serde_json::json!({
+                        "path": f.path,
+                        "rank": f.rank,
+                        "signatureCount": f.signature_count,
+                        "estimatedTokens": f.estimated_tokens,
+                        "signatures": f.signatures,
+                    });
+                    total_tokens += f.estimated_tokens;
+
+                    if crate::api::is_doc_path(&f.path) {
+                        context_text.push_str(&format!(
+                            "// [DOC] {} (rank: {:.4}, {} tokens)\n", f.path, f.rank, f.estimated_tokens
+                        ));
+                        doc_entries.push(entry);
+                    } else {
+                        context_text.push_str(&format!(
+                            "// {} (rank: {:.4}, {} tokens)\n", f.path, f.rank, f.estimated_tokens
+                        ));
+                        code_entries.push(entry);
+                    }
+                    for sig in &f.signatures {
+                        context_text.push_str(&format!("  {}\n", sig));
+                    }
+                    context_text.push('\n');
+                }
+
+                // Step 6: Health score
+                let sig_count: usize = ranked.iter().map(|f| f.signatures.len()).sum();
+                let model = model_str.parse::<crate::token_metrics::ModelFamily>().unwrap_or_default();
+                let health_opts = crate::token_metrics::HealthOpts {
+                    model,
+                    window_size: 0,
+                    key_positions: crate::token_metrics::key_positions_from_order(
+                        &ranked.iter().map(|f| f.path.clone()).collect::<Vec<_>>(),
+                        &doc_files,
+                    ),
+                    signature_count: sig_count,
+                    signature_tokens: (total_tokens as f64 * 0.85) as usize,
+                };
+                let health = crate::token_metrics::analyze(&context_text, &health_opts);
+
+                let result = serde_json::json!({
+                    "context": context_text,
+                    "docFiles": doc_entries,
+                    "codeFiles": code_entries,
+                    "focusDocs": doc_files,
+                    "totalTokens": total_tokens,
+                    "health": health,
+                });
+
+                Ok(McpToolResult {
+                    content: vec![McpContent::text(
+                        serde_json::to_string_pretty(&result).unwrap_or_default(),
                     )],
                     is_error: None,
                 })
@@ -1934,6 +2674,21 @@ impl McpServer {
                 &format!("Method not found: {}", method),
             ),
         }
+    }
+}
+
+/// Extract the first double-quoted token from a line of code.
+/// e.g. `case "ctrl+c":` → Some("ctrl+c"), `key == "up"` → Some("up").
+/// Returns None if no quoted token ≤ 30 chars is found.
+fn extract_quoted_key(line: &str) -> Option<String> {
+    let start = line.find('"')? + 1;
+    let rest = &line[start..];
+    let end = rest.find('"')?;
+    let key = &rest[..end];
+    if !key.is_empty() && key.len() <= 30 {
+        Some(key.to_string())
+    } else {
+        None
     }
 }
 

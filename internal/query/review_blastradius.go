@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
+	"github.com/SimplyLiz/CodeMCP/internal/impact"
+	"github.com/SimplyLiz/CodeMCP/internal/lip"
 )
 
 // checkBlastRadius checks if changed symbols have high fan-out (many callers).
@@ -24,6 +26,24 @@ func (e *Engine) checkBlastRadius(ctx context.Context, changedFiles []string, op
 	if cartographer.Available() {
 		if churn, err := cartographer.GitChurn(e.repoRoot, 0); err == nil {
 			churnMap = churn
+		}
+	}
+
+	// Prefetch LIP blast radius for all changed files in a single round-trip.
+	// Returns nil when LIP is unavailable or doesn't support the message — the
+	// rest of the function degrades to SCIP-only blast radius unchanged.
+	var lipBR map[string]*impact.ExternalBlastRadius
+	if e.lipSupports("query_blast_radius_batch") {
+		lipURIs := make([]string, len(changedFiles))
+		for i, f := range changedFiles {
+			lipURIs[i] = "lip://local/" + f
+		}
+		if raw, _ := lip.QueryBlastRadiusBatch(lipURIs, 0.6); raw != nil {
+			lipBR = make(map[string]*impact.ExternalBlastRadius, len(raw.Entries))
+			for k, v := range raw.Entries {
+				vCopy := v
+				lipBR[k] = lip.EntryToExternal(&vCopy)
+			}
 		}
 	}
 
@@ -83,13 +103,58 @@ func (e *Engine) checkBlastRadius(ctx context.Context, changedFiles []string, op
 			continue
 		}
 
+		// Merge LIP semantic enrichment into the SCIP-derived blast radius.
+		// Keyed by symbol's stable ID which maps to LIP's symbol_uri via the
+		// "lip://local/<file>#<symbol>" convention.
+		semanticCount := 0
+		if lipBR != nil {
+			if enriched, ok := lip.LookupSymbol(lipBR, sym.file, sym.name); ok {
+				// Convert BlastRadiusSummary → impact.BlastRadius for merge
+				staticBR := &impact.BlastRadius{
+					ModuleCount:       impactResp.BlastRadius.ModuleCount,
+					FileCount:         impactResp.BlastRadius.FileCount,
+					UniqueCallerCount: impactResp.BlastRadius.UniqueCallerCount,
+					RiskLevel:         impactResp.BlastRadius.RiskLevel,
+				}
+				merged := impact.MergeBlastRadius(staticBR, enriched)
+				if merged != nil {
+					impactResp.BlastRadius = &BlastRadiusSummary{
+						ModuleCount:         merged.ModuleCount,
+						FileCount:           merged.FileCount,
+						UniqueCallerCount:   merged.UniqueCallerCount,
+						RiskLevel:           merged.RiskLevel,
+						StaticCallerCount:   merged.StaticCallerCount,
+						SemanticCallerCount: merged.SemanticCallerCount,
+						ConfirmedCount:      merged.ConfirmedCount,
+					}
+					for _, sc := range merged.SemanticCallers {
+						impactResp.BlastRadius.SemanticCallers = append(
+							impactResp.BlastRadius.SemanticCallers,
+							SemanticCallerInfo{
+								SymbolURI:  sc.SymbolURI,
+								FileURI:    sc.FileURI,
+								Tier:       string(sc.Tier),
+								Confidence: sc.Confidence,
+								Similarity: sc.Similarity,
+							},
+						)
+					}
+					semanticCount = merged.SemanticCallerCount
+				}
+			}
+		}
+
 		callerCount := impactResp.BlastRadius.UniqueCallerCount
 
 		if informationalMode {
 			// In informational mode, only surface symbols with meaningful fan-out.
 			// Symbols with 1-2 callers are normal coupling; 3+ suggests a change
 			// that could ripple further than expected.
-			if callerCount >= 3 {
+			if callerCount >= 3 || semanticCount > 0 {
+				msg := fmt.Sprintf("Fan-out: %s has %d callers", sym.name, callerCount)
+				if semanticCount > 0 {
+					msg += fmt.Sprintf(" (+%d semantically coupled)", semanticCount)
+				}
 				hint := ""
 				if sym.name != "" {
 					hint = fmt.Sprintf("→ ckb explain %s", sym.name)
@@ -104,13 +169,17 @@ func (e *Engine) checkBlastRadius(ctx context.Context, changedFiles []string, op
 					Check:    "blast-radius",
 					Severity: severity,
 					File:     sym.file,
-					Message:  fmt.Sprintf("Fan-out: %s has %d callers", sym.name, callerCount),
+					Message:  msg,
 					Category: "risk",
 					RuleID:   "ckb/blast-radius/high-fanout",
 					Hint:     hint,
 				})
 			}
 		} else if callerCount > maxFanOut {
+			msg := fmt.Sprintf("High fan-out: %s has %d callers (threshold: %d)", sym.name, callerCount, maxFanOut)
+			if semanticCount > 0 {
+				msg += fmt.Sprintf(" (+%d semantically coupled)", semanticCount)
+			}
 			hint := ""
 			if sym.name != "" {
 				hint = fmt.Sprintf("→ ckb explain %s", sym.name)
@@ -119,7 +188,7 @@ func (e *Engine) checkBlastRadius(ctx context.Context, changedFiles []string, op
 				Check:    "blast-radius",
 				Severity: "warning",
 				File:     sym.file,
-				Message:  fmt.Sprintf("High fan-out: %s has %d callers (threshold: %d)", sym.name, callerCount, maxFanOut),
+				Message:  msg,
 				Category: "risk",
 				RuleID:   "ckb/blast-radius/high-fanout",
 				Hint:     hint,

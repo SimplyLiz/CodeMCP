@@ -88,7 +88,7 @@ jobs:
         run: go build -ldflags="-s -w" -o ckb ./cmd/ckb
 
       - name: Install SCIP indexer
-        run: go install github.com/sourcegraph/scip-go/cmd/scip-go@latest
+        run: go install github.com/scip-code/scip-go/cmd/scip-go@latest
 
       # ───────────────────────────────────────────────────────────────────────
       # Cache & Index
@@ -114,7 +114,7 @@ jobs:
               echo "╔═══════════════════════════════════════════════════════════════════════════════╗"
               echo "║  INDEXER NOT FOUND                                                            ║"
               echo "╠═══════════════════════════════════════════════════════════════════════════════╣"
-              echo "║  Go:         go install github.com/sourcegraph/scip-go/cmd/scip-go@latest     ║"
+              echo "║  Go:         go install github.com/scip-code/scip-go/cmd/scip-go@latest     ║"
               echo "║  TypeScript: npm i -g @sourcegraph/scip-typescript                            ║"
               echo "║  Python:     pip install scip-python                                          ║"
               echo "║  Rust:       cargo install scip                                               ║"
@@ -989,7 +989,7 @@ jobs:
         run: go build -ldflags="-s -w" -o ckb ./cmd/ckb
 
       - name: Install SCIP indexer
-        run: go install github.com/sourcegraph/scip-go/cmd/scip-go@latest
+        run: go install github.com/scip-code/scip-go/cmd/scip-go@latest
 
       - name: Cache
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5

@@ -14,6 +14,8 @@ build: build-cartographer
 build-cartographer:
 	@echo "Building Cartographer static library..."
 	@cd $(CARTOGRAPHER_DIR) && cargo build --release
+	@echo "Localizing tree-sitter symbols (prevents link-time collisions with go-tree-sitter)..."
+	@cd $(CARTOGRAPHER_DIR) && scripts/localize-tree-sitter-symbols.sh target/release/libcartographer.a
 	@echo "Library: $(CARTOGRAPHER_LIB)"
 
 ## Build without Cartographer (no Rust toolchain required — for CI and contributors)
