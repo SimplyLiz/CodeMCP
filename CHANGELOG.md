@@ -4,7 +4,60 @@ All notable changes to CKB will be documented in this file.
 
 ## [Unreleased]
 
+## [9.2.0] - 2026-04-25
+
 ### Added
+
+- **`analyzeOutgoingImpact` — forward call graph** (MCP + CLI) — mirror
+  of `analyzeImpact` answering *"what does this symbol call?"* instead of
+  *"who calls it?"*. New `Engine.AnalyzeOutgoingImpact` drives off LIP
+  v2.3.5's `query_outgoing_impact` RPC, folds the result through the same
+  `ImpactItem` pipeline as the incoming side (with `direct-callee` /
+  `transitive-callee` kinds), and surfaces semantically coupled callees
+  alongside the static graph. Degrades cleanly when LIP isn't running:
+  the response is empty with a provenance warning, never an error.
+  Surfaces include `ckb impact outgoing <symbolId>` (with `--min-score`
+  for the semantic threshold), the `analyzeOutgoingImpact` MCP tool, and
+  a new `ProvenanceCLI.Warnings` field so LIP-degradation messages reach
+  JSON consumers.
+- **`symbolExists` MCP tool** — exact-match boolean oracle that returns
+  `{exists, kind, location?}` for a fully-qualified symbol ID. Built for
+  LLMs to ground references *before* they cite them in code, without
+  spending tokens on a 20-result `searchSymbols` payload. Cheaper than
+  `getSymbol` for the "does this thing actually exist" check.
+- **LIP enrichment folds into `analyzeImpact`** — tier-1 tree-sitter
+  callers that LIP discovers (when `scip-go` emits no `Call` roles, e.g.
+  Go method dispatch) are now folded into the same `directImpact` /
+  `transitiveImpact` lists as SCIP's own results, deduplicated by
+  `(file, name)`. Driven by a new `BlastRadiusEnricher` interface so the
+  fold path is the single source of truth for both incoming and outgoing
+  impact analysis. Items LIP marks `edges_source=empty` are skipped (LIP
+  signalling no static evidence); `tier1`, `scip_with_tier1_edges`, and
+  `scip_only` all fold the same way. Risk score now picks up
+  semantic-coupling signals via the same enricher pipeline.
+- **`register_project_root` on LIP handshake** — Engine startup now
+  registers the repo root with the daemon so LIP canonicalises file URIs
+  against a known anchor, matching the v2.3.1 contract. Eliminates the
+  URI-shape drift that previously caused tier-1 callers to dedup
+  incorrectly against SCIP results.
+
+### Changed
+
+- **`analyzeImpact` risk score now weighted by bridge centrality** —
+  `calculateAggregatedRisk` multiplies the weighted-mean score by
+  `1 + max(BridgeScore)/1000` (capped at 2.0) over the changed files, so a
+  change landing on a critical architectural path (high betweenness) is
+  reported as riskier than the same-shape change in a leaf module. Implements
+  the behaviour that `CARTOGRAPHER_STRATEGY.md` had already documented but
+  the code was not actually doing. Bridge lookups match by both `Path` and
+  `ModuleID`; if no changed file matches the graph, the multiplier is 1.0
+  and no informational factor is appended. Only runs when the binary was
+  built with `-tags cartographer` (graph is a no-op otherwise). A new
+  `bridge_centrality` informational factor surfaces in `RiskScore.Factors`
+  when the multiplier fires; its `Weight` is 0 because it applies
+  multiplicatively, not as a weighted-mean input.
+
+### Cartographer
 
 - **Vendored Cartographer fully synced to upstream 3.0.0** — the
   vendored tree under `third_party/cartographer/mapper-core/cartographer/`
@@ -27,6 +80,16 @@ All notable changes to CKB will be documented in this file.
   Mermaid is border-only for hot nodes (no sizing primitive). Cycle red
   takes precedence over hot orange on the same node — architectural
   signal wins over performance signal.
+- **`renderArchitecture` MCP tool** — returns the project's module-level
+  import graph as Mermaid or Graphviz (DOT), ready to paste into IDEs
+  that render Mermaid inline (Cursor, Claude Desktop, VS Code markdown
+  preview, GitHub). With `focus` set, returns an undirected BFS
+  neighborhood around the anchor module to `depth` (default 2); without,
+  returns the top-N most-connected nodes (default cap 40). Response
+  includes `truncated: true` when the node cap kicked in. Backed by the
+  new `cartographer_render_architecture` FFI export; CLI and MCP outputs
+  are produced by the same shared renderer.
+- Go binding `cartographer.RenderArchitecture()` in `internal/cartographer/bridge.go` (+ no-op stub for the no-tag build).
 
 ### Fixed
 
@@ -53,38 +116,6 @@ All notable changes to CKB will be documented in this file.
   member in without touching the filesystem. The `rust_tree_sitter` C
   ABI refs to `_tree_sitter_c` and `_tree_sitter_cpp` now resolve
   inside the combined object as expected.
-
-### Changed
-
-- **`analyzeImpact` risk score now weighted by bridge centrality** —
-  `calculateAggregatedRisk` multiplies the weighted-mean score by
-  `1 + max(BridgeScore)/1000` (capped at 2.0) over the changed files, so a
-  change landing on a critical architectural path (high betweenness) is
-  reported as riskier than the same-shape change in a leaf module. Implements
-  the behaviour that `CARTOGRAPHER_STRATEGY.md` had already documented but
-  the code was not actually doing. Bridge lookups match by both `Path` and
-  `ModuleID`; if no changed file matches the graph, the multiplier is 1.0
-  and no informational factor is appended. Only runs when the binary was
-  built with `-tags cartographer` (graph is a no-op otherwise). A new
-  `bridge_centrality` informational factor surfaces in `RiskScore.Factors`
-  when the multiplier fires; its `Weight` is 0 because it applies
-  multiplicatively, not as a weighted-mean input.
-
-### Added
-
-- **`renderArchitecture` MCP tool** — returns the project's module-level
-  import graph as Mermaid or Graphviz (DOT), ready to paste into IDEs
-  that render Mermaid inline (Cursor, Claude Desktop, VS Code markdown
-  preview, GitHub). With `focus` set, returns an undirected BFS
-  neighborhood around the anchor module to `depth` (default 2); without,
-  returns the top-N most-connected nodes (default cap 40). Response
-  includes `truncated: true` when the node cap kicked in. Backed by the
-  new `cartographer_render_architecture` FFI export; CLI and MCP outputs
-  are produced by the same shared renderer.
-- Go binding `cartographer.RenderArchitecture()` in `internal/cartographer/bridge.go` (+ no-op stub for the no-tag build).
-
-### Fixed
-
 - **Tree-sitter symbol collisions at link time** — `libcartographer.a`
   previously exported its bundled tree-sitter runtime and grammar
   symbols, which collided with `go-tree-sitter` when building CKB with
