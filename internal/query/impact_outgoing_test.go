@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -35,13 +36,18 @@ func startOutgoingImpactDaemon(t *testing.T, payload map[string]any) func() []ma
 	prev := os.Getenv("LIP_SOCKET")
 	os.Setenv("LIP_SOCKET", sockPath)
 
-	var reqs []map[string]any
+	var (
+		reqsMu sync.Mutex
+		reqs   []map[string]any
+	)
 	reqC := make(chan map[string]any, 16)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		for r := range reqC {
+			reqsMu.Lock()
 			reqs = append(reqs, r)
+			reqsMu.Unlock()
 		}
 	}()
 
@@ -88,6 +94,8 @@ func startOutgoingImpactDaemon(t *testing.T, payload map[string]any) func() []ma
 		os.Setenv("LIP_SOCKET", prev)
 	})
 	return func() []map[string]any {
+		reqsMu.Lock()
+		defer reqsMu.Unlock()
 		out := make([]map[string]any, len(reqs))
 		copy(out, reqs)
 		return out
