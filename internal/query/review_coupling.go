@@ -202,6 +202,12 @@ func (e *Engine) checkCouplingGaps(ctx context.Context, changedFiles []string, d
 				existing[g.ChangedFile+"\x00"+g.MissingFile] = true
 				existing[g.MissingFile+"\x00"+g.ChangedFile] = true
 			}
+			// Cap hidden-coupling findings at N per changed file. The regular
+			// co-change pass uses Limit:5 — match that intent here. Without a
+			// per-file cap, large/vendor-sync PRs produce hundreds of weak
+			// hits that drown out actionable findings.
+			const maxHiddenPerFile = 3
+			perFile := make(map[string]int)
 			for _, pair := range hidden {
 				srcChanged := changedSet[pair.FileA]
 				tgtChanged := changedSet[pair.FileB]
@@ -212,6 +218,14 @@ func (e *Engine) checkCouplingGaps(ctx context.Context, changedFiles []string, d
 				if tgtChanged && !srcChanged {
 					changedFile, missingFile = pair.FileB, pair.FileA
 				}
+				// Filter noise on BOTH sides. The regular co-change pass skips
+				// noise-changed files at filesToCheck assembly; this pass walks
+				// hidden pairs directly and must filter the changed side too,
+				// otherwise files like .gitignore (which co-change with everything
+				// in any vendor/release PR) produce a flood of meaningless hits.
+				if isCouplingNoiseFile(changedFile) {
+					continue
+				}
 				if changedSet[missingFile] || isCouplingNoiseFile(missingFile) {
 					continue
 				}
@@ -219,7 +233,11 @@ func (e *Engine) checkCouplingGaps(ctx context.Context, changedFiles []string, d
 				if existing[key] {
 					continue
 				}
+				if perFile[changedFile] >= maxHiddenPerFile {
+					continue
+				}
 				existing[key] = true
+				perFile[changedFile]++
 				gaps = append(gaps, CouplingGap{
 					ChangedFile:  changedFile,
 					MissingFile:  missingFile,
@@ -271,6 +289,7 @@ func isCouplingNoiseFile(path string) bool {
 		"target/",
 		".next/",
 		"vendor/",
+		"third_party/",
 		"node_modules/",
 		"testdata/",
 		"fixtures/",

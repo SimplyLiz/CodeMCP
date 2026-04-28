@@ -51,13 +51,27 @@ func startOutgoingImpactDaemon(t *testing.T, payload map[string]any) func() []ma
 		}
 	}()
 
+	// Track active connections so cleanup can close them and wait for
+	// handler goroutines to exit before closing reqC. Without this, an
+	// in-flight handler could send on reqC after close(reqC).
+	var (
+		connMu      sync.Mutex
+		activeConns []net.Conn
+		handlersWG  sync.WaitGroup
+	)
+
 	go func() {
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
 				return
 			}
+			connMu.Lock()
+			activeConns = append(activeConns, conn)
+			connMu.Unlock()
+			handlersWG.Add(1)
 			go func(c net.Conn) {
+				defer handlersWG.Done()
 				defer c.Close()
 				for {
 					var lenBuf [4]byte
@@ -88,6 +102,12 @@ func startOutgoingImpactDaemon(t *testing.T, payload map[string]any) func() []ma
 
 	t.Cleanup(func() {
 		ln.Close()
+		connMu.Lock()
+		for _, c := range activeConns {
+			c.Close()
+		}
+		connMu.Unlock()
+		handlersWG.Wait()
 		close(reqC)
 		<-done
 		os.RemoveAll(dir)
