@@ -1,4 +1,4 @@
-//go:build cartographer
+//go:build navigator
 
 package query
 
@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
+	"github.com/SimplyLiz/CodeMCP/internal/navigator"
 )
 
 // repoRootForBench returns the CKB source root, used as a real-world target.
@@ -75,12 +75,12 @@ func BenchmarkExploreFileCount_Cartographer(b *testing.B) {
 	root := repoRootForBench(b)
 	// Warm up: MapProject does disk I/O on the first call; subsequent calls
 	// hit an internal cache inside the Rust library.
-	if _, err := cartographer.MapProject(root); err != nil {
-		b.Skipf("cartographer.MapProject unavailable: %v", err)
+	if _, err := navigator.MapProject(root); err != nil {
+		b.Skipf("navigator.MapProject unavailable: %v", err)
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		graph, err := cartographer.MapProject(root)
+		graph, err := navigator.MapProject(root)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -140,12 +140,12 @@ func BenchmarkKeyConceptExtraction_Walk(b *testing.B) {
 // Cartographer nodes — the fast path added to listKeyConcepts.
 func BenchmarkKeyConceptExtraction_Cartographer(b *testing.B) {
 	root := repoRootForBench(b)
-	if _, err := cartographer.MapProject(root); err != nil {
-		b.Skipf("cartographer.MapProject unavailable: %v", err)
+	if _, err := navigator.MapProject(root); err != nil {
+		b.Skipf("navigator.MapProject unavailable: %v", err)
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		graph, err := cartographer.MapProject(root)
+		graph, err := navigator.MapProject(root)
 		if err != nil {
 			b.Fatal(err)
 		}

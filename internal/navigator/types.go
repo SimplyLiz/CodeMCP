@@ -1,12 +1,13 @@
-// Package cartographer provides CGo bindings to the Rust Cartographer library.
-package cartographer
+// Package navigator provides CGo bindings to the Rust nyx-navigator library
+// (formerly cartographer).
+package navigator
 
 import "errors"
 
-// ErrUnavailable is returned by stub builds when Cartographer is not compiled
-// in. Callers check Available() first; under `-tags cartographer` this value
-// is never returned but still needs to be referenceable by tool impls.
-var ErrUnavailable = errors.New("cartographer: not compiled in this build (use -tags cartographer)")
+// ErrUnavailable is returned by stub builds when the navigator library is not
+// compiled in. Callers check Available() first; under `-tags navigator` this
+// value is never returned but still needs to be referenceable by tool impls.
+var ErrUnavailable = errors.New("navigator: not compiled in this build (use -tags navigator)")
 
 // ---------------------------------------------------------------------------
 // Public types (shared between real bridge and stub builds)
@@ -389,13 +390,13 @@ type ContextHealthReport struct {
 	Recommendations []string        `json:"recommendations"`
 }
 
-// CartographerError is returned when a Cartographer FFI call fails.
-type CartographerError struct {
+// NavigatorError is returned when a navigator FFI call fails.
+type NavigatorError struct {
 	Message string
 }
 
-func (e *CartographerError) Error() string {
-	return "cartographer: " + e.Message
+func (e *NavigatorError) Error() string {
+	return "navigator: " + e.Message
 }
 
 // ---------------------------------------------------------------------------

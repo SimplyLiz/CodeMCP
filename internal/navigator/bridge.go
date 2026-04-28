@@ -1,26 +1,26 @@
-//go:build cartographer
+//go:build navigator
 
-// Package cartographer provides CGo bindings to the Rust Cartographer library.
+// Package navigator provides CGo bindings to the Rust nyx-navigator library.
 // It enables CKB to perform fast architectural analysis, skeleton extraction,
 // and layer enforcement without IPC or subprocess overhead.
 //
 // All functions are thread-safe and return JSON that is parsed into Go structs.
 //
-// Build with: go build -tags cartographer ./...
-package cartographer
+// Build with: go build -tags navigator ./...
+package navigator
 
 /*
-#cgo darwin CFLAGS: -I${SRCDIR}/../../third_party/cartographer/mapper-core/cartographer/include
-#cgo darwin LDFLAGS: -L${SRCDIR}/../../third_party/cartographer/mapper-core/cartographer/target/release -lcartographer -lm -ldl -framework Security -framework CoreFoundation
+#cgo darwin CFLAGS: -I${SRCDIR}/../../third_party/nyx-navigator/include
+#cgo darwin LDFLAGS: -L${SRCDIR}/../../third_party/nyx-navigator/target/release -lnavigator -lm -ldl -framework Security -framework CoreFoundation
 
-#cgo linux CFLAGS: -I${SRCDIR}/../../third_party/cartographer/mapper-core/cartographer/include
-#cgo linux LDFLAGS: -L${SRCDIR}/../../third_party/cartographer/mapper-core/cartographer/target/release -lcartographer -lm -ldl -lpthread
+#cgo linux CFLAGS: -I${SRCDIR}/../../third_party/nyx-navigator/include
+#cgo linux LDFLAGS: -L${SRCDIR}/../../third_party/nyx-navigator/target/release -lnavigator -lm -ldl -lpthread
 
-#cgo windows CFLAGS: -I${SRCDIR}/../../third_party/cartographer/mapper-core/cartographer/include
-#cgo windows LDFLAGS: -L${SRCDIR}/../../third_party/cartographer/mapper-core/cartographer/target/release -lcartographer -lm
+#cgo windows CFLAGS: -I${SRCDIR}/../../third_party/nyx-navigator/include
+#cgo windows LDFLAGS: -L${SRCDIR}/../../third_party/nyx-navigator/target/release -lnavigator -lm
 
 #include <stdlib.h>
-#include "cartographer.h"
+#include "navigator.h"
 */
 import "C"
 import (
@@ -28,30 +28,30 @@ import (
 	"unsafe"
 )
 
-// ffiResponse is the JSON envelope returned by all Cartographer FFI functions.
+// ffiResponse is the JSON envelope returned by all navigator FFI functions.
 type ffiResponse struct {
 	OK    bool            `json:"ok"`
 	Error string          `json:"error,omitempty"`
 	Data  json.RawMessage `json:"data,omitempty"`
 }
 
-// Available reports whether the Cartographer library is linked into this binary.
+// Available reports whether the navigator library is linked into this binary.
 func Available() bool { return true }
 
 func callFFI(fn func() *C.char) (*ffiResponse, error) {
 	cstr := fn()
 	if cstr == nil {
-		return nil, &CartographerError{"null response from FFI"}
+		return nil, &NavigatorError{"null response from FFI"}
 	}
-	defer C.cartographer_free_string(cstr)
+	defer C.navigator_free_string(cstr)
 
 	goStr := C.GoString(cstr)
 	var resp ffiResponse
 	if err := json.Unmarshal([]byte(goStr), &resp); err != nil {
-		return nil, &CartographerError{err.Error()}
+		return nil, &NavigatorError{err.Error()}
 	}
 	if !resp.OK {
-		return nil, &CartographerError{resp.Error}
+		return nil, &NavigatorError{resp.Error}
 	}
 	return &resp, nil
 }
@@ -60,13 +60,13 @@ func callFFI(fn func() *C.char) (*ffiResponse, error) {
 // Public API
 // ---------------------------------------------------------------------------
 
-// Version returns the Cartographer library version string (e.g. "1.5.0").
+// Version returns the navigator library version string (e.g. "1.1.0").
 func Version() (string, error) {
-	cstr := C.cartographer_version()
+	cstr := C.navigator_version()
 	if cstr == nil {
-		return "", &CartographerError{"null response from version"}
+		return "", &NavigatorError{"null response from version"}
 	}
-	defer C.cartographer_free_string(cstr)
+	defer C.navigator_free_string(cstr)
 	return C.GoString(cstr), nil
 }
 
@@ -76,7 +76,7 @@ func MapProject(path string) (*ProjectGraph, error) {
 	defer C.free(unsafe.Pointer(cPath))
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_map_project(cPath)
+		return C.navigator_map_project(cPath)
 	})
 	if err != nil {
 		return nil, err
@@ -84,7 +84,7 @@ func MapProject(path string) (*ProjectGraph, error) {
 
 	var graph ProjectGraph
 	if err := json.Unmarshal(resp.Data, &graph); err != nil {
-		return nil, &CartographerError{err.Error()}
+		return nil, &NavigatorError{err.Error()}
 	}
 	return &graph, nil
 }
@@ -95,7 +95,7 @@ func Health(path string) (*HealthReport, error) {
 	defer C.free(unsafe.Pointer(cPath))
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_health(cPath)
+		return C.navigator_health(cPath)
 	})
 	if err != nil {
 		return nil, err
@@ -103,7 +103,7 @@ func Health(path string) (*HealthReport, error) {
 
 	var report HealthReport
 	if err := json.Unmarshal(resp.Data, &report); err != nil {
-		return nil, &CartographerError{err.Error()}
+		return nil, &NavigatorError{err.Error()}
 	}
 	return &report, nil
 }
@@ -121,7 +121,7 @@ func CheckLayers(path, layersPath string) ([]LayerViolation, error) {
 	}
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_check_layers(cPath, cLayers)
+		return C.navigator_check_layers(cPath, cLayers)
 	})
 	if err != nil {
 		return nil, err
@@ -132,7 +132,7 @@ func CheckLayers(path, layersPath string) ([]LayerViolation, error) {
 		ViolationCount int              `json:"violationCount"`
 	}
 	if err := json.Unmarshal(resp.Data, &result); err != nil {
-		return nil, &CartographerError{err.Error()}
+		return nil, &NavigatorError{err.Error()}
 	}
 	return result.Violations, nil
 }
@@ -156,7 +156,7 @@ func SimulateChange(path, moduleID, newSignature, removeSignature string) (*Impa
 	}
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_simulate_change(cPath, cModule, cNewSig, cRemSig)
+		return C.navigator_simulate_change(cPath, cModule, cNewSig, cRemSig)
 	})
 	if err != nil {
 		return nil, err
@@ -164,7 +164,7 @@ func SimulateChange(path, moduleID, newSignature, removeSignature string) (*Impa
 
 	var analysis ImpactAnalysis
 	if err := json.Unmarshal(resp.Data, &analysis); err != nil {
-		return nil, &CartographerError{err.Error()}
+		return nil, &NavigatorError{err.Error()}
 	}
 	return &analysis, nil
 }
@@ -182,7 +182,7 @@ func SkeletonMap(path, detailLevel string) (*SkeletonResult, error) {
 	}
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_skeleton_map(cPath, cDetail)
+		return C.navigator_skeleton_map(cPath, cDetail)
 	})
 	if err != nil {
 		return nil, err
@@ -190,7 +190,7 @@ func SkeletonMap(path, detailLevel string) (*SkeletonResult, error) {
 
 	var result SkeletonResult
 	if err := json.Unmarshal(resp.Data, &result); err != nil {
-		return nil, &CartographerError{err.Error()}
+		return nil, &NavigatorError{err.Error()}
 	}
 	return &result, nil
 }
@@ -202,7 +202,7 @@ func GitChurn(path string, limit uint32) (map[string]int, error) {
 	defer C.free(unsafe.Pointer(cPath))
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_git_churn(cPath, C.uint(limit))
+		return C.navigator_git_churn(cPath, C.uint(limit))
 	})
 	if err != nil {
 		return nil, err
@@ -210,7 +210,7 @@ func GitChurn(path string, limit uint32) (map[string]int, error) {
 
 	var churn map[string]int
 	if err := json.Unmarshal(resp.Data, &churn); err != nil {
-		return nil, &CartographerError{err.Error()}
+		return nil, &NavigatorError{err.Error()}
 	}
 	return churn, nil
 }
@@ -222,7 +222,7 @@ func GitCochange(path string, limit, minCount uint32) ([]CoChangePair, error) {
 	defer C.free(unsafe.Pointer(cPath))
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_git_cochange(cPath, C.uint(limit), C.uint(minCount))
+		return C.navigator_git_cochange(cPath, C.uint(limit), C.uint(minCount))
 	})
 	if err != nil {
 		return nil, err
@@ -230,7 +230,7 @@ func GitCochange(path string, limit, minCount uint32) ([]CoChangePair, error) {
 
 	var pairs []CoChangePair
 	if err := json.Unmarshal(resp.Data, &pairs); err != nil {
-		return nil, &CartographerError{err.Error()}
+		return nil, &NavigatorError{err.Error()}
 	}
 	return pairs, nil
 }
@@ -243,7 +243,7 @@ func HiddenCoupling(path string, limit, minCount uint32) ([]CoChangePair, error)
 	defer C.free(unsafe.Pointer(cPath))
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_hidden_coupling(cPath, C.uint(limit), C.uint(minCount))
+		return C.navigator_hidden_coupling(cPath, C.uint(limit), C.uint(minCount))
 	})
 	if err != nil {
 		return nil, err
@@ -251,7 +251,7 @@ func HiddenCoupling(path string, limit, minCount uint32) ([]CoChangePair, error)
 
 	var pairs []CoChangePair
 	if err := json.Unmarshal(resp.Data, &pairs); err != nil {
-		return nil, &CartographerError{err.Error()}
+		return nil, &NavigatorError{err.Error()}
 	}
 	return pairs, nil
 }
@@ -272,7 +272,7 @@ func Semidiff(path, commit1, commit2 string) ([]SemidiffFile, error) {
 	}
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_semidiff(cPath, cC1, cC2)
+		return C.navigator_semidiff(cPath, cC1, cC2)
 	})
 	if err != nil {
 		return nil, err
@@ -280,7 +280,7 @@ func Semidiff(path, commit1, commit2 string) ([]SemidiffFile, error) {
 
 	var files []SemidiffFile
 	if err := json.Unmarshal(resp.Data, &files); err != nil {
-		return nil, &CartographerError{err.Error()}
+		return nil, &NavigatorError{err.Error()}
 	}
 	return files, nil
 }
@@ -296,7 +296,7 @@ func RankedSkeleton(path string, focus []string, budget uint32) (*RankedSkeleton
 	defer C.free(unsafe.Pointer(cFocus))
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_ranked_skeleton(cPath, cFocus, C.uint(budget))
+		return C.navigator_ranked_skeleton(cPath, cFocus, C.uint(budget))
 	})
 	if err != nil {
 		return nil, err
@@ -304,7 +304,7 @@ func RankedSkeleton(path string, focus []string, budget uint32) (*RankedSkeleton
 
 	var result RankedSkeletonResult
 	if err := json.Unmarshal(resp.Data, &result); err != nil {
-		return nil, &CartographerError{err.Error()}
+		return nil, &NavigatorError{err.Error()}
 	}
 	return &result, nil
 }
@@ -315,7 +315,7 @@ func UnreferencedSymbols(path string) (*UnreferencedSymbolsResult, error) {
 	defer C.free(unsafe.Pointer(cPath))
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_unreferenced_symbols(cPath)
+		return C.navigator_unreferenced_symbols(cPath)
 	})
 	if err != nil {
 		return nil, err
@@ -323,7 +323,7 @@ func UnreferencedSymbols(path string) (*UnreferencedSymbolsResult, error) {
 
 	var result UnreferencedSymbolsResult
 	if err := json.Unmarshal(resp.Data, &result); err != nil {
-		return nil, &CartographerError{err.Error()}
+		return nil, &NavigatorError{err.Error()}
 	}
 	return &result, nil
 }
@@ -341,14 +341,14 @@ func SearchContent(path, pattern string, opts *SearchContentOptions) (*SearchRes
 	if opts != nil {
 		b, err := json.Marshal(opts)
 		if err != nil {
-			return nil, &CartographerError{err.Error()}
+			return nil, &NavigatorError{err.Error()}
 		}
 		cOpts = C.CString(string(b))
 		defer C.free(unsafe.Pointer(cOpts))
 	}
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_search_content(cPath, cPattern, cOpts)
+		return C.navigator_search_content(cPath, cPattern, cOpts)
 	})
 	if err != nil {
 		return nil, err
@@ -356,7 +356,7 @@ func SearchContent(path, pattern string, opts *SearchContentOptions) (*SearchRes
 
 	var result SearchResult
 	if err := json.Unmarshal(resp.Data, &result); err != nil {
-		return nil, &CartographerError{err.Error()}
+		return nil, &NavigatorError{err.Error()}
 	}
 	return &result, nil
 }
@@ -374,14 +374,14 @@ func FindFiles(path, pattern string, limit uint32, opts *FindOptions) (*FindResu
 	if opts != nil {
 		b, err := json.Marshal(opts)
 		if err != nil {
-			return nil, &CartographerError{err.Error()}
+			return nil, &NavigatorError{err.Error()}
 		}
 		cOpts = C.CString(string(b))
 		defer C.free(unsafe.Pointer(cOpts))
 	}
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_find_files(cPath, cPattern, C.uint(limit), cOpts)
+		return C.navigator_find_files(cPath, cPattern, C.uint(limit), cOpts)
 	})
 	if err != nil {
 		return nil, err
@@ -389,7 +389,7 @@ func FindFiles(path, pattern string, limit uint32, opts *FindOptions) (*FindResu
 
 	var result FindResult
 	if err := json.Unmarshal(resp.Data, &result); err != nil {
-		return nil, &CartographerError{err.Error()}
+		return nil, &NavigatorError{err.Error()}
 	}
 	return &result, nil
 }
@@ -403,7 +403,7 @@ func GetModuleContext(path, moduleID string, depth uint32) (*ModuleContext, erro
 	defer C.free(unsafe.Pointer(cModule))
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_module_context(cPath, cModule, C.uint(depth))
+		return C.navigator_module_context(cPath, cModule, C.uint(depth))
 	})
 	if err != nil {
 		return nil, err
@@ -411,7 +411,7 @@ func GetModuleContext(path, moduleID string, depth uint32) (*ModuleContext, erro
 
 	var ctx ModuleContext
 	if err := json.Unmarshal(resp.Data, &ctx); err != nil {
-		return nil, &CartographerError{err.Error()}
+		return nil, &NavigatorError{err.Error()}
 	}
 	return &ctx, nil
 }
@@ -433,14 +433,14 @@ func ReplaceContent(path, pattern, replacement string, opts *ReplaceOptions) (*R
 	if opts != nil {
 		b, err := json.Marshal(opts)
 		if err != nil {
-			return nil, &CartographerError{err.Error()}
+			return nil, &NavigatorError{err.Error()}
 		}
 		cOpts = C.CString(string(b))
 		defer C.free(unsafe.Pointer(cOpts))
 	}
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_replace_content(cPath, cPattern, cReplacement, cOpts)
+		return C.navigator_replace_content(cPath, cPattern, cReplacement, cOpts)
 	})
 	if err != nil {
 		return nil, err
@@ -448,7 +448,7 @@ func ReplaceContent(path, pattern, replacement string, opts *ReplaceOptions) (*R
 
 	var result ReplaceResult
 	if err := json.Unmarshal(resp.Data, &result); err != nil {
-		return nil, &CartographerError{err.Error()}
+		return nil, &NavigatorError{err.Error()}
 	}
 	return &result, nil
 }
@@ -465,14 +465,14 @@ func ExtractContent(path, pattern string, opts *ExtractOptions) (*ExtractResult,
 	if opts != nil {
 		b, err := json.Marshal(opts)
 		if err != nil {
-			return nil, &CartographerError{err.Error()}
+			return nil, &NavigatorError{err.Error()}
 		}
 		cOpts = C.CString(string(b))
 		defer C.free(unsafe.Pointer(cOpts))
 	}
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_extract_content(cPath, cPattern, cOpts)
+		return C.navigator_extract_content(cPath, cPattern, cOpts)
 	})
 	if err != nil {
 		return nil, err
@@ -480,7 +480,7 @@ func ExtractContent(path, pattern string, opts *ExtractOptions) (*ExtractResult,
 
 	var result ExtractResult
 	if err := json.Unmarshal(resp.Data, &result); err != nil {
-		return nil, &CartographerError{err.Error()}
+		return nil, &NavigatorError{err.Error()}
 	}
 	return &result, nil
 }
@@ -498,14 +498,14 @@ func BM25Search(path, query string, opts *BM25Options) (*BM25Result, error) {
 	if opts != nil {
 		b, err := json.Marshal(opts)
 		if err != nil {
-			return nil, &CartographerError{err.Error()}
+			return nil, &NavigatorError{err.Error()}
 		}
 		cOpts = C.CString(string(b))
 		defer C.free(unsafe.Pointer(cOpts))
 	}
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_bm25_search(cPath, cQuery, cOpts)
+		return C.navigator_bm25_search(cPath, cQuery, cOpts)
 	})
 	if err != nil {
 		return nil, err
@@ -513,7 +513,7 @@ func BM25Search(path, query string, opts *BM25Options) (*BM25Result, error) {
 
 	var result BM25Result
 	if err := json.Unmarshal(resp.Data, &result); err != nil {
-		return nil, &CartographerError{err.Error()}
+		return nil, &NavigatorError{err.Error()}
 	}
 	return &result, nil
 }
@@ -532,14 +532,14 @@ func QueryContext(path, query string, opts *QueryContextOpts) (*QueryContextResu
 	if opts != nil {
 		b, err := json.Marshal(opts)
 		if err != nil {
-			return nil, &CartographerError{err.Error()}
+			return nil, &NavigatorError{err.Error()}
 		}
 		cOpts = C.CString(string(b))
 		defer C.free(unsafe.Pointer(cOpts))
 	}
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_query_context(cPath, cQuery, cOpts)
+		return C.navigator_query_context(cPath, cQuery, cOpts)
 	})
 	if err != nil {
 		return nil, err
@@ -547,13 +547,13 @@ func QueryContext(path, query string, opts *QueryContextOpts) (*QueryContextResu
 
 	var result QueryContextResult
 	if err := json.Unmarshal(resp.Data, &result); err != nil {
-		return nil, &CartographerError{err.Error()}
+		return nil, &NavigatorError{err.Error()}
 	}
 	return &result, nil
 }
 
 // ShotgunSurgery returns files ranked by co-change dispersion.
-// limit=0 uses the Cartographer default (100). minPartners=0 uses the default (3).
+// limit=0 uses the navigator default (100). minPartners=0 uses the default (3).
 // Files with a high dispersion score exhibit the shotgun surgery smell: changing them
 // historically required simultaneous changes across many unrelated files.
 func ShotgunSurgery(path string, limit, minPartners uint32) ([]ShotgunSurgeryEntry, error) {
@@ -561,7 +561,7 @@ func ShotgunSurgery(path string, limit, minPartners uint32) ([]ShotgunSurgeryEnt
 	defer C.free(unsafe.Pointer(cPath))
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_shotgun_surgery(cPath, C.uint(limit), C.uint(minPartners))
+		return C.navigator_shotgun_surgery(cPath, C.uint(limit), C.uint(minPartners))
 	})
 	if err != nil {
 		return nil, err
@@ -569,19 +569,19 @@ func ShotgunSurgery(path string, limit, minPartners uint32) ([]ShotgunSurgeryEnt
 
 	var entries []ShotgunSurgeryEntry
 	if err := json.Unmarshal(resp.Data, &entries); err != nil {
-		return nil, &CartographerError{err.Error()}
+		return nil, &NavigatorError{err.Error()}
 	}
 	return entries, nil
 }
 
 // Evolution returns architectural health snapshots over the last `days` days of git history.
-// days=0 uses the Cartographer default (90).
+// days=0 uses the navigator default (90).
 func Evolution(path string, days uint32) (*EvolutionResult, error) {
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_evolution(cPath, C.uint(days))
+		return C.navigator_evolution(cPath, C.uint(days))
 	})
 	if err != nil {
 		return nil, err
@@ -589,7 +589,7 @@ func Evolution(path string, days uint32) (*EvolutionResult, error) {
 
 	var result EvolutionResult
 	if err := json.Unmarshal(resp.Data, &result); err != nil {
-		return nil, &CartographerError{err.Error()}
+		return nil, &NavigatorError{err.Error()}
 	}
 	return &result, nil
 }
@@ -604,7 +604,7 @@ func BlastRadius(path, target string, maxRelated uint32) (*BlastRadiusResult, er
 	defer C.free(unsafe.Pointer(cTarget))
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_blast_radius(cPath, cTarget, C.uint(maxRelated))
+		return C.navigator_blast_radius(cPath, cTarget, C.uint(maxRelated))
 	})
 	if err != nil {
 		return nil, err
@@ -612,7 +612,7 @@ func BlastRadius(path, target string, maxRelated uint32) (*BlastRadiusResult, er
 
 	var result BlastRadiusResult
 	if err := json.Unmarshal(resp.Data, &result); err != nil {
-		return nil, &CartographerError{err.Error()}
+		return nil, &NavigatorError{err.Error()}
 	}
 	return &result, nil
 }
@@ -628,14 +628,14 @@ func ContextHealth(content string, opts *ContextHealthOpts) (*ContextHealthRepor
 	if opts != nil {
 		b, err := json.Marshal(opts)
 		if err != nil {
-			return nil, &CartographerError{err.Error()}
+			return nil, &NavigatorError{err.Error()}
 		}
 		cOpts = C.CString(string(b))
 		defer C.free(unsafe.Pointer(cOpts))
 	}
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_context_health(cContent, cOpts)
+		return C.navigator_context_health(cContent, cOpts)
 	})
 	if err != nil {
 		return nil, err
@@ -643,7 +643,7 @@ func ContextHealth(content string, opts *ContextHealthOpts) (*ContextHealthRepor
 
 	var result ContextHealthReport
 	if err := json.Unmarshal(resp.Data, &result); err != nil {
-		return nil, &CartographerError{err.Error()}
+		return nil, &NavigatorError{err.Error()}
 	}
 	return &result, nil
 }
@@ -669,7 +669,7 @@ func RenderArchitecture(path, format, focus string, depth, maxNodes uint32) (*Re
 	}
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_render_architecture(cPath, cFormat, cFocus, C.uint(depth), C.uint(maxNodes))
+		return C.navigator_render_architecture(cPath, cFormat, cFocus, C.uint(depth), C.uint(maxNodes))
 	})
 	if err != nil {
 		return nil, err
@@ -677,7 +677,7 @@ func RenderArchitecture(path, format, focus string, depth, maxNodes uint32) (*Re
 
 	var result RenderArchitectureResult
 	if err := json.Unmarshal(resp.Data, &result); err != nil {
-		return nil, &CartographerError{err.Error()}
+		return nil, &NavigatorError{err.Error()}
 	}
 	return &result, nil
 }
