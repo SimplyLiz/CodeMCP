@@ -14,7 +14,7 @@ import (
 	"github.com/SimplyLiz/CodeMCP/internal/backends"
 	"github.com/SimplyLiz/CodeMCP/internal/backends/git"
 	"github.com/SimplyLiz/CodeMCP/internal/backends/scip"
-	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
+	"github.com/SimplyLiz/CodeMCP/internal/navigator"
 	"github.com/SimplyLiz/CodeMCP/internal/output"
 	"github.com/SimplyLiz/CodeMCP/internal/version"
 )
@@ -179,8 +179,8 @@ type ModuleOverviewResponse struct {
 	Annotations      *ModuleAnnotations   `json:"annotations,omitempty"`      // v6.5: Declared module metadata
 	RelatedDecisions []RelatedDecision    `json:"relatedDecisions,omitempty"` // v6.5: ADRs affecting this module
 	// Skeleton provides Cartographer's skeleton (signatures + imports + deps) for the module.
-	// Only populated when the binary is built with -tags cartographer.
-	Skeleton *cartographer.ModuleContext `json:"skeleton,omitempty"`
+	// Only populated when the binary is built with -tags navigator.
+	Skeleton *navigator.ModuleContext `json:"skeleton,omitempty"`
 }
 
 // ModuleOverviewModule contains module identity.
@@ -736,8 +736,8 @@ func (e *Engine) GetModuleOverview(ctx context.Context, opts ModuleOverviewOptio
 	}
 
 	// Augment with Cartographer skeleton: signatures + imports + direct dependencies.
-	if cartographer.Available() {
-		if skeleton, cerr := cartographer.GetModuleContext(e.repoRoot, modulePath, 1); cerr == nil {
+	if navigator.Available() {
+		if skeleton, cerr := navigator.GetModuleContext(e.repoRoot, modulePath, 1); cerr == nil {
 			resp.Skeleton = skeleton
 		}
 	}
@@ -1933,8 +1933,8 @@ type SummarizeDiffResponse struct {
 	Commits         []DiffCommitInfo     `json:"commits,omitempty"`
 	// FunctionChanges provides function-level diff from Cartographer semidiff
 	// (added/removed function signatures per file). Only populated for commitRange
-	// selectors when the binary is built with -tags cartographer.
-	FunctionChanges []cartographer.SemidiffFile `json:"functionChanges,omitempty"`
+	// selectors when the binary is built with -tags navigator.
+	FunctionChanges []navigator.SemidiffFile `json:"functionChanges,omitempty"`
 	Confidence      float64                     `json:"confidence"`
 	ConfidenceBasis []ConfidenceBasisItem       `json:"confidenceBasis"`
 	Limitations     []string                    `json:"limitations,omitempty"`
@@ -2303,8 +2303,8 @@ func (e *Engine) SummarizeDiff(ctx context.Context, opts SummarizeDiffOptions) (
 	}
 
 	// Augment with Cartographer function-level diff for commit range selectors.
-	if cartographer.Available() && base != "" {
-		if files, cerr := cartographer.Semidiff(e.repoRoot, base, head); cerr == nil && len(files) > 0 {
+	if navigator.Available() && base != "" {
+		if files, cerr := navigator.Semidiff(e.repoRoot, base, head); cerr == nil && len(files) > 0 {
 			response.FunctionChanges = files
 		}
 	}
@@ -2522,7 +2522,7 @@ type HotspotV52 struct {
 	RiskLevel  string             `json:"riskLevel"`            // low, medium, high
 	Ranking    *RankingV52        `json:"ranking"`
 	// CochangePartners lists other files that frequently change together with this file
-	// (from Cartographer temporal coupling analysis). Only populated when built with -tags cartographer.
+	// (from Cartographer temporal coupling analysis). Only populated when built with -tags navigator.
 	CochangePartners []string `json:"cochangePartners,omitempty"`
 }
 
@@ -2754,8 +2754,8 @@ func (e *Engine) GetHotspots(ctx context.Context, opts GetHotspotsOptions) (*Get
 
 	// Augment hotspots with Cartographer co-change partners (temporal coupling).
 	// Surfaces files that frequently change together — captured from git history.
-	if cartographer.Available() && len(response.Hotspots) > 0 {
-		if pairs, cerr := cartographer.GitCochange(e.repoRoot, 0, 3); cerr == nil && len(pairs) > 0 {
+	if navigator.Available() && len(response.Hotspots) > 0 {
+		if pairs, cerr := navigator.GitCochange(e.repoRoot, 0, 3); cerr == nil && len(pairs) > 0 {
 			hotspotSet := make(map[string]struct{}, len(response.Hotspots))
 			for _, h := range response.Hotspots {
 				hotspotSet[h.FilePath] = struct{}{}
@@ -3302,10 +3302,10 @@ func (e *Engine) ListKeyConcepts(ctx context.Context, opts ListKeyConceptsOption
 		limitations = append(limitations, "SCIP index unavailable; concept extraction limited")
 
 		usedCartographer := false
-		if cartographer.Available() {
+		if navigator.Available() {
 			// Cartographer has a pre-built, ignore-aware file index — faster than
 			// walking the FS and adds module-level grouping for richer concepts.
-			if graph, cerr := cartographer.MapProject(e.repoRoot); cerr == nil {
+			if graph, cerr := navigator.MapProject(e.repoRoot); cerr == nil {
 				usedCartographer = true
 				for _, node := range graph.Nodes {
 					ext := filepath.Ext(node.Path)

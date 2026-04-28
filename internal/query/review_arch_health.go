@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
+	"github.com/SimplyLiz/CodeMCP/internal/navigator"
 )
 
 // checkArchitecturalHealth uses Cartographer to assess overall project health
@@ -14,7 +14,7 @@ import (
 func (e *Engine) checkArchitecturalHealth(_ context.Context, _ []string) (ReviewCheck, []ReviewFinding) {
 	start := time.Now()
 
-	if !cartographer.Available() {
+	if !navigator.Available() {
 		return ReviewCheck{
 			Name:     "arch-health",
 			Status:   "skip",
@@ -24,7 +24,7 @@ func (e *Engine) checkArchitecturalHealth(_ context.Context, _ []string) (Review
 		}, nil
 	}
 
-	report, err := cartographer.Health(e.repoRoot)
+	report, err := navigator.Health(e.repoRoot)
 	if err != nil {
 		return ReviewCheck{
 			Name:     "arch-health",

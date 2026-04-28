@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
+	"github.com/SimplyLiz/CodeMCP/internal/navigator"
 	"github.com/SimplyLiz/CodeMCP/internal/errors"
 	"github.com/SimplyLiz/CodeMCP/internal/output"
 	"github.com/SimplyLiz/CodeMCP/internal/ownership"
@@ -70,7 +70,7 @@ type GetOwnershipResponse struct {
 	Drilldowns      []output.Drilldown      `json:"drilldowns,omitempty"`
 	// CoChangePartners lists files that frequently change together with this path
 	// (from Cartographer temporal coupling). Implicitly relevant for ownership/review.
-	// Only populated when the binary is built with -tags cartographer.
+	// Only populated when the binary is built with -tags navigator.
 	CoChangePartners []string `json:"coChangePartners,omitempty"`
 }
 
@@ -245,8 +245,8 @@ func (e *Engine) GetOwnership(ctx context.Context, opts GetOwnershipOptions) (*G
 	// Augment with Cartographer co-change partners — files that frequently change
 	// together with this path. These are implicit co-owners even if not in CODEOWNERS.
 	var coChangePartners []string
-	if cartographer.Available() {
-		if pairs, err := cartographer.GitCochange(e.repoRoot, 0, 3); err == nil {
+	if navigator.Available() {
+		if pairs, err := navigator.GitCochange(e.repoRoot, 0, 3); err == nil {
 			for _, p := range pairs {
 				partner := ""
 				if p.FileA == normalizedPath {

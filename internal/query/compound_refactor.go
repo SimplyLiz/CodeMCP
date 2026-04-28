@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/SimplyLiz/CodeMCP/internal/audit"
-	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
+	"github.com/SimplyLiz/CodeMCP/internal/navigator"
 	"github.com/SimplyLiz/CodeMCP/internal/version"
 )
 
@@ -219,12 +219,12 @@ func (e *Engine) PlanRefactor(ctx context.Context, opts PlanRefactorOptions) (*P
 
 		// Augment with Cartographer hidden coupling when not already captured above
 		// (e.g. when Cartographer was unavailable during PrepareChange but is now).
-		if cartographer.Available() && resp.CouplingAnalysis != nil && len(resp.CouplingAnalysis.HiddenCouplingFiles) == 0 {
+		if navigator.Available() && resp.CouplingAnalysis != nil && len(resp.CouplingAnalysis.HiddenCouplingFiles) == 0 {
 			filePath := opts.Target
 			if prepareResult.Target != nil && prepareResult.Target.Path != "" {
 				filePath = prepareResult.Target.Path
 			}
-			if hidden, err := cartographer.HiddenCoupling(e.repoRoot, 0, 2); err == nil {
+			if hidden, err := navigator.HiddenCoupling(e.repoRoot, 0, 2); err == nil {
 				for _, p := range hidden {
 					partner := ""
 					if p.FileA == filePath {

@@ -1,36 +1,36 @@
-CARTOGRAPHER_DIR := third_party/cartographer/mapper-core/cartographer
-CARTOGRAPHER_LIB := $(CARTOGRAPHER_DIR)/target/release/libcartographer.a
+NAVIGATOR_DIR := third_party/nyx-navigator
+NAVIGATOR_LIB := $(NAVIGATOR_DIR)/target/release/libnavigator.a
 BIN_DIR := bin
 
-.PHONY: build build-cartographer build-fast test test-cartographer lint clean
+.PHONY: build build-navigator build-fast test test-navigator lint clean check-navigator
 
-## Build CKB with Cartographer integration (default)
-build: build-cartographer
+## Build CKB with navigator integration (default)
+build: build-navigator
 	@mkdir -p $(BIN_DIR)
-	go build -tags cartographer -o $(BIN_DIR)/ckb ./cmd/ckb/...
-	@echo "Built: $(BIN_DIR)/ckb (with Cartographer)"
+	go build -tags navigator -o $(BIN_DIR)/ckb ./cmd/ckb/...
+	@echo "Built: $(BIN_DIR)/ckb (with nyx-navigator)"
 
-## Build the Cartographer static library (requires Rust toolchain)
-build-cartographer:
-	@echo "Building Cartographer static library..."
-	@cd $(CARTOGRAPHER_DIR) && cargo build --release
+## Build the nyx-navigator static library (requires Rust toolchain)
+build-navigator:
+	@echo "Building nyx-navigator static library..."
+	@cd $(NAVIGATOR_DIR) && cargo build --release
 	@echo "Localizing tree-sitter symbols (prevents link-time collisions with go-tree-sitter)..."
-	@cd $(CARTOGRAPHER_DIR) && scripts/localize-tree-sitter-symbols.sh target/release/libcartographer.a
-	@echo "Library: $(CARTOGRAPHER_LIB)"
+	@cd $(NAVIGATOR_DIR) && scripts/localize-tree-sitter-symbols.sh target/release/libnavigator.a
+	@echo "Library: $(NAVIGATOR_LIB)"
 
-## Build without Cartographer (no Rust toolchain required — for CI and contributors)
+## Build without navigator (no Rust toolchain required — for CI and contributors)
 build-fast:
 	@mkdir -p $(BIN_DIR)
 	go build -o $(BIN_DIR)/ckb ./cmd/ckb/...
-	@echo "Built: $(BIN_DIR)/ckb (without Cartographer)"
+	@echo "Built: $(BIN_DIR)/ckb (without nyx-navigator)"
 
 ## Run all tests
 test:
 	go test ./...
 
-## Run all tests with Cartographer compiled in
-test-cartographer: build-cartographer
-	go test -tags cartographer ./...
+## Run all tests with navigator compiled in
+test-navigator: build-navigator
+	go test -tags navigator ./...
 
 ## Lint
 lint:
@@ -40,11 +40,11 @@ lint:
 clean:
 	rm -rf $(BIN_DIR)
 
-## Check whether the Cartographer library is present
-check-cartographer:
-	@if [ -f "$(CARTOGRAPHER_LIB)" ]; then \
-		echo "Cartographer library found: $(CARTOGRAPHER_LIB)"; \
+## Check whether the navigator library is present
+check-navigator:
+	@if [ -f "$(NAVIGATOR_LIB)" ]; then \
+		echo "nyx-navigator library found: $(NAVIGATOR_LIB)"; \
 	else \
-		echo "Cartographer library NOT found. Run: make build-cartographer"; \
+		echo "nyx-navigator library NOT found. Run: make build-navigator"; \
 		exit 1; \
 	fi

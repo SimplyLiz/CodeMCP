@@ -4,6 +4,40 @@ All notable changes to CKB will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **Vendored Rust crate `cartographer` 3.0.0 → `nyx-navigator` 1.1.0**.
+  Upstream renamed the crate; CKB follows. Rename only — no functional
+  change to existing call sites; the Go API is identical.
+  - Vendor path `third_party/cartographer/mapper-core/cartographer/` →
+    `third_party/nyx-navigator/` (flattened; stale Python tooling and
+    examples no longer carried).
+  - Build tag `cartographer` → `navigator`. `make build`, `make test`
+    targets now resolve `build-navigator` / `test-navigator`. Standalone
+    `make build-fast` (no Rust toolchain) unchanged.
+  - Static lib `libcartographer.a` → `libnavigator.a`; FFI prefix
+    `cartographer_*` → `navigator_*`; header `cartographer.h` →
+    `navigator.h`; sync script `scripts/sync-cartographer.sh` →
+    `scripts/sync-nyx-navigator.sh`.
+  - Go package `internal/cartographer` → `internal/navigator`; error
+    type `CartographerError` → `NavigatorError`.
+
+### Available for follow-up wiring (not yet exposed)
+
+The new vendored library exports four FFI symbols not yet wired through
+the Go bridge or MCP layer:
+
+- `navigator_poll_changes(path, since_ms)` — incremental change polling;
+  fits CKB's `mcp --watch` and the daemon file-watcher.
+- `navigator_doc_index`, `navigator_doc_context`, `navigator_query_docs`
+  — full doc-retrieval pipeline.
+
+The `navigator_render_architecture` FFI shape is unchanged but accepts
+new `format` values (`sequence`, `class`, `quadrant`, `er`, `ascii`,
+`html`, plus cross-file `sequence` with an entry-point) — these can be
+passed through `getArchitecture` / `renderArchitecture` MCP tools today
+without further bridge work.
+
 ## [9.2.0] - 2026-04-25
 
 ### Added

@@ -47,8 +47,15 @@ testdata/fixtures/typescript/node_modules/
 testdata/**/.dart_tool/
 testdata/**/pubspec.lock
 
-# Vendored Cartographer Rust build artifacts
-third_party/cartographer/mapper-core/cartographer/target/
+# Vendored nyx-navigator Rust build artifacts
+third_party/nyx-navigator/target/
 
 # MCP runtime caches (pinned to commit hash, regenerated on startup)
+internal/mcp/.navigator_cache.json
 internal/mcp/.cartographer_cache.json
+
+# Navigator-emitted artifacts (regenerated)
+navigator_map.xml
+cartographer_map.xml
+**/.navigator_cache.json
+**/.cartographer_cache.json
