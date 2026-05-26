@@ -28,7 +28,7 @@ jobs:
           cache: true
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9
+        uses: golangci/golangci-lint-action@82606bf257cbaff209d206a39f5134f0cfbfd2ee # v9
         with:
           version: latest
           args: --timeout=5m
@@ -149,7 +149,7 @@ jobs:
           govulncheck ./...
 
       - name: Run Trivy filesystem scan
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -177,7 +177,7 @@ jobs:
         run: ./ckb version
 
       - name: Upload binary
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ckb-linux-amd64
           path: ckb
