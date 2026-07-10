@@ -63,6 +63,18 @@ every edge now carries a `resolution` confidence tag (`exact` | `suffix` |
 "will create a cycle" prediction ignore `fuzzy` edges, so a false cycle can no
 longer rest on a low-confidence stem guess.
 
+The same namespace-exact idea was generalized beyond Go: any extensionless
+import that carries directory structure (Python `from app.services import auth`,
+monorepo/aliased `components/Button`) now resolves against its **full path** —
+matching module files and package directories (preferring `__init__.py` /
+`index.*` entry points) — instead of collapsing to the last stem. A qualified
+import that matches nothing local is treated as external (no edge) rather than
+fuzzy-guessed. The Python extractor was fixed to preserve import keywords so
+dotted paths (`a.b.c`) normalize correctly. Net: `from app.services import auth`
+and `from app.models import auth` resolve to their own packages instead of
+colliding on the shared `auth` stem, and third-party imports stop fabricating
+internal edges.
+
 ### Available for follow-up wiring (not yet exposed)
 
 The vendored library exports FFI symbols not yet wired through the Go

@@ -1237,6 +1237,16 @@ fn extract_js_import_symbol(lhs: &str) -> Option<String> {
     }
 }
 
+/// Strip the file extension from a repo-relative path, i.e. the trailing
+/// `.ext` of its last component only. `"a/b/foo.py"` → `"a/b/foo"`; a path with
+/// no dot in its last segment (`"a/b/foo"`) is returned unchanged.
+fn path_no_ext(p: &str) -> &str {
+    match p.rfind('.') {
+        Some(dot) if !p[dot..].contains('/') => &p[..dot],
+        _ => p,
+    }
+}
+
 /// Read the `module` path declared in `<root>/go.mod`, if present.
 /// e.g. a go.mod with `module github.com/acme/widget` → `Some("github.com/acme/widget")`.
 fn read_go_module(root: &Path) -> Option<String> {
@@ -1418,6 +1428,57 @@ impl<'a> ImportIndex<'a> {
 
     /// Resolve an import to a target module_id plus a confidence tag
     /// (`"exact"` | `"suffix"` | `"fuzzy"`). `None` means no internal edge.
+    /// Resolve an extensionless import that carries directory structure
+    /// (`foo/bar`) against the FULL path, not just its last stem. Tries a module
+    /// file whose extension-stripped path ends with `norm`, then a package
+    /// directory named `norm` (preferring an `__init__.py` / `index.*` / `mod.rs`
+    /// entry point). Returns `None` when nothing local matches — a qualified
+    /// import that resolves nowhere is external, not a reason to fuzzy-guess.
+    fn best_qualified_suffix(&self, norm: &str, source: &str) -> Option<String> {
+        // (a) Module file: a same-stem file whose path (minus extension) is `norm`
+        //     or ends with `/norm`.
+        let last = norm.rsplit('/').next().unwrap_or(norm);
+        if let Some(cands) = self.by_stem.get(last) {
+            let matches: Vec<&'a str> = cands
+                .iter()
+                .copied()
+                .filter(|&m| {
+                    let ne = path_no_ext(m);
+                    ne == norm || ne.ends_with(&format!("/{norm}"))
+                })
+                .collect();
+            if let Some(hit) = Self::pick_deterministic(&matches, source) {
+                return Some(hit);
+            }
+        }
+
+        // (b) Package directory named `norm` (or ending with `/norm`).
+        let dir_cands: Option<&Vec<&'a str>> = self.by_dir.get(norm).or_else(|| {
+            let suffix = format!("/{norm}");
+            self.by_dir
+                .iter()
+                .filter(|(d, _)| d.ends_with(&suffix))
+                .min_by_key(|(d, _)| d.len())
+                .map(|(_, v)| v)
+        });
+        if let Some(cands) = dir_cands {
+            // Prefer the package's entry point when present.
+            if let Some(entry) = cands.iter().copied().find(|&m| {
+                let bn = m.rsplit('/').next().unwrap_or(m);
+                bn == "__init__.py" || bn.starts_with("index.") || bn == "mod.rs"
+            }) {
+                if entry != source {
+                    return Some(entry.to_string());
+                }
+            }
+            if let Some(hit) = Self::pick_deterministic(cands, source) {
+                return Some(hit);
+            }
+        }
+
+        None
+    }
+
     fn resolve(&self, import: &str, source: &str) -> Option<(String, &'static str)> {
         let (module_path, symbol_hint) = parse_import_parts(import);
         let norm = module_path
@@ -1497,6 +1558,28 @@ impl<'a> ImportIndex<'a> {
                     }
                 }
             }
+        }
+
+        // 2.5 Qualified path-suffix. An extensionless import that still carries
+        //     directory structure (Python `foo.bar` → foo/bar, monorepo/aliased
+        //     `components/Button`) is resolved against the FULL path, not the last
+        //     stem — the qualification disambiguates same-name files across
+        //     packages, the way go.mod does for Go. This is authoritative for such
+        //     imports: a qualified path that matches nothing local is external, so
+        //     we return no edge rather than falling through to the fuzzy stem/segment
+        //     guesses (which fabricated cross-package edges).
+        if !has_ext && norm.contains('/') {
+            // `from pkg.sub import name` may name a submodule `pkg/sub/name`; try the
+            // combined path first so it beats the package's own __init__.
+            if let Some(sym) = &symbol_hint {
+                let combined = format!("{norm}/{sym}");
+                if let Some(hit) = self.best_qualified_suffix(&combined, source) {
+                    return Some((hit, "suffix"));
+                }
+            }
+            return self
+                .best_qualified_suffix(&norm, source)
+                .map(|hit| (hit, "suffix"));
         }
 
         // 3. Extensionless import (Rust `mod`, Python `import`, Go package): match by stem.
@@ -2324,6 +2407,44 @@ mod tests {
         assert_eq!(idx.resolve("sync", src), None);
         // Third-party import → no internal edge.
         assert_eq!(idx.resolve("github.com/other/pkg", src), None);
+    }
+
+    // Qualified extensionless imports (Python dotted, monorepo pathed) resolve
+    // against the FULL path, not the last stem — so a same-named file in another
+    // package is not fabricated, and an unresolvable qualified import is external.
+    #[test]
+    fn qualified_import_resolves_by_full_path_not_stem() {
+        let mut files: HashMap<String, MappedFile> = HashMap::new();
+        for p in [
+            "app/services/auth.py",
+            "app/models/auth.py", // trap: same stem, different package
+            "app/services/__init__.py",
+            "app/main.py",
+            "packages/ui/Button.tsx",
+        ] {
+            files.insert(p.to_string(), MappedFile::from_minimal(p.to_string(), vec![]));
+        }
+        let idx = ImportIndex::build(&files);
+        let src = "app/main.py";
+
+        // `from app.services import auth` → the submodule, not app/models/auth.py.
+        assert_eq!(
+            idx.resolve("from app.services import auth", src),
+            Some(("app/services/auth.py".to_string(), "suffix")),
+        );
+        // `import app.services` (no symbol) → the package entry point.
+        assert_eq!(
+            idx.resolve("import app.services", src),
+            Some(("app/services/__init__.py".to_string(), "suffix")),
+        );
+        // Monorepo/aliased path import → the exact file by suffix.
+        assert_eq!(
+            idx.resolve("import Button from 'packages/ui/Button'", src),
+            Some(("packages/ui/Button.tsx".to_string(), "suffix")),
+        );
+        // A qualified import that matches nothing local is external → no edge
+        // (must NOT fuzzy-match app/models/auth.py on the bare `auth` stem).
+        assert_eq!(idx.resolve("from django.contrib import auth", src), None);
     }
 
     // Regression test: before the fix, rebuild_graph held the mapped_files

@@ -633,21 +633,47 @@ fn extract_python(source: &str, path: &Path) -> TsOutput {
     for child in root.children(&mut cur) {
         match child.kind() {
             "import_statement" => {
-                // import os, import os.path
+                // import os, import os.path, import a.b as c
                 let mut c2 = child.walk();
                 for n in child.children(&mut c2) {
                     if matches!(n.kind(), "dotted_name" | "aliased_import") {
                         let name = n.child_by_field_name("name")
                             .map(|x| node_text(&x, src))
                             .unwrap_or_else(|| node_text(&n, src));
-                        imports.push(name.to_string());
+                        // Keep the `import ` keyword so parse_import_parts normalises the
+                        // dotted path (a.b.c → a/b/c) rather than misreading `.c` as a
+                        // file extension.
+                        imports.push(format!("import {name}"));
                     }
                 }
             }
             "import_from_statement" => {
-                // from os import path  /  from . import foo
+                // from a.b import c, d  /  from . import foo
                 if let Some(module) = child.child_by_field_name("module_name") {
-                    imports.push(node_text(&module, src).to_string());
+                    let module = node_text(&module, src).to_string();
+                    if module.starts_with('.') {
+                        // Relative import — source-relative, left best-effort as-is.
+                        imports.push(module);
+                    } else {
+                        // Emit one `from a.b import name` per imported name so
+                        // parse_import_parts yields (module=a/b, symbol=name) and the
+                        // resolver's qualified-suffix step lands on the submodule
+                        // a/b/name when it exists, else the package a/b — one precise
+                        // edge instead of a bare-stem guess.
+                        let mut names = child.walk();
+                        let mut emitted = false;
+                        for n in child.children_by_field_name("name", &mut names) {
+                            let raw = node_text(&n, src);
+                            let nm = raw.split(" as ").next().unwrap_or(raw).trim();
+                            if !nm.is_empty() && nm != "*" {
+                                imports.push(format!("from {module} import {nm}"));
+                                emitted = true;
+                            }
+                        }
+                        if !emitted {
+                            imports.push(module);
+                        }
+                    }
                 }
             }
             _ => {}
@@ -1622,8 +1648,9 @@ class MyClass:
         let method = out.signatures.iter().find(|s| s.symbol_name.as_deref() == Some("method")).unwrap();
         assert_eq!(method.kind, SymbolKind::Method);
         assert_eq!(method.qualified_name.as_deref(), Some("MyClass.method"));
-        assert!(out.imports.contains(&"os".to_string()));
-        assert!(out.imports.iter().any(|i| i.contains("pathlib")));
+        // Imports keep their keyword so the resolver can normalise dotted paths.
+        assert!(out.imports.contains(&"import os".to_string()));
+        assert!(out.imports.iter().any(|i| i.contains("pathlib") && i.contains("Path")));
     }
 
     #[cfg(feature = "lang-python")]
