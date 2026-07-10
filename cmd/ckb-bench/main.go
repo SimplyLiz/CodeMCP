@@ -1,10 +1,10 @@
-//go:build navigator
+//go:build cartographer
 
-// ckb-bench compares navigator-backed file discovery against filepath.Walk.
+// ckb-bench compares cartographer-backed file discovery against filepath.Walk.
 // Run as a standalone binary to avoid the CGo fork-safety issue that affects
 // go test binaries when the Rust library spawns git subprocesses.
 //
-//	go run -tags navigator ./cmd/ckb-bench [repo-root]
+//	go run -tags cartographer ./cmd/ckb-bench [repo-root]
 package main
 
 import (
@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/SimplyLiz/CodeMCP/internal/navigator"
+	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
 )
 
 func detectLanguage(path string) string {
@@ -101,8 +101,8 @@ func main() {
 		_ = langs
 	}
 
-	navigatorFileCount := func() {
-		graph, err := navigator.MapProject(root)
+	cartographerFileCount := func() {
+		graph, err := cartographer.MapProject(root)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "MapProject error:", err)
 			return
@@ -120,8 +120,8 @@ func main() {
 	}
 
 	walkDur := bench("filepath.Walk + language detect", n, walkFileCount)
-	navDur := bench("navigator.MapProject + node iterate", n, navigatorFileCount)
-	speedup := float64(walkDur) / float64(navDur)
+	cartoDur := bench("cartographer.MapProject + node iterate", n, cartographerFileCount)
+	speedup := float64(walkDur) / float64(cartoDur)
 	fmt.Printf("  → speedup: %.2fx\n\n", speedup)
 
 	// -------------------------------------------------------------------------
@@ -171,8 +171,8 @@ func main() {
 		_ = concepts
 	}
 
-	navigatorConcepts := func() {
-		graph, err := navigator.MapProject(root)
+	cartographerConcepts := func() {
+		graph, err := cartographer.MapProject(root)
 		if err != nil {
 			return
 		}
@@ -195,8 +195,8 @@ func main() {
 	}
 
 	walkConceptDur := bench("filepath.WalkDir + concept extract", n, walkConcepts)
-	navConceptDur := bench("navigator.MapProject + concept extract", n, navigatorConcepts)
-	conceptSpeedup := float64(walkConceptDur) / float64(navConceptDur)
+	cartoConceptDur := bench("cartographer.MapProject + concept extract", n, cartographerConcepts)
+	conceptSpeedup := float64(walkConceptDur) / float64(cartoConceptDur)
 	fmt.Printf("  → speedup: %.2fx\n", conceptSpeedup)
 }
 

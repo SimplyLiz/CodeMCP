@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/SimplyLiz/CodeMCP/internal/navigator"
+	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
 	"github.com/SimplyLiz/CodeMCP/internal/index"
 	"github.com/SimplyLiz/CodeMCP/internal/tier"
 	"github.com/SimplyLiz/CodeMCP/internal/version"
@@ -142,10 +142,10 @@ func (e *Engine) getBackendStatuses(ctx context.Context) []BackendStatus {
 	}
 	statuses = append(statuses, gitStatus)
 
-	// Navigator backend (optional — only present when built with -tags navigator)
-	navigatorStatus := BackendStatus{
-		Id:        "navigator",
-		Available: navigator.Available(),
+	// Cartographer backend (optional — only present when built with -tags cartographer)
+	cartographerStatus := BackendStatus{
+		Id:        "cartographer",
+		Available: cartographer.Available(),
 		Capabilities: []string{
 			"layer-analysis",      // CheckLayers in PR review
 			"health-scoring",      // MapProject in getArchitecture, Health in review pipeline
@@ -160,16 +160,16 @@ func (e *Engine) getBackendStatuses(ctx context.Context) []BackendStatus {
 			"ranked-skeleton",     // RankedSkeleton in exportForLLM (tokenBudget)
 		},
 	}
-	if navigator.Available() {
-		if ver, err := navigator.Version(); err == nil {
-			navigatorStatus.Healthy = true
-			navigatorStatus.Details = "v" + ver
+	if cartographer.Available() {
+		if ver, err := cartographer.Version(); err == nil {
+			cartographerStatus.Healthy = true
+			cartographerStatus.Details = "v" + ver
 		} else {
-			navigatorStatus.Healthy = false
-			navigatorStatus.Warning = err.Error()
+			cartographerStatus.Healthy = false
+			cartographerStatus.Warning = err.Error()
 		}
 	}
-	statuses = append(statuses, navigatorStatus)
+	statuses = append(statuses, cartographerStatus)
 
 	return statuses
 }

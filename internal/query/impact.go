@@ -13,7 +13,7 @@ import (
 
 	"github.com/SimplyLiz/CodeMCP/internal/backends"
 	"github.com/SimplyLiz/CodeMCP/internal/backends/scip"
-	"github.com/SimplyLiz/CodeMCP/internal/navigator"
+	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
 	"github.com/SimplyLiz/CodeMCP/internal/compression"
 	"github.com/SimplyLiz/CodeMCP/internal/diff"
 	"github.com/SimplyLiz/CodeMCP/internal/errors"
@@ -46,8 +46,8 @@ type AnalyzeImpactResponse struct {
 	DocsToUpdate     []DocToUpdate         `json:"docsToUpdate,omitempty"`     // v7.3: Docs that mention this symbol
 	// ArchImpact is Cartographer's architectural simulation for the symbol's file:
 	// predicted affected modules, cycle risk, layer violations, and health delta.
-	// Only populated when the binary is built with -tags navigator.
-	ArchImpact        *navigator.ImpactAnalysis `json:"archImpact,omitempty"`
+	// Only populated when the binary is built with -tags cartographer.
+	ArchImpact        *cartographer.ImpactAnalysis `json:"archImpact,omitempty"`
 	BlendedConfidence float64                      `json:"blendedConfidence,omitempty"`
 	Truncated         bool                         `json:"truncated,omitempty"`
 	TruncationInfo    *TruncationInfo              `json:"truncationInfo,omitempty"`
@@ -524,9 +524,9 @@ func (e *Engine) AnalyzeImpact(ctx context.Context, opts AnalyzeImpactOptions) (
 	// Augment with Cartographer architectural simulation for the symbol's file.
 	// Uses the file path as the module ID — gives predicted affected modules, cycle
 	// risk, layer violations, and health delta. Gracefully skipped when unavailable.
-	if navigator.Available() && symbolInfo.Location != nil {
+	if cartographer.Available() && symbolInfo.Location != nil {
 		filePath := symbolInfo.Location.FileId
-		if archImpact, cerr := navigator.SimulateChange(e.repoRoot, filePath, symbolInfo.Signature, ""); cerr == nil {
+		if archImpact, cerr := cartographer.SimulateChange(e.repoRoot, filePath, symbolInfo.Signature, ""); cerr == nil {
 			resp.ArchImpact = archImpact
 		}
 	}
@@ -1291,7 +1291,7 @@ func (e *Engine) getGitDiff(staged bool, baseBranch string) (string, error) {
 // ChangedSymbol.File is either a repo-relative path or a module identifier.
 // Returns (1.0, nil) when no nodes match — callers should treat a nil factor
 // as "no adjustment, skip the factor append".
-func bridgeMultiplierFromGraph(nodes []navigator.GraphNode, files []string) (float64, *RiskFactor) {
+func bridgeMultiplierFromGraph(nodes []cartographer.GraphNode, files []string) (float64, *RiskFactor) {
 	if len(nodes) == 0 || len(files) == 0 {
 		return 1.0, nil
 	}
@@ -1435,8 +1435,8 @@ func (e *Engine) calculateAggregatedRisk(
 	// for the multiplier shape. The graph is only fetched when the
 	// cartographer build tag is on; under the stub build this is a no-op.
 	bridgeAmplified := false
-	if navigator.Available() && e.repoRoot != "" {
-		if graph, err := navigator.MapProject(e.repoRoot); err == nil && graph != nil {
+	if cartographer.Available() && e.repoRoot != "" {
+		if graph, err := cartographer.MapProject(e.repoRoot); err == nil && graph != nil {
 			files := make([]string, 0, len(changedSymbols))
 			seen := make(map[string]struct{}, len(changedSymbols))
 			for _, s := range changedSymbols {

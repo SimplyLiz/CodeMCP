@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/SimplyLiz/CodeMCP/internal/navigator"
+	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
 	"github.com/SimplyLiz/CodeMCP/internal/complexity"
 	"github.com/SimplyLiz/CodeMCP/internal/coupling"
 	"github.com/SimplyLiz/CodeMCP/internal/errors"
@@ -376,8 +376,8 @@ func (e *Engine) buildExploreOverview(ctx context.Context, targetType, absPath, 
 		// Try Cartographer first — it has a pre-built, ignore-aware file list with
 		// language metadata. Fall back to an OS walk when it's not available.
 		cartographerUsed := false
-		if navigator.Available() {
-			if graph, cerr := navigator.MapProject(e.repoRoot); cerr == nil {
+		if cartographer.Available() {
+			if graph, cerr := cartographer.MapProject(e.repoRoot); cerr == nil {
 				cartographerUsed = true
 				langs := make(map[string]int)
 				fileCount := 0
@@ -1422,8 +1422,8 @@ type PrepareChangeResponse struct {
 	MoveDetail       *MoveDetail          `json:"moveDetail,omitempty"`
 	// ArchImpact is Cartographer's module-level impact simulation: predicted affected
 	// modules, cycle risk, layer violations, and health delta. Only populated when the
-	// binary is built with -tags navigator.
-	ArchImpact *navigator.ImpactAnalysis `json:"archImpact,omitempty"`
+	// binary is built with -tags cartographer.
+	ArchImpact *cartographer.ImpactAnalysis `json:"archImpact,omitempty"`
 }
 
 // PrepareChangeTarget describes what will be changed.
@@ -1511,7 +1511,7 @@ func (e *Engine) PrepareChange(ctx context.Context, opts PrepareChangeOptions) (
 	var moveDetail *MoveDetail
 	var riskFactors []string
 	var warnings []string
-	var archImpact *navigator.ImpactAnalysis
+	var archImpact *cartographer.ImpactAnalysis
 
 	// Get impact analysis
 	wg.Add(1)
@@ -1607,11 +1607,11 @@ func (e *Engine) PrepareChange(ctx context.Context, opts PrepareChangeOptions) (
 
 	// Architectural impact simulation via Cartographer (module-level cascade,
 	// cycle risk, layer violations). Falls through silently if not compiled in.
-	if navigator.Available() && target.Path != "" {
+	if cartographer.Available() && target.Path != "" {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if ai, cerr := navigator.SimulateChange(e.repoRoot, target.Path, "", ""); cerr == nil {
+			if ai, cerr := cartographer.SimulateChange(e.repoRoot, target.Path, "", ""); cerr == nil {
 				mu.Lock()
 				archImpact = ai
 				if ai.PredictedImpact.WillCreateCycle {
@@ -1825,12 +1825,12 @@ func (e *Engine) getPrepareTests(ctx context.Context, target *PrepareChangeTarge
 // marks pairs that have no import edge as IsHidden. Falls back to the per-file
 // coupling analyzer otherwise.
 func (e *Engine) getPrepareCoChanges(ctx context.Context, path string) ([]PrepareCoChange, error) {
-	if navigator.Available() {
+	if cartographer.Available() {
 		// Single pass over git history — much faster than O(n) subprocess approach.
-		pairs, err := navigator.GitCochange(e.repoRoot, 0, 2)
+		pairs, err := cartographer.GitCochange(e.repoRoot, 0, 2)
 		if err == nil {
 			// Build hidden-coupling set for annotation (pairs with no import edge).
-			hiddenPairs, _ := navigator.HiddenCoupling(e.repoRoot, 0, 2)
+			hiddenPairs, _ := cartographer.HiddenCoupling(e.repoRoot, 0, 2)
 			hiddenSet := make(map[string]bool, len(hiddenPairs)*2)
 			for _, h := range hiddenPairs {
 				hiddenSet[h.FileA+"\x00"+h.FileB] = true

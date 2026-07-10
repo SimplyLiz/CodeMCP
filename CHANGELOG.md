@@ -6,37 +6,66 @@ All notable changes to CKB will be documented in this file.
 
 ### Changed
 
-- **Vendored Rust crate `cartographer` 3.0.0 → `nyx-navigator` 1.1.0**.
-  Upstream renamed the crate; CKB follows. Rename only — no functional
-  change to existing call sites; the Go API is identical.
-  - Vendor path `third_party/cartographer/mapper-core/cartographer/` →
-    `third_party/nyx-navigator/` (flattened; stale Python tooling and
-    examples no longer carried).
-  - Build tag `cartographer` → `navigator`. `make build`, `make test`
-    targets now resolve `build-navigator` / `test-navigator`. Standalone
-    `make build-fast` (no Rust toolchain) unchanged.
-  - Static lib `libcartographer.a` → `libnavigator.a`; FFI prefix
-    `cartographer_*` → `navigator_*`; header `cartographer.h` →
-    `navigator.h`; sync script `scripts/sync-cartographer.sh` →
-    `scripts/sync-nyx-navigator.sh`.
-  - Go package `internal/cartographer` → `internal/navigator`; error
-    type `CartographerError` → `NavigatorError`.
+- **Re-vendored the Rust crate to upstream `CodeCartographer` 1.3.3** (from
+  the interim `nyx-navigator` 1.1.0 fork), and dropped the `nyx`/`navigator`
+  naming — the CKB side is `cartographer` again, tracking upstream's FFI.
+  - Vendor path `third_party/nyx-navigator/` → `third_party/cartographer/`,
+    synced straight from upstream `mapper-core/codecartographer/`.
+  - Build tag `navigator` → `cartographer`; `make build` / `make test`
+    resolve `build-cartographer` / `test-cartographer`. `make build-fast`
+    (no Rust toolchain) unchanged.
+  - Static lib `libnavigator.a` → `libcode_cartographer.a`; FFI prefix
+    `navigator_*` → `codecartographer_*`; header `navigator.h` →
+    `codecartographer.h`; sync script `scripts/sync-nyx-navigator.sh` →
+    `scripts/sync-cartographer.sh`.
+  - Go package `internal/navigator` → `internal/cartographer`; error type
+    `NavigatorError` → `CartographerError`; status backend id
+    `navigator` → `cartographer`.
+
+### Gained from upstream 1.3.x (library-level; bridge surface unchanged)
+
+The re-vendor pulls upstream's 1.2–1.3 work into the linked library:
+
+- **Six new languages** — Java, C#, Ruby, Kotlin, Swift, PHP now have
+  tree-sitter skeleton extraction, file-local call graphs, and class
+  diagrams, on par with the original six. `skeleton_map`,
+  `ranked_skeleton`, `reach_symbol`, and search cover all twelve.
+- **Symbol-aware search corpus** — `query_context` / `answer_question`
+  rank over a BM25 corpus of parsed symbols (name + qualified name +
+  signature + doc-comment), not raw file bytes.
+- **Scope-qualified `reach_symbol`** — renders `Object.get_class`,
+  surfaces doc-comments, and filters call sites that qualify a different
+  class.
+- **Orientation-first repo map** — `ranked_skeleton` ranks by role +
+  fan-out instead of pure import-PageRank, so entry points and domain
+  core lead.
+- **Perf** — O(N) import resolution and sampled betweenness fix the
+  O(N²) hang on large C/C++ trees (Godot cold start ~2 min → ~12 s).
+
+### Fixed — go.mod-aware import resolution (kills fabricated dependency edges)
+
+The vendored resolver matched Go imports by bare filename stem, so
+`internal/errors` resolved to an unrelated `internal/a2a/errors.go` and a
+stdlib `sync` fabricated an edge to `internal/federation/sync.go`. Resolution
+is now Go-module-aware: an import is internal only if it lives under the
+`go.mod` module path, in which case it resolves to its package *directory*;
+everything else (stdlib, third-party) produces no internal edge. Measured on
+CKB itself: **~23% of dependency edges were fabricated (996 → 769)**, all **22
+reported dependency cycles were artifacts (→ 0**, as Go forbids package import
+cycles), bridges 244 → 187, and the architectural health score went 38 → 71.
+This directly cleans up every import-graph-derived surface — `getArchitecture`,
+`getBlastRadius`, `renderArchitecture`, `getModuleContext`, `analyzeImpact`,
+`prepareChange`, and the `review` layers/arch-health checks.
 
 ### Available for follow-up wiring (not yet exposed)
 
-The new vendored library exports four FFI symbols not yet wired through
-the Go bridge or MCP layer:
+The vendored library exports FFI symbols not yet wired through the Go
+bridge or MCP layer:
 
-- `navigator_poll_changes(path, since_ms)` — incremental change polling;
-  fits CKB's `mcp --watch` and the daemon file-watcher.
-- `navigator_doc_index`, `navigator_doc_context`, `navigator_query_docs`
-  — full doc-retrieval pipeline.
-
-The `navigator_render_architecture` FFI shape is unchanged but accepts
-new `format` values (`sequence`, `class`, `quadrant`, `er`, `ascii`,
-`html`, plus cross-file `sequence` with an entry-point) — these can be
-passed through `getArchitecture` / `renderArchitecture` MCP tools today
-without further bridge work.
+- `codecartographer_poll_changes(path, since_ms)` — incremental change
+  polling; fits CKB's `mcp --watch` and the daemon file-watcher.
+- `codecartographer_doc_index`, `codecartographer_doc_context`,
+  `codecartographer_query_docs` — full doc-retrieval pipeline.
 
 ## [9.2.0] - 2026-04-25
 

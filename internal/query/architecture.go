@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/SimplyLiz/CodeMCP/internal/architecture"
-	"github.com/SimplyLiz/CodeMCP/internal/navigator"
+	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
 	"github.com/SimplyLiz/CodeMCP/internal/compression"
 	"github.com/SimplyLiz/CodeMCP/internal/errors"
 	"github.com/SimplyLiz/CodeMCP/internal/jobs"
@@ -31,7 +31,7 @@ type GetArchitectureOptions struct {
 }
 
 // CartographerHealthSummary contains architectural health metrics from Cartographer.
-// Included in getArchitecture when the binary is built with -tags navigator.
+// Included in getArchitecture when the binary is built with -tags cartographer.
 type CartographerHealthSummary struct {
 	HealthScore         float64 `json:"healthScore"`
 	BridgeCount         int     `json:"bridgeCount"`
@@ -61,8 +61,8 @@ type GetArchitectureResponse struct {
 
 	// Optional Cartographer-augmented data (only when built with -tags cartographer)
 	ArchHealth      *CartographerHealthSummary   `json:"archHealth,omitempty"`
-	ArchCycles      []navigator.CycleInfo     `json:"archCycles,omitempty"`
-	ArchGodModules  []navigator.GodModuleInfo `json:"archGodModules,omitempty"`
+	ArchCycles      []cartographer.CycleInfo     `json:"archCycles,omitempty"`
+	ArchGodModules  []cartographer.GodModuleInfo `json:"archGodModules,omitempty"`
 	ArchBridgeNodes []string                     `json:"archBridgeNodes,omitempty"` // high-centrality bottleneck modules
 
 	// Standard envelope fields
@@ -236,8 +236,8 @@ func (e *Engine) GetArchitecture(ctx context.Context, opts GetArchitectureOption
 	// Augment with Cartographer architectural graph (graceful degradation when unavailable).
 	// MapProject returns the fast regex-based dependency graph with bridge detection,
 	// individual cycle paths, and god-module details not available from SCIP.
-	if navigator.Available() {
-		if graph, cerr := navigator.MapProject(e.repoRoot); cerr == nil {
+	if cartographer.Available() {
+		if graph, cerr := cartographer.MapProject(e.repoRoot); cerr == nil {
 			health := CartographerHealthSummary{
 				CycleCount:     len(graph.Cycles),
 				GodModuleCount: len(graph.GodModules),

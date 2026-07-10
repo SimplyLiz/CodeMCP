@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/SimplyLiz/CodeMCP/internal/navigator"
+	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
 )
 
 // checkLayerViolations uses Cartographer to detect architectural boundary crossings
@@ -15,7 +15,7 @@ import (
 func (e *Engine) checkLayerViolations(_ context.Context, files []string, _ ReviewPROptions) (ReviewCheck, []ReviewFinding) {
 	start := time.Now()
 
-	if !navigator.Available() {
+	if !cartographer.Available() {
 		return ReviewCheck{
 			Name:     "layers",
 			Status:   "skip",
@@ -29,7 +29,7 @@ func (e *Engine) checkLayerViolations(_ context.Context, files []string, _ Revie
 	if candidate := filepath.Join(e.repoRoot, ".cartographer", "layers.toml"); fileExists(candidate) {
 		layersPath = candidate
 	}
-	violations, err := navigator.CheckLayers(e.repoRoot, layersPath)
+	violations, err := cartographer.CheckLayers(e.repoRoot, layersPath)
 	if err != nil {
 		return ReviewCheck{
 			Name:     "layers",

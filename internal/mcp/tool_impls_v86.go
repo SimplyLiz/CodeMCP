@@ -1,7 +1,7 @@
 package mcp
 
 import (
-	"github.com/SimplyLiz/CodeMCP/internal/navigator"
+	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
 	"github.com/SimplyLiz/CodeMCP/internal/envelope"
 	"github.com/SimplyLiz/CodeMCP/internal/errors"
 )
@@ -12,8 +12,8 @@ import (
 // BM25 content search → personalized PageRank skeleton → context health.
 // Returns a ready-to-inject context bundle graded A–F.
 func (s *MCPServer) toolQueryContext(params map[string]interface{}) (*envelope.Response, error) {
-	if !navigator.Available() {
-		return nil, errors.NewOperationError("query context", navigator.ErrUnavailable)
+	if !cartographer.Available() {
+		return nil, errors.NewOperationError("query context", cartographer.ErrUnavailable)
 	}
 
 	query, ok := params["query"].(string)
@@ -21,7 +21,7 @@ func (s *MCPServer) toolQueryContext(params map[string]interface{}) (*envelope.R
 		return nil, errors.NewInvalidParameterError("query", "required")
 	}
 
-	opts := &navigator.QueryContextOpts{}
+	opts := &cartographer.QueryContextOpts{}
 	if v, ok := params["budget"].(float64); ok && v > 0 {
 		opts.Budget = int(v)
 	}
@@ -33,7 +33,7 @@ func (s *MCPServer) toolQueryContext(params map[string]interface{}) (*envelope.R
 	}
 
 	repoRoot := s.engine().GetRepoRoot()
-	result, err := navigator.QueryContext(repoRoot, query, opts)
+	result, err := cartographer.QueryContext(repoRoot, query, opts)
 	if err != nil {
 		return nil, errors.NewOperationError("query context", err)
 	}
@@ -44,8 +44,8 @@ func (s *MCPServer) toolQueryContext(params map[string]interface{}) (*envelope.R
 // toolContextHealth scores a context bundle on 6 research-backed metrics,
 // returning a composite 0–100 score graded A–F with per-metric breakdown.
 func (s *MCPServer) toolContextHealth(params map[string]interface{}) (*envelope.Response, error) {
-	if !navigator.Available() {
-		return nil, errors.NewOperationError("context health", navigator.ErrUnavailable)
+	if !cartographer.Available() {
+		return nil, errors.NewOperationError("context health", cartographer.ErrUnavailable)
 	}
 
 	content, ok := params["content"].(string)
@@ -53,7 +53,7 @@ func (s *MCPServer) toolContextHealth(params map[string]interface{}) (*envelope.
 		return nil, errors.NewInvalidParameterError("content", "required")
 	}
 
-	opts := &navigator.ContextHealthOpts{}
+	opts := &cartographer.ContextHealthOpts{}
 	if v, ok := params["model"].(string); ok && v != "" {
 		opts.Model = v
 	}
@@ -61,7 +61,7 @@ func (s *MCPServer) toolContextHealth(params map[string]interface{}) (*envelope.
 		opts.SignatureCount = int(v)
 	}
 
-	result, err := navigator.ContextHealth(content, opts)
+	result, err := cartographer.ContextHealth(content, opts)
 	if err != nil {
 		return nil, errors.NewOperationError("context health", err)
 	}
@@ -71,8 +71,8 @@ func (s *MCPServer) toolContextHealth(params map[string]interface{}) (*envelope.
 
 // toolDetectShotgunSurgery returns files ranked by co-change dispersion score.
 func (s *MCPServer) toolDetectShotgunSurgery(params map[string]interface{}) (*envelope.Response, error) {
-	if !navigator.Available() {
-		return nil, errors.NewOperationError("detect shotgun surgery", navigator.ErrUnavailable)
+	if !cartographer.Available() {
+		return nil, errors.NewOperationError("detect shotgun surgery", cartographer.ErrUnavailable)
 	}
 
 	var limit, minPartners uint32
@@ -84,7 +84,7 @@ func (s *MCPServer) toolDetectShotgunSurgery(params map[string]interface{}) (*en
 	}
 
 	repoRoot := s.engine().GetRepoRoot()
-	entries, err := navigator.ShotgunSurgery(repoRoot, limit, minPartners)
+	entries, err := cartographer.ShotgunSurgery(repoRoot, limit, minPartners)
 	if err != nil {
 		return nil, errors.NewOperationError("detect shotgun surgery", err)
 	}
@@ -94,8 +94,8 @@ func (s *MCPServer) toolDetectShotgunSurgery(params map[string]interface{}) (*en
 
 // toolGetArchitecturalEvolution returns health snapshots over git history.
 func (s *MCPServer) toolGetArchitecturalEvolution(params map[string]interface{}) (*envelope.Response, error) {
-	if !navigator.Available() {
-		return nil, errors.NewOperationError("get architectural evolution", navigator.ErrUnavailable)
+	if !cartographer.Available() {
+		return nil, errors.NewOperationError("get architectural evolution", cartographer.ErrUnavailable)
 	}
 
 	var days uint32
@@ -104,7 +104,7 @@ func (s *MCPServer) toolGetArchitecturalEvolution(params map[string]interface{})
 	}
 
 	repoRoot := s.engine().GetRepoRoot()
-	result, err := navigator.Evolution(repoRoot, days)
+	result, err := cartographer.Evolution(repoRoot, days)
 	if err != nil {
 		return nil, errors.NewOperationError("get architectural evolution", err)
 	}
@@ -120,8 +120,8 @@ func (s *MCPServer) toolGetArchitecturalEvolution(params map[string]interface{})
 // returns the top-N most-connected nodes. `truncated=true` in the response
 // signals that the node cap kicked in.
 func (s *MCPServer) toolRenderArchitecture(params map[string]interface{}) (*envelope.Response, error) {
-	if !navigator.Available() {
-		return nil, errors.NewOperationError("render architecture", navigator.ErrUnavailable)
+	if !cartographer.Available() {
+		return nil, errors.NewOperationError("render architecture", cartographer.ErrUnavailable)
 	}
 
 	format, _ := params["format"].(string)
@@ -143,7 +143,7 @@ func (s *MCPServer) toolRenderArchitecture(params map[string]interface{}) (*enve
 	}
 
 	repoRoot := s.engine().GetRepoRoot()
-	result, err := navigator.RenderArchitecture(repoRoot, format, focus, depth, maxNodes)
+	result, err := cartographer.RenderArchitecture(repoRoot, format, focus, depth, maxNodes)
 	if err != nil {
 		return nil, errors.NewOperationError("render architecture", err)
 	}
@@ -153,8 +153,8 @@ func (s *MCPServer) toolRenderArchitecture(params map[string]interface{}) (*enve
 
 // toolGetBlastRadius returns the graph-theoretic blast radius for a module/file.
 func (s *MCPServer) toolGetBlastRadius(params map[string]interface{}) (*envelope.Response, error) {
-	if !navigator.Available() {
-		return nil, errors.NewOperationError("get blast radius", navigator.ErrUnavailable)
+	if !cartographer.Available() {
+		return nil, errors.NewOperationError("get blast radius", cartographer.ErrUnavailable)
 	}
 
 	target, ok := params["target"].(string)
@@ -168,7 +168,7 @@ func (s *MCPServer) toolGetBlastRadius(params map[string]interface{}) (*envelope
 	}
 
 	repoRoot := s.engine().GetRepoRoot()
-	result, err := navigator.BlastRadius(repoRoot, target, maxRelated)
+	result, err := cartographer.BlastRadius(repoRoot, target, maxRelated)
 	if err != nil {
 		return nil, errors.NewOperationError("get blast radius", err)
 	}

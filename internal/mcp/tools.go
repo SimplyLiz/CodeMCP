@@ -1961,7 +1961,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 				},
 			},
 		},
-		// v8.6 navigator context tools
+		// v8.6 cartographer context tools
 		{
 			Name:        "detectShotgunSurgery",
 			Description: "Detect files exhibiting the shotgun surgery smell: a change to them historically required simultaneous edits across many unrelated files. Ranks results by co-change dispersion score. Use before large refactors to identify high-blast-radius files.",
@@ -2041,7 +2041,7 @@ func (s *MCPServer) GetToolDefinitions() []Tool {
 		},
 		{
 			Name:        "queryContext",
-			Description: "Retrieve the most relevant code context for a task or question. Runs the navigator PKG retrieval pipeline: BM25 content search → personalized PageRank skeleton → context health scoring. Returns a ready-to-use context bundle with token count and A–F quality grade. Use this before starting any non-trivial coding task.",
+			Description: "Retrieve the most relevant code context for a task or question. Runs the cartographer PKG retrieval pipeline: BM25 content search → personalized PageRank skeleton → context health scoring. Returns a ready-to-use context bundle with token count and A–F quality grade. Use this before starting any non-trivial coding task.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -2898,7 +2898,7 @@ func (s *MCPServer) RegisterTools() {
 	s.tools["scanPerformance"] = s.toolScanPerformance
 	// v8.5 Structural performance scan (loop call sites)
 	s.tools["analyzeStructuralPerf"] = s.toolAnalyzeStructuralPerf
-	// v8.6 navigator context tools
+	// v8.6 cartographer context tools
 	s.tools["queryContext"] = s.toolQueryContext
 	s.tools["contextHealth"] = s.toolContextHealth
 	s.tools["detectShotgunSurgery"] = s.toolDetectShotgunSurgery

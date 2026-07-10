@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/SimplyLiz/CodeMCP/internal/navigator"
+	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
 	"github.com/SimplyLiz/CodeMCP/internal/impact"
 	"github.com/SimplyLiz/CodeMCP/internal/lip"
 )
@@ -23,8 +23,8 @@ func (e *Engine) checkBlastRadius(ctx context.Context, changedFiles []string, op
 	// Fetch git churn map from Cartographer to identify hotspot files.
 	// Used to escalate blast-radius findings for high-churn files from info → warning.
 	var churnMap map[string]int
-	if navigator.Available() {
-		if churn, err := navigator.GitChurn(e.repoRoot, 0); err == nil {
+	if cartographer.Available() {
+		if churn, err := cartographer.GitChurn(e.repoRoot, 0); err == nil {
 			churnMap = churn
 		}
 	}

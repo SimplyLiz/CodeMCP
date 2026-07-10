@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/SimplyLiz/CodeMCP/internal/navigator"
+	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
 )
 
 // constDeclRe matches Go const declarations like "ConstName = value" or "ConstName Type = value".
@@ -98,8 +98,8 @@ func (e *Engine) checkDeadCode(ctx context.Context, changedFiles []string, opts 
 	// Phase 3: Cartographer cross-project unreferenced exports.
 	// Catches public symbols with no callers anywhere in the project —
 	// stronger signal than SCIP's per-package analysis.
-	if navigator.Available() {
-		unref, err := navigator.UnreferencedSymbols(e.repoRoot)
+	if cartographer.Available() {
+		unref, err := cartographer.UnreferencedSymbols(e.repoRoot)
 		if err == nil {
 			for _, f := range unref.Files {
 				if !changedSet[f.Path] {

@@ -188,8 +188,8 @@ func (s *MCPServer) toolExportForLLM(params map[string]interface{}) (*envelope.R
 		"bridges":   organized.Bridges,
 	}
 
-	// Augment with navigator skeleton when a token budget is requested.
-	// Navigator's signature-only extraction reduces token usage by ~90% vs full source.
+	// Augment with cartographer skeleton when a token budget is requested.
+	// Cartographer's signature-only extraction reduces token usage by ~90% vs full source.
 	if tokenBudget, ok := params["tokenBudget"].(float64); ok && tokenBudget > 0 {
 		focusFiles, _ := params["focusFiles"].([]interface{})
 		focus := make([]string, 0, len(focusFiles))

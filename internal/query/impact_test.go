@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SimplyLiz/CodeMCP/internal/navigator"
+	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
 	"github.com/SimplyLiz/CodeMCP/internal/impact"
 	"github.com/SimplyLiz/CodeMCP/internal/telemetry"
 )
@@ -15,7 +15,7 @@ func ptrF64(v float64) *float64 { return &v }
 func TestBridgeMultiplierFromGraph(t *testing.T) {
 	tests := []struct {
 		name       string
-		nodes      []navigator.GraphNode
+		nodes      []cartographer.GraphNode
 		files      []string
 		wantMul    float64
 		wantFactor bool
@@ -30,14 +30,14 @@ func TestBridgeMultiplierFromGraph(t *testing.T) {
 		},
 		{
 			name:       "no files",
-			nodes:      []navigator.GraphNode{{Path: "a.go", BridgeScore: ptrF64(500)}},
+			nodes:      []cartographer.GraphNode{{Path: "a.go", BridgeScore: ptrF64(500)}},
 			files:      nil,
 			wantMul:    1.0,
 			wantFactor: false,
 		},
 		{
 			name: "no BridgeScore populated",
-			nodes: []navigator.GraphNode{
+			nodes: []cartographer.GraphNode{
 				{Path: "a.go", BridgeScore: nil},
 			},
 			files:      []string{"a.go"},
@@ -46,7 +46,7 @@ func TestBridgeMultiplierFromGraph(t *testing.T) {
 		},
 		{
 			name: "file does not match any node",
-			nodes: []navigator.GraphNode{
+			nodes: []cartographer.GraphNode{
 				{Path: "b.go", BridgeScore: ptrF64(500)},
 			},
 			files:      []string{"a.go"},
@@ -55,7 +55,7 @@ func TestBridgeMultiplierFromGraph(t *testing.T) {
 		},
 		{
 			name: "match by path yields 1 + score/1000",
-			nodes: []navigator.GraphNode{
+			nodes: []cartographer.GraphNode{
 				{Path: "a.go", BridgeScore: ptrF64(250)},
 			},
 			files:      []string{"a.go"},
@@ -65,7 +65,7 @@ func TestBridgeMultiplierFromGraph(t *testing.T) {
 		},
 		{
 			name: "match by module id",
-			nodes: []navigator.GraphNode{
+			nodes: []cartographer.GraphNode{
 				{ModuleID: "pkg/foo", Path: "", BridgeScore: ptrF64(600)},
 			},
 			files:      []string{"pkg/foo"},
@@ -75,7 +75,7 @@ func TestBridgeMultiplierFromGraph(t *testing.T) {
 		},
 		{
 			name: "multiple files takes max score",
-			nodes: []navigator.GraphNode{
+			nodes: []cartographer.GraphNode{
 				{Path: "low.go", BridgeScore: ptrF64(100)},
 				{Path: "high.go", BridgeScore: ptrF64(800)},
 				{Path: "mid.go", BridgeScore: ptrF64(400)},
@@ -87,7 +87,7 @@ func TestBridgeMultiplierFromGraph(t *testing.T) {
 		},
 		{
 			name: "cap at 2.0 for over-1000 scores",
-			nodes: []navigator.GraphNode{
+			nodes: []cartographer.GraphNode{
 				{Path: "a.go", BridgeScore: ptrF64(1500)},
 			},
 			files:      []string{"a.go"},
@@ -97,7 +97,7 @@ func TestBridgeMultiplierFromGraph(t *testing.T) {
 		},
 		{
 			name: "path match wins over module match for same file",
-			nodes: []navigator.GraphNode{
+			nodes: []cartographer.GraphNode{
 				{Path: "a.go", ModuleID: "a.go", BridgeScore: ptrF64(300)},
 				{Path: "", ModuleID: "a.go", BridgeScore: ptrF64(900)},
 			},

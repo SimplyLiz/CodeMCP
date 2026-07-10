@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/SimplyLiz/CodeMCP/internal/backends/git"
-	"github.com/SimplyLiz/CodeMCP/internal/navigator"
+	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
 	"github.com/SimplyLiz/CodeMCP/internal/coupling"
 )
 
@@ -194,8 +194,8 @@ func (e *Engine) checkCouplingGaps(ctx context.Context, changedFiles []string, d
 
 	// Augment with Cartographer hidden coupling: co-change pairs with NO import edge.
 	// These represent implicit dependencies invisible in the static dependency graph.
-	if navigator.Available() {
-		hidden, err := navigator.HiddenCoupling(e.repoRoot, 0, 3)
+	if cartographer.Available() {
+		hidden, err := cartographer.HiddenCoupling(e.repoRoot, 0, 3)
 		if err == nil {
 			existing := make(map[string]bool, len(gaps)*2)
 			for _, g := range gaps {

@@ -6,7 +6,7 @@ import (
 	"sort"
 
 	"github.com/SimplyLiz/CodeMCP/internal/backends/git"
-	"github.com/SimplyLiz/CodeMCP/internal/navigator"
+	"github.com/SimplyLiz/CodeMCP/internal/cartographer"
 	"github.com/SimplyLiz/CodeMCP/internal/coupling"
 )
 
@@ -74,7 +74,7 @@ func (e *Engine) suggestPRSplit(ctx context.Context, diffStats []git.DiffStats, 
 	// Cartographer uses the static import graph + git co-change in a single pass.
 	// Fall back to the per-file coupling analyzer for non-Cartographer builds;
 	// skip for very large PRs where the O(n) cost is prohibitive.
-	if navigator.Available() {
+	if cartographer.Available() {
 		e.addCartographerEdges(files, adj)
 	} else if len(diffStats) <= 200 {
 		e.addCouplingEdges(ctx, files, adj)
@@ -149,7 +149,7 @@ func (e *Engine) addCartographerEdges(files []string, adj map[string]map[string]
 	}
 
 	// Static import edges from the dependency graph.
-	if graph, err := navigator.MapProject(e.repoRoot); err == nil {
+	if graph, err := cartographer.MapProject(e.repoRoot); err == nil {
 		for _, edge := range graph.Edges {
 			if fileSet[edge.Source] && fileSet[edge.Target] {
 				adj[edge.Source][edge.Target] = true
@@ -159,7 +159,7 @@ func (e *Engine) addCartographerEdges(files []string, adj map[string]map[string]
 	}
 
 	// Temporal coupling edges (co-change ≥ 0.5, strong signal only).
-	if pairs, err := navigator.GitCochange(e.repoRoot, 0, 3); err == nil {
+	if pairs, err := cartographer.GitCochange(e.repoRoot, 0, 3); err == nil {
 		for _, p := range pairs {
 			if fileSet[p.FileA] && fileSet[p.FileB] && p.CouplingScore >= 0.5 {
 				adj[p.FileA][p.FileB] = true
