@@ -57,6 +57,12 @@ This directly cleans up every import-graph-derived surface — `getArchitecture`
 `getBlastRadius`, `renderArchitecture`, `getModuleContext`, `analyzeImpact`,
 `prepareChange`, and the `review` layers/arch-health checks.
 
+As a safety net for the remaining languages (which still resolve heuristically),
+every edge now carries a `resolution` confidence tag (`exact` | `suffix` |
+`fuzzy`), exposed on `cartographer.GraphEdge`. Cycle detection and the
+"will create a cycle" prediction ignore `fuzzy` edges, so a false cycle can no
+longer rest on a low-confidence stem guess.
+
 ### Available for follow-up wiring (not yet exposed)
 
 The vendored library exports FFI symbols not yet wired through the Go

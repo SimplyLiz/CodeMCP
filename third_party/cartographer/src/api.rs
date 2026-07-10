@@ -141,6 +141,14 @@ pub struct GraphEdge {
     pub target: String,
     pub edge_type: String,
     pub at_range: Option<Range>,
+    /// How confidently this edge was resolved from the import text:
+    /// `"exact"`  — exact module-id or Go package-directory match;
+    /// `"suffix"` — path-suffix / unique-basename agreement (C/C++ includes, etc.);
+    /// `"fuzzy"`  — bare stem / segment / symbol guess with no path agreement.
+    /// Consumers should treat `fuzzy` edges as low-confidence (they are the ones
+    /// that historically fabricated cross-package edges and false cycles).
+    #[serde(default)]
+    pub resolution: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -637,7 +645,7 @@ impl ApiState {
             for import in &file.imports {
                 // Resolve against the prebuilt index (O(1) per import) — building it once
                 // is what makes graph construction O(N) instead of O(N²) on large trees.
-                if let Some(target) = import_index.resolve(import, module_id) {
+                if let Some((target, resolution)) = import_index.resolve(import, module_id) {
                     // Reject cross-type edges: a source file importing "json" must not
                     // resolve to a fixture like testdata/review/json.json (doc), and a
                     // doc file like CHANGELOG.md must not appear as a dependent of a
@@ -653,6 +661,7 @@ impl ApiState {
                         target,
                         edge_type: source_kind.to_string(),
                         at_range: None,
+                        resolution: resolution.to_string(),
                     });
                 }
             }
@@ -1407,7 +1416,9 @@ impl<'a> ImportIndex<'a> {
             .map(|m| m.to_string())
     }
 
-    fn resolve(&self, import: &str, source: &str) -> Option<String> {
+    /// Resolve an import to a target module_id plus a confidence tag
+    /// (`"exact"` | `"suffix"` | `"fuzzy"`). `None` means no internal edge.
+    fn resolve(&self, import: &str, source: &str) -> Option<(String, &'static str)> {
         let (module_path, symbol_hint) = parse_import_parts(import);
         let norm = module_path
             .trim_start_matches("./")
@@ -1442,7 +1453,7 @@ impl<'a> ImportIndex<'a> {
                     Some(rel) => {
                         // Exact package directory.
                         if let Some(cands) = self.by_dir.get(rel) {
-                            return Self::pick_deterministic(cands, source);
+                            return Self::pick_deterministic(cands, source).map(|t| (t, "exact"));
                         }
                         // Package dir not scanned as-is (nested module, generated code):
                         // accept the shortest directory whose path ends with the suffix.
@@ -1453,7 +1464,7 @@ impl<'a> ImportIndex<'a> {
                             .filter(|(d, _)| d.ends_with(&suffix))
                             .min_by_key(|(d, _)| d.len())
                         {
-                            return Self::pick_deterministic(cands, source);
+                            return Self::pick_deterministic(cands, source).map(|t| (t, "suffix"));
                         }
                         // Internal by namespace but absent from the scan → honest miss.
                         return None;
@@ -1466,7 +1477,7 @@ impl<'a> ImportIndex<'a> {
 
         // 1. Exact module_id match.
         if norm != source && self.ids.contains(norm.as_str()) {
-            return Some(norm);
+            return Some((norm, "exact"));
         }
 
         // 2. Extension-bearing import (C/C++ #include, JS/TS with ext): match by basename,
@@ -1475,12 +1486,14 @@ impl<'a> ImportIndex<'a> {
         if let Some(bn) = &basename {
             if let Some(cands) = self.by_basename.get(bn) {
                 if let Some(hit) = Self::best_suffix(cands, &norm, source) {
-                    return Some(hit);
+                    let kind = if hit == norm { "exact" } else { "suffix" };
+                    return Some((hit, kind));
                 }
                 if has_ext {
                     let non_self: Vec<&str> = cands.iter().copied().filter(|m| *m != source).collect();
                     if non_self.len() == 1 {
-                        return Some(non_self[0].to_string());
+                        // Unique basename, no path agreement — confident but not exact.
+                        return Some((non_self[0].to_string(), "suffix"));
                     }
                 }
             }
@@ -1490,7 +1503,7 @@ impl<'a> ImportIndex<'a> {
         if !has_ext {
             if let Some(cands) = self.by_stem.get(&stem) {
                 if let Some(hit) = Self::pick_deterministic(cands, source) {
-                    return Some(hit);
+                    return Some((hit, "fuzzy"));
                 }
             }
         }
@@ -1499,7 +1512,7 @@ impl<'a> ImportIndex<'a> {
         if stem.len() >= 3 {
             if let Some(cands) = self.by_segment.get(&stem.to_lowercase()) {
                 if let Some(hit) = Self::pick_deterministic(cands, source) {
-                    return Some(hit);
+                    return Some((hit, "fuzzy"));
                 }
             }
         }
@@ -1509,7 +1522,7 @@ impl<'a> ImportIndex<'a> {
             if sym.len() >= 4 {
                 if let Some(cands) = self.by_symbol.get(sym) {
                     if let Some(hit) = Self::pick_deterministic(cands, source) {
-                        return Some(hit);
+                        return Some((hit, "fuzzy"));
                     }
                 }
             }
@@ -1798,7 +1811,7 @@ impl ApiState {
     fn resolve_import_target(&self, import: &str, source: &str) -> Option<String> {
         let files = self.mapped_files.lock().ok()?;
         let index = ImportIndex::build(&files);
-        index.resolve(import, source)
+        index.resolve(import, source).map(|(t, _)| t)
     }
 
     // Same lookup as `resolve_import_target` but takes the already-locked map.
@@ -1812,7 +1825,7 @@ impl ApiState {
         import: &str,
         source: &str,
     ) -> Option<String> {
-        ImportIndex::build(files).resolve(import, source)
+        ImportIndex::build(files).resolve(import, source).map(|(t, _)| t)
     }
 
     #[allow(dead_code)]
@@ -1837,7 +1850,11 @@ impl ApiState {
             graph.add_node(node.module_id.as_str());
         }
 
-        for edge in edges {
+        // Only structural (exact/suffix) edges define cycles. `fuzzy` edges are
+        // low-confidence stem/segment guesses — counting them fabricated the
+        // false import cycles this graph used to report (e.g. 22 "cycles" in a Go
+        // repo, which the language forbids).
+        for edge in edges.iter().filter(|e| e.resolution != "fuzzy") {
             graph.add_edge(edge.source.as_str(), edge.target.as_str(), ());
         }
 
@@ -2054,7 +2071,12 @@ impl ApiState {
     fn check_would_create_cycle(&self, edges: &[GraphEdge], target_module: &str) -> bool {
         let mut graph: DiGraphMap<&str, ()> = DiGraphMap::new();
 
-        for edge in edges {
+        // Predict cycles only from structural (non-fuzzy) edges, matching
+        // detect_cycles — a "will create a cycle" warning must not rest on a
+        // low-confidence stem guess.
+        let structural = || edges.iter().filter(|e| e.resolution != "fuzzy");
+
+        for edge in structural() {
             if edge.source != target_module && edge.target != target_module {
                 graph.add_node(edge.source.as_str());
                 graph.add_node(edge.target.as_str());
@@ -2064,7 +2086,7 @@ impl ApiState {
 
         graph.add_node(target_module);
 
-        for edge in edges {
+        for edge in structural() {
             if edge.source == target_module {
                 graph.add_edge(target_module, edge.target.as_str(), ());
             }
@@ -2292,10 +2314,11 @@ mod tests {
         idx.go_module = Some("github.com/acme/widget".to_string());
         let src = "internal/backends/orch.go";
 
-        // Internal import → the CORRECT package directory (not internal/a2a/errors.go).
+        // Internal import → the CORRECT package directory (not internal/a2a/errors.go),
+        // tagged as an exact resolution.
         assert_eq!(
-            idx.resolve("github.com/acme/widget/internal/errors", src).as_deref(),
-            Some("internal/errors/errors.go"),
+            idx.resolve("github.com/acme/widget/internal/errors", src),
+            Some(("internal/errors/errors.go".to_string(), "exact")),
         );
         // Stdlib import → no fabricated internal edge.
         assert_eq!(idx.resolve("sync", src), None);

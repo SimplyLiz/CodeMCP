@@ -331,12 +331,14 @@ mod tests {
                     target: "b".into(),
                     edge_type: "import".into(),
                     at_range: None,
+                    resolution: "exact".into(),
                 },
                 GraphEdge {
                     source: "b".into(),
                     target: "c".into(),
                     edge_type: "import".into(),
                     at_range: None,
+                    resolution: "exact".into(),
                 },
             ],
             cycles: vec![],
@@ -398,6 +400,7 @@ mod tests {
             target: "d".into(),
             edge_type: "import".into(),
             at_range: None,
+            resolution: "exact".into(),
         });
         let included = vec!["a".into(), "b".into(), "c".into()];
         let html = render_html(&g, &included);

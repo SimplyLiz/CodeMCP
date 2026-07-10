@@ -40,6 +40,9 @@ type GraphEdge struct {
 	Source   string `json:"source"`
 	Target   string `json:"target"`
 	EdgeType string `json:"edgeType"`
+	// Resolution is the confidence with which the import was resolved:
+	// "exact", "suffix", or "fuzzy". Treat "fuzzy" edges as low-confidence.
+	Resolution string `json:"resolution,omitempty"`
 }
 
 // GraphMetadata contains aggregate statistics.

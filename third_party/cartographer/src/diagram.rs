@@ -412,6 +412,7 @@ fn collapse_by_folder(graph: &ProjectGraphResponse, depth: usize) -> ProjectGrap
             target: tgt,
             edge_type: "import".into(),
             at_range: None,
+            resolution: "exact".into(),
         })
         .collect();
 
@@ -1616,6 +1617,7 @@ mod tests {
             target: tgt.into(),
             edge_type: "import".into(),
             at_range: None,
+            resolution: "exact".into(),
         }
     }
 

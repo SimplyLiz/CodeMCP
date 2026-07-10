@@ -146,6 +146,7 @@ pub fn to_project_graph(cg: &FileCallGraph, path: &Path) -> ProjectGraphResponse
             target: tgt.clone(),
             edge_type: "call".into(),
             at_range: None,
+            resolution: "exact".into(),
         })
         .collect();
 
