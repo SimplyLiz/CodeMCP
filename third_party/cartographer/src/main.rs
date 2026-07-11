@@ -28,6 +28,7 @@ use formatter::{estimate_tokens, format_token_count, get_formatter, OutputTarget
 use mapper::{extract_skeleton, MappedFile};
 use memory::Memory;
 use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode, DebouncedEventKind};
+use rayon::prelude::*;
 use scanner::{is_ignored_path, is_source_file, scan_files_with_noise_tracking, IgnoredFile};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
@@ -1939,7 +1940,7 @@ fn health_mode(root: &Path, compare: Option<&str>, json_out: bool) -> Result<()>
     let result = scan_files_with_noise_tracking(root)?;
     let files = result.files;
     let mapped_files: std::collections::HashMap<String, crate::mapper::MappedFile> = files
-        .iter()
+        .par_iter()
         .filter(|p| !is_ignored_path(p) && is_source_file(p))
         .filter_map(|p| {
             let content = std::fs::read_to_string(p).ok()?;
@@ -2250,7 +2251,7 @@ fn simulate_mode(
     let result = scan_files_with_noise_tracking(root)?;
     let files = result.files;
     let mapped_files: std::collections::HashMap<String, crate::mapper::MappedFile> = files
-        .iter()
+        .par_iter()
         .filter(|p| !is_ignored_path(p) && is_source_file(p))
         .filter_map(|p| {
             let content = std::fs::read_to_string(p).ok()?;
@@ -2549,7 +2550,7 @@ fn evolution_mode(root: &Path, days: Option<u32>) -> Result<()> {
     let result = scan_files_with_noise_tracking(root)?;
     let files = result.files;
     let mapped_files: std::collections::HashMap<String, crate::mapper::MappedFile> = files
-        .iter()
+        .par_iter()
         .filter(|p| !is_ignored_path(p) && is_source_file(p))
         .filter_map(|p| {
             let content = std::fs::read_to_string(p).ok()?;
@@ -2610,7 +2611,7 @@ fn deps_mode(root: &Path, target: &str, _format: &str) -> Result<()> {
     let result = scan_files_with_noise_tracking(root)?;
     let mapped_files: std::collections::HashMap<String, crate::mapper::MappedFile> = result
         .files
-        .iter()
+        .par_iter()
         .filter(|p| !is_ignored_path(p) && is_source_file(p))
         .filter_map(|p| {
             let content = std::fs::read_to_string(p).ok()?;
@@ -2940,7 +2941,7 @@ fn todo_mode(root: &Path, top: usize, json_out: bool) -> Result<()> {
 
     let mut debts: Vec<FileDebt> = result
         .files
-        .iter()
+        .par_iter()
         .filter(|p| !is_ignored_path(p) && is_source_file(p))
         .filter_map(|p| {
             let content = std::fs::read_to_string(p).ok()?;
@@ -3033,7 +3034,7 @@ fn hotspots_mode(
     let result = scan_files_with_noise_tracking(root)?;
     let mapped_files: std::collections::HashMap<String, crate::mapper::MappedFile> = result
         .files
-        .iter()
+        .par_iter()
         .filter(|p| !is_ignored_path(p) && is_source_file(p))
         .filter_map(|p| {
             let content = std::fs::read_to_string(p).ok()?;
@@ -3232,7 +3233,7 @@ fn dead_mode(root: &Path, json_out: bool) -> Result<()> {
     let result = scan_files_with_noise_tracking(root)?;
     let mapped_files: std::collections::HashMap<String, crate::mapper::MappedFile> = result
         .files
-        .iter()
+        .par_iter()
         .filter(|p| !is_ignored_path(p) && is_source_file(p))
         .filter_map(|p| {
             let content = std::fs::read_to_string(p).ok()?;
@@ -3357,7 +3358,7 @@ fn diagram_mode(
         let result = scan_files_with_noise_tracking(root)?;
         let mapped_files: std::collections::HashMap<String, crate::mapper::MappedFile> = result
             .files
-            .iter()
+            .par_iter()
             .filter(|p| !is_ignored_path(p) && is_source_file(p))
             .filter_map(|p| {
                 let content = std::fs::read_to_string(p).ok()?;
@@ -3559,7 +3560,7 @@ fn diagram_mode(
     let result = scan_files_with_noise_tracking(root)?;
     let mapped_files: std::collections::HashMap<String, crate::mapper::MappedFile> = result
         .files
-        .iter()
+        .par_iter()
         .filter(|p| !is_ignored_path(p) && is_source_file(p))
         .filter_map(|p| {
             let content = std::fs::read_to_string(p).ok()?;
@@ -4000,7 +4001,6 @@ fn semidiff_mode(root: &Path, commit1: &str, commit2: &str) -> Result<()> {
 /// Scan and extract skeleton for every project file, with a parallel rayon scan
 /// and a git-HEAD-keyed persistent cache (.codecartographer_cache.json).
 fn build_mapped_files_cached(root: &Path) -> anyhow::Result<HashMap<String, MappedFile>> {
-    use rayon::prelude::*;
     use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Deserialize)]
@@ -4093,7 +4093,7 @@ fn languages_mode(root: &Path, json_out: bool) -> Result<()> {
     let result = scan_files_with_noise_tracking(root)?;
     let mapped_files: std::collections::HashMap<String, crate::mapper::MappedFile> = result
         .files
-        .iter()
+        .par_iter()
         .filter(|p| !is_ignored_path(p) && is_source_file(p))
         .filter_map(|p| {
             let content = std::fs::read_to_string(p).ok()?;
@@ -4168,7 +4168,7 @@ fn build_dir_graph(
     let result = scan_files_with_noise_tracking(root)?;
     let mapped: std::collections::HashMap<String, crate::mapper::MappedFile> = result
         .files
-        .iter()
+        .par_iter()
         .filter(|p| !is_ignored_path(p) && is_source_file(p))
         .filter_map(|p| {
             let content = std::fs::read_to_string(p).ok()?;
@@ -4347,7 +4347,7 @@ fn layers_validate(root: &Path, config_path: Option<&Path>, json_out: bool) -> R
     let result = scan_files_with_noise_tracking(root)?;
     let mapped: std::collections::HashMap<String, crate::mapper::MappedFile> = result
         .files
-        .iter()
+        .par_iter()
         .filter(|p| !is_ignored_path(p) && is_source_file(p))
         .filter_map(|p| {
             let content = std::fs::read_to_string(p).ok()?;
@@ -4611,7 +4611,7 @@ fn check_mode(root: &Path) -> Result<()> {
     let result = scan_files_with_noise_tracking(root)?;
     let mapped_files: std::collections::HashMap<String, crate::mapper::MappedFile> = result
         .files
-        .iter()
+        .par_iter()
         .filter(|p| !is_ignored_path(p) && is_source_file(p))
         .filter_map(|p| {
             let content = std::fs::read_to_string(p).ok()?;
@@ -4679,7 +4679,7 @@ fn path_mode(root: &Path, from: &str, to: &str, json_out: bool) -> Result<()> {
     let result = scan_files_with_noise_tracking(root)?;
     let mapped_files: std::collections::HashMap<String, crate::mapper::MappedFile> = result
         .files
-        .iter()
+        .par_iter()
         .filter(|p| !is_ignored_path(p) && is_source_file(p))
         .filter_map(|p| {
             let content = std::fs::read_to_string(p).ok()?;
@@ -5686,7 +5686,7 @@ fn snapshot_save(root: &Path, tag: &str) -> Result<()> {
     let result = scan_files_with_noise_tracking(root)?;
     let mapped_files: std::collections::HashMap<String, crate::mapper::MappedFile> = result
         .files
-        .iter()
+        .par_iter()
         .filter(|p| !is_ignored_path(p) && is_source_file(p))
         .filter_map(|p| {
             let content = std::fs::read_to_string(p).ok()?;

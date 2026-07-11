@@ -599,72 +599,82 @@ impl ApiState {
         // then resolves via hash lookups instead of scanning every file (was O(N²)).
         let import_index = ImportIndex::build(&files).with_go_module(&self.root_path);
 
-        let mut nodes: Vec<GraphNode> = Vec::new();
+        // Resolve every file's imports in parallel — resolution is a read-only lookup
+        // against the immutable index, so it's embarrassingly parallel. On huge trees
+        // (~1.7M edges) this is the difference between one core and all of them.
+        use rayon::prelude::*;
+        let per_file: Vec<(GraphNode, Vec<GraphEdge>)> = files
+            .par_iter()
+            .map(|(module_id, file)| {
+                let language = Path::new(&file.path)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+
+                let node = GraphNode {
+                    module_id: module_id.clone(),
+                    path: self.rel(&file.path),
+                    language,
+                    signature_count: file.signatures.len(),
+                    complexity: None,
+                    is_bridge: None,
+                    bridge_score: None,
+                    degree: None,
+                    risk_level: None,
+                    churn: None,
+                    hotspot_score: None,
+                    role: None,
+                    is_dead: None,
+                    unreferenced_exports: None,
+                    fan_in: None,
+                    fan_out: None,
+                    cochange_partners: None,
+                    cochange_entropy: None,
+                    owner: None,
+                };
+
+                let source_kind = if is_test_path(module_id) {
+                    "test"
+                } else if is_doc_path(module_id) {
+                    "doc"
+                } else {
+                    "runtime"
+                };
+                let src_is_doc = is_doc_path(&file.path);
+
+                let mut file_edges = Vec::new();
+                for import in &file.imports {
+                    if let Some((target, resolution)) = import_index.resolve(import, module_id) {
+                        // Reject cross-type edges: a source file importing "json" must not
+                        // resolve to a fixture like testdata/review/json.json (doc), and a
+                        // doc file must not depend on a source module just for mentioning it.
+                        let target_is_doc = files.get(&target)
+                            .map(|f| is_doc_path(&f.path))
+                            .unwrap_or(false);
+                        if src_is_doc != target_is_doc {
+                            continue;
+                        }
+                        file_edges.push(GraphEdge {
+                            source: module_id.clone(),
+                            target,
+                            edge_type: source_kind.to_string(),
+                            at_range: None,
+                            resolution: resolution.to_string(),
+                        });
+                    }
+                }
+                (node, file_edges)
+            })
+            .collect();
+
+        let mut nodes: Vec<GraphNode> = Vec::with_capacity(per_file.len());
         let mut edges: Vec<GraphEdge> = Vec::new();
         let mut languages: HashMap<String, usize> = HashMap::new();
-
-        for (module_id, file) in files.iter() {
-            let language = Path::new(&file.path)
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("unknown")
-                .to_string();
-
-            *languages.entry(language.clone()).or_insert(0) += 1;
-
-            nodes.push(GraphNode {
-                module_id: module_id.clone(),
-                path: self.rel(&file.path),
-                language,
-                signature_count: file.signatures.len(),
-                complexity: None,
-                is_bridge: None,
-                bridge_score: None,
-                degree: None,
-                risk_level: None,
-                churn: None,
-                hotspot_score: None,
-                role: None,
-                is_dead: None,
-                unreferenced_exports: None,
-                fan_in: None,
-                fan_out: None,
-                cochange_partners: None,
-                cochange_entropy: None,
-                owner: None,
-            });
-
-            let source_kind = if is_test_path(module_id) {
-                "test"
-            } else if is_doc_path(module_id) {
-                "doc"
-            } else {
-                "runtime"
-            };
-
-            for import in &file.imports {
-                // Resolve against the prebuilt index (O(1) per import) — building it once
-                // is what makes graph construction O(N) instead of O(N²) on large trees.
-                if let Some((target, resolution)) = import_index.resolve(import, module_id) {
-                    // Reject cross-type edges: a source file importing "json" must not
-                    // resolve to a fixture like testdata/review/json.json (doc), and a
-                    // doc file like CHANGELOG.md must not appear as a dependent of a
-                    // source module just because it mentions a path in its prose.
-                    let target_is_doc = files.get(&target)
-                        .map(|f| is_doc_path(&f.path))
-                        .unwrap_or(false);
-                    if is_doc_path(&file.path) != target_is_doc {
-                        continue;
-                    }
-                    edges.push(GraphEdge {
-                        source: module_id.clone(),
-                        target,
-                        edge_type: source_kind.to_string(),
-                        at_range: None,
-                        resolution: resolution.to_string(),
-                    });
-                }
-            }
+        for (node, mut file_edges) in per_file {
+            *languages.entry(node.language.clone()).or_insert(0) += 1;
+            nodes.push(node);
+            edges.append(&mut file_edges);
         }
 
         // Collapse duplicate (source, target) pairs — a file can resolve the
@@ -1305,6 +1315,11 @@ struct ImportIndex<'a> {
     /// repo-relative directory → module_ids in it. Backs Go package resolution,
     /// where an import names a directory (package), not a file.
     by_dir: HashMap<String, Vec<&'a str>>,
+    /// last path segment of a directory → the directories ending in it. Lets the
+    /// package-suffix fallback probe only directories that could match, instead of
+    /// scanning every directory (which was O(dirs) per unresolved qualified import
+    /// — a real cliff on huge trees with many external imports).
+    by_dir_last: HashMap<String, Vec<String>>,
     /// Go module path from go.mod (e.g. "github.com/acme/widget"), set when the
     /// project root is a Go module. Enables namespace-exact import resolution:
     /// internal imports resolve to their package directory, external ones to no edge.
@@ -1354,7 +1369,29 @@ impl<'a> ImportIndex<'a> {
                 }
             }
         }
-        Self { ids, by_basename, by_stem, by_segment, by_symbol, by_dir, go_module: None }
+        // Index directories by their last segment for O(candidates) suffix probing.
+        let mut by_dir_last: HashMap<String, Vec<String>> = HashMap::new();
+        for dir in by_dir.keys() {
+            if let Some(last) = dir.rsplit('/').next() {
+                by_dir_last.entry(last.to_string()).or_default().push(dir.clone());
+            }
+        }
+
+        Self { ids, by_basename, by_stem, by_segment, by_symbol, by_dir, by_dir_last, go_module: None }
+    }
+
+    /// Directories whose path ends with `/rel` (or equals `rel`), returning the
+    /// members of the shortest such directory. O(directories sharing rel's last
+    /// segment), not O(all directories).
+    fn dir_suffix_files(&self, rel: &str) -> Option<&Vec<&'a str>> {
+        let last = rel.rsplit('/').next().unwrap_or(rel);
+        let suffix = format!("/{rel}");
+        self.by_dir_last
+            .get(last)?
+            .iter()
+            .filter(|d| d.as_str() == rel || d.ends_with(&suffix))
+            .min_by_key(|d| d.len())
+            .and_then(|d| self.by_dir.get(d.as_str()))
     }
 
     /// Opt in to Go module-aware resolution by reading `<root>/go.mod`. No-op for
@@ -1460,14 +1497,7 @@ impl<'a> ImportIndex<'a> {
         }
 
         // (b) Package directory named `norm` (or ending with `/norm`).
-        let dir_cands: Option<&Vec<&'a str>> = self.by_dir.get(norm).or_else(|| {
-            let suffix = format!("/{norm}");
-            self.by_dir
-                .iter()
-                .filter(|(d, _)| d.ends_with(&suffix))
-                .min_by_key(|(d, _)| d.len())
-                .map(|(_, v)| v)
-        });
+        let dir_cands = self.by_dir.get(norm).or_else(|| self.dir_suffix_files(norm));
         if let Some(cands) = dir_cands {
             // Prefer the package's entry point when present.
             if let Some(entry) = cands.iter().copied().find(|&m| {
@@ -1597,13 +1627,7 @@ impl<'a> ImportIndex<'a> {
                         }
                         // Package dir not scanned as-is (nested module, generated code):
                         // accept the shortest directory whose path ends with the suffix.
-                        let suffix = format!("/{rel}");
-                        if let Some((_, cands)) = self
-                            .by_dir
-                            .iter()
-                            .filter(|(d, _)| d.ends_with(&suffix))
-                            .min_by_key(|(d, _)| d.len())
-                        {
+                        if let Some(cands) = self.dir_suffix_files(rel) {
                             return Self::pick_deterministic(cands, source).map(|t| (t, "suffix"));
                         }
                         // Internal by namespace but absent from the scan → honest miss.
@@ -1866,7 +1890,11 @@ impl ApiState {
         graph: &UnGraphMap<&'a str, ()>,
     ) -> HashMap<&'a str, f64> {
         let mut betweenness = HashMap::new();
-        let nodes: Vec<&str> = graph.nodes().collect();
+        let mut nodes: Vec<&str> = graph.nodes().collect();
+        // Sort so the strided source sample (below) is deterministic regardless of
+        // graph/HashMap iteration order — otherwise the approximate bridge counts
+        // would drift run-to-run.
+        nodes.sort_unstable();
 
         for node in &nodes {
             betweenness.insert(*node, 0.0);

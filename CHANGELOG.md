@@ -4,6 +4,29 @@ All notable changes to CKB will be documented in this file.
 
 ## [Unreleased]
 
+### Performance — scaling to very large C++ trees
+
+Profiling on a 40k-file synthetic tree (and Godot) exposed three serial
+bottlenecks in the vendored graph engine; all now parallelize or drop in
+complexity:
+
+- **Parallel edge resolution** — `rebuild_graph` resolves every file's imports
+  via rayon against the immutable index (was single-threaded).
+- **Parallel betweenness centrality** — the bridge analysis ran a single-threaded
+  Brandes pass per sampled source; the sources are independent, so they now run
+  in parallel and reduce. This was the dominant cost at scale. Node order is
+  sorted before sampling so the approximate bridge/god-module counts are
+  **deterministic** run-to-run (previously drifted with HashMap order).
+- **O(1) package-suffix fallback** — the qualified/Go package resolver's
+  directory-suffix probe scanned *every* directory per unresolved import
+  (O(dirs), a real cliff for repos with many external qualified imports). It now
+  probes only directories sharing the import's last segment via a suffix index.
+- Cartographer's CLI parse loops were also switched from serial to parallel
+  (`iter`→`par_iter`), though CKB uses the parallel FFI path.
+
+Measured: a cold 40k-file analysis went 56s → 12.7s (~4.4×); Godot (4.3k files)
+16s → ~2s (~8×), with identical results.
+
 ### Changed
 
 - **Re-vendored the Rust crate to upstream `CodeCartographer` 1.3.3** (from
