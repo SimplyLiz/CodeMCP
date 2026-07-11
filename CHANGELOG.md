@@ -20,6 +20,19 @@ complexity:
   **bit-identical regardless of core count** — deterministic across machines,
   not just across runs. On Godot: betweenness 3,140ms → 57ms, full rebuild
   3,197ms → 76ms (~42×), same 3182 bridges / 68 god-modules / 0 cycles.
+- **Directory-level rollup** — the vendored engine can now fold the file-level
+  graph to directory granularity at a given depth, aggregating cross-directory
+  dependencies and running the full structural analysis on the folded graph, so
+  bridges/cycles/god-modules/health describe subsystems rather than individual
+  files. On Godot this turns 4336 files / 3182 bridges into 160 subsystems /
+  139 bridges with actionable per-subsystem hints — the comprehensible view on
+  huge trees. Available as `rebuild_graph_rolled_up(depth)` (CLI:
+  `health --rollup <depth>`).
+- **Deterministic import resolution** — resolver candidate lists were in
+  HashMap order, so an ambiguous import could resolve to different targets
+  run-to-run (invisible at file level, but it drifted directory-level edge
+  counts). Candidate lists are now sorted and edge dedup keeps the strongest
+  resolution (exact < suffix < fuzzy), making the graph fully deterministic.
 - **Betweenness cache (incremental rebuild)** — centrality depends only on graph
   topology, so it's cached keyed by a fingerprint of the structural node+edge
   set. An edit that leaves imports unchanged (a body/comment/whitespace save —

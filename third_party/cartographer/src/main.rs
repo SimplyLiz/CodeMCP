@@ -128,6 +128,11 @@ enum Commands {
         /// Compare current health against a git ref (e.g. main, HEAD~1)
         #[arg(long, value_name = "REF")]
         compare: Option<String>,
+        /// Roll the graph up to directory granularity at the given path depth
+        /// (e.g. 2 folds `a/b/c/f.rs` into `a/b`). Bridges/cycles/god modules then
+        /// describe subsystems, not files — the comprehensible view on huge trees.
+        #[arg(long, value_name = "DEPTH")]
+        rollup: Option<usize>,
         /// Emit machine-readable JSON
         #[arg(long)]
         json: bool,
@@ -774,9 +779,9 @@ fn main() -> Result<()> {
             let root = resolve_path(&cwd, path.or(cli.path))?;
             init_ckb_mode(&root, ckb_url.as_deref(), webhook_url.as_deref())
         }
-        Some(Commands::Health { path, compare, json }) => {
+        Some(Commands::Health { path, compare, rollup, json }) => {
             let root = resolve_path(&cwd, path.or(cli.path))?;
-            health_mode(&root, compare.as_deref(), json)
+            health_mode(&root, compare.as_deref(), rollup, json)
         }
         Some(Commands::Simulate {
             path,
@@ -1925,7 +1930,7 @@ events = ["graph_updated", "module_changed", "layer_violation"]
     Ok(())
 }
 
-fn health_mode(root: &Path, compare: Option<&str>, json_out: bool) -> Result<()> {
+fn health_mode(root: &Path, compare: Option<&str>, rollup: Option<usize>, json_out: bool) -> Result<()> {
     use crate::api::ApiState;
     use crate::mapper::extract_skeleton;
     use crate::scanner::{is_ignored_path, is_source_file, scan_files_with_noise_tracking};
@@ -1960,7 +1965,24 @@ fn health_mode(root: &Path, compare: Option<&str>, json_out: bool) -> Result<()>
         *files = mapped_files;
     }
 
-    let graph = state.rebuild_graph().map_err(|e| anyhow::anyhow!(e))?;
+    // Directory-level rollup: fold files into subsystems before analysis. --compare
+    // operates on the file-level graph only, so the two don't combine.
+    let rollup_depth = rollup.filter(|d| *d > 0);
+    if rollup_depth.is_some() && compare.is_some() {
+        anyhow::bail!("--rollup and --compare cannot be combined (compare is file-level)");
+    }
+    let graph = match rollup_depth {
+        Some(depth) => state.rebuild_graph_rolled_up(depth).map_err(|e| anyhow::anyhow!(e))?,
+        None => state.rebuild_graph().map_err(|e| anyhow::anyhow!(e))?,
+    };
+    if let Some(depth) = rollup_depth {
+        if !json_out {
+            println!(
+                "📁 Directory rollup (depth {depth}): {} subsystems, {} cross-subsystem deps\n",
+                graph.metadata.total_files, graph.metadata.total_edges
+            );
+        }
+    }
     let score_now = graph.metadata.health_score.unwrap_or(0.0);
     let bridges_now = graph.metadata.bridge_count.unwrap_or(0);
     let cycles_now = graph.metadata.cycle_count.unwrap_or(0);

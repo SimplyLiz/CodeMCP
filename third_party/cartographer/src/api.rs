@@ -269,14 +269,20 @@ pub struct ApiState {
     /// Timestamp of the last incremental refresh, used to debounce filesystem scans.
     last_refresh: Mutex<Option<std::time::Instant>>,
     /// Betweenness centrality is 98% of a graph rebuild's cost, yet it depends ONLY on
-    /// graph topology — not on file contents. This caches the last computed centrality
-    /// map keyed by a fingerprint of the structural node+edge set, so an edit that leaves
-    /// the import graph unchanged (a body/comment/whitespace save — the common watch-mode
-    /// case) reuses it and the rebuild drops from seconds to tens of milliseconds. Keyed
-    /// by fingerprint, it self-invalidates exactly when the topology changes and so is
-    /// deliberately NOT cleared by invalidate_graph().
-    bc_cache: Mutex<Option<(u64, HashMap<String, f64>)>>,
+    /// graph topology — not on file contents. This caches computed centrality maps keyed
+    /// by a fingerprint of the structural node+edge set, so an edit that leaves the import
+    /// graph unchanged (a body/comment/whitespace save — the common watch-mode case)
+    /// reuses it and the rebuild drops from seconds to tens of milliseconds. Keyed by
+    /// fingerprint, an entry self-invalidates exactly when its topology changes, so this
+    /// is deliberately NOT cleared by invalidate_graph(). It's a small MRU list (not a
+    /// single slot) so distinct graphs — e.g. the file-level graph and a directory-level
+    /// rollup — coexist without evicting the expensive file-level entry.
+    bc_cache: Mutex<Vec<(u64, HashMap<String, f64>)>>,
 }
+
+/// Max distinct graph topologies to retain centrality for (file-level + a few rollup
+/// depths). Small: each entry is one V-sized map and lookups are a linear scan.
+const BC_CACHE_CAP: usize = 4;
 
 /// Minimum interval between incremental filesystem re-scans. Bounds the cost of keeping
 /// a long-lived `serve` session fresh: a burst of tool calls triggers at most one scan.
@@ -291,7 +297,7 @@ impl ApiState {
             compression_level: Mutex::new(CompressionLevel::Standard),
             file_mtimes: Mutex::new(HashMap::new()),
             last_refresh: Mutex::new(None),
-            bc_cache: Mutex::new(None),
+            bc_cache: Mutex::new(Vec::new()),
         }
     }
 
@@ -692,12 +698,54 @@ impl ApiState {
         phase!("resolve_edges");
 
         // Collapse duplicate (source, target) pairs — a file can resolve the
-        // same import via multiple paths (re-exports, aliased crates, etc.).
+        // same import via multiple paths (re-exports, aliased crates, etc.). A pair
+        // can even resolve at different confidences via different imports; break ties
+        // by resolution strength (exact < suffix < fuzzy) so dedup deterministically
+        // keeps the STRONGEST edge. Without this tiebreak the unstable sort kept an
+        // arbitrary survivor, so a pair that resolved both exact and fuzzy would flip
+        // in/out of the structural (non-fuzzy) set run-to-run.
+        fn res_rank(r: &str) -> u8 {
+            match r {
+                "exact" => 0,
+                "suffix" => 1,
+                _ => 2,
+            }
+        }
         edges.sort_unstable_by(|a, b| {
-            a.source.cmp(&b.source).then(a.target.cmp(&b.target))
+            a.source
+                .cmp(&b.source)
+                .then(a.target.cmp(&b.target))
+                .then(res_rank(&a.resolution).cmp(&res_rank(&b.resolution)))
         });
         edges.dedup_by(|a, b| a.source == b.source && a.target == b.target);
 
+        // Run the shared analysis/assembly over the resolved file-level graph.
+        let response = self.finalize_graph_response(nodes, edges, languages, &files);
+        phase!("finalize");
+
+        let mut graph = self.project_graph.lock().map_err(|e| e.to_string())?;
+        *graph = Some(response.clone());
+
+        Ok(response)
+    }
+
+    /// Run structural analysis (bridges, cycles, god modules, layer violations,
+    /// health, roles, dead code, unreferenced exports) over an already-resolved,
+    /// deduped node/edge set and assemble the response. Shared by `rebuild_graph`
+    /// (file-level) and `rebuild_graph_rolled_up` (directory-level) so both views
+    /// get identical metric semantics from one implementation.
+    ///
+    /// `edges` is the full edge list (kept verbatim in the response); metrics are
+    /// computed only on the non-fuzzy ("structural") subset. `files` supplies the
+    /// per-node imports/signatures the god-module and unreferenced-export passes
+    /// read — for the rollup these are synthesized per directory.
+    fn finalize_graph_response(
+        &self,
+        mut nodes: Vec<GraphNode>,
+        edges: Vec<GraphEdge>,
+        languages: HashMap<String, usize>,
+        files: &HashMap<String, MappedFile>,
+    ) -> ProjectGraphResponse {
         // Structural analysis must not rest on low-confidence (fuzzy) edges — those
         // are bare stem/segment guesses that fabricated false bridges, cycles, layer
         // violations and god modules. The returned graph keeps every edge (tagged with
@@ -705,9 +753,7 @@ impl ApiState {
         let structural: Vec<GraphEdge> =
             edges.iter().filter(|e| e.resolution != "fuzzy").cloned().collect();
 
-        phase!("structural_filter");
         let bridge_analysis = self.analyze_bridges(&nodes, &structural);
-        phase!("bridges+between");
 
         for node in &mut nodes {
             if let Some(analysis) = bridge_analysis.get(&node.module_id) {
@@ -722,11 +768,9 @@ impl ApiState {
 
         let cycles = self.detect_cycles(&nodes, &structural);
         let cycle_count = cycles.len();
-        phase!("cycles");
 
-        let god_modules = self.detect_god_modules(&nodes, &structural, &files);
+        let god_modules = self.detect_god_modules(&nodes, &structural, files);
         let god_module_count = god_modules.len();
-        phase!("god_modules");
 
         let edge_tuples: Vec<(String, String)> = structural
             .iter()
@@ -880,7 +924,7 @@ impl ApiState {
             unreferenced_exports_count: Some(unreferenced_exports_count),
         };
 
-        let response = ProjectGraphResponse {
+        ProjectGraphResponse {
             nodes,
             edges,
             cycles,
@@ -888,13 +932,127 @@ impl ApiState {
             layer_violations,
             metadata,
             cochange_pairs: vec![],
-        };
+        }
+    }
 
-        phase!("roles+metadata");
-        let mut graph = self.project_graph.lock().map_err(|e| e.to_string())?;
-        *graph = Some(response.clone());
+    /// Build a directory-level ("rolled-up") view of the graph: every file is folded
+    /// into the folder formed by its first `depth` path components, cross-directory
+    /// dependencies are aggregated (intra-directory edges dropped), and the full
+    /// structural analysis runs on the folded graph. The result is a graph small
+    /// enough to comprehend on a very large tree while its bridges / cycles / god
+    /// modules / health now describe *subsystems* rather than individual files.
+    ///
+    /// `depth` of 0 means "no rollup" and returns the file-level graph unchanged.
+    /// Only non-fuzzy edges are rolled up — directory dependencies should be
+    /// confident, not bare-stem guesses.
+    pub fn rebuild_graph_rolled_up(&self, depth: usize) -> Result<ProjectGraphResponse, String> {
+        let file_graph = self.rebuild_graph()?;
+        if depth == 0 {
+            return Ok(file_graph);
+        }
 
-        Ok(response)
+        // First `depth` directory components of a repo-relative path, or "(root)"
+        // for a file that sits at the tree root.
+        fn dir_key(path: &str, depth: usize) -> String {
+            let parts: Vec<&str> = path.split('/').collect();
+            let dir_parts = &parts[..parts.len().saturating_sub(1)];
+            let take = depth.min(dir_parts.len());
+            if take == 0 {
+                "(root)".to_string()
+            } else {
+                dir_parts[..take].join("/")
+            }
+        }
+
+        let files = self.mapped_files.lock().map_err(|e| e.to_string())?;
+
+        // Fold each file node into its directory, aggregating size + hotspot and
+        // unioning member imports (the god-module cohesion pass reads these).
+        let mut member_of: HashMap<String, String> = HashMap::new();
+        let mut dir_sig: HashMap<String, usize> = HashMap::new();
+        let mut dir_hotspot: HashMap<String, f64> = HashMap::new();
+        let mut dir_imports: HashMap<String, Vec<String>> = HashMap::new();
+        let mut order: Vec<String> = Vec::new();
+
+        for node in &file_graph.nodes {
+            let dk = dir_key(&node.path, depth);
+            if !dir_sig.contains_key(&dk) {
+                order.push(dk.clone());
+            }
+            member_of.insert(node.module_id.clone(), dk.clone());
+            *dir_sig.entry(dk.clone()).or_insert(0) += node.signature_count;
+            if let Some(h) = node.hotspot_score {
+                let e = dir_hotspot.entry(dk.clone()).or_insert(0.0);
+                if h > *e {
+                    *e = h;
+                }
+            }
+            if let Some(mf) = files.get(&node.module_id) {
+                dir_imports.entry(dk.clone()).or_default().extend(mf.imports.iter().cloned());
+            }
+        }
+
+        // Directory nodes, in first-seen order for deterministic output.
+        let nodes: Vec<GraphNode> = order
+            .iter()
+            .map(|dk| GraphNode {
+                module_id: dk.clone(),
+                path: dk.clone(),
+                language: "dir".into(),
+                signature_count: dir_sig.get(dk).copied().unwrap_or(0),
+                complexity: None,
+                is_bridge: None,
+                bridge_score: None,
+                degree: None,
+                risk_level: None,
+                churn: None,
+                hotspot_score: dir_hotspot.get(dk).copied(),
+                role: None,
+                is_dead: None,
+                unreferenced_exports: None,
+                fan_in: None,
+                fan_out: None,
+                cochange_partners: None,
+                cochange_entropy: None,
+                owner: None,
+            })
+            .collect();
+
+        // Aggregate cross-directory edges (deduped presence, self-loops dropped).
+        let mut seen: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
+        let mut edges: Vec<GraphEdge> = Vec::new();
+        for e in &file_graph.edges {
+            if e.resolution == "fuzzy" {
+                continue;
+            }
+            let (Some(sf), Some(tf)) = (member_of.get(&e.source), member_of.get(&e.target)) else {
+                continue;
+            };
+            if sf == tf {
+                continue;
+            }
+            if seen.insert((sf.clone(), tf.clone())) {
+                edges.push(GraphEdge {
+                    source: sf.clone(),
+                    target: tf.clone(),
+                    edge_type: "runtime".into(),
+                    at_range: None,
+                    resolution: "exact".into(),
+                });
+            }
+        }
+
+        // Synthetic per-directory files carry the unioned imports for cohesion.
+        let synthetic: HashMap<String, MappedFile> = dir_imports
+            .into_iter()
+            .map(|(dk, imports)| (dk.clone(), MappedFile::from_minimal(dk, imports)))
+            .collect();
+
+        // Language stats reflect the underlying files, not the synthetic "dir" nodes.
+        let languages = file_graph.metadata.languages.clone();
+        drop(files);
+
+        Ok(self.finalize_graph_response(nodes, edges, languages, &synthetic))
     }
 
 }
@@ -1396,6 +1554,18 @@ impl<'a> ImportIndex<'a> {
             }
         }
 
+        // Candidate lists are built by iterating `files` (a HashMap), so their order is
+        // per-process random. Any resolver that picks among equally-ranked candidates
+        // (min_by_key, first-match) would then choose non-deterministically — invisible
+        // at file level, but it flips which directory an ambiguous import folds into.
+        // Sort every list once so all downstream selection is over a stable order.
+        for v in by_basename.values_mut() { v.sort_unstable(); }
+        for v in by_stem.values_mut() { v.sort_unstable(); }
+        for v in by_segment.values_mut() { v.sort_unstable(); }
+        for v in by_symbol.values_mut() { v.sort_unstable(); }
+        for v in by_dir.values_mut() { v.sort_unstable(); }
+        for v in by_dir_last.values_mut() { v.sort_unstable(); }
+
         Self { ids, by_basename, by_stem, by_segment, by_symbol, by_dir, by_dir_last, go_module: None }
     }
 
@@ -1871,11 +2041,9 @@ impl ApiState {
         // last compute (fingerprint match). This is the incremental-rebuild win: the
         // expensive Brandes pass runs only when an import edge actually changed.
         let fingerprint = Self::betweenness_fingerprint(nodes, edges);
-        let cached = self
-            .bc_cache
-            .lock()
-            .ok()
-            .and_then(|g| g.as_ref().filter(|(fp, _)| *fp == fingerprint).map(|(_, m)| m.clone()));
+        let cached = self.bc_cache.lock().ok().and_then(|g| {
+            g.iter().find(|(fp, _)| *fp == fingerprint).map(|(_, m)| m.clone())
+        });
         if std::env::var("CKB_TIMING").is_ok() {
             eprintln!("[timing]  betweenness: cache {}", if cached.is_some() { "HIT" } else { "MISS" });
         }
@@ -1888,7 +2056,10 @@ impl ApiState {
                     .map(|(k, v)| (k.to_string(), v))
                     .collect();
                 if let Ok(mut g) = self.bc_cache.lock() {
-                    *g = Some((fingerprint, computed.clone()));
+                    // MRU: newest first, drop the fingerprint if already present, cap length.
+                    g.retain(|(fp, _)| *fp != fingerprint);
+                    g.insert(0, (fingerprint, computed.clone()));
+                    g.truncate(BC_CACHE_CAP);
                 }
                 computed
             }
@@ -2758,6 +2929,60 @@ mod tests {
         );
     }
 
+    // Directory rollup folds files into their folder, drops intra-folder edges, and
+    // aggregates cross-folder dependencies — the comprehensible view on a huge tree.
+    // The file- and directory-level centralities must coexist in the MRU cache so a
+    // rollup doesn't evict the expensive file-level entry.
+    #[test]
+    fn rollup_folds_files_and_aggregates_cross_directory_edges() {
+        let state = ApiState::new(std::path::PathBuf::from("/test"));
+        {
+            let mut files = state.mapped_files.lock().unwrap();
+            // core/a -> core/b (intra-dir, dropped) ; core/a,core/b -> util/x ;
+            // extra/y -> util/x. Three dirs so the folded graph has >=3 nodes and
+            // its betweenness actually runs (and caches).
+            files.insert(
+                "core/a".into(),
+                MappedFile::from_minimal("core/a.rs".into(), vec!["core/b".into(), "util/x".into()]),
+            );
+            files.insert(
+                "core/b".into(),
+                MappedFile::from_minimal("core/b.rs".into(), vec!["util/x".into()]),
+            );
+            files.insert("util/x".into(), MappedFile::from_minimal("util/x.rs".into(), vec![]));
+            files.insert(
+                "extra/y".into(),
+                MappedFile::from_minimal("extra/y.rs".into(), vec!["util/x".into()]),
+            );
+        }
+
+        // depth 0 == file-level identity.
+        let g0 = state.rebuild_graph_rolled_up(0).unwrap();
+        assert!(g0.nodes.iter().any(|n| n.module_id == "core/a"), "depth 0 keeps file nodes");
+
+        // depth 1 folds into "core", "util", "extra".
+        let g = state.rebuild_graph_rolled_up(1).unwrap();
+        let ids: std::collections::HashSet<&str> =
+            g.nodes.iter().map(|n| n.module_id.as_str()).collect();
+        assert_eq!(g.nodes.len(), 3, "three directories, got {ids:?}");
+        assert!(
+            ids.contains("core") && ids.contains("util") && ids.contains("extra"),
+            "expected core+util+extra, got {ids:?}"
+        );
+
+        // The two file edges into util collapse to one core->util edge; the intra-dir
+        // core->core edge is dropped.
+        let core_to_util = g.edges.iter().filter(|e| e.source == "core" && e.target == "util").count();
+        assert_eq!(core_to_util, 1, "core->util must aggregate to one edge, got {:?}", g.edges);
+        assert!(!g.edges.iter().any(|e| e.source == e.target), "no intra-dir self loops");
+
+        // File-level and directory-level centralities coexist (MRU cache didn't evict).
+        assert!(
+            state.bc_cache.lock().unwrap().len() >= 2,
+            "file- and dir-level betweenness must both be cached"
+        );
+    }
+
     // Betweenness centrality is 98% of a rebuild's cost but depends only on graph
     // topology, so it's cached across graph invalidations (the watch-mode win). This
     // pins the contract: the cache survives invalidate_graph and reproduces identical
@@ -2784,20 +3009,22 @@ mod tests {
             v
         };
 
+        let current_fp = || state.bc_cache.lock().unwrap().first().map(|(f, _)| *f);
+
         let g1 = state.rebuild_graph().unwrap();
         let s1 = bridges(&g1);
-        let fp1 = state.bc_cache.lock().unwrap().as_ref().map(|(f, _)| *f);
+        let fp1 = current_fp();
         assert!(fp1.is_some(), "bc_cache must be populated after a rebuild");
 
         // invalidate_graph (as refresh_if_stale does) must NOT clear the centrality cache.
         state.invalidate_graph();
         assert!(
-            state.bc_cache.lock().unwrap().is_some(),
+            !state.bc_cache.lock().unwrap().is_empty(),
             "invalidate_graph must leave bc_cache intact"
         );
         let g2 = state.rebuild_graph().unwrap();
         assert_eq!(s1, bridges(&g2), "cached betweenness must reproduce identical bridge scores");
-        let fp2 = state.bc_cache.lock().unwrap().as_ref().map(|(f, _)| *f);
+        let fp2 = current_fp();
         assert_eq!(fp1, fp2, "fingerprint must be stable when topology is unchanged");
 
         // Add an edge — the fingerprint must change so betweenness is recomputed.
@@ -2810,7 +3037,7 @@ mod tests {
         }
         state.invalidate_graph();
         let _g3 = state.rebuild_graph().unwrap();
-        let fp3 = state.bc_cache.lock().unwrap().as_ref().map(|(f, _)| *f);
+        let fp3 = current_fp();
         assert_ne!(fp1, fp3, "fingerprint must change when an edge is added");
     }
 
