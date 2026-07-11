@@ -674,7 +674,14 @@ impl ApiState {
         });
         edges.dedup_by(|a, b| a.source == b.source && a.target == b.target);
 
-        let bridge_analysis = self.analyze_bridges(&nodes, &edges);
+        // Structural analysis must not rest on low-confidence (fuzzy) edges — those
+        // are bare stem/segment guesses that fabricated false bridges, cycles, layer
+        // violations and god modules. The returned graph keeps every edge (tagged with
+        // its `resolution`); only the metrics below are restricted to exact/suffix.
+        let structural: Vec<GraphEdge> =
+            edges.iter().filter(|e| e.resolution != "fuzzy").cloned().collect();
+
+        let bridge_analysis = self.analyze_bridges(&nodes, &structural);
 
         for node in &mut nodes {
             if let Some(analysis) = bridge_analysis.get(&node.module_id) {
@@ -687,13 +694,13 @@ impl ApiState {
 
         let bridge_count = nodes.iter().filter(|n| n.is_bridge == Some(true)).count();
 
-        let cycles = self.detect_cycles(&nodes, &edges);
+        let cycles = self.detect_cycles(&nodes, &structural);
         let cycle_count = cycles.len();
 
-        let god_modules = self.detect_god_modules(&nodes, &edges, &files);
+        let god_modules = self.detect_god_modules(&nodes, &structural, &files);
         let god_module_count = god_modules.len();
 
-        let edge_tuples: Vec<(String, String)> = edges
+        let edge_tuples: Vec<(String, String)> = structural
             .iter()
             .map(|e| (e.source.clone(), e.target.clone()))
             .collect();
@@ -721,7 +728,7 @@ impl ApiState {
             out_degree.entry(node.module_id.clone()).or_insert(0);
             runtime_in_degree.entry(node.module_id.clone()).or_insert(0);
         }
-        for edge in &edges {
+        for edge in &structural {
             *out_degree.entry(edge.source.clone()).or_insert(0) += 1;
             *in_degree.entry(edge.target.clone()).or_insert(0) += 1;
             if edge.edge_type == "runtime" {

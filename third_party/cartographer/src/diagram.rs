@@ -304,14 +304,15 @@ fn blast_radius_selection(
     included.push(epicenter_id.clone());
     seen.insert(epicenter_id.clone());
 
-    // Direct dependencies: where epicenter is the source.
-    for edge in &graph.edges {
+    // Direct dependencies: where epicenter is the source. Fuzzy (low-confidence)
+    // edges are excluded so the blast radius can't be inflated by a stem guess.
+    for edge in graph.edges.iter().filter(|e| e.resolution != "fuzzy") {
         if edge.source == epicenter_id && seen.insert(edge.target.clone()) {
             included.push(edge.target.clone());
         }
     }
     // Direct dependents: where epicenter is the target.
-    for edge in &graph.edges {
+    for edge in graph.edges.iter().filter(|e| e.resolution != "fuzzy") {
         if edge.target == epicenter_id && seen.insert(edge.source.clone()) {
             included.push(edge.source.clone());
         }

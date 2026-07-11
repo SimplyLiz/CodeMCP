@@ -59,9 +59,15 @@ This directly cleans up every import-graph-derived surface — `getArchitecture`
 
 As a safety net for the remaining languages (which still resolve heuristically),
 every edge now carries a `resolution` confidence tag (`exact` | `suffix` |
-`fuzzy`), exposed on `cartographer.GraphEdge`. Cycle detection and the
-"will create a cycle" prediction ignore `fuzzy` edges, so a false cycle can no
-longer rest on a low-confidence stem guess.
+`fuzzy`), exposed on `cartographer.GraphEdge`. All structural analysis is now
+computed on non-`fuzzy` edges only — cycles, the "will create a cycle"
+prediction, bridges, god modules, layer violations, and the blast radius — so
+none of the import-graph-derived surfaces (`getArchitecture`, `getBlastRadius`,
+`analyzeImpact`, `prepareChange`, the `review` layers/arch-health checks) can
+rest on a low-confidence stem guess. The returned graph still carries every
+edge, tagged, so consumers can decide. On the CKB side, `review`'s PR-split
+clustering skips `fuzzy` edges so a split recommendation isn't driven by a
+fabricated dependency.
 
 The same namespace-exact idea was generalized beyond Go: any extensionless
 import that carries directory structure (Python `from app.services import auth`,

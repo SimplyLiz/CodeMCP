@@ -148,9 +148,13 @@ func (e *Engine) addCartographerEdges(files []string, adj map[string]map[string]
 		fileSet[f] = true
 	}
 
-	// Static import edges from the dependency graph.
+	// Static import edges from the dependency graph. Skip fuzzy (low-confidence)
+	// edges so a split recommendation isn't driven by a fabricated dependency.
 	if graph, err := cartographer.MapProject(e.repoRoot); err == nil {
 		for _, edge := range graph.Edges {
+			if edge.Resolution == "fuzzy" {
+				continue
+			}
 			if fileSet[edge.Source] && fileSet[edge.Target] {
 				adj[edge.Source][edge.Target] = true
 				adj[edge.Target][edge.Source] = true
