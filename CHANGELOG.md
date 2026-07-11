@@ -75,6 +75,12 @@ and `from app.models import auth` resolve to their own packages instead of
 colliding on the shared `auth` stem, and third-party imports stop fabricating
 internal edges.
 
+JS/TS relative imports (`./bar`, `../models/user`) now resolve against the
+**source file's directory** — path-precise, `..` walks up, a bare package dir
+uses its `index.*`. A relative path that isn't in the scan is a dangling ref
+(no edge), never a fuzzy same-name match. `export … from './x'` re-exports are
+now captured as dependencies. Bare package imports (`react`) stay external.
+
 ### Available for follow-up wiring (not yet exposed)
 
 The vendored library exports FFI symbols not yet wired through the Go

@@ -797,7 +797,9 @@ fn collect_js_ts_imports(root: &Node, src: &[u8]) -> Vec<String> {
     let mut imports = Vec::new();
     let mut cur = root.walk();
     for child in root.children(&mut cur) {
-        if child.kind() == "import_statement" {
+        // `import … from 'x'` and re-exports `export … from 'x'` both name a
+        // dependency via a `source` field.
+        if matches!(child.kind(), "import_statement" | "export_statement") {
             if let Some(source_node) = child.child_by_field_name("source") {
                 let raw = node_text(&source_node, src);
                 let clean = raw.trim_matches('"').trim_matches('\'');

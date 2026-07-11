@@ -1479,8 +1479,80 @@ impl<'a> ImportIndex<'a> {
         None
     }
 
+    /// Resolve a relative specifier (`./x`, `../y/z`) against the SOURCE file's
+    /// directory — the only correct anchor for JS/TS/relative-C imports. Joins
+    /// and normalises `.`/`..`, then matches a module file (any extension) or a
+    /// package directory (preferring an `index.*` / `__init__.py` / `mod.rs`
+    /// entry point). `None` means the target wasn't scanned — a relative import
+    /// always names something local, so we never fuzzy-fall-back here.
+    fn resolve_relative(&self, spec: &str, source: &str) -> Option<String> {
+        let mut parts: Vec<String> = Path::new(source)
+            .parent()
+            .map(|p| {
+                p.to_string_lossy()
+                    .split('/')
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string())
+                    .collect()
+            })
+            .unwrap_or_default();
+        for seg in spec.split('/') {
+            match seg {
+                "" | "." => {}
+                ".." => {
+                    parts.pop();
+                }
+                s => parts.push(s.to_string()),
+            }
+        }
+        let joined = parts.join("/");
+        if joined.is_empty() {
+            return None;
+        }
+        // Exact module_id (specifier already carried an extension, e.g. C "./foo.h").
+        if joined != source && self.ids.contains(joined.as_str()) {
+            return Some(joined);
+        }
+        // Module file: a same-stem file whose extension-stripped path equals `joined`.
+        let joined_ne = path_no_ext(&joined);
+        let last = joined_ne.rsplit('/').next().unwrap_or(joined_ne);
+        if let Some(cands) = self.by_stem.get(last) {
+            if let Some(hit) = cands
+                .iter()
+                .copied()
+                .find(|&m| m != source && path_no_ext(m) == joined_ne)
+            {
+                return Some(hit.to_string());
+            }
+        }
+        // Package directory `joined` → its entry point, else any member.
+        if let Some(cands) = self.by_dir.get(joined_ne) {
+            if let Some(entry) = cands.iter().copied().find(|&m| {
+                let bn = m.rsplit('/').next().unwrap_or(m);
+                bn.starts_with("index.") || bn == "__init__.py" || bn == "mod.rs"
+            }) {
+                if entry != source {
+                    return Some(entry.to_string());
+                }
+            }
+            return Self::pick_deterministic(cands, source);
+        }
+        None
+    }
+
     fn resolve(&self, import: &str, source: &str) -> Option<(String, &'static str)> {
         let (module_path, symbol_hint) = parse_import_parts(import);
+
+        // Relative specifier (JS/TS `./`, `../`; relative C includes): resolve
+        // against the source directory. Path-precise, and authoritative — a
+        // relative import names something local, so a miss is a dangling ref
+        // (no edge), never a reason to fuzzy-guess a same-name file elsewhere.
+        if module_path.starts_with("./") || module_path.starts_with("../") {
+            return self
+                .resolve_relative(&module_path, source)
+                .map(|hit| (hit, "exact"));
+        }
+
         let norm = module_path
             .trim_start_matches("./")
             .trim_start_matches('/')
@@ -2445,6 +2517,42 @@ mod tests {
         // A qualified import that matches nothing local is external → no edge
         // (must NOT fuzzy-match app/models/auth.py on the bare `auth` stem).
         assert_eq!(idx.resolve("from django.contrib import auth", src), None);
+    }
+
+    // JS/TS relative specifiers resolve against the SOURCE directory, not a
+    // same-name file elsewhere; `..` walks up; a package dir uses its index.
+    #[test]
+    fn relative_import_resolves_against_source_dir() {
+        let mut files: HashMap<String, MappedFile> = HashMap::new();
+        for p in [
+            "src/app/main.ts",
+            "src/app/bar.ts",
+            "src/models/user.ts",
+            "src/models/other/bar.ts", // trap: same stem in another dir
+            "src/widgets/index.ts",
+        ] {
+            files.insert(p.to_string(), MappedFile::from_minimal(p.to_string(), vec![]));
+        }
+        let idx = ImportIndex::build(&files);
+        let src = "src/app/main.ts";
+
+        // `./bar` → sibling, not src/models/other/bar.ts.
+        assert_eq!(
+            idx.resolve("./bar", src),
+            Some(("src/app/bar.ts".to_string(), "exact")),
+        );
+        // `../models/user` → walk up then down.
+        assert_eq!(
+            idx.resolve("../models/user", src),
+            Some(("src/models/user.ts".to_string(), "exact")),
+        );
+        // `../widgets` → package directory resolves to its index.
+        assert_eq!(
+            idx.resolve("../widgets", src),
+            Some(("src/widgets/index.ts".to_string(), "exact")),
+        );
+        // A relative path that isn't in the scan → dangling, no edge (not fuzzy).
+        assert_eq!(idx.resolve("./does_not_exist", src), None);
     }
 
     // Regression test: before the fix, rebuild_graph held the mapped_files
