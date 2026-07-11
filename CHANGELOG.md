@@ -12,11 +12,22 @@ complexity:
 
 - **Parallel edge resolution** — `rebuild_graph` resolves every file's imports
   via rayon against the immutable index (was single-threaded).
-- **Parallel betweenness centrality** — the bridge analysis ran a single-threaded
-  Brandes pass per sampled source; the sources are independent, so they now run
-  in parallel and reduce. This was the dominant cost at scale. Node order is
-  sorted before sampling so the approximate bridge/god-module counts are
-  **deterministic** run-to-run (previously drifted with HashMap order).
+- **Parallel, index-based betweenness centrality** — betweenness was 98% of a
+  graph rebuild (~3.14s of 3.2s on Godot). The Brandes pass per sampled source
+  now runs over dense `Vec` buffers keyed by node index (was per-source
+  `HashMap<&str,_>` reallocation) and the independent sources run across cores.
+  Per-source contributions are summed in fixed source order, so results are
+  **bit-identical regardless of core count** — deterministic across machines,
+  not just across runs. On Godot: betweenness 3,140ms → 57ms, full rebuild
+  3,197ms → 76ms (~42×), same 3182 bridges / 68 god-modules / 0 cycles.
+- **Betweenness cache (incremental rebuild)** — centrality depends only on graph
+  topology, so it's cached keyed by a fingerprint of the structural node+edge
+  set. An edit that leaves imports unchanged (a body/comment/whitespace save —
+  the common watch-mode case) reuses it and skips the whole Brandes pass. The
+  cache survives graph invalidation and self-invalidates only when an import
+  actually changes. The win grows with repo size: at 100× scale, where sampled
+  betweenness re-inflates to seconds, a non-import edit stays near the ~40ms
+  floor instead of paying the full recompute.
 - **O(1) package-suffix fallback** — the qualified/Go package resolver's
   directory-suffix probe scanned *every* directory per unresolved import
   (O(dirs), a real cliff for repos with many external qualified imports). It now

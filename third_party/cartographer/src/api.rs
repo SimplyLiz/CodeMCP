@@ -268,6 +268,14 @@ pub struct ApiState {
     file_mtimes: Mutex<HashMap<String, u64>>,
     /// Timestamp of the last incremental refresh, used to debounce filesystem scans.
     last_refresh: Mutex<Option<std::time::Instant>>,
+    /// Betweenness centrality is 98% of a graph rebuild's cost, yet it depends ONLY on
+    /// graph topology — not on file contents. This caches the last computed centrality
+    /// map keyed by a fingerprint of the structural node+edge set, so an edit that leaves
+    /// the import graph unchanged (a body/comment/whitespace save — the common watch-mode
+    /// case) reuses it and the rebuild drops from seconds to tens of milliseconds. Keyed
+    /// by fingerprint, it self-invalidates exactly when the topology changes and so is
+    /// deliberately NOT cleared by invalidate_graph().
+    bc_cache: Mutex<Option<(u64, HashMap<String, f64>)>>,
 }
 
 /// Minimum interval between incremental filesystem re-scans. Bounds the cost of keeping
@@ -283,6 +291,7 @@ impl ApiState {
             compression_level: Mutex::new(CompressionLevel::Standard),
             file_mtimes: Mutex::new(HashMap::new()),
             last_refresh: Mutex::new(None),
+            bc_cache: Mutex::new(None),
         }
     }
 
@@ -595,9 +604,13 @@ impl ApiState {
 
         let files = self.mapped_files.lock().map_err(|e| e.to_string())?;
 
+        let _t = std::time::Instant::now();
+        macro_rules! phase { ($n:expr) => { if std::env::var("CKB_TIMING").is_ok() { eprintln!("[timing] {:>18}: {:?}", $n, _t.elapsed()); } }; }
+
         // Build the import-resolution index ONCE for the whole rebuild (O(N)); each import
         // then resolves via hash lookups instead of scanning every file (was O(N²)).
         let import_index = ImportIndex::build(&files).with_go_module(&self.root_path);
+        phase!("index_build");
 
         // Resolve every file's imports in parallel — resolution is a read-only lookup
         // against the immutable index, so it's embarrassingly parallel. On huge trees
@@ -676,6 +689,7 @@ impl ApiState {
             nodes.push(node);
             edges.append(&mut file_edges);
         }
+        phase!("resolve_edges");
 
         // Collapse duplicate (source, target) pairs — a file can resolve the
         // same import via multiple paths (re-exports, aliased crates, etc.).
@@ -691,7 +705,9 @@ impl ApiState {
         let structural: Vec<GraphEdge> =
             edges.iter().filter(|e| e.resolution != "fuzzy").cloned().collect();
 
+        phase!("structural_filter");
         let bridge_analysis = self.analyze_bridges(&nodes, &structural);
+        phase!("bridges+between");
 
         for node in &mut nodes {
             if let Some(analysis) = bridge_analysis.get(&node.module_id) {
@@ -706,9 +722,11 @@ impl ApiState {
 
         let cycles = self.detect_cycles(&nodes, &structural);
         let cycle_count = cycles.len();
+        phase!("cycles");
 
         let god_modules = self.detect_god_modules(&nodes, &structural, &files);
         let god_module_count = god_modules.len();
+        phase!("god_modules");
 
         let edge_tuples: Vec<(String, String)> = structural
             .iter()
@@ -872,6 +890,7 @@ impl ApiState {
             cochange_pairs: vec![],
         };
 
+        phase!("roles+metadata");
         let mut graph = self.project_graph.lock().map_err(|e| e.to_string())?;
         *graph = Some(response.clone());
 
@@ -1848,12 +1867,37 @@ impl ApiState {
         let avg_degree = 2.0 * edges.len() as f64 / node_count as f64;
         let hub_threshold = (avg_degree * 3.0).max(20.0) as usize;
 
-        let betweenness = self.compute_betweenness_centrality(&graph);
+        // Reuse the cached centrality map when the graph topology is unchanged since the
+        // last compute (fingerprint match). This is the incremental-rebuild win: the
+        // expensive Brandes pass runs only when an import edge actually changed.
+        let fingerprint = Self::betweenness_fingerprint(nodes, edges);
+        let cached = self
+            .bc_cache
+            .lock()
+            .ok()
+            .and_then(|g| g.as_ref().filter(|(fp, _)| *fp == fingerprint).map(|(_, m)| m.clone()));
+        if std::env::var("CKB_TIMING").is_ok() {
+            eprintln!("[timing]  betweenness: cache {}", if cached.is_some() { "HIT" } else { "MISS" });
+        }
+        let betweenness: HashMap<String, f64> = match cached {
+            Some(map) => map,
+            None => {
+                let computed: HashMap<String, f64> = self
+                    .compute_betweenness_centrality(&graph)
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v))
+                    .collect();
+                if let Ok(mut g) = self.bc_cache.lock() {
+                    *g = Some((fingerprint, computed.clone()));
+                }
+                computed
+            }
+        };
 
         let mut analysis: HashMap<String, BridgeAnalysis> = HashMap::new();
 
         for (node_id, bc) in &betweenness {
-            let degree = graph.edges(node_id).count();
+            let degree = graph.edges(node_id.as_str()).count();
             let is_hub = degree > hub_threshold;
 
             // bc is already normalized by (n-1)*(n-2) inside compute_betweenness_centrality
@@ -1885,116 +1929,137 @@ impl ApiState {
         analysis
     }
 
+    /// Order-independent fingerprint of the graph topology (node set + structural
+    /// edge set) that betweenness depends on. Content edits that don't touch imports
+    /// leave this unchanged, which is what lets `analyze_bridges` reuse the cached
+    /// centrality map. `wrapping_add` makes it insensitive to node/edge vec ordering;
+    /// the edge salt keeps a node named like an edge pair from colliding.
+    fn betweenness_fingerprint(nodes: &[GraphNode], edges: &[GraphEdge]) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut acc: u64 = 0xcbf2_9ce4_8422_2325;
+        for n in nodes {
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            n.module_id.hash(&mut h);
+            acc = acc.wrapping_add(h.finish());
+        }
+        acc = acc.wrapping_mul(0x0000_0100_0000_01b3);
+        for e in edges {
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            e.source.hash(&mut h);
+            e.target.hash(&mut h);
+            acc = acc.wrapping_add(h.finish());
+        }
+        acc
+    }
+
     fn compute_betweenness_centrality<'a>(
         &self,
         graph: &UnGraphMap<&'a str, ()>,
     ) -> HashMap<&'a str, f64> {
-        let mut betweenness = HashMap::new();
-        let mut nodes: Vec<&str> = graph.nodes().collect();
+        use rayon::prelude::*;
+
+        let mut nodes: Vec<&'a str> = graph.nodes().collect();
         // Sort so the strided source sample (below) is deterministic regardless of
         // graph/HashMap iteration order — otherwise the approximate bridge counts
         // would drift run-to-run.
         nodes.sort_unstable();
-
-        for node in &nodes {
-            betweenness.insert(*node, 0.0);
+        let n = nodes.len();
+        if n < 3 {
+            return nodes.into_iter().map(|node| (node, 0.0)).collect();
         }
 
-        // Exact Brandes is O(V·E) but re-inits O(V) maps per source → O(V²) in practice,
-        // which is ~100s at 14k nodes. For large graphs, estimate from a strided sample of
-        // source nodes and scale up (standard betweenness approximation); exact below the
-        // threshold so small projects and tests are unaffected.
+        // Map each node to a dense index and build an index-based adjacency list ONCE.
+        // Brandes then runs over Vec<usize>/Vec<f64> buffers instead of per-source
+        // HashMap<&str,_>, removing the hashing + V-sized reallocation that dominated
+        // the profile (sampled sources × V-sized maps was 98% of a rebuild).
+        let index: HashMap<&str, usize> =
+            nodes.iter().enumerate().map(|(i, &s)| (s, i)).collect();
+        let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
+        for (i, &node) in nodes.iter().enumerate() {
+            for w in graph.neighbors(node) {
+                if let Some(&j) = index.get(w) {
+                    adj[i].push(j);
+                }
+            }
+        }
+
+        // Exact Brandes is O(V·E); above the threshold estimate from a strided sample of
+        // source nodes and scale up (standard betweenness approximation). Exact below it
+        // so small projects and tests are unaffected.
         const BC_EXACT_MAX_NODES: usize = 1500;
         const BC_SAMPLE_SOURCES: usize = 800;
-        let n_nodes = nodes.len();
-        let (sources, scale): (Vec<&str>, f64) = if n_nodes <= BC_EXACT_MAX_NODES {
-            (nodes.clone(), 1.0)
+        let (sources, scale): (Vec<usize>, f64) = if n <= BC_EXACT_MAX_NODES {
+            ((0..n).collect(), 1.0)
         } else {
-            let stride = n_nodes / BC_SAMPLE_SOURCES;
-            let sampled: Vec<&str> = nodes.iter().step_by(stride.max(1)).copied().collect();
-            let scale = n_nodes as f64 / sampled.len() as f64;
+            let stride = (n / BC_SAMPLE_SOURCES).max(1);
+            let sampled: Vec<usize> = (0..n).step_by(stride).collect();
+            let scale = n as f64 / sampled.len() as f64;
             (sampled, scale)
         };
 
-        for src in &sources {
-            let mut stack: Vec<&str> = Vec::new();
-            let mut predecessors: HashMap<&str, Vec<&str>> = HashMap::new();
-            let mut sigma: HashMap<&str, f64> = HashMap::new();
-            let mut distance: HashMap<&str, i32> = HashMap::new();
-            let mut queue: std::collections::VecDeque<&str> = std::collections::VecDeque::new();
+        // Each source's dependency accumulation is independent, so run them in parallel.
+        // To stay deterministic despite float addition being non-associative, sum the
+        // per-source contributions in a FIXED order (source order), and bound peak memory
+        // by reducing in chunks rather than materializing all contribution vectors at once
+        // (at 100× scale, sources × V f64s would be gigabytes).
+        let brandes = |src: usize| -> Vec<f64> {
+            let mut stack: Vec<usize> = Vec::with_capacity(n);
+            let mut predecessors: Vec<Vec<usize>> = vec![Vec::new(); n];
+            let mut sigma = vec![0.0f64; n];
+            let mut distance = vec![-1i32; n];
+            let mut queue: std::collections::VecDeque<usize> = std::collections::VecDeque::new();
 
-            for node in &nodes {
-                distance.insert(*node, -1);
-                sigma.insert(*node, 0.0);
-            }
-
-            distance.insert(*src, 0);
-            sigma.insert(*src, 1.0);
-            queue.push_back(*src);
+            sigma[src] = 1.0;
+            distance[src] = 0;
+            queue.push_back(src);
 
             while let Some(v) = queue.pop_front() {
                 stack.push(v);
-                let v_dist = distance.get(v).copied().unwrap_or(0);
-
-                for w in graph.neighbors(v) {
-                    if *distance.get(w).unwrap_or(&-1) == -1 {
-                        distance.insert(w, v_dist + 1);
+                let v_dist = distance[v];
+                for &w in &adj[v] {
+                    if distance[w] < 0 {
+                        distance[w] = v_dist + 1;
                         queue.push_back(w);
                     }
-
-                    if *distance.get(w).unwrap_or(&0) == v_dist + 1 {
-                        let sigma_v = sigma.get(v).copied().unwrap_or(0.0);
-                        let sigma_w = sigma.get(w).copied().unwrap_or(0.0);
-                        sigma.insert(w, sigma_w + sigma_v);
-
-                        predecessors.entry(w).or_insert_with(Vec::new).push(v);
+                    if distance[w] == v_dist + 1 {
+                        sigma[w] += sigma[v];
+                        predecessors[w].push(v);
                     }
                 }
             }
 
-            let mut delta: HashMap<&str, f64> = HashMap::new();
-            for node in &nodes {
-                delta.insert(*node, 0.0);
-            }
-
+            let mut delta = vec![0.0f64; n];
+            let mut contrib = vec![0.0f64; n];
             while let Some(w) = stack.pop() {
-                if let Some(preds) = predecessors.get(w) {
-                    for v in preds {
-                        let delta_v = delta.get(v).copied().unwrap_or(0.0);
-                        let sigma_v = sigma.get(v).copied().unwrap_or(0.0);
-                        let sigma_w = sigma.get(w).copied().unwrap_or(0.0);
-                        let factor = sigma_v / sigma_w;
-                        delta.insert(
-                            v,
-                            delta_v + factor * (1.0 + delta.get(w).copied().unwrap_or(0.0)),
-                        );
-                    }
+                let dw = delta[w];
+                for &v in &predecessors[w] {
+                    delta[v] += (sigma[v] / sigma[w]) * (1.0 + dw);
                 }
-
-                if w != *src {
-                    let bc_w = betweenness.get(w).copied().unwrap_or(0.0);
-                    let delta_w = delta.get(w).copied().unwrap_or(0.0);
-                    betweenness.insert(w, bc_w + delta_w);
+                if w != src {
+                    contrib[w] += delta[w];
                 }
             }
-        }
+            contrib
+        };
 
-        // Scale sampled sums up to full-graph estimates, then normalize as usual.
-        if scale != 1.0 {
-            for (_, bc) in betweenness.iter_mut() {
-                *bc *= scale;
+        let chunk = (rayon::current_num_threads() * 4).max(1);
+        let mut totals = vec![0.0f64; n];
+        for batch in sources.chunks(chunk) {
+            let contribs: Vec<Vec<f64>> = batch.par_iter().map(|&src| brandes(src)).collect();
+            for c in &contribs {
+                for i in 0..n {
+                    totals[i] += c[i];
+                }
             }
         }
 
-        let n = nodes.len();
-        if n > 2 {
-            let divisor = ((n - 1) * (n - 2)) as f64;
-            for (_, bc) in betweenness.iter_mut() {
-                *bc /= divisor;
-            }
-        }
-
-        betweenness
+        // Scale sampled sums to full-graph estimates, then normalize as usual.
+        let divisor = ((n - 1) * (n - 2)) as f64;
+        nodes
+            .into_iter()
+            .enumerate()
+            .map(|(i, node)| (node, totals[i] * scale / divisor))
+            .collect()
     }
 
     #[allow(dead_code)]
@@ -2691,6 +2756,124 @@ mod tests {
             "expected resolved a->b edge, got edges: {:?}",
             graph.edges
         );
+    }
+
+    // Betweenness centrality is 98% of a rebuild's cost but depends only on graph
+    // topology, so it's cached across graph invalidations (the watch-mode win). This
+    // pins the contract: the cache survives invalidate_graph and reproduces identical
+    // bridge scores, yet re-fingerprints — and recomputes — when an edge changes.
+    #[test]
+    fn betweenness_cache_survives_invalidation_and_tracks_topology() {
+        let state = ApiState::new(std::path::PathBuf::from("/test"));
+        {
+            let mut files = state.mapped_files.lock().unwrap();
+            // path graph a->b->c->d: b and c sit on the only path (bridge candidates)
+            files.insert("a".into(), MappedFile::from_minimal("a.rs".into(), vec!["b".into()]));
+            files.insert("b".into(), MappedFile::from_minimal("b.rs".into(), vec!["c".into()]));
+            files.insert("c".into(), MappedFile::from_minimal("c.rs".into(), vec!["d".into()]));
+            files.insert("d".into(), MappedFile::from_minimal("d.rs".into(), vec![]));
+        }
+
+        let bridges = |g: &ProjectGraphResponse| -> Vec<(String, f64)> {
+            let mut v: Vec<(String, f64)> = g
+                .nodes
+                .iter()
+                .map(|n| (n.module_id.clone(), n.bridge_score.unwrap_or(0.0)))
+                .collect();
+            v.sort_by(|a, b| a.0.cmp(&b.0));
+            v
+        };
+
+        let g1 = state.rebuild_graph().unwrap();
+        let s1 = bridges(&g1);
+        let fp1 = state.bc_cache.lock().unwrap().as_ref().map(|(f, _)| *f);
+        assert!(fp1.is_some(), "bc_cache must be populated after a rebuild");
+
+        // invalidate_graph (as refresh_if_stale does) must NOT clear the centrality cache.
+        state.invalidate_graph();
+        assert!(
+            state.bc_cache.lock().unwrap().is_some(),
+            "invalidate_graph must leave bc_cache intact"
+        );
+        let g2 = state.rebuild_graph().unwrap();
+        assert_eq!(s1, bridges(&g2), "cached betweenness must reproduce identical bridge scores");
+        let fp2 = state.bc_cache.lock().unwrap().as_ref().map(|(f, _)| *f);
+        assert_eq!(fp1, fp2, "fingerprint must be stable when topology is unchanged");
+
+        // Add an edge — the fingerprint must change so betweenness is recomputed.
+        {
+            let mut files = state.mapped_files.lock().unwrap();
+            files.insert(
+                "a".into(),
+                MappedFile::from_minimal("a.rs".into(), vec!["b".into(), "d".into()]),
+            );
+        }
+        state.invalidate_graph();
+        let _g3 = state.rebuild_graph().unwrap();
+        let fp3 = state.bc_cache.lock().unwrap().as_ref().map(|(f, _)| *f);
+        assert_ne!(fp1, fp3, "fingerprint must change when an edge is added");
+    }
+
+    // Evidence (not a hard assertion — timings are machine-dependent): on a ~3k-node
+    // graph the second rebuild after a non-topology invalidation reuses the cached
+    // centrality and is dramatically faster than the first. Run with:
+    //   cargo test --release betweenness_cache_hit_is_fast -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn betweenness_cache_hit_is_fast() {
+        // Point CKB_BENCH_DIR at a real repo to measure it; otherwise use a synthetic
+        // 3000-node graph. Either way the second rebuild reuses the cached centrality.
+        let bench_dir = std::env::var("CKB_BENCH_DIR").ok();
+        let root = bench_dir
+            .clone()
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from("/bench"));
+        let state = ApiState::new(root.clone());
+        {
+            let mut files = state.mapped_files.lock().unwrap();
+            if let Some(dir) = &bench_dir {
+                use crate::scanner::{is_ignored_path, is_source_file, scan_files_with_noise_tracking};
+                use rayon::prelude::*;
+                let root = std::path::Path::new(dir);
+                let scanned = scan_files_with_noise_tracking(root).unwrap().files;
+                *files = scanned
+                    .par_iter()
+                    .filter(|p| !is_ignored_path(p) && is_source_file(p))
+                    .filter_map(|p| {
+                        let content = std::fs::read_to_string(p).ok()?;
+                        let rel = p.strip_prefix(root).unwrap_or(p).to_string_lossy().replace('\\', "/");
+                        Some((rel, crate::mapper::extract_skeleton(p, &content)))
+                    })
+                    .collect();
+            } else {
+                // A 3000-node chain plus a few cross edges — enough for the sampled
+                // Brandes pass to be the dominant cost.
+                let n = 3000usize;
+                for i in 0..n {
+                    let mut imports = Vec::new();
+                    if i + 1 < n {
+                        imports.push(format!("m{}", i + 1));
+                    }
+                    if i + 7 < n {
+                        imports.push(format!("m{}", i + 7));
+                    }
+                    let id = format!("m{i}");
+                    files.insert(id.clone(), MappedFile::from_minimal(format!("{id}.rs"), imports));
+                }
+            }
+        }
+
+        let t0 = std::time::Instant::now();
+        state.rebuild_graph().unwrap();
+        let miss = t0.elapsed();
+
+        state.invalidate_graph();
+        let t1 = std::time::Instant::now();
+        state.rebuild_graph().unwrap();
+        let hit = t1.elapsed();
+
+        eprintln!("betweenness MISS={miss:?}  HIT={hit:?}  speedup={:.1}x", miss.as_secs_f64() / hit.as_secs_f64().max(1e-9));
+        assert!(hit < miss, "cache hit ({hit:?}) must be faster than a full compute ({miss:?})");
     }
 
     // Regression: get_evolution must return snapshots newest-first so that
