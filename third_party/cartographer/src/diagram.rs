@@ -304,15 +304,19 @@ fn blast_radius_selection(
     included.push(epicenter_id.clone());
     seen.insert(epicenter_id.clone());
 
-    // Direct dependencies: where epicenter is the source. Fuzzy (low-confidence)
-    // edges are excluded so the blast radius can't be inflated by a stem guess.
-    for edge in graph.edges.iter().filter(|e| e.resolution != "fuzzy") {
+    // Direct dependencies: where epicenter is the source. All resolutions count
+    // here — blast radius is a neighborhood *display* for one explicitly-named
+    // module, not a structural metric. Excluding fuzzy edges emptied the view
+    // entirely for Rust/Python/Go, whose intra-package imports (`use crate::x`,
+    // `mod x`, `import foo`) all resolve by stem and are tagged fuzzy. Showing a
+    // stem-matched neighbor is far more useful than showing only the epicenter.
+    for edge in &graph.edges {
         if edge.source == epicenter_id && seen.insert(edge.target.clone()) {
             included.push(edge.target.clone());
         }
     }
     // Direct dependents: where epicenter is the target.
-    for edge in graph.edges.iter().filter(|e| e.resolution != "fuzzy") {
+    for edge in &graph.edges {
         if edge.target == epicenter_id && seen.insert(edge.source.clone()) {
             included.push(edge.source.clone());
         }
@@ -332,21 +336,49 @@ fn blast_radius_selection(
 /// `depth` of 0 collapses everything to a single root — not useful, so we
 /// treat 0 as "don't collapse". `depth` beyond any file's directory depth just
 /// keeps that file as its own node (folder = its full parent path).
+/// Count the directory components shared as a leading prefix by every path.
+/// `["a/b/x.rs", "a/b/c/y.rs"]` → 2 (`a`, `b`). Files at the root, or an empty
+/// set, yield 0. Only whole components count — `foo` and `foobar` share none.
+fn common_dir_prefix_len<'a>(paths: impl Iterator<Item = &'a str>) -> usize {
+    let mut prefix: Option<Vec<&str>> = None;
+    for path in paths {
+        let parts: Vec<&str> = path.split('/').collect();
+        // Directory components only — drop the filename.
+        let dirs = &parts[..parts.len().saturating_sub(1)];
+        prefix = Some(match prefix {
+            None => dirs.to_vec(),
+            Some(cur) => {
+                let n = cur.iter().zip(dirs).take_while(|(a, b)| a == b).count();
+                cur[..n].to_vec()
+            }
+        });
+    }
+    prefix.map(|p| p.len()).unwrap_or(0)
+}
+
 fn collapse_by_folder(graph: &ProjectGraphResponse, depth: usize) -> ProjectGraphResponse {
     use crate::api::{GraphMetadata, GraphNode, GraphEdge};
 
-    fn folder_key(path: &str, depth: usize) -> String {
+    // Directory components shared by every file. `depth` is counted *below* this
+    // shared root so a nested layout (e.g. `mapper-core/crate/src/*`) groups by
+    // the folders a reader actually distinguishes, instead of collapsing the whole
+    // tree into the one common prefix and yielding a single folder.
+    let common_prefix_len = common_dir_prefix_len(graph.nodes.iter().map(|n| n.path.as_str()));
+
+    let folder_key = |path: &str| -> String {
         let parts: Vec<&str> = path.split('/').collect();
         // File sits at parts[parts.len()-1]; directories are parts[0..len-1].
         let dir_parts = &parts[..parts.len().saturating_sub(1)];
-        let take = depth.min(dir_parts.len());
+        // Skip the shared prefix, then take `depth` of the remaining components.
+        let rel = &dir_parts[common_prefix_len.min(dir_parts.len())..];
+        let take = depth.min(rel.len());
         if take == 0 {
-            // File sits at the root — group under "(root)" so it's one folder.
+            // File sits directly under the shared root — one "(root)" folder.
             "(root)".to_string()
         } else {
-            dir_parts[..take].join("/")
+            rel[..take].join("/")
         }
-    }
+    };
 
     // Map each module_id to its folder id.
     let mut member_folder: HashMap<String, String> = HashMap::new();
@@ -354,7 +386,7 @@ fn collapse_by_folder(graph: &ProjectGraphResponse, depth: usize) -> ProjectGrap
     let mut folder_files: HashMap<String, Vec<&crate::api::GraphNode>> = HashMap::new();
 
     for node in &graph.nodes {
-        let fid = folder_key(&node.path, depth);
+        let fid = folder_key(&node.path);
         member_folder.insert(node.module_id.clone(), fid.clone());
         folder_files.entry(fid).or_default().push(node);
     }
@@ -477,16 +509,59 @@ pub fn render(graph: &ProjectGraphResponse, opts: &RenderOptions) -> Result<Rend
             (inc, trunc, None)
         }
         (None, None, false) => {
-            let (inc, trunc) = top_by_degree(graph, max_nodes);
+            // Folder view: include every folder node, even ones with no
+            // cross-folder edges. top_by_degree drops degree-0 nodes, which for a
+            // single-package repo (all code under one shared root → one folder
+            // whose only edges are dropped intra-folder self-loops) left nothing
+            // to draw and surfaced a misleading "run source first" error.
+            let (inc, trunc) = if collapsed.is_some() {
+                top_by_size(graph, max_nodes)
+            } else {
+                top_by_degree(graph, max_nodes)
+            };
             (inc, trunc, None)
         }
     };
 
     let included_set: HashSet<&str> = included.iter().map(|s| s.as_str()).collect();
 
-    // Map module_id -> node for stable lookup during rendering.
-    let node_by_id: HashMap<&str, &crate::api::GraphNode> = graph
+    // Display-only dead-code correction. `role`/`is_dead` are computed on the
+    // non-fuzzy ("structural") edge subset (see api.rs::finalize_graph_response),
+    // so a module reachable only through fuzzy edges — every Rust `use crate::x` /
+    // `mod x`, Python `import`, and Go package import — reads as dead even when it
+    // is clearly wired into the graph. That painted ~90% of a healthy Rust crate
+    // grey. Here we downgrade a `dead` role to `standard` when the node actually
+    // participates in an edge among the rendered set (any resolution). Structural
+    // metrics (health, cycles, bridges) are untouched — this only fixes coloring.
+    let connected: HashSet<&str> = {
+        let mut c = HashSet::new();
+        for e in &graph.edges {
+            if included_set.contains(e.source.as_str())
+                && included_set.contains(e.target.as_str())
+            {
+                c.insert(e.source.as_str());
+                c.insert(e.target.as_str());
+            }
+        }
+        c
+    };
+    let display_nodes: Vec<crate::api::GraphNode> = graph
         .nodes
+        .iter()
+        .map(|n| {
+            if n.role.as_deref() == Some("dead") && connected.contains(n.module_id.as_str()) {
+                let mut n = n.clone();
+                n.role = Some("standard".to_string());
+                n.is_dead = Some(false);
+                n
+            } else {
+                n.clone()
+            }
+        })
+        .collect();
+
+    // Map module_id -> node for stable lookup during rendering.
+    let node_by_id: HashMap<&str, &crate::api::GraphNode> = display_nodes
         .iter()
         .map(|n| (n.module_id.as_str(), n))
         .collect();
@@ -551,11 +626,32 @@ pub fn select_for_render(
             (inc, trunc, None)
         }
         (None, None, false) => {
-            let (inc, trunc) = top_by_degree(g, max_nodes);
+            // Folder view keeps isolated nodes (see render()'s matching arm).
+            let (inc, trunc) = if collapsed.is_some() {
+                top_by_size(g, max_nodes)
+            } else {
+                top_by_degree(g, max_nodes)
+            };
             (inc, trunc, None)
         }
     };
     Ok((collapsed, included, truncated))
+}
+
+/// Select nodes ordered by size (signature count, then member/file count),
+/// keeping isolated nodes. Used for the folder-collapsed view where a node may
+/// legitimately have no cross-folder edges yet must still appear.
+fn top_by_size(graph: &ProjectGraphResponse, max_nodes: usize) -> (Vec<String>, bool) {
+    let mut ranked: Vec<&crate::api::GraphNode> = graph.nodes.iter().collect();
+    ranked.sort_by(|a, b| {
+        b.signature_count
+            .cmp(&a.signature_count)
+            .then_with(|| b.fan_in.unwrap_or(0).cmp(&a.fan_in.unwrap_or(0)))
+            .then_with(|| a.module_id.cmp(&b.module_id))
+    });
+    let truncated = ranked.len() > max_nodes;
+    ranked.truncate(max_nodes);
+    (ranked.into_iter().map(|n| n.module_id.clone()).collect(), truncated)
 }
 
 fn top_by_degree(graph: &ProjectGraphResponse, max_nodes: usize) -> (Vec<String>, bool) {
@@ -1622,6 +1718,30 @@ mod tests {
         }
     }
 
+    fn fuzzy_edge(src: &str, tgt: &str) -> GraphEdge {
+        GraphEdge {
+            source: src.into(),
+            target: tgt.into(),
+            edge_type: "import".into(),
+            at_range: None,
+            resolution: "fuzzy".into(),
+        }
+    }
+
+    fn opts(format: DiagramFormat) -> RenderOptions<'static> {
+        RenderOptions {
+            format,
+            focus: None,
+            depth: 2,
+            max_nodes: 60,
+            show_cochange: None,
+            blast_radius: None,
+            docs_only: false,
+            group_by_folder_depth: None,
+            color_by_owner: false,
+        }
+    }
+
     fn fixture() -> ProjectGraphResponse {
         ProjectGraphResponse {
             nodes: vec![
@@ -1689,6 +1809,72 @@ mod tests {
         }).unwrap();
         assert!(r.truncated);
         assert_eq!(r.node_count, 2);
+    }
+
+    // Regression: blast radius must include neighbors reached only through fuzzy
+    // edges. Rust `use crate::x` / `mod x`, Python `import`, and Go package imports
+    // all resolve by stem and are tagged fuzzy; the old fuzzy filter emptied the
+    // view to just the epicenter for every project in those languages.
+    #[test]
+    fn blast_radius_includes_fuzzy_neighbors() {
+        let g = ProjectGraphResponse {
+            nodes: vec![node("epi", None), node("dep", None), node("rdep", None)],
+            edges: vec![fuzzy_edge("epi", "dep"), fuzzy_edge("rdep", "epi")],
+            ..fixture()
+        };
+        let mut o = opts(DiagramFormat::Mermaid);
+        o.blast_radius = Some("epi");
+        let r = render(&g, &o).unwrap();
+        assert_eq!(r.node_count, 3, "epicenter + fuzzy dep + fuzzy dependent");
+        assert!(r.included.iter().any(|m| m == "dep"));
+        assert!(r.included.iter().any(|m| m == "rdep"));
+    }
+
+    // Regression: a node flagged `dead` (no structural in-edges) but wired in via
+    // fuzzy edges must not be painted with the dead class in the diagram.
+    #[test]
+    fn connected_node_not_styled_dead() {
+        let g = ProjectGraphResponse {
+            nodes: vec![node("epi", Some("dead")), node("other", None)],
+            edges: vec![fuzzy_edge("epi", "other")],
+            ..fixture()
+        };
+        let mut o = opts(DiagramFormat::Mermaid);
+        o.blast_radius = Some("epi");
+        let r = render(&g, &o).unwrap();
+        assert!(!r.diagram.contains(":::dead"), "connected node must not be dead-styled");
+    }
+
+    // Regression: folder grouping of a single-package tree (all files under a
+    // shared root, no cross-folder edges) must still render its folders instead
+    // of erroring with an empty selection.
+    #[test]
+    fn folder_grouping_renders_isolated_folders() {
+        let g = ProjectGraphResponse {
+            nodes: vec![
+                node_at("a", "proj/api/a.rs"),
+                node_at("b", "proj/api/b.rs"),
+                node_at("c", "proj/db/c.rs"),
+            ],
+            edges: vec![],
+            ..fixture()
+        };
+        let mut o = opts(DiagramFormat::Mermaid);
+        o.group_by_folder_depth = Some(1);
+        let r = render(&g, &o).unwrap();
+        // Common prefix "proj" is stripped, so depth 1 groups by api/ and db/.
+        assert_eq!(r.node_count, 2, "two folder nodes even with no edges");
+        assert!(r.diagram.contains("api/"));
+        assert!(r.diagram.contains("db/"));
+    }
+
+    #[test]
+    fn common_dir_prefix_len_counts_shared_leading_dirs() {
+        assert_eq!(common_dir_prefix_len(["a/b/x.rs", "a/b/c/y.rs"].into_iter()), 2);
+        assert_eq!(common_dir_prefix_len(["a/b/x.rs", "a/z/y.rs"].into_iter()), 1);
+        // A file at the repo root drops the shared prefix to nothing.
+        assert_eq!(common_dir_prefix_len(["a/b/x.rs", "root.rs"].into_iter()), 0);
+        assert_eq!(common_dir_prefix_len(std::iter::empty()), 0);
     }
 
     #[test]

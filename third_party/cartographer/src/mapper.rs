@@ -2662,7 +2662,19 @@ fn json_walk(
 }
 
 fn truncate_str(s: &str, max: usize) -> String {
-    if s.len() <= max { s.to_string() } else { format!("{}...", &s[..max]) }
+    if s.len() <= max {
+        s.to_string()
+    } else {
+        // `max` is a byte budget. Slicing a &str at an arbitrary byte offset
+        // panics if it lands inside a multi-byte UTF-8 char (e.g. an en-dash
+        // '–' or 'ü' in indexed JSON strings), so back off to the nearest
+        // char boundary at or below `max`.
+        let mut end = max;
+        while end > 0 && !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!("{}...", &s[..end])
+    }
 }
 
 /// Extract OpenAPI endpoints from a parsed JSON object.

@@ -331,18 +331,34 @@ fn walk_rust_body(
     unresolved: &mut Vec<(String, String)>,
 ) {
     if node.kind() == "call_expression" {
-        let callee_raw = node
-            .child_by_field_name("function")
+        let fn_node = node.child_by_field_name("function");
+        // A method call `recv.m()` on a non-self receiver can't be attributed to a
+        // local method of the same name without type info — `stack.redo.push()` is
+        // `Vec::push`, not the file's `UndoStack::push`. Route those to unresolved
+        // instead of resolving by bare method name. `self`/`Self` receivers do call
+        // the current type's methods, so `self.m()` still resolves.
+        let foreign_method = fn_node.as_ref().map_or(false, |n| {
+            n.kind() == "field_expression"
+                && n.child_by_field_name("value").map_or(true, |recv| {
+                    let t = node_text(&recv, src);
+                    t != "self" && t != "Self"
+                })
+        });
+        let callee_raw = fn_node
             .map(|n| rust_callee_name(&n, src))
             .unwrap_or_default();
         if !callee_raw.is_empty() {
-            match resolver.resolve(&callee_raw) {
-                Some(target) => {
-                    if target != caller {
-                        out.push((caller.to_string(), target));
+            if foreign_method {
+                unresolved.push((caller.to_string(), callee_raw));
+            } else {
+                match resolver.resolve(&callee_raw) {
+                    Some(target) => {
+                        if target != caller {
+                            out.push((caller.to_string(), target));
+                        }
                     }
+                    None => unresolved.push((caller.to_string(), callee_raw)),
                 }
-                None => unresolved.push((caller.to_string(), callee_raw)),
             }
         }
     }

@@ -753,7 +753,21 @@ impl ApiState {
         let structural: Vec<GraphEdge> =
             edges.iter().filter(|e| e.resolution != "fuzzy").cloned().collect();
 
-        let bridge_analysis = self.analyze_bridges(&nodes, &structural);
+        // Architecture-health metrics (bridges, cycles, god modules, layer
+        // violations, health score) express the health of the *code* graph and
+        // must ignore the documentation subgraph. Markdown/TOML/JSON docs
+        // cross-reference each other densely, which fabricated HIGH-severity
+        // "dependency cycles" out of docs that merely link to each other and
+        // depressed the health score on doc-heavy repos. Docs stay in the
+        // returned graph and keep their own roles/degrees (below) — they're
+        // just not counted as code architecture. Doc↔code edges are already
+        // rejected at construction, so doc edges only ever join doc↔doc; this
+        // filter therefore never drops a real code relationship.
+        let code_structural: Vec<GraphEdge> =
+            structural.iter().filter(|e| e.edge_type != "doc").cloned().collect();
+        let code_node_count = nodes.iter().filter(|n| !is_doc_path(&n.path)).count();
+
+        let bridge_analysis = self.analyze_bridges(&nodes, &code_structural);
 
         for node in &mut nodes {
             if let Some(analysis) = bridge_analysis.get(&node.module_id) {
@@ -766,13 +780,13 @@ impl ApiState {
 
         let bridge_count = nodes.iter().filter(|n| n.is_bridge == Some(true)).count();
 
-        let cycles = self.detect_cycles(&nodes, &structural);
+        let cycles = self.detect_cycles(&nodes, &code_structural);
         let cycle_count = cycles.len();
 
-        let god_modules = self.detect_god_modules(&nodes, &structural, files);
+        let god_modules = self.detect_god_modules(&nodes, &code_structural, files);
         let god_module_count = god_modules.len();
 
-        let edge_tuples: Vec<(String, String)> = structural
+        let edge_tuples: Vec<(String, String)> = code_structural
             .iter()
             .map(|e| (e.source.clone(), e.target.clone()))
             .collect();
@@ -785,7 +799,7 @@ impl ApiState {
             cycle_count,
             god_module_count,
             layer_violation_count,
-            nodes.len(),
+            code_node_count.max(1),
         );
 
         // --- Role classification and dead-code detection ---
@@ -1219,7 +1233,16 @@ impl ApiState {
             let fo = nd.fan_out.unwrap_or(0) as f64 / max_fanout;
             0.45 * role_weight(&nd.role) + 0.30 * fo + 0.25 * r
         };
-        let mut rest: Vec<usize> = (0..n).filter(|&i| !seen[i]).collect();
+        // ranked_skeleton is a *code* orientation tool ("preferred starting point
+        // for broad architectural questions"); documentation has its own surface
+        // via doc_index / doc_context. Left in, docs dominate this ranking — a
+        // doc with outbound links and no inbound reads as an "entry" (role weight
+        // 1.0) and sorts above real code. So drop docs from the auto-ranked tail;
+        // a doc the caller explicitly put in `focus` is already seeded above and
+        // is kept.
+        let mut rest: Vec<usize> = (0..n)
+            .filter(|&i| !seen[i] && !is_doc_path(&nodes[i].path))
+            .collect();
         rest.sort_by(|&a, &b| {
             orientation(b)
                 .partial_cmp(&orientation(a))
@@ -1295,6 +1318,47 @@ pub(crate) fn git_head_sha(root: &std::path::Path) -> String {
 ///   `import { useState } from 'react'`     → ("react",        Some("useState"))
 ///   `from mymodule.auth import verify`     → ("mymodule/auth", Some("verify"))
 ///   `import "github.com/user/repo/pkg"`    → ("pkg",           None)
+/// Extract the crate-relative module PATH from a Rust `use`/`mod` import as a
+/// `/`-joined path suitable for suffix resolution. Strips the
+/// `crate`/`self`/`super`/`$crate` root, any `{…}` group or `as` alias, and a
+/// trailing glob or type-cased symbol (a trailing lowercase fn/const is left
+/// for the caller's progressive-prefix pass to drop). Returns None when nothing
+/// module-like remains (e.g. a bare `use crate;`).
+///
+/// This exists because Rust `use crate::io::language::Foo` collapses to the bare
+/// stem `language` under `parse_import_parts`, losing the qualification and
+/// forcing the resolver's low-confidence `fuzzy` stem fallback — which excludes
+/// every crate-internal import from the structural metrics. Keeping the path
+/// lets these edges resolve as `suffix` (structural).
+fn rust_module_path(import: &str) -> Option<String> {
+    let head = import.split('{').next().unwrap_or(import);
+    let head = head.split(" as ").next().unwrap_or(head).trim();
+    let head = head.trim_start_matches("::").trim_end_matches("::").trim();
+    if head.is_empty() {
+        return None;
+    }
+    let mut segs: Vec<&str> = head
+        .split("::")
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+    while matches!(
+        segs.first().copied(),
+        Some("crate") | Some("self") | Some("super") | Some("$crate")
+    ) {
+        segs.remove(0);
+    }
+    if let Some(&last) = segs.last() {
+        if last == "*" || last.chars().next().map(char::is_uppercase).unwrap_or(false) {
+            segs.pop();
+        }
+    }
+    if segs.is_empty() {
+        return None;
+    }
+    Some(segs.join("/"))
+}
+
 fn parse_import_parts(import: &str) -> (String, Option<String>) {
     let raw = import.trim().trim_end_matches(';');
 
@@ -1828,6 +1892,30 @@ impl<'a> ImportIndex<'a> {
             }
         }
 
+        // 0.5 Rust module-path resolution. Authoritative for .rs sources: a
+        //     `use crate::…`/`self::`/`super::` (or bare `mod foo;`) import names a
+        //     module FILE or directory inside the crate, resolved against the FULL
+        //     qualified path rather than the bare last segment. Progressive-prefix
+        //     drops a trailing symbol (fn/const/re-export) until a module matches.
+        //     Like the Go branch this always returns, so Rust imports never reach
+        //     the fuzzy stem/segment fallbacks below — which is what previously
+        //     tagged every crate-internal edge `fuzzy` and dropped it from the
+        //     structural (bridges/cycles/health/roles) analysis. An external crate
+        //     (serde, std, tokio, …) matches nothing local and yields no edge.
+        if source.ends_with(".rs") {
+            if let Some(module_rel) = rust_module_path(import) {
+                let mut segs: Vec<&str> = module_rel.split('/').collect();
+                while !segs.is_empty() {
+                    let cand = segs.join("/");
+                    if let Some(hit) = self.best_qualified_suffix(&cand, source) {
+                        return Some((hit, "suffix"));
+                    }
+                    segs.pop();
+                }
+                return None;
+            }
+        }
+
         // 1. Exact module_id match.
         if norm != source && self.ids.contains(norm.as_str()) {
             return Some((norm, "exact"));
@@ -2269,6 +2357,83 @@ impl ApiState {
             .unwrap_or(CompressionLevel::Standard)
     }
 
+    /// Iterative Tarjan strongly-connected components over a directed GraphMap.
+    /// petgraph 0.6's `tarjan_scc` recurses once per node, so on a very large,
+    /// deep graph the DFS overflows the stack and ABORTS the process — the Linux
+    /// kernel's ~64k-node include graph triggers exactly this. This explicit-stack
+    /// version is depth-independent. Same result shape as `petgraph::algo::tarjan_scc`
+    /// (one Vec per component). Node order comes from the GraphMap's insertion-ordered
+    /// node list, so output is deterministic.
+    fn tarjan_scc_iter<'a>(graph: &DiGraphMap<&'a str, ()>) -> Vec<Vec<&'a str>> {
+        let node_ids: Vec<&'a str> = graph.nodes().collect();
+        let n = node_ids.len();
+        let idx: HashMap<&str, usize> =
+            node_ids.iter().enumerate().map(|(i, &s)| (s, i)).collect();
+        let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
+        for (i, &v) in node_ids.iter().enumerate() {
+            for w in graph.neighbors(v) {
+                if let Some(&j) = idx.get(w) {
+                    adj[i].push(j);
+                }
+            }
+        }
+
+        const UNVISITED: usize = usize::MAX;
+        let mut index = vec![UNVISITED; n];
+        let mut lowlink = vec![0usize; n];
+        let mut on_stack = vec![false; n];
+        let mut tstack: Vec<usize> = Vec::new(); // Tarjan's node stack
+        let mut sccs: Vec<Vec<&'a str>> = Vec::new();
+        let mut next = 0usize;
+        // Explicit DFS stack of (node, next-neighbor cursor) replacing recursion.
+        let mut call: Vec<(usize, usize)> = Vec::new();
+
+        for start in 0..n {
+            if index[start] != UNVISITED {
+                continue;
+            }
+            call.push((start, 0));
+            while let Some(&(v, ci)) = call.last() {
+                if index[v] == UNVISITED {
+                    index[v] = next;
+                    lowlink[v] = next;
+                    next += 1;
+                    tstack.push(v);
+                    on_stack[v] = true;
+                }
+                if ci < adj[v].len() {
+                    call.last_mut().unwrap().1 = ci + 1;
+                    let w = adj[v][ci];
+                    if index[w] == UNVISITED {
+                        call.push((w, 0));
+                    } else if on_stack[w] {
+                        lowlink[v] = lowlink[v].min(index[w]);
+                    }
+                } else {
+                    // v fully explored: if it's an SCC root, pop the component.
+                    if lowlink[v] == index[v] {
+                        let mut comp = Vec::new();
+                        loop {
+                            let w = tstack.pop().unwrap();
+                            on_stack[w] = false;
+                            comp.push(node_ids[w]);
+                            if w == v {
+                                break;
+                            }
+                        }
+                        sccs.push(comp);
+                    }
+                    call.pop();
+                    // Propagate lowlink to the parent (the recursive return step).
+                    if let Some(&(p, _)) = call.last() {
+                        lowlink[p] = lowlink[p].min(lowlink[v]);
+                    }
+                }
+            }
+        }
+        sccs
+    }
+
     fn detect_cycles(&self, nodes: &[GraphNode], edges: &[GraphEdge]) -> Vec<CycleInfo> {
         let mut graph: DiGraphMap<&str, ()> = DiGraphMap::new();
 
@@ -2284,7 +2449,7 @@ impl ApiState {
             graph.add_edge(edge.source.as_str(), edge.target.as_str(), ());
         }
 
-        let sccs = petgraph::algo::tarjan_scc(&graph);
+        let sccs = Self::tarjan_scc_iter(&graph);
 
         let hub_nodes: std::collections::HashSet<&str> = nodes
             .iter()
@@ -2521,7 +2686,7 @@ impl ApiState {
             }
         }
 
-        let sccs = petgraph::algo::tarjan_scc(&graph);
+        let sccs = Self::tarjan_scc_iter(&graph);
         sccs.iter()
             .any(|c| c.len() > 1 && c.contains(&target_module))
     }
@@ -2788,6 +2953,52 @@ mod tests {
         // A qualified import that matches nothing local is external → no edge
         // (must NOT fuzzy-match app/models/auth.py on the bare `auth` stem).
         assert_eq!(idx.resolve("from django.contrib import auth", src), None);
+    }
+
+    // Rust crate-internal `use` paths must resolve as STRUCTURAL (`suffix`), not
+    // the low-confidence `fuzzy` the bare-stem fallback used to assign — that
+    // dropped every crate-internal edge out of the bridges/cycles/health/roles
+    // analysis, so a whole Rust crate looked edgeless. The qualified path also
+    // disambiguates same-stem files across modules, and an external crate still
+    // yields no edge.
+    #[test]
+    fn rust_crate_paths_resolve_structural_not_fuzzy() {
+        let mut files: HashMap<String, MappedFile> = HashMap::new();
+        for p in [
+            "src/main.rs",
+            "src/substrate.rs",
+            "src/io/mod.rs",
+            "src/io/language.rs",
+            "src/lifecycle/daemon.rs",
+            "src/selfhood/language.rs", // trap: same stem as io/language.rs
+        ] {
+            files.insert(p.to_string(), MappedFile::from_minimal(p.to_string(), vec![]));
+        }
+        let idx = ImportIndex::build(&files);
+        let src = "src/main.rs";
+
+        // `use crate::substrate::Substrate` — trailing type stripped, module file.
+        assert_eq!(
+            idx.resolve("crate::substrate::Substrate", src),
+            Some(("src/substrate.rs".to_string(), "suffix")),
+        );
+        // Qualified path disambiguates the same-stem trap: io, not selfhood.
+        assert_eq!(
+            idx.resolve("crate::io::language::converse", src),
+            Some(("src/io/language.rs".to_string(), "suffix")),
+        );
+        // `use crate::io` → the module directory's `mod.rs` entry point.
+        assert_eq!(
+            idx.resolve("crate::io", src),
+            Some(("src/io/mod.rs".to_string(), "suffix")),
+        );
+        // Grouped import: module before the `{…}` resolves.
+        assert_eq!(
+            idx.resolve("crate::lifecycle::daemon::{Daemon, tick}", src),
+            Some(("src/lifecycle/daemon.rs".to_string(), "suffix")),
+        );
+        // External crate names nothing local → no edge (no fuzzy fabrication).
+        assert_eq!(idx.resolve("serde::Deserialize", "src/substrate.rs"), None);
     }
 
     // JS/TS relative specifiers resolve against the SOURCE directory, not a

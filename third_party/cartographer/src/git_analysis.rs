@@ -97,6 +97,48 @@ fn parse_header(line: &str) -> Option<CommitHeader> {
     Some(CommitHeader { skip })
 }
 
+/// True for repo paths that only add noise to churn/coupling metrics: lockfiles,
+/// images/binaries/PDFs and other non-text assets, minified bundles, logs,
+/// sourcemaps, and anything the scanner already ignores (`.DS_Store`, vendored
+/// dirs, secrets). Source, config, and docs are kept — they carry real signal.
+fn is_noise_path(path: &str) -> bool {
+    use crate::scanner;
+    let p = Path::new(path);
+    if scanner::is_ignored_path(p) {
+        return true;
+    }
+    let base = path.rsplit('/').next().unwrap_or(path);
+    if scanner::NOISE_LOCK_FILES.contains(&base) {
+        return true;
+    }
+    let ext = path.rsplit('.').next().unwrap_or("").to_lowercase();
+    let ext = ext.as_str();
+    if scanner::NOISE_BINARY_EXTENSIONS.contains(&ext)
+        || scanner::NOISE_LOG_EXTENSIONS.contains(&ext)
+        || scanner::NOISE_MAP_EXTENSIONS.contains(&ext)
+        || matches!(
+            ext,
+            "pdf" | "lock" | "zip" | "gz" | "tar" | "tgz" | "svg" | "woff" | "woff2"
+                | "ttf" | "eot" | "otf" | "mp4" | "mov" | "webm" | "wasm" | "class" | "o"
+        )
+    {
+        return true;
+    }
+    path.ends_with(scanner::NOISE_MINIFIED_JS_SUFFIX)
+        || path.ends_with(scanner::NOISE_MINIFIED_CSS_SUFFIX)
+}
+
+/// Normalise a caller-supplied commit limit: 0 (the tool default) means
+/// "recent history", which we cap at 500 to bound cost — matching the tool
+/// docs' documented `0 → 500`.
+fn effective_limit(limit: usize) -> usize {
+    if limit == 0 {
+        500
+    } else {
+        limit
+    }
+}
+
 // ---------------------------------------------------------------------------
 // git_churn
 // ---------------------------------------------------------------------------
@@ -107,6 +149,7 @@ fn parse_header(line: &str) -> Option<CommitHeader> {
 /// Bot and formatting-only commits are excluded.
 /// Returns an empty map if git is unavailable or the directory is not a repo.
 pub fn git_churn(root: &Path, limit: usize) -> HashMap<String, usize> {
+    let limit = effective_limit(limit);
     let output = Command::new("git")
         .args([
             "-C",
@@ -133,7 +176,7 @@ pub fn git_churn(root: &Path, limit: usize) -> HashMap<String, usize> {
             skip_current = header.skip;
             continue;
         }
-        if line.is_empty() || skip_current {
+        if line.is_empty() || skip_current || is_noise_path(line) {
             continue;
         }
         *churn.entry(line.to_string()).or_insert(0) += 1;
@@ -154,6 +197,7 @@ pub fn git_churn(root: &Path, limit: usize) -> HashMap<String, usize> {
 /// Uses Adam Tornhill's coupling formula:
 ///   coupling = co_changes / min(churn_a, churn_b)
 pub fn git_cochange(root: &Path, limit: usize) -> Vec<CoChangePair> {
+    let limit = effective_limit(limit);
     let output = Command::new("git")
         .args([
             "-C",
@@ -190,7 +234,7 @@ pub fn git_cochange(root: &Path, limit: usize) -> Vec<CoChangePair> {
         if line.is_empty() {
             continue;
         }
-        if !skip_current {
+        if !skip_current && !is_noise_path(line) {
             current.push(line.to_string());
         }
     }
@@ -535,4 +579,44 @@ pub fn git_bus_factor(root: &Path, limit: usize) -> HashMap<String, usize> {
         .into_iter()
         .map(|(file, authors)| (file, authors.len()))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn noise_paths_are_filtered_but_source_config_docs_kept() {
+        // Noise: lockfiles, images, PDFs, minified bundles, sourcemaps, ignored.
+        for p in [
+            "Cargo.lock",
+            "madison-desktop/Cargo.lock",
+            "package-lock.json",
+            "docs/marketing/pitch/cinematic-orb.png",
+            "docs/lisa/Claude.pdf",
+            "ui/vendor/app.min.js",
+            "ui/app.min.css",
+            "dist/bundle.js.map",
+            ".DS_Store",
+        ] {
+            assert!(is_noise_path(p), "expected noise: {p}");
+        }
+        // Kept: real source, config, and docs carry coupling signal.
+        for p in [
+            "src/action.rs",
+            "Cargo.toml",
+            "stack/docker-compose.yml",
+            "config/entity.toml",
+            "README.md",
+            "docs/mcc/05-roadmap.md",
+        ] {
+            assert!(!is_noise_path(p), "expected kept: {p}");
+        }
+    }
+
+    #[test]
+    fn effective_limit_maps_zero_to_default() {
+        assert_eq!(effective_limit(0), 500);
+        assert_eq!(effective_limit(50), 50);
+    }
 }

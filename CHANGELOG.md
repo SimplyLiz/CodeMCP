@@ -4,6 +4,27 @@ All notable changes to CKB will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed — FFI crash (process abort) on very large repos
+
+The vendored engine aborted the whole process — including the CKB host, via the
+FFI — on a full Linux-kernel checkout (~64k C/H files): two unbounded recursions
+overflowed the stack. Recursive tree-sitter walkers on deeply nested (macro-
+generated) C now run on a 256 MB-stack pool, and recursive `tarjan_scc` cycle
+detection is replaced with an iterative version. Verified: `Health("/tmp/linux")`
+via FFI completes without crashing (regression test in `internal/cartographer`).
+This directly de-risks the very-large-C++-repo use case.
+
+### Changed — re-vendor CodeCartographer 4.0.0
+
+Re-vendored the graph engine at CodeCartographer 4.0.0 (FFI/C-ABI unchanged, so
+no bridge changes). Pulls upstream fixes CKB consumes: authoritative Rust
+qualified-path import resolution (crate-internal edges were dropped as fuzzy,
+making structural metrics measure docs instead of code), health/ranked-skeleton
+now exclude the documentation subgraph, char-boundary-safe string truncation
+(fixed a UTF-8 panic on non-ASCII indexed content), call-graph-resolved
+`reach` caller/callee edges, and git churn/coupling noise filtering. FFI-tagged
+tests green; full `-tags cartographer` build clean.
+
 ### Performance — scaling to very large C++ trees
 
 Profiling on a 40k-file synthetic tree (and Godot) exposed three serial

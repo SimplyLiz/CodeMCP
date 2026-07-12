@@ -204,6 +204,7 @@ fn primary_key(tool: &str) -> Option<&'static str> {
         "search_in_symbol" | "extract_content" | "list_key_handlers" | "map_state_machine" => "file",
         "doc_context" => "doc_path",
         "get_blast_radius" => "target",
+        "switch_project" => "path",
         _ => return None,
     })
 }
@@ -248,10 +249,21 @@ const CORE_PRESET: &[&str] = &[
     "semidiff",
     "get_health",
     "simulate_change",
+    "switch_project",
 ];
 
+/// JSON-RPC id used for the server-initiated `roots/list` request. Responses
+/// carrying this id are routed to the roots auto-follow path, not treated as
+/// client requests.
+const ROOTS_REQUEST_ID: &str = "__cartographer_roots_list__";
+
 pub struct McpServer {
-    api_state: std::sync::Arc<ApiState>,
+    /// The active project. Held behind a lock so `switch_project` and the roots
+    /// auto-follow can re-root the server without rebuilding it.
+    state_cell: std::sync::RwLock<std::sync::Arc<ApiState>>,
+    /// Set when the client advertised the `roots` capability at initialize;
+    /// gates whether serve() asks it for the workspace root.
+    client_supports_roots: std::sync::atomic::AtomicBool,
     tools: Vec<McpTool>,
     resources: Vec<McpResource>,
     prompts: Vec<McpPrompt>,
@@ -291,11 +303,70 @@ impl McpServer {
         };
 
         Self {
-            api_state,
+            state_cell: std::sync::RwLock::new(api_state),
+            client_supports_roots: std::sync::atomic::AtomicBool::new(false),
             tools,
             resources,
             prompts,
             enabled,
+        }
+    }
+
+    /// A cheap Arc snapshot of the active project. Taken once per request so a
+    /// concurrent `switch_project` can't swap the root under a running handler.
+    fn state(&self) -> std::sync::Arc<ApiState> {
+        self.state_cell.read().unwrap().clone()
+    }
+
+    /// Re-root the server at `new_root`, rebuilding the graph eagerly so any
+    /// error surfaces now and the first tool call is warm. Powers both the
+    /// `switch_project` tool and the roots auto-follow in `serve`.
+    pub fn switch_project(&self, new_root: std::path::PathBuf) -> Result<String, String> {
+        let canon = new_root
+            .canonicalize()
+            .map_err(|e| format!("cannot resolve {}: {}", new_root.display(), e))?;
+        if !canon.is_dir() {
+            return Err(format!("not a directory: {}", canon.display()));
+        }
+        // Scan + parse the new root the same way the initial serve path does,
+        // then build the graph from it. ApiState::new alone does not touch disk.
+        let mapped = crate::build_mapped_files_cached(&canon).map_err(|e| e.to_string())?;
+        let state = std::sync::Arc::new(ApiState::new(canon.clone()));
+        {
+            let mut files = state.mapped_files.lock().map_err(|e| e.to_string())?;
+            *files = mapped;
+        }
+        let graph = state.rebuild_graph()?;
+        let (files, edges) = (graph.nodes.len(), graph.edges.len());
+        state.refresh_if_stale(); // prime the mtime baseline for future edits
+        *self.state_cell.write().unwrap() = state;
+        eprintln!("cartographer: project root -> {}", canon.display());
+        Ok(format!(
+            "Switched project root to {} ({} files, {} edges).",
+            canon.display(),
+            files,
+            edges
+        ))
+    }
+
+    /// Handle a client->server *response* (a reply to a request we sent). Only
+    /// the `roots/list` response is meaningful: re-root at the first workspace.
+    fn handle_client_response(&self, v: &serde_json::Value) {
+        if v.get("id").and_then(|i| i.as_str()) != Some(ROOTS_REQUEST_ID) {
+            return;
+        }
+        let root = v
+            .pointer("/result/roots")
+            .and_then(|r| r.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|r0| r0.get("uri"))
+            .and_then(|u| u.as_str())
+            .and_then(file_uri_to_path);
+        if let Some(path) = root {
+            match self.switch_project(path) {
+                Ok(msg) => eprintln!("cartographer: roots auto-follow — {}", msg),
+                Err(e) => eprintln!("cartographer: roots auto-follow failed — {}", e),
+            }
         }
     }
 
@@ -1265,6 +1336,28 @@ impl McpServer {
                 }
             }
         }
+
+        // Re-root the running server at another repo, without restarting. Lets a
+        // single session evaluate multiple codebases (the roots auto-follow does
+        // this automatically for clients that support it).
+        tools.push(McpTool {
+            name: "switch_project".to_string(),
+            title: Some("Switch Project Root".to_string()),
+            description: "Re-point this server at a different repository by absolute path and \
+                          rebuild its graph, for the rest of the session (or until switched \
+                          again). Use when you want to analyse a repo other than the one the \
+                          server was launched in. Returns the new root and its file/edge counts."
+                .to_string(),
+            input_schema: mcinput!(
+                "path" => "string" => "Absolute path to the repository root to analyse"
+            ),
+            annotations: Some(ToolAnnotations {
+                read_only_hint: Some(false),
+                destructive_hint: Some(false),
+                idempotent_hint: Some(true),
+            }),
+        });
+
         tools
     }
 
@@ -1330,9 +1423,12 @@ impl McpServer {
     }
 
     pub fn call_tool(&self, mut call: McpToolCall) -> Result<McpToolResult, String> {
+        // Snapshot the active project once so a mid-call switch_project can't swap
+        // the root under a running handler.
+        let api_state = self.state();
         // Keep the session fresh: pick up edits/deletes since the last call (debounced,
         // incremental — only changed files are re-parsed). No-op within the debounce window.
-        self.api_state.refresh_if_stale();
+        api_state.refresh_if_stale();
 
         // Enforce preset filtering: a tool hidden from tools/list is not callable either.
         if let Some(enabled) = &self.enabled {
@@ -1380,7 +1476,7 @@ impl McpServer {
                     format: None,
                 };
 
-                let response = self.api_state.get_module_context(&request)?;
+                let response = api_state.get_module_context(&request)?;
                 Ok(McpToolResult {
                     content: vec![McpContent::text(
                         serde_json::to_string(&response).unwrap_or_default(),
@@ -1390,7 +1486,7 @@ impl McpServer {
             }
 
             "get_project_graph" => {
-                let graph = self.api_state.rebuild_graph()?;
+                let graph = api_state.rebuild_graph()?;
                 Ok(McpToolResult {
                     content: vec![McpContent::text(
                         serde_json::to_string(&graph).unwrap_or_default(),
@@ -1407,8 +1503,7 @@ impl McpServer {
                     .ok_or("Missing module_id")?;
                 let depth = args.get("depth").and_then(|v| v.as_u64()).unwrap_or(1) as u32;
 
-                let deps = self
-                    .api_state
+                let deps = api_state
                     .get_dependencies_internal(module_id, depth)?
                     .ok_or("No dependencies found")?;
 
@@ -1427,7 +1522,7 @@ impl McpServer {
                     .and_then(|v| v.as_str())
                     .ok_or("Missing module_id")?;
 
-                let dependents = self.api_state.get_dependents(module_id)?;
+                let dependents = api_state.get_dependents(module_id)?;
 
                 Ok(McpToolResult {
                     content: vec![McpContent::text(
@@ -1445,7 +1540,7 @@ impl McpServer {
                     .ok_or("Missing query")?;
                 let query_type = args.get("query_type").and_then(|v| v.as_str());
 
-                let results = self.api_state.search_graph(query, query_type)?;
+                let results = api_state.search_graph(query, query_type)?;
 
                 Ok(McpToolResult {
                     content: vec![McpContent::text(
@@ -1468,7 +1563,7 @@ impl McpServer {
                     _ => crate::api::CompressionLevel::Standard,
                 };
 
-                self.api_state.set_compression_level(level);
+                api_state.set_compression_level(level);
 
                 Ok(McpToolResult {
                     content: vec![McpContent::text(format!(
@@ -1486,7 +1581,7 @@ impl McpServer {
                     .and_then(|v| v.as_u64())
                     .ok_or("Missing cycle_index")? as usize;
 
-                let graph = self.api_state.rebuild_graph()?;
+                let graph = api_state.rebuild_graph()?;
 
                 let fix_plan = if graph.cycles.is_empty() {
                     "No cycles detected - graph is healthy!".to_string()
@@ -1527,7 +1622,7 @@ impl McpServer {
                     .and_then(|v| v.as_f64())
                     .unwrap_or(100.0);
 
-                let graph = self.api_state.rebuild_graph()?;
+                let graph = api_state.rebuild_graph()?;
 
                 let health = graph.metadata.health_score.unwrap_or(100.0);
                 let drop = 100.0 - health;
@@ -1571,7 +1666,7 @@ impl McpServer {
                     .and_then(|v| v.as_str())
                     .ok_or("Missing module_id")?;
 
-                let graph = self.api_state.rebuild_graph()?;
+                let graph = api_state.rebuild_graph()?;
 
                 let node = graph.nodes.iter().find(|n| n.module_id == module_id);
 
@@ -1667,7 +1762,7 @@ impl McpServer {
                     format: None,
                 };
 
-                let mut response = self.api_state.get_module_context(&request)?;
+                let mut response = api_state.get_module_context(&request)?;
                 response.signatures.retain(|sig| {
                     sig.symbol_name.as_deref() == Some(symbol_name.as_str())
                 });
@@ -1699,7 +1794,7 @@ impl McpServer {
                     .unwrap_or(10) as usize;
 
                 // Rebuild graph to ensure edges are populated
-                let graph = self.api_state.rebuild_graph()?;
+                let graph = api_state.rebuild_graph()?;
 
                 let node = graph
                     .nodes
@@ -1708,15 +1803,14 @@ impl McpServer {
                     .ok_or_else(|| format!("Target not found: {}", target))?;
                 let module_id = node.module_id.clone();
 
-                let deps = self
-                    .api_state
+                let deps = api_state
                     .get_dependencies_internal(&module_id, 1)?
                     .unwrap_or_default();
 
-                let dependents = self.api_state.get_dependents(&module_id)?;
+                let dependents = api_state.get_dependents(&module_id)?;
 
                 // Pre-fetch mapped_files once for LIP URI extraction.
-                let files_snapshot = self.api_state.mapped_files.lock()
+                let files_snapshot = api_state.mapped_files.lock()
                     .map(|g| g.clone())
                     .unwrap_or_default();
 
@@ -1782,7 +1876,7 @@ impl McpServer {
                     .unwrap_or(200) as usize;
 
                 let result =
-                    crate::search::find_files(&self.api_state.root_path, &pattern, limit, &crate::search::FindOptions::default())
+                    crate::search::find_files(&api_state.root_path, &pattern, limit, &crate::search::FindOptions::default())
                         .map_err(|e| e)?;
                 Ok(McpToolResult {
                     content: vec![McpContent::text(
@@ -1826,7 +1920,7 @@ impl McpServer {
                         .unwrap_or_default(),
                 };
 
-                let result = self.api_state.search_content(&pattern, &opts)?;
+                let result = api_state.search_content(&pattern, &opts)?;
                 Ok(McpToolResult {
                     content: vec![McpContent::text(
                         serde_json::to_string(&result).unwrap_or_default(),
@@ -1840,7 +1934,7 @@ impl McpServer {
                     .get("days")
                     .and_then(|v| v.as_u64())
                     .map(|d| d as u32);
-                let result = self.api_state.get_evolution(days)?;
+                let result = api_state.get_evolution(days)?;
                 Ok(McpToolResult {
                     content: vec![McpContent::text(
                         serde_json::to_string(&result).unwrap_or_default(),
@@ -1850,7 +1944,7 @@ impl McpServer {
             }
 
             "watch_status" => {
-                let state_path = self.api_state.root_path.join(".codecartographer_watch_state.json");
+                let state_path = api_state.root_path.join(".codecartographer_watch_state.json");
                 let content = match std::fs::read_to_string(&state_path) {
                     Ok(s) => s,
                     Err(_) => r#"{"watching":false}"#.to_string(),
@@ -1866,7 +1960,7 @@ impl McpServer {
             // -----------------------------------------------------------------
 
             "get_health" => {
-                let graph = self.api_state.rebuild_graph()?;
+                let graph = api_state.rebuild_graph()?;
                 let m = &graph.metadata;
                 let result = serde_json::json!({
                     "healthScore":         m.health_score,
@@ -1884,7 +1978,7 @@ impl McpServer {
             }
 
             "get_cycles" => {
-                let graph = self.api_state.rebuild_graph()?;
+                let graph = api_state.rebuild_graph()?;
                 Ok(McpToolResult {
                     content: vec![McpContent::text(serde_json::to_string(&graph.cycles).unwrap_or_default())],
                     is_error: None,
@@ -1892,7 +1986,7 @@ impl McpServer {
             }
 
             "check_layers" => {
-                let graph = self.api_state.rebuild_graph()?;
+                let graph = api_state.rebuild_graph()?;
                 let result = serde_json::json!({
                     "violations":     graph.layer_violations,
                     "violationCount": graph.layer_violations.len(),
@@ -1904,7 +1998,7 @@ impl McpServer {
             }
 
             "unreferenced_symbols" => {
-                let graph = self.api_state.rebuild_graph()?;
+                let graph = api_state.rebuild_graph()?;
                 let files: Vec<serde_json::Value> = graph.nodes.iter()
                     .filter_map(|n| {
                         let exports = n.unreferenced_exports.as_ref()?;
@@ -1928,8 +2022,8 @@ impl McpServer {
                 let new_sig = args.get("new_signature").and_then(|v| v.as_str()).map(str::to_string);
                 let rem_sig = args.get("remove_signature").and_then(|v| v.as_str()).map(str::to_string);
                 // Ensure graph is built before simulate_change
-                let _ = self.api_state.rebuild_graph()?;
-                let result = self.api_state.simulate_change(&module_id, new_sig.as_deref(), rem_sig.as_deref())?;
+                let _ = api_state.rebuild_graph()?;
+                let result = api_state.simulate_change(&module_id, new_sig.as_deref(), rem_sig.as_deref())?;
                 Ok(McpToolResult {
                     content: vec![McpContent::text(serde_json::to_string(&result).unwrap_or_default())],
                     is_error: None,
@@ -1944,10 +2038,10 @@ impl McpServer {
                 let args = &call.arguments;
                 let detail = args.get("detail").and_then(|v| v.as_str()).unwrap_or("standard");
                 // Rebuild graph ensures mapped_files is populated
-                let _ = self.api_state.rebuild_graph()?;
-                let files = self.api_state.mapped_files.lock().map_err(|e| e.to_string())?;
+                let _ = api_state.rebuild_graph()?;
+                let files = api_state.mapped_files.lock().map_err(|e| e.to_string())?;
                 // Compute churn labels for this render (not stored — files lock is immutable).
-                let churn_map = crate::git_analysis::git_churn(&self.api_state.root_path, 300);
+                let churn_map = crate::git_analysis::git_churn(&api_state.root_path, 300);
                 let churn_labels: std::collections::HashMap<String, &'static str> = {
                     let mut counts: Vec<usize> = files.values()
                         .map(|f| *churn_map.get(&f.path).unwrap_or(&0))
@@ -2019,7 +2113,7 @@ impl McpServer {
                         .collect();
                     let heat = churn_labels.get(&mf.path).copied().unwrap_or("");
                     serde_json::json!({
-                        "path":       self.api_state.rel(&mf.path),
+                        "path":       api_state.rel(&mf.path),
                         "heat":       heat,
                         "imports":    mf.imports,
                         "signatures": sigs,
@@ -2047,8 +2141,8 @@ impl McpServer {
                 let focus: Vec<String> = serde_json::from_str(focus_str).unwrap_or_default();
                 let budget = args.get("budget").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
                 // Ensure graph is built
-                let _ = self.api_state.rebuild_graph()?;
-                let result = self.api_state.ranked_skeleton(&focus, budget)?;
+                let _ = api_state.rebuild_graph()?;
+                let result = api_state.ranked_skeleton(&focus, budget)?;
                 Ok(McpToolResult {
                     content: vec![McpContent::text(serde_json::to_string(&result).unwrap_or_default())],
                     is_error: None,
@@ -2066,9 +2160,9 @@ impl McpServer {
                 let depth = args.get("depth").and_then(|v| v.as_u64()).unwrap_or(1) as usize;
                 let detail = args.get("detail").and_then(|v| v.as_str()).unwrap_or("standard");
 
-                let _ = self.api_state.rebuild_graph()?;
-                let files = self.api_state.mapped_files.lock().map_err(|e| e.to_string())?;
-                let graph = self.api_state.project_graph.lock().map_err(|e| e.to_string())?;
+                let _ = api_state.rebuild_graph()?;
+                let files = api_state.mapped_files.lock().map_err(|e| e.to_string())?;
+                let graph = api_state.project_graph.lock().map_err(|e| e.to_string())?;
                 let graph = graph.as_ref().ok_or("Graph not initialized")?;
 
                 // Fuzzy-match the focus string to a module_id.
@@ -2078,14 +2172,14 @@ impl McpServer {
                     .ok_or_else(|| format!("No file matching '{}'", focus))?;
 
                 let neighborhood = bfs_neighborhood(&seed, depth, &graph.edges);
-                let churn_map = crate::git_analysis::git_churn(&self.api_state.root_path, 300);
+                let churn_map = crate::git_analysis::git_churn(&api_state.root_path, 300);
                 let churn_labels = compute_churn_labels(&churn_map, files.values().map(|f| f.path.as_str()));
                 let tested_names = collect_tested_names(files.values());
 
                 let max_sigs = match detail { "minimal" => 5, "extended" => usize::MAX, _ => 20 };
                 let result_files: Vec<serde_json::Value> = neighborhood.iter()
                     .filter_map(|(module_id, role)| {
-                        files.get(module_id).map(|mf| render_mf(mf, role, max_sigs, &churn_labels, &tested_names, &self.api_state.root_path))
+                        files.get(module_id).map(|mf| render_mf(mf, role, max_sigs, &churn_labels, &tested_names, &api_state.root_path))
                     })
                     .collect();
 
@@ -2116,7 +2210,7 @@ impl McpServer {
                 let include_importers = args.get("include_importers")
                     .and_then(|v| v.as_bool()).unwrap_or(true);
 
-                let changed = crate::git_analysis::git_diff_files(&self.api_state.root_path, from, to);
+                let changed = crate::git_analysis::git_diff_files(&api_state.root_path, from, to);
                 if changed.is_empty() {
                     return Ok(McpToolResult {
                         content: vec![McpContent::text(serde_json::to_string(&serde_json::json!({
@@ -2130,12 +2224,12 @@ impl McpServer {
                     });
                 }
 
-                let _ = self.api_state.rebuild_graph()?;
-                let files = self.api_state.mapped_files.lock().map_err(|e| e.to_string())?;
-                let graph = self.api_state.project_graph.lock().map_err(|e| e.to_string())?;
+                let _ = api_state.rebuild_graph()?;
+                let files = api_state.mapped_files.lock().map_err(|e| e.to_string())?;
+                let graph = api_state.project_graph.lock().map_err(|e| e.to_string())?;
                 let graph = graph.as_ref().ok_or("Graph not initialized")?;
 
-                let churn_map = crate::git_analysis::git_churn(&self.api_state.root_path, 300);
+                let churn_map = crate::git_analysis::git_churn(&api_state.root_path, 300);
                 let churn_labels = compute_churn_labels(&churn_map, files.values().map(|f| f.path.as_str()));
                 let tested_names = collect_tested_names(files.values());
 
@@ -2171,7 +2265,7 @@ impl McpServer {
 
                 let result_files: Vec<serde_json::Value> = neighborhood.iter()
                     .filter_map(|(module_id, role)| {
-                        files.get(module_id).map(|mf| render_mf(mf, role, 20, &churn_labels, &tested_names, &self.api_state.root_path))
+                        files.get(module_id).map(|mf| render_mf(mf, role, 20, &churn_labels, &tested_names, &api_state.root_path))
                     })
                     .collect();
 
@@ -2208,8 +2302,8 @@ impl McpServer {
                 let budget = args.get("budget").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
 
                 let pat_lower = pattern.to_lowercase();
-                let files = self.api_state.mapped_files.lock().map_err(|e| e.to_string())?;
-                let churn_map = crate::git_analysis::git_churn(&self.api_state.root_path, 300);
+                let files = api_state.mapped_files.lock().map_err(|e| e.to_string())?;
+                let churn_map = crate::git_analysis::git_churn(&api_state.root_path, 300);
                 let churn_labels = compute_churn_labels(&churn_map, files.values().map(|f| f.path.as_str()));
                 let tested_names = collect_tested_names(files.values());
                 let max_sigs = match detail { "minimal" => 5, "extended" => usize::MAX, _ => 20 };
@@ -2231,7 +2325,7 @@ impl McpServer {
                 let mut tokens_used: usize = 0;
 
                 for (mf, role) in &matched {
-                    let rendered = render_mf(mf, role, max_sigs, &churn_labels, &tested_names, &self.api_state.root_path);
+                    let rendered = render_mf(mf, role, max_sigs, &churn_labels, &tested_names, &api_state.root_path);
                     let est = serde_json::to_string(&rendered).unwrap_or_default().len() / 4;
                     if budget > 0 && tokens_used + est > budget {
                         break;
@@ -2258,9 +2352,18 @@ impl McpServer {
 
             "git_churn" => {
                 let limit = call.arguments.get("limit").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-                let churn = crate::git_analysis::git_churn(&self.api_state.root_path, limit);
+                let churn = crate::git_analysis::git_churn(&api_state.root_path, limit);
+                // The tool contract is "sorted by churn count"; a HashMap serialises
+                // in arbitrary order, so emit an explicitly descending array (ties
+                // broken by path for determinism).
+                let mut ranked: Vec<(&String, &usize)> = churn.iter().collect();
+                ranked.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
+                let out: Vec<serde_json::Value> = ranked
+                    .into_iter()
+                    .map(|(file, count)| serde_json::json!({ "file": file, "commits": count }))
+                    .collect();
                 Ok(McpToolResult {
-                    content: vec![McpContent::text(serde_json::to_string(&churn).unwrap_or_default())],
+                    content: vec![McpContent::text(serde_json::to_string(&out).unwrap_or_default())],
                     is_error: None,
                 })
             }
@@ -2269,7 +2372,7 @@ impl McpServer {
                 let args = &call.arguments;
                 let limit     = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
                 let min_count = args.get("min_count").and_then(|v| v.as_u64()).unwrap_or(2) as usize;
-                let pairs: Vec<serde_json::Value> = crate::git_analysis::git_cochange(&self.api_state.root_path, limit)
+                let pairs: Vec<serde_json::Value> = crate::git_analysis::git_cochange(&api_state.root_path, limit)
                     .into_iter()
                     .filter(|p| p.count >= min_count)
                     .map(|p| serde_json::json!({
@@ -2287,7 +2390,7 @@ impl McpServer {
                 let args = &call.arguments;
                 let limit     = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
                 let min_count = args.get("min_count").and_then(|v| v.as_u64()).unwrap_or(2) as usize;
-                let graph = self.api_state.rebuild_graph()?;
+                let graph = api_state.rebuild_graph()?;
                 // Build set of existing import edges for fast lookup
                 let edge_set: std::collections::HashSet<(String, String)> = graph.edges.iter()
                     .flat_map(|e| [
@@ -2295,7 +2398,7 @@ impl McpServer {
                         (e.target.clone(), e.source.clone()),
                     ])
                     .collect();
-                let pairs: Vec<serde_json::Value> = crate::git_analysis::git_cochange(&self.api_state.root_path, limit)
+                let pairs: Vec<serde_json::Value> = crate::git_analysis::git_cochange(&api_state.root_path, limit)
                     .into_iter()
                     .filter(|p| p.count >= min_count)
                     .filter(|p| !edge_set.contains(&(p.file_a.clone(), p.file_b.clone())))
@@ -2314,7 +2417,7 @@ impl McpServer {
                 let args = &call.arguments;
                 let commit1 = args.get("commit1").and_then(|v| v.as_str()).ok_or("Missing commit1")?.to_string();
                 let commit2 = args.get("commit2").and_then(|v| v.as_str()).unwrap_or("HEAD").to_string();
-                let root = &self.api_state.root_path;
+                let root = &api_state.root_path;
                 let changed = crate::git_analysis::git_diff_files(root, &commit1, &commit2);
                 let mut result: Vec<serde_json::Value> = Vec::new();
                 for (file_path, status) in &changed {
@@ -2359,14 +2462,14 @@ impl McpServer {
                 };
                 let threshold = UNIX_EPOCH + Duration::from_millis(threshold_ms);
                 let now_ms = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
-                let scan = crate::scanner::scan_files_with_noise_tracking(&self.api_state.root_path)
+                let scan = crate::scanner::scan_files_with_noise_tracking(&api_state.root_path)
                     .map_err(|e| e.to_string())?;
                 let changed: Vec<String> = scan.files.iter()
                     .filter(|p| !crate::scanner::is_ignored_path(p))
                     .filter_map(|p| {
                         let mtime = std::fs::metadata(p).ok()?.modified().ok()?;
                         if mtime > threshold {
-                            let rel = p.strip_prefix(&self.api_state.root_path).unwrap_or(p)
+                            let rel = p.strip_prefix(&api_state.root_path).unwrap_or(p)
                                 .to_string_lossy().replace('\\', "/");
                             Some(rel)
                         } else { None }
@@ -2399,7 +2502,7 @@ impl McpServer {
                     max_per_file:  args.get("maxPerFile").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
                     ..Default::default()
                 };
-                let result = crate::search::replace_content(&self.api_state.root_path, &pattern, &replacement, &opts)
+                let result = crate::search::replace_content(&api_state.root_path, &pattern, &replacement, &opts)
                     .map_err(|e| e)?;
                 Ok(McpToolResult {
                     content: vec![McpContent::text(serde_json::to_string(&result).unwrap_or_default())],
@@ -2425,7 +2528,7 @@ impl McpServer {
                     limit:         args.get("limit").and_then(|v| v.as_u64()).unwrap_or(1000) as usize,
                     ..Default::default()
                 };
-                let result = crate::search::extract_content(&self.api_state.root_path, &pattern, &opts)
+                let result = crate::search::extract_content(&api_state.root_path, &pattern, &opts)
                     .map_err(|e| e)?;
                 Ok(McpToolResult {
                     content: vec![McpContent::text(serde_json::to_string(&result).unwrap_or_default())],
@@ -2453,9 +2556,9 @@ impl McpServer {
                     max_results: max_search,
                     ..Default::default()
                 };
-                let _ = self.api_state.rebuild_graph();
+                let _ = api_state.rebuild_graph();
                 let sym_hits: Vec<String> = {
-                    let files = self.api_state.mapped_files.lock().map_err(|e| e.to_string())?;
+                    let files = api_state.mapped_files.lock().map_err(|e| e.to_string())?;
                     crate::search::bm25_search_symbols(
                         files.iter().map(|(k, v)| (k.as_str(), v)),
                         &query,
@@ -2469,7 +2572,7 @@ impl McpServer {
                 let focus_files: Vec<String> = if !sym_hits.is_empty() {
                     sym_hits
                 } else {
-                    match crate::search::bm25_search(&self.api_state.root_path, &query, &bm25_opts) {
+                    match crate::search::bm25_search(&api_state.root_path, &query, &bm25_opts) {
                         Ok(sr) => sr.matches.into_iter().map(|m| m.path).collect(),
                         Err(_) => vec![],
                     }
@@ -2486,7 +2589,7 @@ impl McpServer {
                 };
 
                 // Step 2: ranked skeleton personalised to those files
-                let ranked = self.api_state.ranked_skeleton(&focus_files, budget)
+                let ranked = api_state.ranked_skeleton(&focus_files, budget)
                     .map_err(|e| e)?;
 
                 // Step 3: build context text
@@ -2544,7 +2647,7 @@ impl McpServer {
                 let min_partners = args.get("minPartners").and_then(|v| v.as_u64()).unwrap_or(3) as usize;
 
                 let mut entries = crate::git_analysis::git_cochange_dispersion(
-                    &self.api_state.root_path,
+                    &api_state.root_path,
                     commits,
                 );
                 entries.retain(|e| e.partner_count >= min_partners);
@@ -2587,7 +2690,7 @@ impl McpServer {
                 let mut report = crate::token_metrics::analyze(&content, &opts);
 
                 // Populate CARTOGRAPHER.md [commands] preset names
-                let cmds = crate::token_metrics::parse_cartographer_commands(&self.api_state.root_path);
+                let cmds = crate::token_metrics::parse_cartographer_commands(&api_state.root_path);
                 if !cmds.is_empty() {
                     let preset_names: Vec<String> = cmds.into_keys().collect();
                     report.commands = Some(preset_names);
@@ -2595,11 +2698,11 @@ impl McpServer {
 
                 // Warn if any preset command references a file in a detected cycle
                 if let Some(ref preset_names_ref) = report.commands.clone() {
-                    if let Ok(graph) = self.api_state.rebuild_graph() {
+                    if let Ok(graph) = api_state.rebuild_graph() {
                         let cycle_files: std::collections::HashSet<String> = graph.cycles.iter()
                             .flat_map(|c| c.nodes.iter().cloned())
                             .collect();
-                        let cmd_map = crate::token_metrics::parse_cartographer_commands(&self.api_state.root_path);
+                        let cmd_map = crate::token_metrics::parse_cartographer_commands(&api_state.root_path);
                         for preset_name in preset_names_ref {
                             if let Some(cmd) = cmd_map.get(preset_name) {
                                 let references_cycle = cycle_files.iter().any(|f| cmd.contains(f.as_str()));
@@ -2711,7 +2814,7 @@ impl McpServer {
                 let ctx     = args.get("context_lines").and_then(|v| v.as_u64()).unwrap_or(2) as usize;
 
                 // 1. Locate the file in the skeleton index
-                let files = self.api_state.mapped_files.lock().map(|g| g.clone()).unwrap_or_default();
+                let files = api_state.mapped_files.lock().map(|g| g.clone()).unwrap_or_default();
                 let mf = files.values()
                     .find(|f| f.path == file || f.path.contains(file))
                     .ok_or_else(|| format!("File not found: {}", file))?;
@@ -2744,7 +2847,7 @@ impl McpServer {
                     file_glob: Some(format!("**/{}", fname)),
                     ..Default::default()
                 };
-                let sr = crate::search::search_content(&self.api_state.root_path, pattern, &opts)
+                let sr = crate::search::search_content(&api_state.root_path, pattern, &opts)
                     .map_err(|e| e)?;
 
                 // 5. Filter to the symbol's estimated line range (convert 0-indexed → 1-indexed)
@@ -2777,7 +2880,7 @@ impl McpServer {
                 let file = args.get("file").and_then(|v| v.as_str()).ok_or("Missing file")?;
                 let ctx  = args.get("context_lines").and_then(|v| v.as_u64()).unwrap_or(4) as usize;
 
-                let files = self.api_state.mapped_files.lock().map(|g| g.clone()).unwrap_or_default();
+                let files = api_state.mapped_files.lock().map(|g| g.clone()).unwrap_or_default();
                 let mf = files.values()
                     .find(|f| f.path == file || f.path.contains(file))
                     .ok_or_else(|| format!("File not found: {}", file))?;
@@ -2795,7 +2898,7 @@ impl McpServer {
                         file_glob: Some(glob.clone()),
                         ..Default::default()
                     };
-                    if let Ok(sr) = crate::search::search_content(&self.api_state.root_path, pattern, &opts) {
+                    if let Ok(sr) = crate::search::search_content(&api_state.root_path, pattern, &opts) {
                         all_matches.extend(sr.matches);
                     }
                 }
@@ -2839,7 +2942,7 @@ impl McpServer {
                 let state_var    = args.get("state_var").and_then(|v| v.as_str()).unwrap_or("m.state").to_string();
                 let state_prefix = args.get("state_prefix").and_then(|v| v.as_str()).unwrap_or("State").to_string();
 
-                let files = self.api_state.mapped_files.lock().map(|g| g.clone()).unwrap_or_default();
+                let files = api_state.mapped_files.lock().map(|g| g.clone()).unwrap_or_default();
                 let mf = files.values()
                     .find(|f| f.path == file || f.path.contains(file))
                     .ok_or_else(|| format!("File not found: {}", file))?;
@@ -2858,7 +2961,7 @@ impl McpServer {
                 // 1. Find all state enum variants by searching for the prefix
                 let mut known_states: Vec<String> = Vec::new();
                 if let Ok(sr) = crate::search::search_content(
-                    &self.api_state.root_path, &state_prefix, &make_opts(300))
+                    &api_state.root_path, &state_prefix, &make_opts(300))
                 {
                     for m in &sr.matches {
                         let mut pos = 0usize;
@@ -2887,7 +2990,7 @@ impl McpServer {
                 let guard_pattern = format!("{} == ", state_var);
                 let mut guard_map: HashMap<String, Vec<usize>> = HashMap::new();
                 if let Ok(sr) = crate::search::search_content(
-                    &self.api_state.root_path, &guard_pattern, &make_opts(500))
+                    &api_state.root_path, &guard_pattern, &make_opts(500))
                 {
                     for m in &sr.matches {
                         for state in &known_states {
@@ -2902,7 +3005,7 @@ impl McpServer {
                 let mut all_key_matches = Vec::new();
                 for pattern in &[r#"case ""#, r#"== ""#] {
                     if let Ok(sr) = crate::search::search_content(
-                        &self.api_state.root_path, pattern, &make_opts(500))
+                        &api_state.root_path, pattern, &make_opts(500))
                     {
                         all_key_matches.extend(sr.matches);
                     }
@@ -2959,7 +3062,7 @@ impl McpServer {
             // doc_index — list all document nodes with structure + edges
             // -----------------------------------------------------------------
             "doc_index" => {
-                let docs = self.api_state.doc_nodes()?;
+                let docs = api_state.doc_nodes()?;
                 Ok(McpToolResult {
                     content: vec![McpContent::text(
                         serde_json::to_string(&docs).unwrap_or_default(),
@@ -2978,12 +3081,12 @@ impl McpServer {
                 let budget = args.get("budget").and_then(|v| v.as_u64()).unwrap_or(4000) as usize;
 
                 // Rebuild graph so edges exist
-                if let Err(e) = self.api_state.rebuild_graph() {
+                if let Err(e) = api_state.rebuild_graph() {
                     return Err(e);
                 }
 
                 // Find the doc in mapped_files (exact match or substring)
-                let files = self.api_state.mapped_files.lock().map_err(|e| e.to_string())?;
+                let files = api_state.mapped_files.lock().map_err(|e| e.to_string())?;
                 let (module_id, mf) = files.iter()
                     .find(|(_, f)| f.path == doc_path || f.path.contains(doc_path))
                     .ok_or_else(|| format!("Document not found: {}", doc_path))?;
@@ -3001,7 +3104,7 @@ impl McpServer {
                 let ranked = if focus.is_empty() {
                     vec![]
                 } else {
-                    self.api_state.ranked_skeleton(&focus, budget).unwrap_or_default()
+                    api_state.ranked_skeleton(&focus, budget).unwrap_or_default()
                 };
 
                 let total_tokens: usize = ranked.iter().map(|f| f.estimated_tokens).sum();
@@ -3047,7 +3150,7 @@ impl McpServer {
                     .unwrap_or("claude").to_string();
 
                 // Rebuild graph
-                if let Err(e) = self.api_state.rebuild_graph() {
+                if let Err(e) = api_state.rebuild_graph() {
                     return Err(e);
                 }
 
@@ -3057,7 +3160,7 @@ impl McpServer {
                     ..Default::default()
                 };
                 let bm25_result = crate::search::bm25_search(
-                    &self.api_state.root_path, &query, &bm25_opts,
+                    &api_state.root_path, &query, &bm25_opts,
                 ).unwrap_or_default();
 
                 // Step 2: Separate into doc files and code files
@@ -3075,7 +3178,7 @@ impl McpServer {
                 }
 
                 // Step 3: Follow doc cross-refs into code
-                let files = self.api_state.mapped_files.lock().map_err(|e| e.to_string())?;
+                let files = api_state.mapped_files.lock().map_err(|e| e.to_string())?;
                 let mut ref_code: Vec<String> = Vec::new();
                 for doc_path in &doc_files {
                     if let Some(mf) = files.get(doc_path.as_str()) {
@@ -3097,7 +3200,7 @@ impl McpServer {
                 all_focus.extend(code_files.iter().cloned());
                 all_focus.truncate(30);
 
-                let ranked = self.api_state.ranked_skeleton(&all_focus, budget)
+                let ranked = api_state.ranked_skeleton(&all_focus, budget)
                     .unwrap_or_default();
 
                 // Step 5: Build context text — docs first, then code
@@ -3173,10 +3276,10 @@ impl McpServer {
                 let budget = args.get("budget").and_then(|v| v.as_u64()).unwrap_or(8000) as usize;
                 let show_body = args.get("showBody").and_then(|v| v.as_bool()).unwrap_or(true);
 
-                if let Err(e) = self.api_state.rebuild_graph() {
+                if let Err(e) = api_state.rebuild_graph() {
                     return Err(e);
                 }
-                let files_lock = self.api_state.mapped_files.lock().map_err(|e| e.to_string())?;
+                let files_lock = api_state.mapped_files.lock().map_err(|e| e.to_string())?;
                 // The answer pipeline is built around repo-relative paths (git lookups,
                 // root.join(file) reads, BM25 paths). MappedFile.path is absolute, but the
                 // map key IS the repo-relative module_id — use it so BM25 candidates match.
@@ -3197,7 +3300,7 @@ impl McpServer {
                 };
 
                 let result = crate::answer::build_answer(
-                    &self.api_state.root_path, &mapped, &question, &opts,
+                    &api_state.root_path, &mapped, &question, &opts,
                 );
                 let rendered = crate::answer::render_answer(&result);
                 let meta = serde_json::json!({
@@ -3228,10 +3331,10 @@ impl McpServer {
                 let show_body = args.get("showBody").and_then(|v| v.as_bool()).unwrap_or(false);
 
                 // Ensure the skeleton is current.
-                if let Err(e) = self.api_state.rebuild_graph() {
+                if let Err(e) = api_state.rebuild_graph() {
                     return Err(e);
                 }
-                let files_lock = self.api_state.mapped_files.lock().map_err(|e| e.to_string())?;
+                let files_lock = api_state.mapped_files.lock().map_err(|e| e.to_string())?;
                 let mapped: Vec<crate::mapper::MappedFile> = files_lock.values().cloned().collect();
                 drop(files_lock);
 
@@ -3244,7 +3347,7 @@ impl McpServer {
                     ..Default::default()
                 };
 
-                match crate::reach::build_reach(&self.api_state.root_path, &mapped, &symbol, &opts) {
+                match crate::reach::build_reach(&api_state.root_path, &mapped, &symbol, &opts) {
                     Ok(result) => {
                         let rendered = crate::reach::render_reach(&result);
                         let meta = serde_json::json!({
@@ -3288,19 +3391,32 @@ impl McpServer {
                 }
             }
 
+            "switch_project" => {
+                let path = call
+                    .arguments
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .ok_or("Missing path")?;
+                let msg = self.switch_project(std::path::PathBuf::from(path))?;
+                Ok(McpToolResult {
+                    content: vec![McpContent::text(msg)],
+                    is_error: None,
+                })
+            }
+
             _ => Err(format!("Unknown tool: {}", call.name)),
         }
     }
 
     pub fn get_resource(&self, uri: &str) -> Result<String, String> {
+        let api_state = self.state();
         match uri {
             "codecartographer://project-graph" => {
-                let graph = self.api_state.rebuild_graph()?;
+                let graph = api_state.rebuild_graph()?;
                 Ok(serde_json::to_string(&graph).unwrap_or_default())
             }
             "codecartographer://module-index" => {
-                let files = self
-                    .api_state
+                let files = api_state
                     .mapped_files
                     .lock()
                     .map_err(|e| e.to_string())?;
@@ -3315,6 +3431,7 @@ impl McpServer {
         name: &str,
         arguments: &HashMap<String, String>,
     ) -> Result<String, String> {
+        let api_state = self.state();
         match name {
             "analyze_module" => {
                 let module_id = arguments
@@ -3329,7 +3446,7 @@ impl McpServer {
                     format: None,
                 };
 
-                let context = self.api_state.get_module_context(&request)?;
+                let context = api_state.get_module_context(&request)?;
 
                 Ok(format!(
                     "Analyze the module at {}:\n\n\
@@ -3363,7 +3480,7 @@ impl McpServer {
                     format: None,
                 };
 
-                let context = self.api_state.get_module_context(&request)?;
+                let context = api_state.get_module_context(&request)?;
 
                 Ok(format!(
                     "Plan a refactoring of {} to achieve: {}\n\n\
@@ -3402,8 +3519,10 @@ impl McpServer {
     /// Run the MCP server on stdio using JSON-RPC 2.0.
     pub fn serve(&self) {
         use std::io::{BufRead, Write};
+        use std::sync::atomic::Ordering;
         let stdin = std::io::stdin();
         let stdout = std::io::stdout();
+        let mut roots_requested = false;
         for line in stdin.lock().lines() {
             let line = match line {
                 Ok(l) => l,
@@ -3412,13 +3531,47 @@ impl McpServer {
             if line.trim().is_empty() {
                 continue;
             }
-            let response = self.handle_jsonrpc(&line);
-            if response.is_empty() {
-                continue; // notifications — no response
+
+            // A client->server *response* (reply to a request we sent) carries an
+            // id but no method. Route it to the roots auto-follow path; never reply.
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
+                if v.get("method").is_none()
+                    && (v.get("result").is_some() || v.get("error").is_some())
+                {
+                    self.handle_client_response(&v);
+                    continue;
+                }
             }
-            let mut out = stdout.lock();
-            let _ = writeln!(out, "{}", response);
-            let _ = out.flush();
+
+            let method: String = serde_json::from_str::<serde_json::Value>(&line)
+                .ok()
+                .and_then(|v| v.get("method").and_then(|m| m.as_str()).map(String::from))
+                .unwrap_or_default();
+
+            let response = self.handle_jsonrpc(&line);
+            if !response.is_empty() {
+                let mut out = stdout.lock();
+                let _ = writeln!(out, "{}", response);
+                let _ = out.flush();
+            }
+
+            // Once the client has finished initializing, ask it for its workspace
+            // roots (if it supports them) so we can auto-follow the session's repo
+            // instead of staying pinned to our launch directory.
+            if method == "notifications/initialized"
+                && !roots_requested
+                && self.client_supports_roots.load(Ordering::Relaxed)
+            {
+                roots_requested = true;
+                let mut out = stdout.lock();
+                let req = serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": ROOTS_REQUEST_ID,
+                    "method": "roots/list"
+                });
+                let _ = writeln!(out, "{}", req);
+                let _ = out.flush();
+            }
         }
     }
 
@@ -3447,6 +3600,12 @@ impl McpServer {
 
         match method {
             "initialize" => {
+                // If the client advertises the `roots` capability, we'll ask it
+                // for the workspace root after `initialized` and auto-follow it.
+                if params.pointer("/capabilities/roots").is_some() {
+                    self.client_supports_roots
+                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                }
                 let result = serde_json::json!({
                     "protocolVersion": "2024-11-05",
                     "capabilities": {
@@ -3703,6 +3862,42 @@ fn extract_quoted_key(line: &str) -> Option<String> {
     } else {
         None
     }
+}
+
+/// Convert a `file://` URI to a local path, decoding `%XX` escapes. Returns
+/// None for non-file URIs. Handles both `file:///abs/path` and `file://host/abs`.
+fn file_uri_to_path(uri: &str) -> Option<std::path::PathBuf> {
+    let rest = uri.strip_prefix("file://")?;
+    // Drop an optional authority (host) component: everything before the first
+    // '/' that starts the absolute path.
+    let path_part = match rest.find('/') {
+        Some(idx) => &rest[idx..],
+        None => rest,
+    };
+    let bytes = path_part.as_bytes();
+    let hex = |c: u8| -> Option<u8> {
+        match c {
+            b'0'..=b'9' => Some(c - b'0'),
+            b'a'..=b'f' => Some(c - b'a' + 10),
+            b'A'..=b'F' => Some(c - b'A' + 10),
+            _ => None,
+        }
+    };
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(h), Some(l)) = (hex(bytes[i + 1]), hex(bytes[i + 2])) {
+                out.push(h * 16 + l);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    let s = String::from_utf8(out).ok()?;
+    Some(std::path::PathBuf::from(s))
 }
 
 fn jsonrpc_ok(id: &Option<serde_json::Value>, result: serde_json::Value) -> String {

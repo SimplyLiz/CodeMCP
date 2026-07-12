@@ -339,6 +339,23 @@ fn tokenize_query(query: &str) -> Vec<String> {
     terms
 }
 
+fn common_prefix_len(a: &str, b: &str) -> usize {
+    a.bytes().zip(b.bytes()).take_while(|(x, y)| x == y).count()
+}
+
+/// Cheap inflectional/derivational match: a shared prefix of ≥4 chars with a
+/// short divergent inflectional tail (≤2) on each side. Matches approve~approval,
+/// execute~executes, confirm~confirmed, proposed~proposal — without matching
+/// action~actionable ("able") or compounds like gate~gateway ("way"), which are
+/// different words, not inflections.
+fn is_inflection(a: &str, b: &str) -> bool {
+    if a == b {
+        return true;
+    }
+    let p = common_prefix_len(a, b);
+    p >= 4 && a.len().saturating_sub(p) <= 2 && b.len().saturating_sub(p) <= 2
+}
+
 fn score_symbol(
     sig: &Signature,
     query_terms: &[String],
@@ -366,10 +383,42 @@ fn score_symbol(
     let mut sig_score = 0.0f64;
     let mut doc_score = 0.0f64;
 
+    // Tokenise the symbol name into word tokens (snake_case + camelCase) so a
+    // query term scores on a WHOLE name word, not an incidental substring:
+    // "action" must not fully match `converse_actionable`, or a coincidental
+    // hit outranks the real `Gate::submit` / `approve` / `execute_proposal`.
+    let name_tokens: Vec<String> = name
+        .split('_')
+        .flat_map(|p| crate::search::split_identifier(p))
+        .filter(|t| t.len() >= 2)
+        .collect();
+
     for term in query_terms {
-        if name.contains(term.as_str()) { name_score += 3.0; name_term_hits += 1; }
-        if raw.contains(term.as_str())  { sig_score  += 1.5; }
-        if doc.contains(term.as_str())  { doc_score  += 0.5; }
+        // Name: best match across the symbol's word tokens. Exact word is the
+        // strongest signal; an inflection (approve~approval, execute~executes)
+        // is a bit weaker; a mere incidental substring is weak and does NOT
+        // count as a term hit (so it can't satisfy the private-symbol gate).
+        let mut best = 0.0f64;
+        for tok in &name_tokens {
+            let s = if tok == term {
+                3.0
+            } else if is_inflection(term, tok) {
+                2.0
+            } else {
+                0.0
+            };
+            if s > best {
+                best = s;
+            }
+        }
+        if best > 0.0 {
+            name_score += best;
+            name_term_hits += 1;
+        } else if name.contains(term.as_str()) {
+            name_score += 1.0;
+        }
+        if raw.contains(term.as_str()) { sig_score += 1.5; }
+        if doc.contains(term.as_str()) { doc_score += 0.5; }
     }
 
     sym_score += name_score + sig_score + doc_score;
@@ -927,6 +976,57 @@ mod tests {
         let sig = make_sig("verify_token", SymbolKind::Function, "pub fn verify_token(t: &str)", 0);
         let score = score_symbol(&sig, &["verify".to_string(), "token".to_string()], &[], 1.0);
         assert!(score > 5.0, "expected high score for name match, got {score}");
+    }
+
+    #[test]
+    fn inflection_matches_inflections_not_lookalikes() {
+        assert!(is_inflection("approval", "approve"));
+        assert!(is_inflection("executes", "execute"));
+        assert!(is_inflection("confirmed", "confirm"));
+        assert!(is_inflection("proposed", "proposal"));
+        // Must NOT collapse a word into a longer derived word, or unrelated
+        // same-prefix words — that's what mis-ranked the NL answer.
+        assert!(!is_inflection("action", "actionable"));
+        assert!(!is_inflection("gate", "gateway"));
+        assert!(!is_inflection("exec", "executor")); // tail too long
+    }
+
+    #[test]
+    fn action_gate_query_ranks_real_gate_over_prompt_helper() {
+        // The exact miss from the Madison test-drive: for an "action approval
+        // gate" question, a helper whose name merely CONTAINS "action"
+        // (`converse_actionable`, an LLM-prompt builder) outranked the real
+        // gate methods. Token-aware name matching must demote it below them.
+        let terms: Vec<String> =
+            ["action", "approval", "gate", "proposed", "confirmed", "executes"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+        let helper = make_sig(
+            "converse_actionable",
+            SymbolKind::Function,
+            "pub fn converse_actionable(vitals: &Vitals) -> Result<String, String>",
+            0,
+        );
+        let execute = make_sig(
+            "execute_proposal",
+            SymbolKind::Function,
+            "pub fn execute_proposal(&mut self, action: &Proposal) -> String",
+            0,
+        );
+        let gate = make_sig("Gate", SymbolKind::Struct, "pub struct Gate {", 0);
+
+        let s_helper = score_symbol(&helper, &terms, &[], 1.0);
+        let s_execute = score_symbol(&execute, &terms, &[], 1.0);
+        let s_gate = score_symbol(&gate, &terms, &[], 1.0);
+        assert!(
+            s_execute > s_helper,
+            "execute_proposal ({s_execute}) should beat converse_actionable ({s_helper})"
+        );
+        assert!(
+            s_gate > s_helper,
+            "Gate ({s_gate}) should beat converse_actionable ({s_helper})"
+        );
     }
 
     #[test]

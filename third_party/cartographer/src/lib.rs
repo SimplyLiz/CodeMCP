@@ -133,6 +133,19 @@ fn save_cache(root: &Path, head: &str, files: &HashMap<String, MappedFile>) {
 // build_mapped_files: parallel scan + optional cache
 // ---------------------------------------------------------------------------
 
+/// Shared rayon pool with a large per-worker stack for the recursive tree-sitter
+/// walkers. Built once (lazily) and reused, so repeated FFI calls don't respawn
+/// threads. 256 MB is virtual reservation, not committed memory.
+fn parse_pool() -> &'static rayon::ThreadPool {
+    static POOL: std::sync::OnceLock<rayon::ThreadPool> = std::sync::OnceLock::new();
+    POOL.get_or_init(|| {
+        rayon::ThreadPoolBuilder::new()
+            .stack_size(256 * 1024 * 1024)
+            .build()
+            .expect("failed to build parse thread pool")
+    })
+}
+
 pub(crate) fn build_mapped_files(root: &Path) -> Result<HashMap<String, MappedFile>, String> {
     // Check persistent cache first
     let head = git_head(root);
@@ -143,21 +156,28 @@ pub(crate) fn build_mapped_files(root: &Path) -> Result<HashMap<String, MappedFi
     let scan_result = scan_files_with_noise_tracking(root).map_err(|e| e.to_string())?;
 
     // Parallel extraction — extract_skeleton is pure, each file is independent.
-    let result: HashMap<String, MappedFile> = scan_result
-        .files
-        .par_iter()
-        .filter(|p| !is_ignored_path(p))
-        .filter_map(|p| {
-            let content = std::fs::read_to_string(p).ok()?;
-            let mapped = extract_skeleton(p, &content);
-            let rel = p
-                .strip_prefix(root)
-                .unwrap_or(p)
-                .to_string_lossy()
-                .replace('\\', "/");
-            Some((rel, mapped))
-        })
-        .collect();
+    // Runs on a dedicated pool with a large stack: the tree-sitter walkers recurse
+    // by AST depth, and deeply nested files (macro-generated C initializers in the
+    // Linux kernel, etc.) overflow a worker's default ~2 MB stack and abort the
+    // whole process — including the host when linked via FFI. The pool is built
+    // once per process and shared across all FFI calls.
+    let result: HashMap<String, MappedFile> = parse_pool().install(|| {
+        scan_result
+            .files
+            .par_iter()
+            .filter(|p| !is_ignored_path(p))
+            .filter_map(|p| {
+                let content = std::fs::read_to_string(p).ok()?;
+                let mapped = extract_skeleton(p, &content);
+                let rel = p
+                    .strip_prefix(root)
+                    .unwrap_or(p)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                Some((rel, mapped))
+            })
+            .collect()
+    });
 
     save_cache(root, &head, &result);
     Ok(result)
