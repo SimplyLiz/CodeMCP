@@ -2757,6 +2757,9 @@ fn extract_json_schema(
 }
 
 fn collect_json_refs(obj: &serde_json::Map<String, serde_json::Value>, imports: &mut Vec<String>) {
+    // Depth-guard: deeply nested JSON (adversarial or generated) could otherwise
+    // recurse the stack to overflow, same class as the tree-sitter walkers.
+    let _depth = match crate::extractor::DepthGuard::enter() { Some(g) => g, None => return };
     for (key, val) in obj {
         if key == "$ref" {
             if let Some(r) = val.as_str() {
