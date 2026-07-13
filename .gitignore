@@ -47,8 +47,16 @@ testdata/fixtures/typescript/node_modules/
 testdata/**/.dart_tool/
 testdata/**/pubspec.lock
 
-# Vendored Cartographer Rust build artifacts
-third_party/cartographer/mapper-core/cartographer/target/
+# Vendored cartographer Rust build artifacts
+third_party/cartographer/target/
 
 # MCP runtime caches (pinned to commit hash, regenerated on startup)
 internal/mcp/.cartographer_cache.json
+internal/mcp/.codecartographer_cache.json
+
+# Cartographer-emitted artifacts (regenerated)
+cartographer_map.xml
+codecartographer_map.xml
+**/.cartographer_cache.json
+**/.codecartographer_cache.json
+**/.codecartographer_history.json

@@ -2,7 +2,179 @@
 
 All notable changes to CKB will be documented in this file.
 
-## [Unreleased]
+## [9.3.0] - 2026-07-13
+
+### Added — `ckb doctor` reports the Cartographer fast tier
+
+`doctor` now includes a `cartographer` check that reports whether the vendored
+structural engine (dependents, blast-radius, rollup — the SCIP-free fast tier)
+is linked into this binary. CGO-free npm/Homebrew builds warn with a `make
+build` fix hint; source builds report `linked (vX.Y.Z) — fast structural tier
+active`. Previously a build silently ran without the fast tier with no way to
+confirm it.
+
+### Fixed — FFI crash (process abort) on very large repos
+
+The vendored engine aborted the whole process — including the CKB host, via the
+FFI — on a full Linux-kernel checkout (~64k C/H files): two unbounded recursions
+overflowed the stack. Recursive tree-sitter walkers on deeply nested (macro-
+generated) C now run on a 256 MB-stack pool, recursive `tarjan_scc` cycle
+detection is replaced with an iterative version, and the walkers carry a hard
+depth ceiling (cap 50,000; the kernel's measured real peak is 3,348) as a belt
+against adversarial/generated input. Verified: `Health("/tmp/linux")` via FFI
+completes without crashing (regression test in `internal/cartographer`). This
+directly de-risks the very-large-C++-repo use case.
+
+### Changed — re-vendor CodeCartographer 4.0.0
+
+Re-vendored the graph engine at CodeCartographer 4.0.0 (FFI/C-ABI unchanged, so
+no bridge changes). Pulls upstream fixes CKB consumes: authoritative Rust
+qualified-path import resolution (crate-internal edges were dropped as fuzzy,
+making structural metrics measure docs instead of code), health/ranked-skeleton
+now exclude the documentation subgraph, char-boundary-safe string truncation
+(fixed a UTF-8 panic on non-ASCII indexed content), call-graph-resolved
+`reach` caller/callee edges, and git churn/coupling noise filtering. FFI-tagged
+tests green; full `-tags cartographer` build clean.
+
+### Performance — scaling to very large C++ trees
+
+Profiling on a 40k-file synthetic tree (and Godot) exposed three serial
+bottlenecks in the vendored graph engine; all now parallelize or drop in
+complexity:
+
+- **Parallel edge resolution** — `rebuild_graph` resolves every file's imports
+  via rayon against the immutable index (was single-threaded).
+- **Parallel, index-based betweenness centrality** — betweenness was 98% of a
+  graph rebuild (~3.14s of 3.2s on Godot). The Brandes pass per sampled source
+  now runs over dense `Vec` buffers keyed by node index (was per-source
+  `HashMap<&str,_>` reallocation) and the independent sources run across cores.
+  Per-source contributions are summed in fixed source order, so results are
+  **bit-identical regardless of core count** — deterministic across machines,
+  not just across runs. On Godot: betweenness 3,140ms → 57ms, full rebuild
+  3,197ms → 76ms (~42×), same 3182 bridges / 68 god-modules / 0 cycles.
+- **Directory-level rollup** — the vendored engine can now fold the file-level
+  graph to directory granularity at a given depth, aggregating cross-directory
+  dependencies and running the full structural analysis on the folded graph, so
+  bridges/cycles/god-modules/health describe subsystems rather than individual
+  files. On Godot this turns 4336 files / 3182 bridges into 160 subsystems /
+  139 bridges with actionable per-subsystem hints — the comprehensible view on
+  huge trees. Available as `rebuild_graph_rolled_up(depth)` (CLI:
+  `health --rollup <depth>`).
+- **Deterministic import resolution** — resolver candidate lists were in
+  HashMap order, so an ambiguous import could resolve to different targets
+  run-to-run (invisible at file level, but it drifted directory-level edge
+  counts). Candidate lists are now sorted and edge dedup keeps the strongest
+  resolution (exact < suffix < fuzzy), making the graph fully deterministic.
+- **Betweenness cache (incremental rebuild)** — centrality depends only on graph
+  topology, so it's cached keyed by a fingerprint of the structural node+edge
+  set. An edit that leaves imports unchanged (a body/comment/whitespace save —
+  the common watch-mode case) reuses it and skips the whole Brandes pass. The
+  cache survives graph invalidation and self-invalidates only when an import
+  actually changes. The win grows with repo size: at 100× scale, where sampled
+  betweenness re-inflates to seconds, a non-import edit stays near the ~40ms
+  floor instead of paying the full recompute.
+- **O(1) package-suffix fallback** — the qualified/Go package resolver's
+  directory-suffix probe scanned *every* directory per unresolved import
+  (O(dirs), a real cliff for repos with many external qualified imports). It now
+  probes only directories sharing the import's last segment via a suffix index.
+- Cartographer's CLI parse loops were also switched from serial to parallel
+  (`iter`→`par_iter`), though CKB uses the parallel FFI path.
+
+Measured: a cold 40k-file analysis went 56s → 12.7s (~4.4×); Godot (4.3k files)
+16s → ~2s (~8×), with identical results.
+
+### Changed
+
+- **Re-vendored the Rust crate to upstream `CodeCartographer` 1.3.3** (from
+  the interim `nyx-navigator` 1.1.0 fork), and dropped the `nyx`/`navigator`
+  naming — the CKB side is `cartographer` again, tracking upstream's FFI.
+  - Vendor path `third_party/nyx-navigator/` → `third_party/cartographer/`,
+    synced straight from upstream `mapper-core/codecartographer/`.
+  - Build tag `navigator` → `cartographer`; `make build` / `make test`
+    resolve `build-cartographer` / `test-cartographer`. `make build-fast`
+    (no Rust toolchain) unchanged.
+  - Static lib `libnavigator.a` → `libcode_cartographer.a`; FFI prefix
+    `navigator_*` → `codecartographer_*`; header `navigator.h` →
+    `codecartographer.h`; sync script `scripts/sync-nyx-navigator.sh` →
+    `scripts/sync-cartographer.sh`.
+  - Go package `internal/navigator` → `internal/cartographer`; error type
+    `NavigatorError` → `CartographerError`; status backend id
+    `navigator` → `cartographer`.
+
+### Gained from upstream 1.3.x (library-level; bridge surface unchanged)
+
+The re-vendor pulls upstream's 1.2–1.3 work into the linked library:
+
+- **Six new languages** — Java, C#, Ruby, Kotlin, Swift, PHP now have
+  tree-sitter skeleton extraction, file-local call graphs, and class
+  diagrams, on par with the original six. `skeleton_map`,
+  `ranked_skeleton`, `reach_symbol`, and search cover all twelve.
+- **Symbol-aware search corpus** — `query_context` / `answer_question`
+  rank over a BM25 corpus of parsed symbols (name + qualified name +
+  signature + doc-comment), not raw file bytes.
+- **Scope-qualified `reach_symbol`** — renders `Object.get_class`,
+  surfaces doc-comments, and filters call sites that qualify a different
+  class.
+- **Orientation-first repo map** — `ranked_skeleton` ranks by role +
+  fan-out instead of pure import-PageRank, so entry points and domain
+  core lead.
+- **Perf** — O(N) import resolution and sampled betweenness fix the
+  O(N²) hang on large C/C++ trees (Godot cold start ~2 min → ~12 s).
+
+### Fixed — go.mod-aware import resolution (kills fabricated dependency edges)
+
+The vendored resolver matched Go imports by bare filename stem, so
+`internal/errors` resolved to an unrelated `internal/a2a/errors.go` and a
+stdlib `sync` fabricated an edge to `internal/federation/sync.go`. Resolution
+is now Go-module-aware: an import is internal only if it lives under the
+`go.mod` module path, in which case it resolves to its package *directory*;
+everything else (stdlib, third-party) produces no internal edge. Measured on
+CKB itself: **~23% of dependency edges were fabricated (996 → 769)**, all **22
+reported dependency cycles were artifacts (→ 0**, as Go forbids package import
+cycles), bridges 244 → 187, and the architectural health score went 38 → 71.
+This directly cleans up every import-graph-derived surface — `getArchitecture`,
+`getBlastRadius`, `renderArchitecture`, `getModuleContext`, `analyzeImpact`,
+`prepareChange`, and the `review` layers/arch-health checks.
+
+As a safety net for the remaining languages (which still resolve heuristically),
+every edge now carries a `resolution` confidence tag (`exact` | `suffix` |
+`fuzzy`), exposed on `cartographer.GraphEdge`. All structural analysis is now
+computed on non-`fuzzy` edges only — cycles, the "will create a cycle"
+prediction, bridges, god modules, layer violations, and the blast radius — so
+none of the import-graph-derived surfaces (`getArchitecture`, `getBlastRadius`,
+`analyzeImpact`, `prepareChange`, the `review` layers/arch-health checks) can
+rest on a low-confidence stem guess. The returned graph still carries every
+edge, tagged, so consumers can decide. On the CKB side, `review`'s PR-split
+clustering skips `fuzzy` edges so a split recommendation isn't driven by a
+fabricated dependency.
+
+The same namespace-exact idea was generalized beyond Go: any extensionless
+import that carries directory structure (Python `from app.services import auth`,
+monorepo/aliased `components/Button`) now resolves against its **full path** —
+matching module files and package directories (preferring `__init__.py` /
+`index.*` entry points) — instead of collapsing to the last stem. A qualified
+import that matches nothing local is treated as external (no edge) rather than
+fuzzy-guessed. The Python extractor was fixed to preserve import keywords so
+dotted paths (`a.b.c`) normalize correctly. Net: `from app.services import auth`
+and `from app.models import auth` resolve to their own packages instead of
+colliding on the shared `auth` stem, and third-party imports stop fabricating
+internal edges.
+
+JS/TS relative imports (`./bar`, `../models/user`) now resolve against the
+**source file's directory** — path-precise, `..` walks up, a bare package dir
+uses its `index.*`. A relative path that isn't in the scan is a dangling ref
+(no edge), never a fuzzy same-name match. `export … from './x'` re-exports are
+now captured as dependencies. Bare package imports (`react`) stay external.
+
+### Available for follow-up wiring (not yet exposed)
+
+The vendored library exports FFI symbols not yet wired through the Go
+bridge or MCP layer:
+
+- `codecartographer_poll_changes(path, since_ms)` — incremental change
+  polling; fits CKB's `mcp --watch` and the daemon file-watcher.
+- `codecartographer_doc_index`, `codecartographer_doc_context`,
+  `codecartographer_query_docs` — full doc-retrieval pipeline.
 
 ## [9.2.0] - 2026-04-25
 

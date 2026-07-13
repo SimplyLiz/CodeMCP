@@ -583,7 +583,7 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 		}()
 	}
 
-	// Check: Layer violations (Cartographer — skip gracefully if not compiled in)
+	// Check: Layer violations (cartographer — skip gracefully if not compiled in)
 	if checkEnabled("layers") {
 		wg.Add(1)
 		go func() {
@@ -594,7 +594,7 @@ func (e *Engine) ReviewPR(ctx context.Context, opts ReviewPROptions) (*ReviewPRR
 		}()
 	}
 
-	// Check: Architectural health (Cartographer — skip gracefully if not compiled in)
+	// Check: Architectural health (cartographer — skip gracefully if not compiled in)
 	if checkEnabled("arch-health") {
 		wg.Add(1)
 		go func() {

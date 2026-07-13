@@ -1,6 +1,6 @@
 //go:build cartographer
 
-// Package cartographer provides CGo bindings to the Rust Cartographer library.
+// Package cartographer provides CGo bindings to the Rust cartographer library.
 // It enables CKB to perform fast architectural analysis, skeleton extraction,
 // and layer enforcement without IPC or subprocess overhead.
 //
@@ -10,17 +10,17 @@
 package cartographer
 
 /*
-#cgo darwin CFLAGS: -I${SRCDIR}/../../third_party/cartographer/mapper-core/cartographer/include
-#cgo darwin LDFLAGS: -L${SRCDIR}/../../third_party/cartographer/mapper-core/cartographer/target/release -lcartographer -lm -ldl -framework Security -framework CoreFoundation
+#cgo darwin CFLAGS: -I${SRCDIR}/../../third_party/cartographer/include
+#cgo darwin LDFLAGS: -L${SRCDIR}/../../third_party/cartographer/target/release -lcode_cartographer -lm -ldl -framework Security -framework CoreFoundation
 
-#cgo linux CFLAGS: -I${SRCDIR}/../../third_party/cartographer/mapper-core/cartographer/include
-#cgo linux LDFLAGS: -L${SRCDIR}/../../third_party/cartographer/mapper-core/cartographer/target/release -lcartographer -lm -ldl -lpthread
+#cgo linux CFLAGS: -I${SRCDIR}/../../third_party/cartographer/include
+#cgo linux LDFLAGS: -L${SRCDIR}/../../third_party/cartographer/target/release -lcode_cartographer -lm -ldl -lpthread
 
-#cgo windows CFLAGS: -I${SRCDIR}/../../third_party/cartographer/mapper-core/cartographer/include
-#cgo windows LDFLAGS: -L${SRCDIR}/../../third_party/cartographer/mapper-core/cartographer/target/release -lcartographer -lm
+#cgo windows CFLAGS: -I${SRCDIR}/../../third_party/cartographer/include
+#cgo windows LDFLAGS: -L${SRCDIR}/../../third_party/cartographer/target/release -lcode_cartographer -lm
 
 #include <stdlib.h>
-#include "cartographer.h"
+#include "codecartographer.h"
 */
 import "C"
 import (
@@ -28,14 +28,14 @@ import (
 	"unsafe"
 )
 
-// ffiResponse is the JSON envelope returned by all Cartographer FFI functions.
+// ffiResponse is the JSON envelope returned by all cartographer FFI functions.
 type ffiResponse struct {
 	OK    bool            `json:"ok"`
 	Error string          `json:"error,omitempty"`
 	Data  json.RawMessage `json:"data,omitempty"`
 }
 
-// Available reports whether the Cartographer library is linked into this binary.
+// Available reports whether the cartographer library is linked into this binary.
 func Available() bool { return true }
 
 func callFFI(fn func() *C.char) (*ffiResponse, error) {
@@ -43,7 +43,7 @@ func callFFI(fn func() *C.char) (*ffiResponse, error) {
 	if cstr == nil {
 		return nil, &CartographerError{"null response from FFI"}
 	}
-	defer C.cartographer_free_string(cstr)
+	defer C.codecartographer_free_string(cstr)
 
 	goStr := C.GoString(cstr)
 	var resp ffiResponse
@@ -60,13 +60,13 @@ func callFFI(fn func() *C.char) (*ffiResponse, error) {
 // Public API
 // ---------------------------------------------------------------------------
 
-// Version returns the Cartographer library version string (e.g. "1.5.0").
+// Version returns the cartographer library version string (e.g. "1.1.0").
 func Version() (string, error) {
-	cstr := C.cartographer_version()
+	cstr := C.codecartographer_version()
 	if cstr == nil {
 		return "", &CartographerError{"null response from version"}
 	}
-	defer C.cartographer_free_string(cstr)
+	defer C.codecartographer_free_string(cstr)
 	return C.GoString(cstr), nil
 }
 
@@ -76,7 +76,7 @@ func MapProject(path string) (*ProjectGraph, error) {
 	defer C.free(unsafe.Pointer(cPath))
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_map_project(cPath)
+		return C.codecartographer_map_project(cPath)
 	})
 	if err != nil {
 		return nil, err
@@ -95,7 +95,7 @@ func Health(path string) (*HealthReport, error) {
 	defer C.free(unsafe.Pointer(cPath))
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_health(cPath)
+		return C.codecartographer_health(cPath)
 	})
 	if err != nil {
 		return nil, err
@@ -121,7 +121,7 @@ func CheckLayers(path, layersPath string) ([]LayerViolation, error) {
 	}
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_check_layers(cPath, cLayers)
+		return C.codecartographer_check_layers(cPath, cLayers)
 	})
 	if err != nil {
 		return nil, err
@@ -156,7 +156,7 @@ func SimulateChange(path, moduleID, newSignature, removeSignature string) (*Impa
 	}
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_simulate_change(cPath, cModule, cNewSig, cRemSig)
+		return C.codecartographer_simulate_change(cPath, cModule, cNewSig, cRemSig)
 	})
 	if err != nil {
 		return nil, err
@@ -182,7 +182,7 @@ func SkeletonMap(path, detailLevel string) (*SkeletonResult, error) {
 	}
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_skeleton_map(cPath, cDetail)
+		return C.codecartographer_skeleton_map(cPath, cDetail)
 	})
 	if err != nil {
 		return nil, err
@@ -202,7 +202,7 @@ func GitChurn(path string, limit uint32) (map[string]int, error) {
 	defer C.free(unsafe.Pointer(cPath))
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_git_churn(cPath, C.uint(limit))
+		return C.codecartographer_git_churn(cPath, C.uint(limit))
 	})
 	if err != nil {
 		return nil, err
@@ -222,7 +222,7 @@ func GitCochange(path string, limit, minCount uint32) ([]CoChangePair, error) {
 	defer C.free(unsafe.Pointer(cPath))
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_git_cochange(cPath, C.uint(limit), C.uint(minCount))
+		return C.codecartographer_git_cochange(cPath, C.uint(limit), C.uint(minCount))
 	})
 	if err != nil {
 		return nil, err
@@ -243,7 +243,7 @@ func HiddenCoupling(path string, limit, minCount uint32) ([]CoChangePair, error)
 	defer C.free(unsafe.Pointer(cPath))
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_hidden_coupling(cPath, C.uint(limit), C.uint(minCount))
+		return C.codecartographer_hidden_coupling(cPath, C.uint(limit), C.uint(minCount))
 	})
 	if err != nil {
 		return nil, err
@@ -272,7 +272,7 @@ func Semidiff(path, commit1, commit2 string) ([]SemidiffFile, error) {
 	}
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_semidiff(cPath, cC1, cC2)
+		return C.codecartographer_semidiff(cPath, cC1, cC2)
 	})
 	if err != nil {
 		return nil, err
@@ -296,7 +296,7 @@ func RankedSkeleton(path string, focus []string, budget uint32) (*RankedSkeleton
 	defer C.free(unsafe.Pointer(cFocus))
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_ranked_skeleton(cPath, cFocus, C.uint(budget))
+		return C.codecartographer_ranked_skeleton(cPath, cFocus, C.uint(budget))
 	})
 	if err != nil {
 		return nil, err
@@ -315,7 +315,7 @@ func UnreferencedSymbols(path string) (*UnreferencedSymbolsResult, error) {
 	defer C.free(unsafe.Pointer(cPath))
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_unreferenced_symbols(cPath)
+		return C.codecartographer_unreferenced_symbols(cPath)
 	})
 	if err != nil {
 		return nil, err
@@ -348,7 +348,7 @@ func SearchContent(path, pattern string, opts *SearchContentOptions) (*SearchRes
 	}
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_search_content(cPath, cPattern, cOpts)
+		return C.codecartographer_search_content(cPath, cPattern, cOpts)
 	})
 	if err != nil {
 		return nil, err
@@ -381,7 +381,7 @@ func FindFiles(path, pattern string, limit uint32, opts *FindOptions) (*FindResu
 	}
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_find_files(cPath, cPattern, C.uint(limit), cOpts)
+		return C.codecartographer_find_files(cPath, cPattern, C.uint(limit), cOpts)
 	})
 	if err != nil {
 		return nil, err
@@ -403,7 +403,7 @@ func GetModuleContext(path, moduleID string, depth uint32) (*ModuleContext, erro
 	defer C.free(unsafe.Pointer(cModule))
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_module_context(cPath, cModule, C.uint(depth))
+		return C.codecartographer_module_context(cPath, cModule, C.uint(depth))
 	})
 	if err != nil {
 		return nil, err
@@ -440,7 +440,7 @@ func ReplaceContent(path, pattern, replacement string, opts *ReplaceOptions) (*R
 	}
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_replace_content(cPath, cPattern, cReplacement, cOpts)
+		return C.codecartographer_replace_content(cPath, cPattern, cReplacement, cOpts)
 	})
 	if err != nil {
 		return nil, err
@@ -472,7 +472,7 @@ func ExtractContent(path, pattern string, opts *ExtractOptions) (*ExtractResult,
 	}
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_extract_content(cPath, cPattern, cOpts)
+		return C.codecartographer_extract_content(cPath, cPattern, cOpts)
 	})
 	if err != nil {
 		return nil, err
@@ -505,7 +505,7 @@ func BM25Search(path, query string, opts *BM25Options) (*BM25Result, error) {
 	}
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_bm25_search(cPath, cQuery, cOpts)
+		return C.codecartographer_bm25_search(cPath, cQuery, cOpts)
 	})
 	if err != nil {
 		return nil, err
@@ -539,7 +539,7 @@ func QueryContext(path, query string, opts *QueryContextOpts) (*QueryContextResu
 	}
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_query_context(cPath, cQuery, cOpts)
+		return C.codecartographer_query_context(cPath, cQuery, cOpts)
 	})
 	if err != nil {
 		return nil, err
@@ -553,7 +553,7 @@ func QueryContext(path, query string, opts *QueryContextOpts) (*QueryContextResu
 }
 
 // ShotgunSurgery returns files ranked by co-change dispersion.
-// limit=0 uses the Cartographer default (100). minPartners=0 uses the default (3).
+// limit=0 uses the cartographer default (100). minPartners=0 uses the default (3).
 // Files with a high dispersion score exhibit the shotgun surgery smell: changing them
 // historically required simultaneous changes across many unrelated files.
 func ShotgunSurgery(path string, limit, minPartners uint32) ([]ShotgunSurgeryEntry, error) {
@@ -561,7 +561,7 @@ func ShotgunSurgery(path string, limit, minPartners uint32) ([]ShotgunSurgeryEnt
 	defer C.free(unsafe.Pointer(cPath))
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_shotgun_surgery(cPath, C.uint(limit), C.uint(minPartners))
+		return C.codecartographer_shotgun_surgery(cPath, C.uint(limit), C.uint(minPartners))
 	})
 	if err != nil {
 		return nil, err
@@ -575,13 +575,13 @@ func ShotgunSurgery(path string, limit, minPartners uint32) ([]ShotgunSurgeryEnt
 }
 
 // Evolution returns architectural health snapshots over the last `days` days of git history.
-// days=0 uses the Cartographer default (90).
+// days=0 uses the cartographer default (90).
 func Evolution(path string, days uint32) (*EvolutionResult, error) {
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_evolution(cPath, C.uint(days))
+		return C.codecartographer_evolution(cPath, C.uint(days))
 	})
 	if err != nil {
 		return nil, err
@@ -604,7 +604,7 @@ func BlastRadius(path, target string, maxRelated uint32) (*BlastRadiusResult, er
 	defer C.free(unsafe.Pointer(cTarget))
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_blast_radius(cPath, cTarget, C.uint(maxRelated))
+		return C.codecartographer_blast_radius(cPath, cTarget, C.uint(maxRelated))
 	})
 	if err != nil {
 		return nil, err
@@ -635,7 +635,7 @@ func ContextHealth(content string, opts *ContextHealthOpts) (*ContextHealthRepor
 	}
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_context_health(cContent, cOpts)
+		return C.codecartographer_context_health(cContent, cOpts)
 	})
 	if err != nil {
 		return nil, err
@@ -669,7 +669,7 @@ func RenderArchitecture(path, format, focus string, depth, maxNodes uint32) (*Re
 	}
 
 	resp, err := callFFI(func() *C.char {
-		return C.cartographer_render_architecture(cPath, cFormat, cFocus, C.uint(depth), C.uint(maxNodes))
+		return C.codecartographer_render_architecture(cPath, cFormat, cFocus, C.uint(depth), C.uint(maxNodes))
 	})
 	if err != nil {
 		return nil, err

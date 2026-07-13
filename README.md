@@ -144,9 +144,9 @@ claude mcp add --transport stdio ckb -- npx @tastehub/ckb mcp
 
 **Token efficiency shown at startup:**
 ```
-CKB MCP Server v9.0.0
-  Active tools: 14 / 76 (18%)
-  Estimated context: ~1k tokens
+CKB MCP Server v9.2.0
+  Active tools: 25 / 110 (22%)
+  Estimated context: ~4k tokens
   Preset: core
 ```
 
@@ -265,7 +265,7 @@ See the **[Index Management Guide](https://github.com/SimplyLiz/CodeMCP/wiki/Ind
 
 ## PR Review
 
-CKB review runs 20 quality checks in 5 seconds — secrets, breaking changes, dead code, complexity, test gaps, bug patterns, and more. Zero tokens, zero API calls.
+CKB review runs 21 quality checks in 5 seconds — secrets, breaking changes, dead code, complexity, test gaps, bug patterns, and more. Zero tokens, zero API calls.
 
 When your AI assistant (Claude Code, Cursor, Windsurf) reviews a PR, it calls CKB first and gets structured analysis in ~1k tokens. Then it only reads the files that matter — saving **50-80% of tokens** on large PRs.
 
@@ -301,7 +301,7 @@ ckb ownership        # File/path ownership
 ckb mcp              # Start MCP server
 ```
 
-**v9.0 Compound Operations (via MCP):**
+**Compound Operations (via MCP):**
 ```bash
 # These tools combine multiple queries into single calls
 explore      # Area exploration: symbols, dependencies, hotspots
@@ -532,23 +532,23 @@ Use `cmd /c` wrapper in any config above:
 <details>
 <summary><strong>Presets (Token Optimization)</strong></summary>
 
-CKB exposes 80+ tools, but most sessions only need a subset. Use presets to reduce token overhead by up to 83%:
+CKB exposes 110+ tools, but most sessions only need a subset. Use presets to reduce token overhead by up to 77%:
 
 ```bash
 # List all available presets with tool counts and token estimates
 ckb mcp --list-presets
 
-# Default: core preset (14 essential tools)
+# Default: core preset (25 essential tools)
 ckb mcp
 
 # Workflow-specific presets
-ckb mcp --preset=core        # 14 tools - search, explain, impact (default)
-ckb mcp --preset=review      # 19 tools - core + diff, ownership
-ckb mcp --preset=refactor    # 19 tools - core + coupling, dead code
-ckb mcp --preset=federation  # 28 tools - core + cross-repo
-ckb mcp --preset=docs        # 20 tools - core + doc-symbol linking
-ckb mcp --preset=ops         # 25 tools - core + jobs, webhooks, metrics
-ckb mcp --preset=full        # 80+ tools - all tools (legacy)
+ckb mcp --preset=core        # 25 tools - search, explain, impact (default)
+ckb mcp --preset=review      # 42 tools - core + diff, ownership, PR review
+ckb mcp --preset=refactor    # 42 tools - core + coupling, dead code
+ckb mcp --preset=federation  # 46 tools - core + cross-repo
+ckb mcp --preset=docs        # 34 tools - core + doc-symbol linking
+ckb mcp --preset=ops         # 43 tools - core + jobs, webhooks, metrics
+ckb mcp --preset=full        # 110 tools - complete feature set
 ```
 
 In MCP config:
@@ -625,7 +625,7 @@ See the **[Full Documentation Wiki](https://github.com/SimplyLiz/CodeMCP/wiki)**
 - [Incremental Indexing](https://github.com/SimplyLiz/CodeMCP/wiki/Incremental-Indexing) — Fast index updates for Go projects
 - [Doc-Symbol Linking](https://github.com/SimplyLiz/CodeMCP/wiki/Doc-Symbol-Linking) — Symbol detection in docs, staleness checking
 - [Authentication](https://github.com/SimplyLiz/CodeMCP/wiki/Authentication) — API tokens, scopes, rate limiting
-- [MCP Integration](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration) — Claude Code setup, 80+ tools
+- [MCP Integration](https://github.com/SimplyLiz/CodeMCP/wiki/MCP-Integration) — Claude Code setup, 110+ tools
 - [API Reference](https://github.com/SimplyLiz/CodeMCP/wiki/API-Reference) — HTTP API documentation
 - [Daemon Mode](https://github.com/SimplyLiz/CodeMCP/wiki/Daemon-Mode) — Always-on service with scheduler, webhooks
 - [Configuration](https://github.com/SimplyLiz/CodeMCP/wiki/Configuration) — All options including MODULES.toml
@@ -647,7 +647,7 @@ See the **[Full Documentation Wiki](https://github.com/SimplyLiz/CodeMCP/wiki)**
 
 **Optional (for enhanced analysis):**
 - SCIP indexer for your language (scip-go, scip-typescript, etc.) — run `ckb index` to auto-install
-- [LIP v2.0](https://lip-sigma.vercel.app) semantic embedding daemon (requires Rust/cargo) — strongly recommended for best search quality ([docs](https://lip-sigma.vercel.app/docs), [crates.io](https://crates.io/crates/lip-cli)):
+- [LIP v2.3+](https://lip-sigma.vercel.app) semantic embedding daemon (requires Rust/cargo) — strongly recommended for best search quality ([docs](https://lip-sigma.vercel.app/docs), [crates.io](https://crates.io/crates/lip-cli)):
   ```bash
   cargo install lip-cli
   lip daemon --socket ~/.local/share/lip/lip.sock

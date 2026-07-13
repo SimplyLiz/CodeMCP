@@ -1,11 +1,12 @@
-// Package cartographer provides CGo bindings to the Rust Cartographer library.
+// Package cartographer provides CGo bindings to the Rust cartographer library
+// (formerly cartographer).
 package cartographer
 
 import "errors"
 
-// ErrUnavailable is returned by stub builds when Cartographer is not compiled
-// in. Callers check Available() first; under `-tags cartographer` this value
-// is never returned but still needs to be referenceable by tool impls.
+// ErrUnavailable is returned by stub builds when the cartographer library is not
+// compiled in. Callers check Available() first; under `-tags cartographer` this
+// value is never returned but still needs to be referenceable by tool impls.
 var ErrUnavailable = errors.New("cartographer: not compiled in this build (use -tags cartographer)")
 
 // ---------------------------------------------------------------------------
@@ -39,6 +40,9 @@ type GraphEdge struct {
 	Source   string `json:"source"`
 	Target   string `json:"target"`
 	EdgeType string `json:"edgeType"`
+	// Resolution is the confidence with which the import was resolved:
+	// "exact", "suffix", or "fuzzy". Treat "fuzzy" edges as low-confidence.
+	Resolution string `json:"resolution,omitempty"`
 }
 
 // GraphMetadata contains aggregate statistics.
@@ -389,7 +393,7 @@ type ContextHealthReport struct {
 	Recommendations []string        `json:"recommendations"`
 }
 
-// CartographerError is returned when a Cartographer FFI call fails.
+// CartographerError is returned when a cartographer FFI call fails.
 type CartographerError struct {
 	Message string
 }

@@ -1,11 +1,11 @@
 //go:build !cartographer
 
-// Package cartographer provides CGo bindings to the Rust Cartographer library.
+// Package cartographer provides CGo bindings to the Rust cartographer library.
 // This stub is compiled when the 'cartographer' build tag is absent.
 // All functions return ErrUnavailable; callers should check Available() first.
 package cartographer
 
-// Available reports whether the Cartographer library is linked into this binary.
+// Available reports whether the cartographer library is linked into this binary.
 func Available() bool { return false }
 
 func Version() (string, error)                                  { return "", ErrUnavailable }

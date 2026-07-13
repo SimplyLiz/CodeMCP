@@ -1,6 +1,6 @@
 //go:build cartographer
 
-// ckb-bench compares Cartographer-backed file discovery against filepath.Walk.
+// ckb-bench compares cartographer-backed file discovery against filepath.Walk.
 // Run as a standalone binary to avoid the CGo fork-safety issue that affects
 // go test binaries when the Rust library spawns git subprocesses.
 //
@@ -120,8 +120,8 @@ func main() {
 	}
 
 	walkDur := bench("filepath.Walk + language detect", n, walkFileCount)
-	cartDur := bench("cartographer.MapProject + node iterate", n, cartographerFileCount)
-	speedup := float64(walkDur) / float64(cartDur)
+	cartoDur := bench("cartographer.MapProject + node iterate", n, cartographerFileCount)
+	speedup := float64(walkDur) / float64(cartoDur)
 	fmt.Printf("  → speedup: %.2fx\n\n", speedup)
 
 	// -------------------------------------------------------------------------
@@ -195,8 +195,8 @@ func main() {
 	}
 
 	walkConceptDur := bench("filepath.WalkDir + concept extract", n, walkConcepts)
-	cartConceptDur := bench("cartographer.MapProject + concept extract", n, cartographerConcepts)
-	conceptSpeedup := float64(walkConceptDur) / float64(cartConceptDur)
+	cartoConceptDur := bench("cartographer.MapProject + concept extract", n, cartographerConcepts)
+	conceptSpeedup := float64(walkConceptDur) / float64(cartoConceptDur)
 	fmt.Printf("  → speedup: %.2fx\n", conceptSpeedup)
 }
 
