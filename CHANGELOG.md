@@ -2,7 +2,16 @@
 
 All notable changes to CKB will be documented in this file.
 
-## [Unreleased]
+## [9.3.0] - 2026-07-13
+
+### Added — `ckb doctor` reports the Cartographer fast tier
+
+`doctor` now includes a `cartographer` check that reports whether the vendored
+structural engine (dependents, blast-radius, rollup — the SCIP-free fast tier)
+is linked into this binary. CGO-free npm/Homebrew builds warn with a `make
+build` fix hint; source builds report `linked (vX.Y.Z) — fast structural tier
+active`. Previously a build silently ran without the fast tier with no way to
+confirm it.
 
 ### Fixed — FFI crash (process abort) on very large repos
 
