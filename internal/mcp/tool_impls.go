@@ -1143,13 +1143,13 @@ func (s *MCPServer) toolAnalyzeImpact(params map[string]interface{}) (*envelope.
 		}
 	}
 
-	// Best-effort LIP nyx-agent-lock check — silent when LIP is not running.
+	// Best-effort LIP agent-lock check — silent when LIP is not running.
 	var lipWarnings []string
 	for _, filePath := range affectedFiles {
 		lipURI := "lip://local/" + filePath
-		if val, ok, _ := lipClient.GetAnnotation(lipURI, "lip:nyx-agent-lock"); ok {
+		if val, ok, _ := lipClient.GetAnnotation(lipURI, "lip:agent-lock"); ok {
 			lipWarnings = append(lipWarnings, fmt.Sprintf(
-				"file %s is locked by an active nyx.code agent (session: %s) — analysis may be stale",
+				"file %s is locked by an active agent (session: %s) — analysis may be stale",
 				filePath, val,
 			))
 		}
