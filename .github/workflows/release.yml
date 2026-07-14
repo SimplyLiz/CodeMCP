@@ -12,10 +12,18 @@ concurrency:
 permissions:
   contents: write
 
+# Cross-platform binaries are built with cgo on native runners so the
+# Cartographer fast tier (prebuilt static lib fetched from SimplyLiz/
+# CodeCartographer) is linked in — CGO_ENABLED=0 cross-compiling from one runner
+# can't do that. Archives are uploaded straight to the release from each build
+# job (no actions/upload-artifact), so the Actions artifact storage quota can
+# never block a release. Windows has no Cartographer lib upstream, so it ships
+# the pure-Go stub tier.
 jobs:
-  release:
+  preflight:
+    name: Validate + draft release
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -27,12 +35,6 @@ jobs:
         with:
           go-version-file: 'go.mod'
           cache: true
-
-      - name: Set up Node.js
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
-        with:
-          node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
 
       - name: Validate tokens
         env:
@@ -46,22 +48,15 @@ jobs:
           NPM_RESPONSE=$(curl -s -H "Authorization: Bearer $NPM_AUTH_TOKEN" https://registry.npmjs.org/-/npm/v1/tokens)
           NPM_RESULT=$(echo "$NPM_RESPONSE" | node -e "try{const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));const t=d.objects?.find(o=>o.token&&o.token.startsWith(process.env.NPM_AUTH_TOKEN.slice(0,8)));if(!t){console.log('NOT_FOUND')}else if(new Date(t.expiry)<new Date()){console.log('EXPIRED:'+t.expiry)}else{console.log('OK:'+t.expiry+':'+t.scopes?.map(s=>s.name).join(','))}}catch{console.log('ERROR')}" 2>/dev/null)
           case "$NPM_RESULT" in
-            OK:*)
-              EXPIRY=$(echo "$NPM_RESULT" | cut -d: -f2-3)
-              SCOPES=$(echo "$NPM_RESULT" | cut -d: -f4)
-              echo "✓ npm token is valid (expires: $EXPIRY, scopes: $SCOPES)"
-              ;;
+            OK:*) echo "✓ npm token is valid" ;;
             EXPIRED:*)
               echo "::error::npm token expired on ${NPM_RESULT#EXPIRED:}. Update NPM_AUTH_TOKEN in repo secrets."
-              FAILED=true
-              ;;
+              FAILED=true ;;
             *)
               echo "::error::npm token is invalid or could not be verified. Update NPM_AUTH_TOKEN in repo secrets."
-              FAILED=true
-              ;;
+              FAILED=true ;;
           esac
 
-          # Check Homebrew tap token
           echo "Checking Homebrew tap token..."
           BREW_RESULT=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $HOMEBREW_TAP_TOKEN" https://api.github.com/repos/SimplyLiz/homebrew-ckb)
           if [ "$BREW_RESULT" = "200" ]; then
@@ -78,35 +73,206 @@ jobs:
       - name: Run tests
         run: go test -race ./...
 
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
-        with:
-          version: '~> v2'
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-
-      - name: Download checksums
+      - name: Create draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          # Wait for release assets with polling
-          for i in $(seq 1 30); do
-            if gh release view "v${VERSION}" --json assets --jq '.assets[].name' 2>/dev/null | grep -q "checksums.txt"; then
-              break
-            fi
-            echo "Waiting for release assets... (attempt $i/30)"
-            sleep 5
-          done
-          curl -sLO "https://github.com/SimplyLiz/CodeMCP/releases/download/v${VERSION}/checksums.txt"
+          TAG="${GITHUB_REF_NAME}"
+          PRE=""
+          [[ "$TAG" == *-* ]] && PRE="--prerelease"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — reusing it."
+          else
+            gh release create "$TAG" --draft $PRE --title "CKB $TAG" --generate-notes
+          fi
+
+  build:
+    name: Build — ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: preflight
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+            cartographer: true
+          # x86_64 cross-built on Apple Silicon (clang is a native macOS cross
+          # compiler); links the x86_64 Cartographer .a. Avoids the scarce
+          # macos-13 Intel runners.
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+            cartographer: true
+            cc: "clang -arch x86_64"
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            cartographer: true
+          - os: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+            cartographer: true
+          # Windows: no upstream Cartographer static lib → pure-Go stub tier.
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            cartographer: false
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Build + package + upload
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          TAG="${GITHUB_REF_NAME}"
+          GOOS="${{ matrix.goos }}"
+          GOARCH="${{ matrix.goarch }}"
+          LDFLAGS="-s -w \
+            -X github.com/SimplyLiz/CodeMCP/internal/version.Version=${VERSION} \
+            -X github.com/SimplyLiz/CodeMCP/internal/version.Commit=${GITHUB_SHA::7} \
+            -X github.com/SimplyLiz/CodeMCP/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          OUT="ckb"
+          [ "$GOOS" = "windows" ] && OUT="ckb.exe"
+
+          if [ "${{ matrix.cartographer }}" = "true" ]; then
+            # Fetch the pinned, checksum-verified prebuilt static lib for this
+            # target and link it (no Rust toolchain needed).
+            bash scripts/fetch-cartographer-lib.sh "$GOOS" "$GOARCH"
+            export CGO_ENABLED=1
+            if [ -n "${{ matrix.cc }}" ]; then export CC="${{ matrix.cc }}"; fi
+            GOOS="$GOOS" GOARCH="$GOARCH" go build -tags cartographer -ldflags "$LDFLAGS" -o "$OUT" ./cmd/ckb
+          else
+            export CGO_ENABLED=0
+            GOOS="$GOOS" GOARCH="$GOARCH" go build -ldflags "$LDFLAGS" -o "$OUT" ./cmd/ckb
+          fi
+
+          # Package with the exact GoReleaser-compatible name so the npm platform
+          # packages (which download these by name) keep working unchanged.
+          if [ "$GOOS" = "windows" ]; then
+            ARCHIVE="ckb_${VERSION}_windows_amd64.zip"
+            7z a "$ARCHIVE" "$OUT" README.md LICENSE >/dev/null
+          else
+            ARCHIVE="ckb_${VERSION}_${GOOS}_${GOARCH}.tar.gz"
+            tar -czf "$ARCHIVE" "$OUT" README.md LICENSE
+          fi
+
+          echo "Uploading $ARCHIVE to release $TAG"
+          gh release upload "$TAG" "$ARCHIVE" --clobber
+
+  finalize:
+    name: Checksums + Homebrew + publish + npm
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Checksums, publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          # gh release download works on a draft (authed); public URLs don't yet.
+          mkdir -p rel && cd rel
+          gh release download "$TAG" --pattern 'ckb_*' --dir .
+          sha256sum ckb_* > checksums.txt
+          gh release upload "$TAG" checksums.txt --clobber
+          # Flip the draft live so the public download URLs (used by npm + brew) resolve.
+          gh release edit "$TAG" --draft=false
+
+      - name: Update Homebrew formula
+        continue-on-error: true  # never block the release on a tap-token issue
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          BASE="https://github.com/SimplyLiz/CodeMCP/releases/download/v${VERSION}"
+          cd rel
+          sha() { grep " $1\$" checksums.txt | awk '{print $1}'; }
+          DA=$(sha "ckb_${VERSION}_darwin_arm64.tar.gz")
+          DI=$(sha "ckb_${VERSION}_darwin_amd64.tar.gz")
+          LA=$(sha "ckb_${VERSION}_linux_arm64.tar.gz")
+          LI=$(sha "ckb_${VERSION}_linux_amd64.tar.gz")
+          cat > ckb.rb <<EOF
+          class Ckb < Formula
+            desc "Code intelligence orchestration layer for AI-assisted development"
+            homepage "https://github.com/SimplyLiz/CodeMCP"
+            version "${VERSION}"
+
+            on_macos do
+              on_arm do
+                url "${BASE}/ckb_${VERSION}_darwin_arm64.tar.gz"
+                sha256 "${DA}"
+              end
+              on_intel do
+                url "${BASE}/ckb_${VERSION}_darwin_amd64.tar.gz"
+                sha256 "${DI}"
+              end
+            end
+
+            on_linux do
+              on_arm do
+                url "${BASE}/ckb_${VERSION}_linux_arm64.tar.gz"
+                sha256 "${LA}"
+              end
+              on_intel do
+                url "${BASE}/ckb_${VERSION}_linux_amd64.tar.gz"
+                sha256 "${LI}"
+              end
+            end
+
+            def install
+              bin.install "ckb"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/ckb version")
+            end
+          end
+          EOF
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/SimplyLiz/homebrew-ckb.git" tap
+          mkdir -p tap/Formula
+          cp ckb.rb tap/Formula/ckb.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/ckb.rb
+          git commit -m "ckb ${VERSION}" || { echo "no formula change"; exit 0; }
+          git push
 
       - name: Publish npm packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
+          cp rel/checksums.txt checksums.txt
           echo "Publishing version $VERSION"
 
           # Update version in package.json
@@ -141,7 +307,6 @@ jobs:
           for PLATFORM in $PLATFORMS; do
             echo "Creating package for $PLATFORM"
 
-            # Map platform to goreleaser naming
             case $PLATFORM in
               darwin-arm64) ARCHIVE="ckb_${VERSION}_darwin_arm64.tar.gz" ;;
               darwin-x64)   ARCHIVE="ckb_${VERSION}_darwin_amd64.tar.gz" ;;
@@ -155,23 +320,19 @@ jobs:
 
             mkdir -p "$PKG_DIR/bin"
 
-            # Download from GitHub release
             curl -sfL "https://github.com/SimplyLiz/CodeMCP/releases/download/v${VERSION}/${ARCHIVE}" -o "$ARCHIVE"
 
-            # Verify checksum
             if ! grep "$ARCHIVE" checksums.txt | sha256sum -c -; then
               echo "::error::Checksum verification failed for $ARCHIVE"
               exit 1
             fi
 
-            # Extract
             if [[ $PLATFORM == win32-x64 ]]; then
               unzip -q "$ARCHIVE" -d "$PKG_DIR/bin"
             else
               tar xzf "$ARCHIVE" -C "$PKG_DIR/bin"
             fi
 
-            # Create package.json
             cat > "$PKG_DIR/package.json" << EOF
           {
             "name": "${PKG_NAME}",
@@ -180,11 +341,10 @@ jobs:
             "os": ["${PLATFORM%-*}"],
             "cpu": ["${PLATFORM#*-}"],
             "files": ["bin"],
-            "license": "MIT"
+            "license": "SEE LICENSE IN LICENSE"
           }
           EOF
 
-            # Publish
             cd "$PKG_DIR"
             if ! npm publish --access public 2>&1 | tee /tmp/npm-publish.log; then
               if grep -q "already exists" /tmp/npm-publish.log; then

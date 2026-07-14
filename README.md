@@ -144,7 +144,7 @@ claude mcp add --transport stdio ckb -- npx @tastehub/ckb mcp
 
 **Token efficiency shown at startup:**
 ```
-CKB MCP Server v9.2.0
+CKB MCP Server v9.3.0
   Active tools: 25 / 110 (22%)
   Estimated context: ~4k tokens
   Preset: core
@@ -569,14 +569,15 @@ The AI can dynamically expand the toolset mid-session using the `expandToolset` 
 
 ## Under the Hood
 
-CKB orchestrates multiple code intelligence backends:
+CKB orchestrates multiple code intelligence backends, using whatever is available and stacking their strengths — more backends running means richer answers:
 
-- **SCIP** — Precise, pre-indexed symbol data (fastest)
+- **Cartographer** — Fast structural analysis (architecture, dependencies, blast-radius, coupling, directory rollup) that needs **no index** and works the moment CKB is installed. Compiled into the binary, so it ships in the npm and Homebrew builds by default.
+- **SCIP** — Precise, pre-indexed symbol data for exact definitions, references, and call graphs (run `ckb index`)
 - **LSP** — Real-time language server queries
 - **Git** — Blame, history, churn analysis, ownership
-- **LIP** — Semantic embedding daemon for nearest-neighbour search and re-ranking (optional, recommended)
+- **LIP** — Semantic embedding daemon for nearest-neighbour search and re-ranking. Runs as a **separate, optional daemon** — install and start it alongside CKB.
 
-Results are merged intelligently and compressed for LLM context limits.
+Results are merged intelligently and compressed for LLM context limits. Every backend except Git is optional; CKB degrades gracefully to whatever is present.
 
 > **LIP enhances semantic search, PR novelty detection, test discovery, file boundary analysis, and architecture coupling signals.** When LIP is running alongside CKB, search quality improves significantly — especially for natural-language queries that don't match symbol names literally. See [Hybrid Retrieval](https://github.com/SimplyLiz/CodeMCP/wiki/Hybrid-Retrieval) for details, or the [LIP documentation](https://lip-sigma.vercel.app/docs).
 

@@ -1,8 +1,8 @@
-CKB License
+CodeCartographer Fair Use License
 
-Copyright (c) 2025–2026 TasteHub / SimplyLiz
+Copyright (c) 2025–2026 SimplyLiz
 
-SPDX-License-Identifier: LicenseRef-CKB-FairUse
+SPDX-License-Identifier: LicenseRef-CodeCartographer-FairUse
 
 FREE USE
 
@@ -17,7 +17,7 @@ This software is free to use for:
 COMMERCIAL USE
 
 Use by organizations with $25,000 USD or more in annual gross revenue
-requires a paid license. See https://codeknowledge.dev/pricing for plans.
+requires a commercial license. Contact: lisa@tastehub.io
 
 TERMS
 
@@ -26,14 +26,15 @@ TERMS
    cost, subject to the conditions above.
 
 2. COMMERCIAL LICENSE REQUIRED: Organizations with $25,000 USD or more in
-   annual gross revenue must obtain a paid license before any use, including:
+   annual gross revenue must obtain a commercial license before any use,
+   including:
    - Internal business tools
    - Products or services built on or with this software
    - Use by employees or contractors
 
 3. REDISTRIBUTION: Redistribution of this software, with or without
    modification, must retain this license notice in full. Commercial
-   redistribution requires a paid license.
+   redistribution requires a commercial license.
 
 4. THIRD-PARTY COMPONENTS: This software includes third-party components that
    are licensed separately under their own terms. Those components remain
@@ -41,7 +42,7 @@ TERMS
    accompanying THIRD-PARTY-LICENSES file. Nothing in this license limits your
    rights under, or your obligations to comply with, those third-party licenses.
 
-5. TRADEMARKS: This license grants no rights to use the "CKB", "CodeKnowledge",
+5. TRADEMARKS: This license grants no rights to use the "CodeCartographer",
    "TasteHub", or "SimplyLiz" names, logos, or trademarks, except as required
    for reasonable and customary attribution.
 
@@ -58,8 +59,7 @@ TERMS
    most recent completed fiscal year, including all subsidiaries and affiliated
    entities under common control. Eligibility for free use is determined as of
    the start of each fiscal year in which the software is used; an organization
-   that crosses the $25,000 threshold must obtain a paid license for continued
-   use in the following fiscal year.
+   that crosses the $25,000 threshold must obtain a commercial license for
+   continued use in the following fiscal year.
 
-For licensing: https://codeknowledge.dev/pricing
-For questions: hello@codeknowledge.dev
+For commercial licensing: lisa@tastehub.io

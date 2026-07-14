@@ -14,7 +14,7 @@
     "pr-analysis"
   ],
   "author": "TasteHub",
-  "license": "MIT",
+  "license": "LicenseRef-CKB-FairUse",
   "dependencies": {
     "@actions/core": "^1.11.1",
     "@actions/exec": "^1.1.1",
