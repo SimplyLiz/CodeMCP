@@ -281,4 +281,4 @@ Include:
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the MIT License.
+By contributing, you agree that your contributions will be licensed under the project's license (see [LICENSE](../LICENSE)).

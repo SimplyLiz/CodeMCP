@@ -1801,7 +1801,7 @@ See Wiki for full documentation.
 Better npmjs.com presence and npx reliability:
 
 - **README on npmjs.com** - Package now displays full README on npm registry
-- **LICENSE included** - MIT license file bundled with npm package
+- **LICENSE included** - license file bundled with npm package
 - **Issue tracker link** - "Report a bug" link on npm page
 - **npx sandbox fix** - Node shim auto-detects repo root, fixing #1 support issue
 
