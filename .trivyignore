@@ -4,3 +4,11 @@
 # published to the Go module proxy yet. Revisit when buf ships a release
 # that depends on docker/docker >= v29.3.1.
 CVE-2026-34040
+
+# CVE-2026-41567 / CVE-2026-42306: docker/docker (Moby) RCE / info-leak.
+# Same transitive source: github.com/docker/docker v25.0.6+incompatible via
+# bufbuild/buf. No fixed version is published against the +incompatible line,
+# and govulncheck (call-graph aware) reports these paths as unreachable from
+# CKB. Revisit when buf is upgraded to a release dropping the old docker dep.
+CVE-2026-41567
+CVE-2026-42306
