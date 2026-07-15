@@ -16,7 +16,7 @@ type SortCriteria struct {
 // The slice parameter must be a pointer to a slice
 func MultiFieldSort(slice interface{}, criteria []SortCriteria) error {
 	sliceVal := reflect.ValueOf(slice)
-	if sliceVal.Kind() != reflect.Ptr {
+	if sliceVal.Kind() != reflect.Pointer {
 		return fmt.Errorf("slice must be a pointer to a slice")
 	}
 
@@ -65,7 +65,7 @@ func MultiFieldSort(slice interface{}, criteria []SortCriteria) error {
 // getFieldValue gets a field value from a struct using reflection
 func getFieldValue(val reflect.Value, fieldName string) (interface{}, error) {
 	// Dereference pointers
-	for val.Kind() == reflect.Ptr {
+	for val.Kind() == reflect.Pointer {
 		if val.IsNil() {
 			return nil, fmt.Errorf("nil pointer encountered")
 		}

@@ -56,7 +56,7 @@ func normalizeValue(v interface{}) interface{} {
 	val := reflect.ValueOf(v)
 
 	// Dereference pointers
-	for val.Kind() == reflect.Ptr {
+	for val.Kind() == reflect.Pointer {
 		if val.IsNil() {
 			return nil
 		}
