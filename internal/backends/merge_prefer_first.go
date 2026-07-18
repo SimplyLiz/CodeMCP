@@ -241,7 +241,7 @@ func isEmptyValue(v interface{}) bool {
 		// Use reflection for other types
 		rv := reflect.ValueOf(v)
 		switch rv.Kind() {
-		case reflect.Ptr, reflect.Interface:
+		case reflect.Pointer, reflect.Interface:
 			return rv.IsNil()
 		case reflect.Slice, reflect.Map:
 			return rv.Len() == 0
