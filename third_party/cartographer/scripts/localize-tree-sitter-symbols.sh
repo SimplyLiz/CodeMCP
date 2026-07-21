@@ -86,21 +86,44 @@ cp "$ARCHIVE_ABS" "$WORK/input.a"
   # `-nostdlib` prevents clang/gcc from pulling in CRT or libSystem.
   case "$(uname -s)" in
     Darwin)
-      "$CC" -nostdlib -Wl,-r -o combined.o -Wl,-force_load,input.a
+      # Pin the partial-link arch to the archive's actual arch. Native builds
+      # (arm64 lib on an arm64 host) don't need it, but when x86_64 is
+      # cross-built on Apple Silicon the driver's default arch is arm64 and the
+      # `-r` link would reject the x86_64 objects. `lipo -archs` reads it off the
+      # archive; empty result falls back to the driver default.
+      # Plain string (not an array): macOS runners ship bash 3.2, where an empty
+      # array expansion under `set -u` errors. ARCH is a single token
+      # (x86_64 / arm64), so unquoted word-splitting is exactly what we want.
+      ARCH="$(lipo -archs input.a 2>/dev/null | awk '{print $1}')"
+      ARCH_FLAG=""
+      [[ -n "$ARCH" ]] && ARCH_FLAG="-arch $ARCH"
+      # shellcheck disable=SC2086
+      "$CC" $ARCH_FLAG -nostdlib -Wl,-r -o combined.o -Wl,-force_load,input.a
       ;;
     *)
-      "$CC" -nostdlib -Wl,-r -o combined.o \
+      # `-no-pie`: GCC on modern distros (Ubuntu) defaults to building PIE, and
+      # the driver then passes `-pie` to the linker — which errors out on a
+      # relocatable partial link ("-r and -pie may not be used together"). This
+      # is a relocatable object, not an executable, so disable PIE explicitly.
+      "$CC" -nostdlib -no-pie -Wl,-r -o combined.o \
         -Wl,--whole-archive input.a -Wl,--no-whole-archive
       ;;
   esac
 
-  # Localize tree-sitter runtime (`ts_*`) and grammar init symbols
-  # (`tree_sitter_<lang>`, plus internal `tree_sitter_<lang>_external_scanner_*`
-  # helpers). Safe now that the combined object resolved internal refs.
+  # Keep ONLY the codecartographer_* FFI entry points global; localize every
+  # other defined symbol. This is deliberately broader than an allow-list of
+  # `ts_*` / `tree_sitter_*` patterns: the bundled tree-sitter runtime also
+  # exports internal helpers that don't share that prefix (e.g. `_ts_dup`),
+  # which a name-based localize misses — on ELF the GNU linker then aborts with
+  # "multiple definition" against a consumer's own tree-sitter copy, while
+  # Mach-O silently takes the first definition (latent ODR/memory-corruption
+  # risk). Since consumers only ever call the codecartographer_* FFI, keeping
+  # just those global is both correct and future-proof. Undefined symbols (libc
+  # imports) are unaffected. Safe now that the partial link resolved internal
+  # refs within combined.o.
   "$OBJCOPY" \
     --wildcard \
-    --localize-symbol="${UPREFIX}ts_*" \
-    --localize-symbol="${UPREFIX}tree_sitter_*" \
+    --keep-global-symbol="${UPREFIX}codecartographer_*" \
     combined.o
 
   # Replace the archive with just the combined, localized object.
