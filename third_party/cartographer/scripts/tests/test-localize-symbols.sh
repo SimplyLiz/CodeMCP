@@ -24,6 +24,11 @@ cd "$WORK"
 cat > runtime.c <<'EOF'
 int ts_parser_new(void) { return 42; }
 int ts_tree_root_node(int x) { return x + 1; }
+/* Internal tree-sitter helper whose symbol does NOT start with `ts_` — mirrors
+ * real leakers like `_ts_dup`. A name-based localize of `ts_*`/`tree_sitter_*`
+ * misses it; keep-global-symbol=codecartographer_* must still localize it, else
+ * it collides with a consumer's tree-sitter copy at ELF link time. */
+int _ts_dup(int x) { return x + 2; }
 EOF
 
 cat > grammar.c <<'EOF'
@@ -33,7 +38,8 @@ EOF
 cat > wrapper.c <<'EOF'
 extern int ts_parser_new(void);
 extern int tree_sitter_rust(void);
-int codecartographer_version(void) { return ts_parser_new() + tree_sitter_rust(); }
+extern int _ts_dup(int);
+int codecartographer_version(void) { return ts_parser_new() + tree_sitter_rust() + _ts_dup(1); }
 int codecartographer_render_architecture(void) { return 0; }
 EOF
 
@@ -55,6 +61,8 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
   || fail "baseline: ${U}ts_parser_new should be global in runtime.o"
 "$NM" -g grammar.o | grep -qE " T ${U}tree_sitter_rust\$" \
   || fail "baseline: ${U}tree_sitter_rust should be global in grammar.o"
+"$NM" -g runtime.o | grep -qE " T ${U}_ts_dup\$" \
+  || fail "baseline: ${U}_ts_dup should be global in runtime.o"
 
 "$SCRIPT" libfixture.a >/dev/null
 
@@ -66,9 +74,13 @@ rm -f runtime.o grammar.o wrapper.o
 GLOBAL_TS="$("$NM" -g combined.o | grep -cE " T ${U}ts_" || true)"
 GLOBAL_TSL="$("$NM" -g combined.o | grep -cE " T ${U}tree_sitter_" || true)"
 GLOBAL_CARTO="$("$NM" -g combined.o | grep -cE " T ${U}codecartographer_" || true)"
+# Regression guard: an internal helper not matching ts_*/tree_sitter_* (the
+# name-based localize's blind spot) must also be localized.
+GLOBAL_INTERNAL="$("$NM" -g combined.o | grep -cE " T ${U}_ts_dup\$" || true)"
 
-[[ "$GLOBAL_TS" -eq 0 ]]     || fail "ts_* still global ($GLOBAL_TS)"
-[[ "$GLOBAL_TSL" -eq 0 ]]    || fail "tree_sitter_* still global ($GLOBAL_TSL)"
+[[ "$GLOBAL_TS" -eq 0 ]]      || fail "ts_* still global ($GLOBAL_TS)"
+[[ "$GLOBAL_TSL" -eq 0 ]]     || fail "tree_sitter_* still global ($GLOBAL_TSL)"
+[[ "$GLOBAL_INTERNAL" -eq 0 ]] || fail "internal _ts_dup still global — keep-global-symbol regressed"
 [[ "$GLOBAL_CARTO" -ge 2 ]]  || fail "codecartographer_* lost exports (got $GLOBAL_CARTO, want >= 2)"
 
 # And the localized symbols should still be present as local (t), i.e. the
@@ -78,4 +90,4 @@ LOCAL_TSL="$("$NM" combined.o | grep -cE " t ${U}tree_sitter_" || true)"
 [[ "$LOCAL_TS" -ge 1 ]]  || fail "ts_* definitions missing post-localization"
 [[ "$LOCAL_TSL" -ge 1 ]] || fail "tree_sitter_* definitions missing post-localization"
 
-echo "PASS: ts_* and tree_sitter_* localized; codecartographer_* still exported ($GLOBAL_CARTO symbols)"
+echo "PASS: ts_*/tree_sitter_*/_ts_dup localized; codecartographer_* still exported ($GLOBAL_CARTO symbols)"
